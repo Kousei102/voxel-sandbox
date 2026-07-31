@@ -1,0 +1,212 @@
+import { Euler, Vector3, type PerspectiveCamera } from "three";
+import { WATER, isSolid } from "./blocks";
+import { WORLD_HEIGHT } from "./constants";
+import type { World } from "./world";
+
+const WIDTH = 0.6;
+const HEIGHT = 1.8;
+const EYE = 1.62;
+const HALF = WIDTH / 2;
+const EPS = 1e-3;
+
+const WALK_SPEED = 5.2;
+const SPRINT_SPEED = 8.4;
+const FLY_SPEED = 14;
+const ACCEL_GROUND = 60;
+const ACCEL_AIR = 14;
+const GRAVITY = 30;
+const JUMP_SPEED = 9.2;
+const TERMINAL = 55;
+const SWIM_SPEED = 4.5;
+
+const scratch = new Vector3();
+
+export class Player {
+  readonly position = new Vector3();
+  readonly velocity = new Vector3();
+  yaw = 0;
+  pitch = 0;
+  flying = false;
+  onGround = false;
+  inWater = false;
+
+  private readonly keys = new Set<string>();
+  private readonly euler = new Euler(0, 0, 0, "YXZ");
+  private readonly forward = new Vector3();
+  private readonly right = new Vector3();
+  private readonly wish = new Vector3();
+
+  constructor(private readonly camera: PerspectiveCamera) {}
+
+  setKey(code: string, down: boolean): void {
+    if (down) this.keys.add(code);
+    else this.keys.delete(code);
+  }
+
+  clearKeys(): void {
+    this.keys.clear();
+  }
+
+  look(dx: number, dy: number, sensitivity = 0.0022): void {
+    this.yaw -= dx * sensitivity;
+    this.pitch -= dy * sensitivity;
+    const limit = Math.PI / 2 - 0.001;
+    this.pitch = Math.max(-limit, Math.min(limit, this.pitch));
+  }
+
+  toggleFly(): void {
+    this.flying = !this.flying;
+    if (this.flying) this.velocity.y = 0;
+  }
+
+  update(dt: number, world: World): void {
+    this.inWater = world.getVoxel(
+      Math.floor(this.position.x),
+      Math.floor(this.position.y + 0.4),
+      Math.floor(this.position.z),
+    ) === WATER;
+
+    this.forward.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+    this.right.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+
+    this.wish.set(0, 0, 0);
+    if (this.keys.has("KeyW")) this.wish.add(this.forward);
+    if (this.keys.has("KeyS")) this.wish.sub(this.forward);
+    if (this.keys.has("KeyD")) this.wish.add(this.right);
+    if (this.keys.has("KeyA")) this.wish.sub(this.right);
+    if (this.wish.lengthSq() > 0) this.wish.normalize();
+
+    const sprinting = this.keys.has("ShiftLeft") || this.keys.has("ShiftRight");
+
+    if (this.flying) {
+      this.updateFly(dt, sprinting);
+    } else {
+      this.updateWalk(dt, sprinting);
+    }
+
+    this.move(world, dt);
+
+    if (this.position.y < -20) {
+      // 奈落に落ちたら地表へ戻す
+      this.position.y = WORLD_HEIGHT;
+      this.velocity.set(0, 0, 0);
+    }
+
+    this.syncCamera();
+  }
+
+  /** カメラを目線の位置と向きに合わせる。メニュー表示中も背景を描くために使う。 */
+  syncCamera(): void {
+    this.camera.position.set(this.position.x, this.position.y + EYE, this.position.z);
+    this.euler.set(this.pitch, this.yaw, 0);
+    this.camera.quaternion.setFromEuler(this.euler);
+  }
+
+  private updateFly(dt: number, sprinting: boolean): void {
+    const speed = FLY_SPEED * (sprinting ? 2 : 1);
+    let vy = 0;
+    if (this.keys.has("Space")) vy += 1;
+    if (this.keys.has("ControlLeft") || this.keys.has("KeyC")) vy -= 1;
+    scratch.set(this.wish.x * speed, vy * speed, this.wish.z * speed);
+    this.velocity.lerp(scratch, Math.min(1, dt * 14));
+    this.onGround = false;
+  }
+
+  private updateWalk(dt: number, sprinting: boolean): void {
+    const speed = (sprinting ? SPRINT_SPEED : WALK_SPEED) * (this.inWater ? 0.6 : 1);
+    const accel = (this.onGround ? ACCEL_GROUND : ACCEL_AIR) * dt;
+    const targetX = this.wish.x * speed;
+    const targetZ = this.wish.z * speed;
+    this.velocity.x += Math.max(-accel, Math.min(accel, targetX - this.velocity.x));
+    this.velocity.z += Math.max(-accel, Math.min(accel, targetZ - this.velocity.z));
+
+    if (this.inWater) {
+      this.velocity.y -= GRAVITY * 0.22 * dt;
+      if (this.keys.has("Space")) this.velocity.y = SWIM_SPEED;
+      this.velocity.y = Math.max(-8, Math.min(SWIM_SPEED, this.velocity.y));
+    } else {
+      this.velocity.y -= GRAVITY * dt;
+      if (this.velocity.y < -TERMINAL) this.velocity.y = -TERMINAL;
+      if (this.onGround && this.keys.has("Space")) {
+        this.velocity.y = JUMP_SPEED;
+        this.onGround = false;
+      }
+    }
+
+    if (this.onGround && this.wish.lengthSq() === 0) {
+      // 摩擦
+      const damp = Math.max(0, 1 - dt * 12);
+      this.velocity.x *= damp;
+      this.velocity.z *= damp;
+    }
+  }
+
+  /** 軸ごとに動かして、めり込んだら接触面まで戻す。 */
+  private move(world: World, dt: number): void {
+    const p = this.position;
+
+    p.x += this.velocity.x * dt;
+    if (collides(world, p)) {
+      p.x =
+        this.velocity.x > 0
+          ? Math.floor(p.x + HALF) - HALF - EPS
+          : Math.floor(p.x - HALF) + 1 + HALF + EPS;
+      this.velocity.x = 0;
+    }
+
+    p.z += this.velocity.z * dt;
+    if (collides(world, p)) {
+      p.z =
+        this.velocity.z > 0
+          ? Math.floor(p.z + HALF) - HALF - EPS
+          : Math.floor(p.z - HALF) + 1 + HALF + EPS;
+      this.velocity.z = 0;
+    }
+
+    const wasFalling = this.velocity.y <= 0;
+    p.y += this.velocity.y * dt;
+    if (collides(world, p)) {
+      if (wasFalling) {
+        p.y = Math.floor(p.y) + 1;
+        this.onGround = true;
+      } else {
+        p.y = Math.floor(p.y + HEIGHT) - HEIGHT - EPS;
+      }
+      this.velocity.y = 0;
+    } else if (wasFalling) {
+      // 足元に何も無ければ落下中
+      this.onGround = collides(world, scratch.copy(p).setY(p.y - EPS * 4));
+    }
+  }
+
+  /** プレイヤーの AABB がこのブロックを含むか（設置の可否判定に使う）。 */
+  overlapsBlock(x: number, y: number, z: number): boolean {
+    const p = this.position;
+    return (
+      x + 1 > p.x - HALF &&
+      x < p.x + HALF &&
+      y + 1 > p.y &&
+      y < p.y + HEIGHT &&
+      z + 1 > p.z - HALF &&
+      z < p.z + HALF
+    );
+  }
+}
+
+function collides(world: World, p: Vector3): boolean {
+  const x0 = Math.floor(p.x - HALF + EPS);
+  const x1 = Math.floor(p.x + HALF - EPS);
+  const y0 = Math.floor(p.y + EPS);
+  const y1 = Math.floor(p.y + HEIGHT - EPS);
+  const z0 = Math.floor(p.z - HALF + EPS);
+  const z1 = Math.floor(p.z + HALF - EPS);
+
+  for (let y = y0; y <= y1; y++) {
+    for (let z = z0; z <= z1; z++) {
+      for (let x = x0; x <= x1; x++) {
+        if (isSolid(world.getVoxel(x, y, z))) return true;
+      }
+    }
+  }
+  return false;
+}
