@@ -3,6 +3,8 @@
 ブラウザで動くボクセルサンドボックス。無限に広がる地形を歩き回って、ブロックを壊したり置いたりできます。
 Vite + TypeScript + three.js のみで、外部アセットもゲームエンジンも使っていません。
 
+**→ https://kousei102.github.io/voxel-sandbox/**
+
 ```bash
 npm install
 npm run dev      # http://localhost:5173
@@ -83,6 +85,24 @@ generateChunk   0.93 ms/チャンク
 buildChunkMesh  1.14 ms/チャンク (888 三角形)
 world.update    平均 3.0 ms / 最悪 10.2 ms（歩行中のストリーミング込み）
 ```
+
+## デプロイ
+
+`master` に push すると `.github/workflows/deploy.yml` が走り、`npm ci` → `npm test` → `npm run build`
+を通ってから `dist/` が GitHub Pages に配信されます。テストが落ちればデプロイはされません。
+手動で回すときは Actions タブの "Run workflow"、または `gh workflow run deploy.yml` です。
+
+サーバーも DB も無く、セーブは localStorage なので、置くものは `dist/` の 3 ファイル
+（`index.html` と JS・CSS 各 1 つ、合計 511 kB / gzip 134 kB）だけです。JS のほとんどは three.js 本体で、
+初回だけ一括ダウンロードになります。
+
+`vite.config.ts` の `base: "./"` は**相対パスにするためのもの**です。GitHub Pages は
+`https://<user>.github.io/<repo>/` というサブディレクトリ配信なので、既定の `base: "/"` のままだと
+アセットの参照先が `/assets/...` になって 404 になります。ここを絶対パスに戻すなら、
+リポジトリ名を含む `base` を指定してください。
+
+他のホスティング（Cloudflare Pages / Netlify / Vercel、あるいは nginx で `dist/` を配るだけ）でも
+同じものがそのまま動きます。ビルドコマンド `npm run build`、出力ディレクトリ `dist` を指定するだけです。
 
 ## 調整できるところ
 
