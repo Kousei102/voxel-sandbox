@@ -5,6 +5,13 @@ export interface SaveData {
   version: 1;
   seed: number;
   player: { x: number; y: number; z: number; yaw: number; pitch: number; flying: boolean };
+  /** 時刻 [0, 1)。0 = 日の出。古いセーブには無いので省略可。 */
+  time?: number;
+  creative?: boolean;
+  /** 体力 0..20。0 以下や欠けているときは満タンで再開する。 */
+  health?: number;
+  /** [item, count, ...] を 36 スロット分。空きは 0,0。 */
+  inventory?: number[];
   /** チャンクキー -> [localIndex, blockId, ...] の平坦な配列。 */
   edits: Record<string, number[]>;
 }

@@ -7,22 +7,32 @@ import {
   LineSegments,
   PerspectiveCamera,
   Scene,
-  ShaderMaterial,
   Vector3,
   WebGLRenderer,
 } from "three";
-import { AIR, WATER, blockName, isSolid } from "./blocks";
+import { AIR, CRAFTING_TABLE, PALETTE, WATER, blockName, isSolid } from "./blocks";
 import { AUTOSAVE_INTERVAL, CHUNK_BITS, REACH, RENDER_DISTANCE, CHUNK_SIZE } from "./constants";
+import { CrackOverlay } from "./crack";
+import { DayNight } from "./daynight";
+import { Inventory } from "./inventory";
+import { InventoryScreen } from "./inventoryui";
+import { NO_ITEM, dropOf, itemName, placedBlock } from "./items";
+import { Mining, breakTime, canHarvest } from "./mining";
 import { Player } from "./player";
 import { raycastVoxels, type RaycastHit } from "./raycast";
-import { createSky } from "./sky";
+import { Sky } from "./sky";
 import { clearSave, countEdits, deserializeEdits, load, save, serializeEdits } from "./storage";
 import { Hud } from "./ui";
+import { MAX_HEALTH, VOID_Y, Vitals } from "./vitals";
 import { World } from "./world";
 import { hashSeed } from "./noise";
 
 const FOG_COLOR = 0x9ec8e8;
 const WATER_FOG = 0x1b4f8c;
+/** 新しいワールドを始める時刻（朝）。 */
+const NEW_WORLD_TIME = 0.05;
+const SPAWN_X = 0.5;
+const SPAWN_Z = 0.5;
 
 const canvas = document.getElementById("viewport") as HTMLCanvasElement;
 const renderer = new WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance" });
@@ -35,12 +45,9 @@ scene.fog = fog;
 
 const camera = new PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, 2400);
 
-const sky = createSky(FOG_COLOR);
-scene.add(sky);
-const skyUniforms = (sky.material as ShaderMaterial).uniforms;
-const skyZenith = new Color(0x3f7fd0);
-const skyHorizon = new Color(FOG_COLOR);
-const skyGround = new Color(0x4c5a63);
+const sky = new Sky(FOG_COLOR);
+scene.add(sky.object);
+const dayNight = new DayNight();
 const waterColor = new Color(WATER_FOG);
 
 const highlight = new LineSegments(
@@ -50,8 +57,18 @@ const highlight = new LineSegments(
 highlight.visible = false;
 scene.add(highlight);
 
-const hud = new Hud();
+const crack = new CrackOverlay();
+scene.add(crack.mesh);
+
+const inventory = new Inventory();
+const hud = new Hud(inventory);
+const screen = new InventoryScreen(inventory);
+const mining = new Mining();
+const vitals = new Vitals();
 const player = new Player(camera);
+
+const deathScreen = document.getElementById("death") as HTMLElement;
+const deathCause = document.getElementById("deathcause") as HTMLElement;
 
 let world!: World;
 let playing = false;
@@ -59,8 +76,24 @@ let saveDirty = false;
 let autosaveTimer = 0;
 let hit: RaycastHit | null = null;
 let underwater = false;
+let breaking = false;
+/** クリエイティブでは即掘れて、置いてもアイテムが減らない。 */
+let creative = false;
 
 const seedInput = document.getElementById("seed") as HTMLInputElement;
+const modeButton = document.getElementById("mode") as HTMLButtonElement;
+
+screen.onChange = () => {
+  hud.refresh();
+  saveDirty = true;
+};
+
+function setCreative(on: boolean): void {
+  creative = on;
+  modeButton.textContent = creative ? "クリエイティブ" : "サバイバル";
+  if (creative) inventory.fillEmptyHotbar(PALETTE);
+  hud.refresh();
+}
 
 function startWorld(
   seed: number,
@@ -71,8 +104,8 @@ function startWorld(
   world = new World(scene, seed, edits);
   seedInput.value = String(seed);
 
-  const x = spawn?.x ?? 0.5;
-  const z = spawn?.z ?? 0.5;
+  const x = spawn?.x ?? SPAWN_X;
+  const z = spawn?.z ?? SPAWN_Z;
   world.primeAround(x, z, 1);
 
   player.position.set(x, spawn?.y ?? world.surfaceY(Math.floor(x), Math.floor(z)) + 0.2, z);
@@ -83,6 +116,15 @@ function startWorld(
   player.clearKeys();
   player.syncCamera();
   world.update(player.position.x, player.position.z);
+}
+
+/** 初期位置へ戻す。ベッドがまだ無いので、リスポーン地点はワールドの初期位置ひとつだけ。 */
+function moveToSpawn(): void {
+  world.primeAround(SPAWN_X, SPAWN_Z, 1);
+  player.position.set(SPAWN_X, world.surfaceY(Math.floor(SPAWN_X), Math.floor(SPAWN_Z)) + 0.2, SPAWN_Z);
+  player.velocity.set(0, 0, 0);
+  player.clearKeys();
+  player.syncCamera();
 }
 
 function currentSave() {
@@ -97,6 +139,10 @@ function currentSave() {
       pitch: player.pitch,
       flying: player.flying,
     },
+    time: dayNight.time,
+    creative,
+    health: vitals.health,
+    inventory: inventory.serialize(),
     edits: serializeEdits(world.editsForSave()),
   };
 }
@@ -113,6 +159,13 @@ function saveNow(message = "保存しました"): void {
 // --- 起動 ---------------------------------------------------------------
 
 const saved = load();
+if (typeof saved?.time === "number" && Number.isFinite(saved.time)) dayNight.setTime(saved.time);
+inventory.deserialize(saved?.inventory);
+setCreative(saved?.creative ?? false);
+// 死んだまま保存された場合は満タンで再開する（読み込み直後に死亡画面を出さない）
+if (typeof saved?.health === "number" && saved.health > 0) {
+  vitals.health = Math.min(MAX_HEALTH, saved.health);
+}
 startWorld(
   saved?.seed ?? (Math.random() * 0xffffffff) >>> 0,
   deserializeEdits(saved?.edits),
@@ -138,18 +191,72 @@ document.getElementById("wipe")?.addEventListener("click", () => {
 document.getElementById("regen")?.addEventListener("click", () => {
   const text = seedInput.value.trim();
   const seed = /^\d+$/.test(text) ? Number(text) >>> 0 : hashSeed(text || String(Date.now()));
+  dayNight.setTime(NEW_WORLD_TIME);
+  vitals.respawn();
+  deathScreen.classList.add("hidden");
   startWorld(seed);
   saveNow(`シード ${seed} で作り直しました`);
 });
 
+// メニューの時刻スライダー。1 周 20 分なので、動かして確かめられるようにしておく。
+const timeInput = document.getElementById("time") as HTMLInputElement;
+const timeLabel = document.getElementById("timelabel") as HTMLElement;
+
+function syncTimeInput(): void {
+  timeInput.value = String(Math.round(dayNight.time * 1440));
+  timeLabel.textContent = dayNight.clock();
+}
+
+timeInput.addEventListener("input", () => {
+  dayNight.setTime(Number(timeInput.value) / 1440);
+  timeLabel.textContent = dayNight.clock();
+  saveDirty = true;
+});
+syncTimeInput();
+
+modeButton.addEventListener("click", () => {
+  setCreative(!creative);
+  saveDirty = true;
+  hud.flash(creative ? "クリエイティブ: 即掘り・アイテム無限" : "サバイバル: 掘って集めます");
+});
+
+document.getElementById("respawn")?.addEventListener("click", () => {
+  vitals.respawn();
+  moveToSpawn();
+  deathScreen.classList.add("hidden");
+  saveDirty = true;
+  requestLock();
+});
+
 document.addEventListener("pointerlockchange", () => {
   playing = document.pointerLockElement === canvas;
-  hud.setPlaying(playing);
+  // インベントリや死亡画面でロックが外れたときは、メインメニューを出さない
+  hud.setPlaying(playing, !playing && !screen.isOpen && !vitals.dead);
   if (!playing) {
     player.clearKeys();
+    breaking = false;
+    mining.reset();
+    syncTimeInput();
     if (saveDirty) saveNow();
   }
 });
+
+/** インベントリ（または作業台）を開く。ポインタロックは外れる。 */
+function openInventory(size: 2 | 3): void {
+  if (screen.isOpen) return;
+  breaking = false;
+  mining.reset();
+  screen.show(size);
+  hud.setPlaying(false, false);
+  document.exitPointerLock();
+}
+
+function closeInventory(): void {
+  if (!screen.isOpen) return;
+  screen.hide();
+  hud.refresh();
+  requestLock();
+}
 
 document.addEventListener("mousemove", (event) => {
   if (playing) player.look(event.movementX, event.movementY);
@@ -165,33 +272,95 @@ document.addEventListener("mousedown", (event) => {
   event.preventDefault();
 
   if (event.button === 0) {
-    if (world.setVoxel(hit.block.x, hit.block.y, hit.block.z, AIR)) saveDirty = true;
+    // クリエイティブは 1 クリック 1 個。サバイバルは押しっぱなしで掘り進める。
+    if (creative) breakBlock(hit.block.x, hit.block.y, hit.block.z, hit.id, NO_ITEM);
+    else breaking = true;
   } else if (event.button === 1) {
-    hud.selectBlock(hit.id);
+    // スポイト: クリエイティブなら手元に湧かせ、サバイバルは持っていれば選ぶ
+    if (creative) inventory.setSelected(hit.id);
+    else if (!inventory.selectItem(hit.id)) hud.flash(`${blockName(hit.id)} を持っていません`);
+    hud.refresh();
   } else if (event.button === 2) {
-    const x = hit.block.x + hit.normal.x;
-    const y = hit.block.y + hit.normal.y;
-    const z = hit.block.z + hit.normal.z;
-    const target = world.getVoxel(x, y, z);
-    if (target !== AIR && target !== WATER) return;
-    const id = hud.selectedBlock;
-    if (isSolid(id) && player.overlapsBlock(x, y, z)) return;
-    if (world.setVoxel(x, y, z, id)) saveDirty = true;
+    useOrPlace();
   }
 });
 
+document.addEventListener("mouseup", (event) => {
+  if (event.button === 0) {
+    breaking = false;
+    mining.reset();
+  }
+});
+
+/** 右クリック: 作業台なら開く、それ以外は持っているブロックを置く。 */
+function useOrPlace(): void {
+  if (!hit) return;
+  if (hit.id === CRAFTING_TABLE) {
+    openInventory(3);
+    return;
+  }
+
+  const item = inventory.selectedItem;
+  const id = placedBlock(item);
+  if (id === AIR) return;
+
+  const x = hit.block.x + hit.normal.x;
+  const y = hit.block.y + hit.normal.y;
+  const z = hit.block.z + hit.normal.z;
+  const target = world.getVoxel(x, y, z);
+  if (target !== AIR && target !== WATER) return;
+  if (isSolid(id) && player.overlapsBlock(x, y, z)) return;
+  if (!world.setVoxel(x, y, z, id)) return;
+
+  if (!creative) inventory.consumeSelected(1);
+  hud.refresh();
+  saveDirty = true;
+}
+
+/** 掘り切ったときの処理。ドロップをインベントリに入れる。 */
+function breakBlock(x: number, y: number, z: number, blockId: number, tool: number): void {
+  if (!world.setVoxel(x, y, z, AIR)) return;
+  saveDirty = true;
+
+  if (creative) return;
+  if (!canHarvest(blockId, tool)) return;
+  const drop = dropOf(blockId);
+  if (drop.item === NO_ITEM || drop.count <= 0) return;
+  if (drop.chance < 1 && Math.random() >= drop.chance) return;
+  const left = inventory.add(drop.item, drop.count);
+  if (left > 0) hud.flash("インベントリがいっぱいです");
+  hud.refresh();
+}
+
 window.addEventListener("wheel", (event) => {
-  if (playing) hud.cycle(event.deltaY > 0 ? 1 : -1);
+  if (!playing) return;
+  inventory.cycle(event.deltaY > 0 ? 1 : -1);
+  hud.refresh();
 });
 
 window.addEventListener("keydown", (event) => {
+  // インベントリを開いているときは E と Esc で閉じるだけ
+  if (screen.isOpen) {
+    if (event.code === "KeyE" || event.code === "Escape") {
+      event.preventDefault();
+      closeInventory();
+    }
+    return;
+  }
   if (!playing) return;
   if (event.code.startsWith("Digit")) {
     const n = Number(event.code.slice(5));
-    if (n >= 1 && n <= 9) hud.select(n - 1);
+    if (n >= 1 && n <= 9) {
+      inventory.select(n - 1);
+      hud.refresh();
+    }
     return;
   }
   switch (event.code) {
+    case "KeyE":
+      event.preventDefault();
+      openInventory(2);
+      return;
     case "KeyF":
       player.toggleFly();
       return;
@@ -246,8 +415,13 @@ function frame(now: number): void {
   highlight.visible = playing && hit !== null;
   if (hit) highlight.position.set(hit.block.x + 0.5, hit.block.y + 0.5, hit.block.z + 0.5);
 
-  updateWaterState();
-  sky.position.copy(camera.position);
+  updateMining(dt);
+
+  dayNight.advance(dt);
+  updateEnvironment();
+  // 息の判定に水中かどうかを使うので、updateEnvironment のあとに回す
+  updateVitals(dt);
+  sky.object.position.copy(camera.position);
 
   hud.tick(dt);
   autosaveTimer += dt;
@@ -264,40 +438,102 @@ function frame(now: number): void {
       `chunk ${Math.floor(player.position.x) >> CHUNK_BITS} ${Math.floor(player.position.z) >> CHUNK_BITS}` +
       `  loaded ${stats.chunks}  queue ${stats.queued}\n` +
       `tris ${stats.triangles.toLocaleString()}  edits ${countEdits(world.editsForSave())}\n` +
+      `time ${dayNight.clock()}  light ${(dayNight.brightness * 100).toFixed(0)}%  ${creative ? "creative" : "survival"}\n` +
+      `hp ${vitals.health}/${MAX_HEALTH}  air ${(vitals.airFraction * 100).toFixed(0)}%\n` +
       `${player.flying ? "fly" : player.onGround ? "ground" : "air"}${player.inWater ? " / water" : ""}\n` +
-      `target ${hit ? `${blockName(hit.id)} (${hit.block.x}, ${hit.block.y}, ${hit.block.z})` : "-"}`,
+      `hand ${inventory.selectedItem === NO_ITEM ? "-" : itemName(inventory.selectedItem)}\n` +
+      `target ${hit ? `${blockName(hit.id)} (${hit.block.x}, ${hit.block.y}, ${hit.block.z})` : "-"}` +
+      (hit ? `  ${formatBreakTime(hit.id, inventory.selectedItem)}` : ""),
   );
 
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
 
-/** 水中では視界を狭め、空の色も水色に寄せる。 */
-function updateWaterState(): void {
-  const inside =
+/**
+ * 体力の更新。判定は vitals.ts に置いてあるので、ここは状況を渡して結果を貼るだけ。
+ * クリエイティブでは何も受けず、奈落に落ちたら初期位置へ戻す（死なせない）。
+ */
+function updateVitals(dt: number): void {
+  const wasDead = vitals.dead;
+
+  if (playing) {
+    vitals.update(dt, {
+      y: player.position.y,
+      onGround: player.onGround,
+      inWater: player.inWater,
+      headInWater: underwater,
+      flying: player.flying,
+      invulnerable: creative,
+    });
+    if (creative && player.position.y < VOID_Y) moveToSpawn();
+  }
+
+  hud.setVitals(vitals.health, vitals.airFraction, vitals.hurtFlash, playing && !creative);
+
+  if (vitals.dead && !wasDead) {
+    breaking = false;
+    mining.reset();
+    deathCause.textContent = vitals.cause ? `死因: ${vitals.cause}` : "";
+    deathScreen.classList.remove("hidden");
+    saveDirty = true;
+    document.exitPointerLock();
+  }
+}
+
+/** デバッグ表示用: いま持っている道具で何秒かかるか。 */
+function formatBreakTime(blockId: number, tool: number): string {
+  const time = breakTime(blockId, tool);
+  if (!Number.isFinite(time)) return "掘れない";
+  return `${time.toFixed(2)}s${canHarvest(blockId, tool) ? "" : " (落ちない)"}`;
+}
+
+/** 掘り進める。ひび割れの表示もここでまとめて更新する。 */
+function updateMining(dt: number): void {
+  if (!playing || !breaking || !hit) {
+    mining.reset();
+    crack.setStage(-1);
+    return;
+  }
+
+  const tool = inventory.selectedItem;
+  const { x, y, z } = hit.block;
+  const blockId = hit.id;
+  if (mining.update(dt, hit.block, blockId, tool)) {
+    breakBlock(x, y, z, blockId, tool);
+  }
+
+  const target = mining.target;
+  if (target) crack.setStage(mining.stage, target.x, target.y, target.z);
+  else crack.setStage(-1);
+}
+
+/**
+ * 空・フォグ・地形の明るさを、時刻と水中かどうかに合わせる。
+ * フォグの色は地平線と揃えておかないと、チャンクの出現が見えてしまう。
+ */
+function updateEnvironment(): void {
+  underwater =
     world.getVoxel(
       Math.floor(camera.position.x),
       Math.floor(camera.position.y),
       Math.floor(camera.position.z),
     ) === WATER;
-  if (inside === underwater) return;
-  underwater = inside;
 
   if (underwater) {
-    fog.color.copy(waterColor);
+    // 水中でも夜は暗くなるように、水の色に明るさを掛ける
+    fog.color.copy(waterColor).multiplyScalar(dayNight.brightness);
     fog.near = 0.1;
     fog.far = 22;
-    (skyUniforms.zenith.value as Color).copy(waterColor);
-    (skyUniforms.horizon.value as Color).copy(waterColor);
-    (skyUniforms.ground.value as Color).copy(waterColor).multiplyScalar(0.5);
   } else {
-    fog.color.setHex(FOG_COLOR);
+    fog.color.copy(dayNight.horizon);
     fog.near = RENDER_DISTANCE * CHUNK_SIZE * 0.55;
     fog.far = RENDER_DISTANCE * CHUNK_SIZE * 0.98;
-    (skyUniforms.zenith.value as Color).copy(skyZenith);
-    (skyUniforms.horizon.value as Color).copy(skyHorizon);
-    (skyUniforms.ground.value as Color).copy(skyGround);
   }
+
+  sky.setUnderwater(underwater, fog.color);
+  sky.update(dayNight);
+  world.setDaylight(dayNight.tint);
 }
 
 requestAnimationFrame(frame);

@@ -1,7 +1,28 @@
-import { AIR, GRASS, LEAVES, STONE, WATER, WOOD, blockName } from "../src/blocks";
+import {
+  AIR,
+  BEDROCK,
+  COAL_ORE,
+  DIAMOND_ORE,
+  GOLD_ORE,
+  GRASS,
+  IRON_ORE,
+  LEAVES,
+  STONE,
+  WATER,
+  WOOD,
+} from "../src/blocks";
 import { CHUNK_VOLUME, SEA_LEVEL } from "../src/constants";
 import { WorldGen } from "../src/worldgen";
 import { check, describe } from "./harness";
+
+/** 名前・ID・出てよい高さの上限（worldgen.ts の ORES と合わせる）。 */
+const ORE_TABLE = [
+  ["石炭鉱石", COAL_ORE, 62],
+  ["鉄鉱石", IRON_ORE, 46],
+  ["金鉱石", GOLD_ORE, 26],
+  ["ダイヤ鉱石", DIAMOND_ORE, 14],
+] as const;
+const ORE_IDS = ORE_TABLE.map(([, id]) => id);
 
 export function run(): void {
   describe("地形生成");
@@ -30,6 +51,40 @@ export function run(): void {
   ] as const) {
     check(`${name}が生成される`, (mix.get(id) ?? 0) > 0, `${(mix.get(id) ?? 0).toLocaleString()} 個`);
   }
+
+  // --- 鉱石 ---
+  // 6x6x8 チャンク（= 石 mix.get(STONE) 個）に対する割合を出しておく。
+  const stoneish = (mix.get(STONE) ?? 0) + ORE_IDS.reduce((sum, id) => sum + (mix.get(id) ?? 0), 0);
+  for (const [name, id] of ORE_TABLE) {
+    const count = mix.get(id) ?? 0;
+    check(
+      `${name}が生成される`,
+      count > 0,
+      `${count.toLocaleString()} 個 / 石の ${((count / stoneish) * 100).toFixed(2)}%`,
+    );
+  }
+
+  check(
+    "深いものほど珍しい",
+    ORE_TABLE.every(
+      (ore, i) => i === 0 || (mix.get(ore[1]) ?? 0) < (mix.get(ORE_TABLE[i - 1][1]) ?? 0),
+    ),
+    ORE_TABLE.map(([name, id]) => `${name} ${mix.get(id) ?? 0}`).join(" / "),
+  );
+
+  // 高さの上限を守っているか（守らないと地表に金やダイヤが露出する）
+  let aboveLimit = 0;
+  for (let cy = 0; cy < 8; cy++) {
+    gen.generateChunk(0, cy, 0, data);
+    for (let i = 0; i < data.length; i++) {
+      const id = data[i];
+      const entry = ORE_TABLE.find((ore) => ore[1] === id);
+      if (!entry) continue;
+      const y = cy * 16 + Math.floor(i / 256);
+      if (y > entry[2]) aboveLimit++;
+    }
+  }
+  check("鉱石が決められた高さより上に出ない", aboveLimit === 0, `${aboveLimit} 個`);
 
   const heights: number[] = [];
   for (let x = -4000; x < 4000; x += 137) {
@@ -112,7 +167,7 @@ export function run(): void {
   // 最下層は必ず岩盤
   let bedrockHoles = 0;
   for (let x = -20; x < 20; x++) {
-    for (let z = -20; z < 20; z++) if (blockName(voxel(x, 0, z)) !== "Bedrock") bedrockHoles++;
+    for (let z = -20; z < 20; z++) if (voxel(x, 0, z) !== BEDROCK) bedrockHoles++;
   }
   check("最下層が岩盤で塞がれている", bedrockHoles === 0, bedrockHoles ? `${bedrockHoles} 箇所` : "");
 }

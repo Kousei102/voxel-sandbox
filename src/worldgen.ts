@@ -1,8 +1,12 @@
 import {
   AIR,
   BEDROCK,
+  COAL_ORE,
+  DIAMOND_ORE,
   DIRT,
+  GOLD_ORE,
   GRASS,
+  IRON_ORE,
   LEAVES,
   SAND,
   SNOW,
@@ -42,6 +46,37 @@ function hash2(x: number, z: number, seed: number): number {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
+function hash3(x: number, y: number, z: number, seed: number): number {
+  let h =
+    Math.imul(x, 374761393) ^
+    Math.imul(y, 1274126177) ^
+    Math.imul(z, 668265263) ^
+    Math.imul(seed, 2246822519);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+/**
+ * 鉱石。上限の高さと、鉱脈の湧きやすさ・鉱脈内の詰まり具合を持つ。
+ * 深いものほど珍しく、上に行くほど出ない。
+ */
+interface OreDef {
+  readonly id: number;
+  readonly maxY: number;
+  /** 2x2x2 の鉱脈が湧く確率。 */
+  readonly veinChance: number;
+  /** 鉱脈の中で実際に鉱石になる確率。1 だと 8 個の塊になって不自然。 */
+  readonly fill: number;
+  readonly salt: number;
+}
+
+const ORES: readonly OreDef[] = [
+  { id: COAL_ORE, maxY: 62, veinChance: 0.02, fill: 0.75, salt: 0x51ed },
+  { id: IRON_ORE, maxY: 46, veinChance: 0.015, fill: 0.65, salt: 0x2b17 },
+  { id: GOLD_ORE, maxY: 26, veinChance: 0.005, fill: 0.55, salt: 0x7c39 },
+  { id: DIAMOND_ORE, maxY: 14, veinChance: 0.003, fill: 0.5, salt: 0x1d4b },
+];
+
 export class WorldGen {
   private readonly terrain: Noise;
   private readonly detail: Noise;
@@ -68,6 +103,23 @@ export class WorldGen {
     const mountain = smoothstep(0.05, 0.34, continent);
     const h = SEA_LEVEL + 3 + continent * 26 + hills * 7 + mountain * ridge * ridge * 46;
     return Math.max(1, Math.min(WORLD_HEIGHT - 6, Math.round(h)));
+  }
+
+  /**
+   * その座標の鉱石。無ければ STONE。
+   *
+   * 石ブロック 1 個ごとに呼ばれるので、ノイズは使わずハッシュだけで済ませている
+   * （noise3 を 1 回足すとチャンク生成が倍近くなり、フレーム予算に収まらなくなる）。
+   * 座標を 1 ビット落としたハッシュで 2x2x2 の鉱脈を作り、その中を fill で間引く。
+   */
+  private oreAt(x: number, y: number, z: number): number {
+    for (const ore of ORES) {
+      if (y > ore.maxY) continue;
+      if (hash3(x >> 1, y >> 1, z >> 1, this.seed ^ ore.salt) >= ore.veinChance) continue;
+      if (hash3(x, y, z, this.seed ^ (ore.salt << 1)) >= ore.fill) continue;
+      return ore.id;
+    }
+    return STONE;
   }
 
   private isCave(x: number, y: number, z: number): boolean {
@@ -160,7 +212,7 @@ export class WorldGen {
           } else if (depth <= 3) {
             data[index] = beach ? SAND : alpine ? STONE : DIRT;
           } else {
-            data[index] = STONE;
+            data[index] = this.oreAt(wx, wy, wz);
           }
         }
       }

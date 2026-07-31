@@ -1,4 +1,4 @@
-import { DoubleSide, MeshBasicMaterial, type Scene } from "three";
+import { DoubleSide, MeshBasicMaterial, type Color, type Scene } from "three";
 import { AIR, BEDROCK, SKY_BLOCKERS, blocksSky, isOpaque } from "./blocks";
 import { Chunk, chunkKey, localIndex } from "./chunk";
 import {
@@ -71,6 +71,15 @@ export class World {
 
   get seed(): number {
     return this.gen.seed;
+  }
+
+  /**
+   * 昼夜による全体の明るさ。マテリアルの色は頂点カラーに乗算されるので、
+   * 焼き込んだ光量はそのままに、再メッシュ化なしで夜にできる。
+   */
+  setDaylight(tint: Color): void {
+    this.opaqueMaterial.color.copy(tint);
+    this.translucentMaterial.color.copy(tint);
   }
 
   // --- ボクセルアクセス -------------------------------------------------

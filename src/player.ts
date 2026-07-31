@@ -1,6 +1,5 @@
 import { Euler, Vector3, type PerspectiveCamera } from "three";
 import { WATER, isSolid } from "./blocks";
-import { WORLD_HEIGHT } from "./constants";
 import type { World } from "./world";
 
 const WIDTH = 0.6;
@@ -85,13 +84,6 @@ export class Player {
     }
 
     this.move(world, dt);
-
-    if (this.position.y < -20) {
-      // 奈落に落ちたら地表へ戻す
-      this.position.y = WORLD_HEIGHT;
-      this.velocity.set(0, 0, 0);
-    }
-
     this.syncCamera();
   }
 

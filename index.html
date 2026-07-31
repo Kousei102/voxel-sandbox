@@ -17,8 +17,38 @@
 
     <div id="hud" class="hidden">
       <div id="debug"></div>
+      <div id="vitals">
+        <div id="hearts"></div>
+        <div id="bubbles"></div>
+      </div>
       <div id="hotbar"></div>
     </div>
+
+    <div id="hurt"></div>
+
+    <div id="death" class="hidden">
+      <h1>死んでしまった</h1>
+      <p id="deathcause" class="lead"></p>
+      <button id="respawn" type="button" class="primary">リスポーン</button>
+    </div>
+
+    <div id="inventory" class="hidden">
+      <div class="panel">
+        <h2 id="invtitle">インベントリ</h2>
+        <div class="craft">
+          <div id="craftgrid" class="grid craftgrid small"></div>
+          <span class="arrow">→</span>
+          <div class="slotwrap">
+            <div id="craftout" class="slot out"></div>
+            <span id="recipehint" class="hint"></span>
+          </div>
+        </div>
+        <div id="storage" class="grid storage"></div>
+        <div id="invhotbar" class="grid storage invhotbar"></div>
+        <p class="lead">左クリックで山ごと、右クリックで 1 個ずつ。<kbd>E</kbd> か <kbd>Esc</kbd> で閉じる</p>
+      </div>
+    </div>
+    <div id="held" class="hidden"></div>
 
     <div id="menu">
       <h1>Voxel Sandbox</h1>
@@ -26,7 +56,7 @@
       <ul class="keys">
         <li><kbd>WASD</kbd> 移動 / <kbd>Space</kbd> ジャンプ / <kbd>Shift</kbd> ダッシュ</li>
         <li><kbd>左クリック</kbd> 破壊 / <kbd>右クリック</kbd> 設置 / <kbd>中クリック</kbd> スポイト</li>
-        <li><kbd>1</kbd>–<kbd>9</kbd> ホイール ブロック選択</li>
+        <li><kbd>1</kbd>–<kbd>9</kbd> ホイール ブロック選択 / <kbd>E</kbd> インベントリ</li>
         <li><kbd>F</kbd> 飛行切替（飛行中は <kbd>Space</kbd> 上昇 / <kbd>Ctrl</kbd> 下降）</li>
         <li><kbd>F3</kbd> デバッグ表示 / <kbd>Esc</kbd> メニュー（自動保存されます）</li>
       </ul>
@@ -34,6 +64,15 @@
         <label for="seed">シード</label>
         <input id="seed" type="text" spellcheck="false" />
         <button id="regen" type="button">この種で作り直す</button>
+      </div>
+      <div class="seedrow">
+        <label for="time">時刻</label>
+        <input id="time" type="range" min="0" max="1439" step="1" />
+        <span id="timelabel" class="clock">06:00</span>
+      </div>
+      <div class="seedrow">
+        <label for="mode">モード</label>
+        <button id="mode" type="button">サバイバル</button>
       </div>
       <div class="menu-actions">
         <button id="play" type="button" class="primary">プレイ</button>

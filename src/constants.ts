@@ -43,5 +43,13 @@ export const AMBIENT_LIGHT = 0.16;
 /** 光量から明るさへの変換の効き具合。1 より大きいほど、暗がりの落ち込みが急になる。 */
 export const LIGHT_FALLOFF = 1.4;
 
+/** 昼夜 1 周にかかる実時間 (秒)。Minecraft と同じ 20 分。 */
+export const DAY_LENGTH_SECONDS = 1200;
+/**
+ * 真夜中の明るさ倍率。頂点カラーに焼いた光量にこれを掛ける。
+ * 0 にすると夜が完全な暗闇になり、光源を持たないこのゲームでは何もできなくなる。
+ */
+export const NIGHT_BRIGHTNESS = 0.28;
+
 export const STORAGE_KEY = "voxel-sandbox:v1";
 export const AUTOSAVE_INTERVAL = 15;
