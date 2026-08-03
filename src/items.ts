@@ -11,10 +11,12 @@ import {
   IRON_ORE,
   LEAVES,
   MAX_BLOCK_ID,
+  SPRUCE_LEAVES,
   STONE,
   TIER_DIAMOND,
   TIER_WOOD,
   WATER,
+  baseBlock,
   type ToolKind,
 } from "./blocks";
 
@@ -87,8 +89,10 @@ function item(def: ItemDef): void {
 item({ id: NO_ITEM, name: "", block: AIR, stack: 0, color: 0x000000, tool: null });
 
 // ブロックのアイテム。水と空気は手に入らない。
+// 置き方だけが違う版（壁掛けの松明など）は大元のアイテムに寄せるので、ここでは作らない。
 for (const block of BLOCKS) {
   if (block.id === AIR || block.id === WATER) continue;
+  if (block.variantOf !== AIR) continue;
   item({
     id: block.id,
     name: block.name,
@@ -176,13 +180,17 @@ const DROPS = new Map<number, Drop>([
   [GLASS, { item: NO_ITEM, count: 0, chance: 0 }],
   // 苗木がまだ無いので、葉からはたまに棒だけ出る
   [LEAVES, { item: STICK, count: 1, chance: 0.1 }],
+  [SPRUCE_LEAVES, { item: STICK, count: 1, chance: 0.1 }],
 ]);
 
-/** そのブロックが落とすもの。既定は自分自身。 */
+/**
+ * そのブロックが落とすもの。既定は自分自身（置き方だけが違う版なら大元）。
+ * 壁掛けの松明を壊しても、床置きと同じ松明が 1 個出る。
+ */
 export function dropOf(blockId: number): Drop {
   const special = DROPS.get(blockId);
   if (special) return special;
-  return { item: blockId, count: 1, chance: 1 };
+  return { item: baseBlock(blockId), count: 1, chance: 1 };
 }
 
 /** 全アイテム ID（テストと UI の列挙用）。 */

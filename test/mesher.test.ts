@@ -1,4 +1,15 @@
-import { AIR, GLASS, STONE, WATER } from "../src/blocks";
+import {
+  AIR,
+  CACTUS,
+  GLASS,
+  STONE,
+  TORCH,
+  WALL_TORCH_XN,
+  WALL_TORCH_XP,
+  WALL_TORCH_ZN,
+  WALL_TORCH_ZP,
+  WATER,
+} from "../src/blocks";
 import { CHUNK_SIZE, MAX_LIGHT } from "../src/constants";
 import { PAD_VOLUME, buildChunkMesh, padIndex, type MeshArrays } from "../src/mesher";
 import { check, describe } from "./harness";
@@ -6,6 +17,8 @@ import { check, describe } from "./harness";
 const pad = new Uint8Array(PAD_VOLUME);
 // 明るさを一律に最大にしておく。光そのものの検証は lighting.test.ts で行う。
 const lightPad = new Uint8Array(PAD_VOLUME).fill(MAX_LIGHT);
+/** ブロックライトは既定で 0（松明を置いたときだけ効く）。 */
+const blockPad = new Uint8Array(PAD_VOLUME);
 const put = (x: number, y: number, z: number, id: number) => {
   pad[padIndex(x, y, z)] = id;
 };
@@ -48,18 +61,34 @@ function verifyWinding(label: string, mesh: MeshArrays, center: [number, number,
   if (center) check(`${label}: 面が外を向く`, inward === 0, inward ? `${inward} 件が内向き` : "");
 }
 
+/**
+ * 発散定理で求めた符号つき体積。閉じた面がすべて外を向いていれば中身の体積になり、
+ * 1 面でも裏返っていれば値がずれる。
+ */
+function signedVolume(mesh: MeshArrays): number {
+  let sum = 0;
+  const at = (i: number) => [mesh.positions[i * 3], mesh.positions[i * 3 + 1], mesh.positions[i * 3 + 2]];
+  for (let t = 0; t < mesh.indices.length; t += 3) {
+    const [ax, ay, az] = at(mesh.indices[t]);
+    const [bx, by, bz] = at(mesh.indices[t + 1]);
+    const [cx, cy, cz] = at(mesh.indices[t + 2]);
+    sum += ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx);
+  }
+  return sum / 6;
+}
+
 export function run(): void {
   describe("メッシュ化 (greedy meshing)");
 
   pad.fill(AIR);
-  check("空のチャンクは面ゼロ", buildChunkMesh(pad, lightPad).opaque === null);
+  check("空のチャンクは面ゼロ", buildChunkMesh(pad, lightPad, blockPad).opaque === null);
 
   pad.fill(STONE);
-  check("完全に埋まったチャンクも面ゼロ", buildChunkMesh(pad, lightPad).opaque === null);
+  check("完全に埋まったチャンクも面ゼロ", buildChunkMesh(pad, lightPad, blockPad).opaque === null);
 
   pad.fill(AIR);
   put(5, 5, 5, STONE);
-  const single = buildChunkMesh(pad, lightPad).opaque!;
+  const single = buildChunkMesh(pad, lightPad, blockPad).opaque!;
   check("孤立ブロックは 6 面 12 三角形", single.indices.length / 3 === 12);
   check("孤立ブロックの頂点は 24", single.positions.length / 3 === 24);
   verifyWinding("孤立ブロック", single, [5.5, 5.5, 5.5]);
@@ -76,7 +105,7 @@ export function run(): void {
         put(p[0], p[1], p[2], STONE);
       }
     }
-    const mesh = buildChunkMesh(pad, lightPad).opaque!;
+    const mesh = buildChunkMesh(pad, lightPad, blockPad).opaque!;
     const center: [number, number, number] = [6, 6, 6];
     center[axis] = 6.5;
     const name = `軸 ${"XYZ"[axis]} の 8x8 平板`;
@@ -87,10 +116,10 @@ export function run(): void {
   // AO: 隣に壁が立つと根元が暗くなる
   pad.fill(AIR);
   for (let z = 0; z < CHUNK_SIZE; z++) for (let x = 0; x < CHUNK_SIZE; x++) put(x, 0, z, STONE);
-  const flat = buildChunkMesh(pad, lightPad).opaque!;
+  const flat = buildChunkMesh(pad, lightPad, blockPad).opaque!;
   check("平らな床は 1 枚に統合される", flat.indices.length / 3 === 12);
   put(0, 1, 0, STONE);
-  const shaded = buildChunkMesh(pad, lightPad).opaque!;
+  const shaded = buildChunkMesh(pad, lightPad, blockPad).opaque!;
   const tones = new Set<number>();
   for (let i = 0; i < shaded.colors.length; i += 4) {
     if (shaded.normals[(i / 4) * 3 + 1] === 1) tones.add(Math.round(shaded.colors[i] * 1000));
@@ -98,25 +127,162 @@ export function run(): void {
   check("遮蔽物があると上面に AO の明暗が出る", tones.size > 1, `明度 ${tones.size} 段階`);
   check("AO のせいで統合が過剰に崩れない", shaded.indices.length / 3 < 40, `${shaded.indices.length / 3} 三角形`);
 
+  describe("立方体でないブロック（松明）");
+
+  pad.fill(AIR);
+  put(5, 5, 5, TORCH);
+  const torch = buildChunkMesh(pad, lightPad, blockPad).opaque!;
+  check("松明は箱 2 つ（柄と炎）で出る", torch.indices.length / 3 === 24, `${torch.indices.length / 3} 三角形`);
+  check("立方体としては描かれない", torch.positions.length / 3 === 48, `${torch.positions.length / 3} 頂点`);
+  verifyWinding("松明", torch, null);
+
+  // 閉じた面の向きが正しければ、発散定理で求めた体積は中身の体積と一致する。
+  // 1 面でも裏返っていればここがずれるので、箱ごとの中心を使わずに向きを確かめられる。
+  const expected = 0.125 * 0.125 * 0.625 + 0.1875 ** 3;
+  const volume = signedVolume(torch);
+  check(
+    "松明の面がすべて外を向く",
+    Math.abs(volume - expected) < 1e-6,
+    `体積 ${volume.toFixed(6)}（想定 ${expected.toFixed(6)}）`,
+  );
+  check("松明が 1 ブロックからはみ出さない", torch.positions.every((v) => v >= 5 && v <= 6));
+
+  // 炎は光源そのものなので、周りが真っ暗でも明るいまま
+  blockPad.fill(0);
+  lightPad.fill(0);
+  const darkTorch = buildChunkMesh(pad, lightPad, blockPad).opaque!;
+  let flame = 0;
+  let post = 1;
+  for (let i = 0; i < darkTorch.light.length; i += 2) {
+    const y = darkTorch.positions[(i / 2) * 3 + 1];
+    if (y > 5.6) flame = Math.max(flame, darkTorch.light[i + 1]);
+    else post = Math.min(post, darkTorch.light[i + 1]);
+  }
+  check("炎は真っ暗な場所でも最大の明るさ", flame === 1, `${flame}`);
+  check("柄はその場のブロックライトに従う", post === 0, `${post}`);
+  lightPad.fill(MAX_LIGHT);
+
+  // --- 壁掛け ---
+  // 4 向きは同じ形の回転なので、体積が一致しないかどこか 1 面でも裏返っていれば分かる。
+  const wallExpected =
+    3 * (0.1875 * 0.25 * 0.125) + 0.1875 * 0.15625 * 0.1875;
+  const volumes: number[] = [];
+  for (const [name, wallId, wallAxis, wallSign] of [
+    ["+X の壁", WALL_TORCH_XP, 0, 1],
+    ["-X の壁", WALL_TORCH_XN, 0, -1],
+    ["+Z の壁", WALL_TORCH_ZP, 2, 1],
+    ["-Z の壁", WALL_TORCH_ZN, 2, -1],
+  ] as const) {
+    pad.fill(AIR);
+    put(5, 5, 5, wallId);
+    const mesh = buildChunkMesh(pad, lightPad, blockPad).opaque!;
+    verifyWinding(`壁の松明(${name})`, mesh, null);
+    volumes.push(signedVolume(mesh));
+    check(
+      `壁の松明(${name}): 柄 3 段 + 炎`,
+      mesh.indices.length / 3 === 48,
+      `${mesh.indices.length / 3} 三角形`,
+    );
+    check(
+      `壁の松明(${name}): 1 ブロックからはみ出さない`,
+      mesh.positions.every((v) => v >= 5 && v <= 6),
+    );
+
+    // 壁に接していて、そこから反対側へ張り出している。
+    // 壁が + 側にあるならブロック内の座標 1.0 が壁ぎわなので、そこからの距離に直す。
+    let touching = false;
+    let reach = 0;
+    for (let i = 0; i < mesh.positions.length; i += 3) {
+      const local = mesh.positions[i + wallAxis] - 5;
+      const fromWall = wallSign > 0 ? 1 - local : local;
+      if (Math.abs(fromWall) < 1e-6) touching = true;
+      reach = Math.max(reach, fromWall);
+    }
+    check(`壁の松明(${name}): 壁に接している`, touching);
+    check(`壁の松明(${name}): 壁から離れて張り出す`, reach > 0.4, `張り出し ${reach.toFixed(3)}`);
+  }
+  check(
+    "壁掛けは 4 向きとも同じ形",
+    volumes.every((v) => Math.abs(v - volumes[0]) < 1e-9),
+    volumes.map((v) => v.toFixed(6)).join(" / "),
+  );
+  check(
+    "壁掛けの面がすべて外を向く",
+    Math.abs(volumes[0] - wallExpected) < 1e-6,
+    `体積 ${volumes[0].toFixed(6)}（想定 ${wallExpected.toFixed(6)}）`,
+  );
+
+  // 床置きとは形が違う（同じ形を使い回していたら気付けるように）
+  pad.fill(AIR);
+  put(5, 5, 5, TORCH);
+  const floorTorch = buildChunkMesh(pad, lightPad, blockPad).opaque!;
+  check(
+    "床置きと壁掛けで形が違う",
+    Math.abs(signedVolume(floorTorch) - volumes[0]) > 1e-6,
+    `床 ${signedVolume(floorTorch).toFixed(6)} / 壁 ${volumes[0].toFixed(6)}`,
+  );
+
+  // --- サボテン ---
+  // 松明と違い、立方体と同じく面ごとの色を使う（top と side が別）。
+  pad.fill(AIR);
+  put(5, 5, 5, CACTUS);
+  const cactus = buildChunkMesh(pad, lightPad, blockPad).opaque!;
+  check("サボテンは箱 1 つ", cactus.indices.length / 3 === 12, `${cactus.indices.length / 3} 三角形`);
+  verifyWinding("サボテン", cactus, [5.5, 5.5, 5.5]);
+  check(
+    "サボテンの面がすべて外を向く",
+    Math.abs(signedVolume(cactus) - 0.875 * 1 * 0.875) < 1e-6,
+    `体積 ${signedVolume(cactus).toFixed(6)}`,
+  );
+  check(
+    "立方体より細い",
+    cactus.positions.every((v) => v >= 5 && v <= 6) &&
+      cactus.positions.some((v) => v > 5 && v < 6),
+  );
+  const cactusTones = new Set<number>();
+  for (let i = 0; i < cactus.colors.length; i += 4) {
+    if (cactus.normals[(i / 4) * 3 + 1] === 1) cactusTones.add(Math.round(cactus.colors[i] * 1000));
+  }
+  const cactusSideTones = new Set<number>();
+  for (let i = 0; i < cactus.colors.length; i += 4) {
+    if (cactus.normals[(i / 4) * 3] === 1) cactusSideTones.add(Math.round(cactus.colors[i] * 1000));
+  }
+  check(
+    "上面と側面で色が違う（面ごとの色を引いている）",
+    [...cactusTones][0] !== [...cactusSideTones][0],
+    `上 ${[...cactusTones]} / 側 ${[...cactusSideTones]}`,
+  );
+
+  // 松明は不透明ではないので、隣のブロックの面は消えない
+  pad.fill(AIR);
+  for (let z = 0; z < CHUNK_SIZE; z++) for (let x = 0; x < CHUNK_SIZE; x++) put(x, 0, z, STONE);
+  put(5, 1, 5, TORCH);
+  const withFloor = buildChunkMesh(pad, lightPad, blockPad).opaque!;
+  check(
+    "松明を置いても床は 1 枚に統合されたまま",
+    withFloor.indices.length / 3 === 12 + 24,
+    `${withFloor.indices.length / 3} 三角形（床 12 + 松明 24）`,
+  );
+
   // 半透明の分離
   pad.fill(AIR);
   for (let z = 0; z < 4; z++) for (let x = 0; x < 4; x++) put(x, 0, z, WATER);
   put(8, 0, 8, GLASS);
-  const layered = buildChunkMesh(pad, lightPad);
+  const layered = buildChunkMesh(pad, lightPad, blockPad);
   check("水とガラスは半透明レイヤーに分かれる", layered.opaque === null && layered.translucent !== null);
   check("半透明の頂点アルファが 1 未満", layered.translucent!.colors[3] < 1, `${layered.translucent!.colors[3].toFixed(2)}`);
 
   // 同じ半透明同士の境界は面を作らない（水の中が真っ白にならない）
   pad.fill(AIR);
   for (let y = 0; y < 4; y++) for (let z = 0; z < 4; z++) for (let x = 0; x < 4; x++) put(x, y, z, WATER);
-  const block = buildChunkMesh(pad, lightPad).translucent!;
+  const block = buildChunkMesh(pad, lightPad, blockPad).translucent!;
   check("水塊の内部に面が出ない", block.indices.length / 3 === 12, `${block.indices.length / 3} 三角形`);
 
   // 不透明に隣接する水の面は消える
   pad.fill(AIR);
   put(1, 1, 1, WATER);
   put(1, 0, 1, STONE);
-  const overStone = buildChunkMesh(pad, lightPad).translucent!;
+  const overStone = buildChunkMesh(pad, lightPad, blockPad).translucent!;
   check("石に接する水の底面は省かれる", overStone.indices.length / 3 === 10, `${overStone.indices.length / 3} 三角形`);
 
   // ランダムな塊で全体の健全性
@@ -131,7 +297,7 @@ export function run(): void {
       rnd() < 0.8 ? STONE : WATER,
     );
   }
-  const noisy = buildChunkMesh(pad, lightPad);
+  const noisy = buildChunkMesh(pad, lightPad, blockPad);
   verifyWinding("ランダムな塊(不透明)", noisy.opaque!, null);
   verifyWinding("ランダムな塊(半透明)", noisy.translucent!, null);
 
@@ -143,6 +309,9 @@ export function run(): void {
     check(`${name}: 座標がチャンク内に収まる`, mesh.positions.every((v) => v >= 0 && v <= CHUNK_SIZE));
     check(`${name}: index が頂点数の範囲内`, mesh.indices.every((i) => i < verts));
     check(`${name}: 色が 0..1`, mesh.colors.every((v) => v >= 0 && v <= 1));
+    // light が頂点数と食い違うと、シェーダが読む値がずれて画面が真っ黒になる
+    check(`${name}: light が頂点ごとに 2 成分ある`, mesh.light.length === verts * 2);
+    check(`${name}: light が 0..1`, mesh.light.every((v) => v >= 0 && v <= 1));
     check(`${name}: 法線が軸に平行な単位ベクトル`, mesh.normals.every((v) => v === 0 || Math.abs(v) === 1));
     check(`${name}: 四角形として整合`, verts % 4 === 0 && mesh.indices.length / 6 === verts / 4);
   }

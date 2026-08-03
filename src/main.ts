@@ -10,7 +10,21 @@ import {
   Vector3,
   WebGLRenderer,
 } from "three";
-import { AIR, CRAFTING_TABLE, PALETTE, WATER, blockName, isSolid } from "./blocks";
+import {
+  AIR,
+  CRAFTING_TABLE,
+  NO_SUPPORT,
+  PALETTE,
+  TORCH,
+  WATER,
+  baseBlock,
+  blockName,
+  faceFromNormal,
+  isSolid,
+  supportFace,
+  torchVariant,
+} from "./blocks";
+import { biomeName } from "./biomes";
 import { AUTOSAVE_INTERVAL, CHUNK_BITS, REACH, RENDER_DISTANCE, CHUNK_SIZE } from "./constants";
 import { CrackOverlay } from "./crack";
 import { DayNight } from "./daynight";
@@ -276,9 +290,11 @@ document.addEventListener("mousedown", (event) => {
     if (creative) breakBlock(hit.block.x, hit.block.y, hit.block.z, hit.id, NO_ITEM);
     else breaking = true;
   } else if (event.button === 1) {
-    // スポイト: クリエイティブなら手元に湧かせ、サバイバルは持っていれば選ぶ
-    if (creative) inventory.setSelected(hit.id);
-    else if (!inventory.selectItem(hit.id)) hud.flash(`${blockName(hit.id)} を持っていません`);
+    // スポイト: クリエイティブなら手元に湧かせ、サバイバルは持っていれば選ぶ。
+    // 壁掛けの松明のような別置き版は、大元のアイテムに読み替える。
+    const picked = baseBlock(hit.id);
+    if (creative) inventory.setSelected(picked);
+    else if (!inventory.selectItem(picked)) hud.flash(`${blockName(picked)} を持っていません`);
     hud.refresh();
   } else if (event.button === 2) {
     useOrPlace();
@@ -301,15 +317,28 @@ function useOrPlace(): void {
   }
 
   const item = inventory.selectedItem;
-  const id = placedBlock(item);
-  if (id === AIR) return;
+  const base = placedBlock(item);
+  if (base === AIR) return;
 
   const x = hit.block.x + hit.normal.x;
   const y = hit.block.y + hit.normal.y;
   const z = hit.block.z + hit.normal.z;
   const target = world.getVoxel(x, y, z);
   if (target !== AIR && target !== WATER) return;
-  if (isSolid(id) && player.overlapsBlock(x, y, z)) return;
+  if (isSolid(base) && player.overlapsBlock(x, y, z)) return;
+
+  // 松明は「今クリックした面」に貼り付ける。狙ったブロックは新しいマスから見て
+  // 法線の逆側にあるので、支えの向きはその面番号になる（天井を向いていれば置けない）。
+  let id = base;
+  if (base === TORCH) {
+    id = torchVariant(faceFromNormal(-hit.normal.x, -hit.normal.y, -hit.normal.z));
+  }
+  if (supportFace(base) !== NO_SUPPORT) {
+    if (id === AIR || target === WATER || !world.canPlaceAt(x, y, z, id)) {
+      hud.flash(`${blockName(base)} は床か壁にしか付けられません`);
+      return;
+    }
+  }
   if (!world.setVoxel(x, y, z, id)) return;
 
   if (!creative) inventory.consumeSelected(1);
@@ -439,6 +468,7 @@ function frame(now: number): void {
       `  loaded ${stats.chunks}  queue ${stats.queued}\n` +
       `tris ${stats.triangles.toLocaleString()}  edits ${countEdits(world.editsForSave())}\n` +
       `time ${dayNight.clock()}  light ${(dayNight.brightness * 100).toFixed(0)}%  ${creative ? "creative" : "survival"}\n` +
+      `biome ${biomeName(world.gen.biomeAt(Math.floor(player.position.x), Math.floor(player.position.z)))}\n` +
       `hp ${vitals.health}/${MAX_HEALTH}  air ${(vitals.airFraction * 100).toFixed(0)}%\n` +
       `${player.flying ? "fly" : player.onGround ? "ground" : "air"}${player.inWater ? " / water" : ""}\n` +
       `hand ${inventory.selectedItem === NO_ITEM ? "-" : itemName(inventory.selectedItem)}\n` +

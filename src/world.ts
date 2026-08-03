@@ -1,5 +1,17 @@
-import { DoubleSide, MeshBasicMaterial, type Color, type Scene } from "three";
-import { AIR, BEDROCK, SKY_BLOCKERS, blocksSky, isOpaque } from "./blocks";
+import { Color, DoubleSide, MeshBasicMaterial, type Scene } from "three";
+import {
+  AIR,
+  BEDROCK,
+  EMISSION,
+  SKY_BLOCKERS,
+  blockEmission,
+  blocksSky,
+  NO_SUPPORT,
+  canSupport,
+  isOpaque,
+  oppositeFace,
+  supportFace,
+} from "./blocks";
 import { Chunk, chunkKey, localIndex } from "./chunk";
 import {
   CHUNK_BITS,
@@ -16,8 +28,17 @@ import {
   UNLOAD_DISTANCE,
   WORLD_HEIGHT,
 } from "./constants";
-import { LightQueue, OFFSETS, propagateAdd, propagateRemove } from "./lighting";
+import {
+  BLOCK_LIGHT,
+  LightQueue,
+  OFFSETS,
+  SKY_LIGHT,
+  propagateAdd,
+  propagateRemove,
+  type LightChannel,
+} from "./lighting";
 import { PAD_SIZE, PAD_VOLUME, buildChunkMesh } from "./mesher";
+import { useTerrainLighting } from "./terrainshader";
 import { WorldGen } from "./worldgen";
 
 export type EditMap = Map<string, Map<number, number>>;
@@ -41,7 +62,8 @@ export class World {
   /** プレイヤーが置いた／壊したブロック。チャンクキー -> ローカル index -> ブロック ID。 */
   private readonly edits: EditMap = new Map();
   private readonly pad = new Uint8Array(PAD_VOLUME);
-  private readonly lightPad = new Uint8Array(PAD_VOLUME);
+  private readonly skyPad = new Uint8Array(PAD_VOLUME);
+  private readonly blockPad = new Uint8Array(PAD_VOLUME);
   private readonly neighbors: (Chunk | null)[] = new Array(27).fill(null);
   /** 列ごとの「空が見える一番下の高さ」16x16。 */
   private readonly skyHeights = new Map<string, Uint8Array>();
@@ -50,6 +72,9 @@ export class World {
   private columnQueue: Array<[number, number]> = [];
   private lastCenter: [number, number] = [Number.NaN, Number.NaN];
   private triangles = 0;
+
+  /** 昼夜の色。シェーダの uniform としてそのまま渡すので、中身だけ差し替える。 */
+  private readonly daylight = { value: new Color(1, 1, 1) };
 
   private readonly opaqueMaterial = new MeshBasicMaterial({ vertexColors: true, fog: true });
   private readonly translucentMaterial = new MeshBasicMaterial({
@@ -67,6 +92,8 @@ export class World {
   ) {
     this.gen = new WorldGen(seed);
     if (edits) this.edits = edits;
+    useTerrainLighting(this.opaqueMaterial, this.daylight);
+    useTerrainLighting(this.translucentMaterial, this.daylight);
   }
 
   get seed(): number {
@@ -74,12 +101,12 @@ export class World {
   }
 
   /**
-   * 昼夜による全体の明るさ。マテリアルの色は頂点カラーに乗算されるので、
+   * 昼夜による全体の明るさ。スカイライトにだけ掛かるので、
    * 焼き込んだ光量はそのままに、再メッシュ化なしで夜にできる。
+   * **時刻ごとに頂点色を焼き直す実装にしないこと。**
    */
   setDaylight(tint: Color): void {
-    this.opaqueMaterial.color.copy(tint);
-    this.translucentMaterial.color.copy(tint);
+    this.daylight.value.copy(tint);
   }
 
   // --- ボクセルアクセス -------------------------------------------------
@@ -109,10 +136,14 @@ export class World {
     const index = localIndex(lx, ly, lz);
     const previous = chunk.data[index];
     if (previous === id) return false;
+    // 支えの要るブロックは、支えの無い場所には置かせない。
+    // ここで弾いておけば「松明には必ず支えがある」が構造的に保たれる。
+    if (!this.canPlaceAt(wx, wy, wz, id)) return false;
 
     chunk.setIndex(index, id);
     this.recordEdit(cx, cy, cz, index, id);
-    this.relightEdit(wx, wy, wz, previous, id);
+    this.relightSkyEdit(wx, wy, wz, previous, id);
+    this.relightBlockEdit(wx, wy, wz, id);
     this.prioritize(chunkKey(cx, cy, cz));
 
     // 境界に接するブロックは隣のチャンクの面も変える
@@ -122,20 +153,61 @@ export class World {
     if (ly === CHUNK_SIZE - 1) this.markDirty(cx, cy + 1, cz);
     if (lz === 0) this.markDirty(cx, cy, cz - 1);
     if (lz === CHUNK_SIZE - 1) this.markDirty(cx, cy, cz + 1);
+
+    this.breakUnsupported(wx, wy, wz, id);
     return true;
+  }
+
+  /**
+   * そのブロックを (wx,wy,wz) に置けるだけの支えがあるか。
+   * 支えの向きは `supportFace`（床置きの松明なら真下、壁掛けなら壁の側）。
+   *
+   * 支えが未読み込みの列にあると `getVoxel` が AIR を返して「置けない」になる。
+   * プレイヤーの操作では支えは必ず「今クリックしたブロック」なので読み込み済みだし、
+   * セーブの復元は `createChunk` が差分を直接書くのでここを通らない。
+   * それ以外の経路から呼ぶなら、先に列が揃っているか確かめること。
+   */
+  canPlaceAt(wx: number, wy: number, wz: number, id: number): boolean {
+    const face = supportFace(id);
+    if (face === NO_SUPPORT) return true;
+    const [dx, dy, dz] = OFFSETS[face];
+    return canSupport(this.getVoxel(wx + dx, wy + dy, wz + dz));
+  }
+
+  /**
+   * 支えを失ったブロックを壊す。**`setVoxel` で支えでなくなったときに必ず呼ぶこと。**
+   * 置く側（`canPlaceAt`）と対になっていて、片方だけ直すと壁の松明が空中に残る。
+   *
+   * 落ちたアイテムの仕組みがまだ無いので、ここで壊れたぶんは手に入らない
+   * （Minecraft ではドロップする）。
+   */
+  private breakUnsupported(wx: number, wy: number, wz: number, id: number): void {
+    if (canSupport(id)) return;
+    for (let face = 0; face < OFFSETS.length; face++) {
+      const [dx, dy, dz] = OFFSETS[face];
+      const nx = wx + dx;
+      const ny = wy + dy;
+      const nz = wz + dz;
+      const neighbor = this.getVoxel(nx, ny, nz);
+      if (neighbor === AIR) continue;
+      // 隣が「こちら側」に支えを求めていたら、その支えが今まさに消えた
+      if (supportFace(neighbor) === oppositeFace(face)) this.setVoxel(nx, ny, nz, AIR);
+    }
   }
 
   // --- 光 ---------------------------------------------------------------
 
-  getLight(wx: number, wy: number, wz: number): number {
-    if (wy >= WORLD_HEIGHT) return MAX_LIGHT;
+  getLight(wx: number, wy: number, wz: number, channel: LightChannel = SKY_LIGHT): number {
+    // 世界の天井より上は空だけが最大光量。ブロックライトはどこにも無い。
+    if (wy >= WORLD_HEIGHT) return channel === SKY_LIGHT ? MAX_LIGHT : 0;
     if (wy < 0) return 0;
     const chunk = this.chunks.get(chunkKey(wx >> CHUNK_BITS, wy >> CHUNK_BITS, wz >> CHUNK_BITS));
     if (!chunk) return 0;
-    return chunk.light[localIndex(wx & CHUNK_MASK, wy & CHUNK_MASK, wz & CHUNK_MASK)];
+    const array = channel === SKY_LIGHT ? chunk.skyLight : chunk.blockLight;
+    return array[localIndex(wx & CHUNK_MASK, wy & CHUNK_MASK, wz & CHUNK_MASK)];
   }
 
-  setLight(wx: number, wy: number, wz: number, value: number): void {
+  setLight(wx: number, wy: number, wz: number, channel: LightChannel, value: number): void {
     if (wy < 0 || wy >= WORLD_HEIGHT) return;
     const cx = wx >> CHUNK_BITS;
     const cy = wy >> CHUNK_BITS;
@@ -145,8 +217,10 @@ export class World {
     const lx = wx & CHUNK_MASK;
     const ly = wy & CHUNK_MASK;
     const lz = wz & CHUNK_MASK;
-    if (chunk.light[localIndex(lx, ly, lz)] === value) return;
-    chunk.light[localIndex(lx, ly, lz)] = value;
+    const array = channel === SKY_LIGHT ? chunk.skyLight : chunk.blockLight;
+    if (array[localIndex(lx, ly, lz)] === value) return;
+    array[localIndex(lx, ly, lz)] = value;
+    if (channel === BLOCK_LIGHT && value > 0) chunk.hasBlockLight = true;
 
     this.markRelit(chunk, cx, cy, cz);
     // 境界のボクセルの明るさは隣チャンクの面の色にも効く
@@ -187,7 +261,9 @@ export class World {
       column.push(this.chunks.get(chunkKey(cx, cy, cz)) ?? null);
     }
 
-    // 下から上へ走査して、遮蔽ブロックを見つけるたびに上書きする（最後に残るのが一番上）
+    // 下から上へ走査して、遮蔽ブロックを見つけるたびに上書きする（最後に残るのが一番上）。
+    // 同じ走査のついでに光源も拾う（1 列 32,768 ボクセルを 2 度なめたくない）。
+    const emitters: number[] = [];
     for (let cy = 0; cy < CHUNK_LAYERS; cy++) {
       const chunk = column[cy];
       if (!chunk) continue;
@@ -196,7 +272,10 @@ export class World {
         const rowBase = ly * CHUNK_SIZE * CHUNK_SIZE;
         const height = baseY + ly + 1;
         for (let i = 0; i < CHUNK_SIZE * CHUNK_SIZE; i++) {
-          if (SKY_BLOCKERS[chunk.data[rowBase + i]] === 1) sky[i] = height;
+          const id = chunk.data[rowBase + i];
+          if (SKY_BLOCKERS[id] === 1) sky[i] = height;
+          // i は列内の (lz * 16 + lx)。あとで座標に戻すので、高さと組で覚えておく
+          if (EMISSION[id] > 0) emitters.push(i, baseY + ly);
         }
       }
     }
@@ -215,15 +294,15 @@ export class World {
       if (!chunk) continue;
       const baseY = cy * CHUNK_SIZE;
       if (baseY >= maxSky) {
-        chunk.light.fill(MAX_LIGHT);
+        chunk.skyLight.fill(MAX_LIGHT);
       } else if (baseY + CHUNK_SIZE <= minSky) {
-        chunk.light.fill(0);
+        chunk.skyLight.fill(0);
       } else {
         for (let ly = 0; ly < CHUNK_SIZE; ly++) {
           const wy = baseY + ly;
           const rowBase = ly * CHUNK_SIZE * CHUNK_SIZE;
           for (let i = 0; i < CHUNK_SIZE * CHUNK_SIZE; i++) {
-            chunk.light[rowBase + i] = wy >= sky[i] ? MAX_LIGHT : 0;
+            chunk.skyLight[rowBase + i] = wy >= sky[i] ? MAX_LIGHT : 0;
           }
         }
       }
@@ -231,6 +310,57 @@ export class World {
     }
 
     this.seedColumnLight(cx, cz, sky, maxSky);
+    this.seedColumnBlockLight(cx, cz, emitters);
+  }
+
+  /**
+   * 列のブロックライトを作る。光源はプレイヤーが置いた松明だけなので、ふつうは
+   * emitters が空で、隣の列にも光が無いので何もせずに終わる。
+   */
+  private seedColumnBlockLight(cx: number, cz: number, emitters: readonly number[]): void {
+    const baseX = cx * CHUNK_SIZE;
+    const baseZ = cz * CHUNK_SIZE;
+
+    this.addQueue.reset();
+    for (let i = 0; i < emitters.length; i += 2) {
+      const at = emitters[i];
+      const wx = baseX + (at & CHUNK_MASK);
+      const wz = baseZ + (at >> CHUNK_BITS);
+      const wy = emitters[i + 1];
+      this.setLight(wx, wy, wz, BLOCK_LIGHT, blockEmission(this.getVoxel(wx, wy, wz)));
+      this.addQueue.push(wx, wy, wz);
+    }
+
+    // 隣の列に既にある光を、この列へ流し込む
+    this.seedBlockWall(cx - 1, cz, CHUNK_SIZE - 1, -1);
+    this.seedBlockWall(cx + 1, cz, 0, -1);
+    this.seedBlockWall(cx, cz - 1, -1, CHUNK_SIZE - 1);
+    this.seedBlockWall(cx, cz + 1, -1, 0);
+
+    if (this.addQueue.size > 0) propagateAdd(this, this.addQueue, BLOCK_LIGHT);
+  }
+
+  /**
+   * 隣の列の面 1 枚から、光っているマスを種にする（ブロックライト版）。
+   * 光源が無い列がほとんどなので、hasBlockLight が立っていない段はまるごと飛ばす。
+   */
+  private seedBlockWall(cx: number, cz: number, fixedX: number, fixedZ: number): void {
+    if (!this.columns.has(`${cx},${cz}`)) return;
+    const baseX = cx * CHUNK_SIZE;
+    const baseZ = cz * CHUNK_SIZE;
+    for (let cy = 0; cy < CHUNK_LAYERS; cy++) {
+      const chunk = this.chunks.get(chunkKey(cx, cy, cz));
+      if (!chunk || !chunk.hasBlockLight) continue;
+      for (let ly = 0; ly < CHUNK_SIZE; ly++) {
+        for (let i = 0; i < CHUNK_SIZE; i++) {
+          const lx = fixedX < 0 ? i : fixedX;
+          const lz = fixedZ < 0 ? i : fixedZ;
+          if (chunk.blockLight[localIndex(lx, ly, lz)] > 0) {
+            this.addQueue.push(baseX + lx, cy * CHUNK_SIZE + ly, baseZ + lz);
+          }
+        }
+      }
+    }
   }
 
   /**
@@ -311,7 +441,7 @@ export class World {
         for (let i = 0; i < CHUNK_SIZE; i++) {
           const lx = fixedX < 0 ? i : fixedX;
           const lz = fixedZ < 0 ? i : fixedZ;
-          if (chunk.light[localIndex(lx, ly, lz)] > 0) {
+          if (chunk.skyLight[localIndex(lx, ly, lz)] > 0) {
             this.addQueue.push(baseX + lx, wy, baseZ + lz);
           }
         }
@@ -319,8 +449,8 @@ export class World {
     }
   }
 
-  /** ブロックを置いた／壊したときに、その周辺の光を作り直す。 */
-  private relightEdit(wx: number, wy: number, wz: number, before: number, after: number): void {
+  /** ブロックを置いた／壊したときに、その周辺のスカイライトを作り直す。 */
+  private relightSkyEdit(wx: number, wy: number, wz: number, before: number, after: number): void {
     const sky = this.skyHeights.get(`${wx >> CHUNK_BITS},${wz >> CHUNK_BITS}`);
     if (!sky) return;
     const index = (wz & CHUNK_MASK) * CHUNK_SIZE + (wx & CHUNK_MASK);
@@ -332,9 +462,9 @@ export class World {
     if (blocksSky(after) && wy >= height) {
       // 空への口が塞がった: そこから下の光源が消える
       for (let y = height; y <= wy; y++) {
-        const level = this.getLight(wx, y, wz);
+        const level = this.getLight(wx, y, wz, SKY_LIGHT);
         if (level === 0) continue;
-        this.setLight(wx, y, wz, 0);
+        this.setLight(wx, y, wz, SKY_LIGHT, 0);
         this.removeQueue.push(wx, y, wz, level);
       }
       sky[index] = wy + 1;
@@ -349,15 +479,15 @@ export class World {
       }
       sky[index] = next;
       for (let y = next; y <= wy; y++) {
-        this.setLight(wx, y, wz, MAX_LIGHT);
+        this.setLight(wx, y, wz, SKY_LIGHT, MAX_LIGHT);
         this.addQueue.push(wx, y, wz);
       }
     }
 
     if (isOpaque(after)) {
-      const level = this.getLight(wx, wy, wz);
+      const level = this.getLight(wx, wy, wz, SKY_LIGHT);
       if (level > 0) {
-        this.setLight(wx, wy, wz, 0);
+        this.setLight(wx, wy, wz, SKY_LIGHT, 0);
         this.removeQueue.push(wx, wy, wz, level);
       }
     } else {
@@ -365,8 +495,48 @@ export class World {
       for (const [dx, dy, dz] of OFFSETS) this.addQueue.push(wx + dx, wy + dy, wz + dz);
     }
 
-    propagateRemove(this, this.removeQueue, this.addQueue);
-    propagateAdd(this, this.addQueue);
+    propagateRemove(this, this.removeQueue, this.addQueue, SKY_LIGHT);
+    propagateAdd(this, this.addQueue, SKY_LIGHT);
+  }
+
+  /**
+   * ブロックライトの差分更新。スカイライトと違って光源の位置がブロックそのものなので、
+   * 「今そこにある光をいったん全部消してから、改めて広げ直す」だけで済む。
+   *
+   * 消す BFS を先に回すこと。増やす側だけでは、松明を壊したときに光が残る。
+   */
+  private relightBlockEdit(wx: number, wy: number, wz: number, after: number): void {
+    const emit = blockEmission(after);
+    const current = this.getLight(wx, wy, wz, BLOCK_LIGHT);
+    // 光源でもなく、そこも周りも暗いなら、何をしてもブロックライトは変わらない。
+    // 松明を置かない限りここで抜けるので、ふだんの設置・破壊に余計な費用が乗らない。
+    if (emit === 0 && current === 0 && !this.hasBlockLightAround(wx, wy, wz)) return;
+
+    this.addQueue.reset();
+    this.removeQueue.reset();
+
+    if (current > 0) {
+      this.setLight(wx, wy, wz, BLOCK_LIGHT, 0);
+      this.removeQueue.push(wx, wy, wz, current);
+      propagateRemove(this, this.removeQueue, this.addQueue, BLOCK_LIGHT);
+    }
+
+    if (emit > 0) {
+      this.setLight(wx, wy, wz, BLOCK_LIGHT, emit);
+      this.addQueue.push(wx, wy, wz);
+    } else if (!isOpaque(after)) {
+      for (const [dx, dy, dz] of OFFSETS) this.addQueue.push(wx + dx, wy + dy, wz + dz);
+    }
+
+    propagateAdd(this, this.addQueue, BLOCK_LIGHT);
+  }
+
+  /** 隣 6 マスのどれかにブロックライトがあるか（無ければ差分更新を丸ごと省ける）。 */
+  private hasBlockLightAround(wx: number, wy: number, wz: number): boolean {
+    for (const [dx, dy, dz] of OFFSETS) {
+      if (this.getLight(wx + dx, wy + dy, wz + dz, BLOCK_LIGHT) > 0) return true;
+    }
+    return false;
   }
 
   private recordEdit(cx: number, cy: number, cz: number, index: number, id: number): void {
@@ -466,7 +636,7 @@ export class World {
     }
 
     this.fillPad(chunk);
-    const { opaque, translucent } = buildChunkMesh(this.pad, this.lightPad);
+    const { opaque, translucent } = buildChunkMesh(this.pad, this.skyPad, this.blockPad);
 
     this.triangles -= countTriangles(chunk);
     const opaqueMesh = chunk.applyMesh(opaque, chunk.opaqueMesh, this.opaqueMaterial, 0);
@@ -499,7 +669,8 @@ export class World {
     }
 
     const pad = this.pad;
-    const lightPad = this.lightPad;
+    const skyPad = this.skyPad;
+    const blockPad = this.blockPad;
     for (let y = -1; y <= CHUNK_SIZE; y++) {
       const ry = y < 0 ? 0 : y >= CHUNK_SIZE ? 2 : 1;
       const ly = (y + CHUNK_SIZE) & CHUNK_MASK;
@@ -516,7 +687,8 @@ export class World {
           const index = localIndex(lx, ly, lz);
           const target = ((y + 1) * PAD_SIZE + (z + 1)) * PAD_SIZE + (x + 1);
           pad[target] = source ? source.data[index] : outside;
-          lightPad[target] = source ? source.light[index] : outsideLight;
+          skyPad[target] = source ? source.skyLight[index] : outsideLight;
+          blockPad[target] = source ? source.blockLight[index] : 0;
         }
       }
     }

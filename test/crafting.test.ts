@@ -1,7 +1,16 @@
-import { COBBLE, CRAFTING_TABLE, GLASS, PLANK, SAND, WOOD } from "../src/blocks";
+import { COBBLE, CRAFTING_TABLE, GLASS, PLANK, SAND, TORCH, WOOD } from "../src/blocks";
 import { RECIPES, consumeGrid, findRecipe } from "../src/crafting";
 import { isEmpty, type Slot } from "../src/inventory";
-import { DIAMOND, DIAMOND_PICKAXE, NO_ITEM, STICK, STONE_AXE, WOOD_PICKAXE, WOOD_SHOVEL } from "../src/items";
+import {
+  COAL,
+  DIAMOND,
+  DIAMOND_PICKAXE,
+  NO_ITEM,
+  STICK,
+  STONE_AXE,
+  WOOD_PICKAXE,
+  WOOD_SHOVEL,
+} from "../src/items";
 import { check, describe } from "./harness";
 
 /** "P.S" のような文字列から盤面を作る。"." は空。 */
@@ -20,7 +29,7 @@ function grid(size: number, rows: string[], key: Record<string, number>): Slot[]
 export function run(): void {
   describe("クラフト");
 
-  const P = { P: PLANK, S: STICK, W: WOOD, C: COBBLE, D: DIAMOND, A: SAND };
+  const P = { P: PLANK, S: STICK, W: WOOD, C: COBBLE, D: DIAMOND, A: SAND, O: COAL };
 
   // --- 形なし ---
   const planks = findRecipe(grid(2, ["W."], P), 2);
@@ -40,6 +49,11 @@ export function run(): void {
   check("板 4 枚 → 作業台", table?.out === CRAFTING_TABLE);
   const glass = findRecipe(grid(2, ["AA", "AA"], P), 2);
   check("砂 4 個 → ガラス（かまどの代用）", glass?.out === GLASS);
+
+  const torch = findRecipe(grid(2, ["O.", "S."], P), 2);
+  check("石炭 + 棒 → 松明 4 本", torch?.out === TORCH && torch.count === 4, torch?.name ?? "無し");
+  const torchUpsideDown = findRecipe(grid(2, ["S.", "O."], P), 2);
+  check("上下を逆にすると松明にならない", torchUpsideDown === null, torchUpsideDown?.name ?? "無し");
 
   // --- 盤面の広さ ---
   const pickIn3 = findRecipe(grid(3, ["PPP", ".S.", ".S."], P), 3);

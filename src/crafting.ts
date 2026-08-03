@@ -1,6 +1,7 @@
-import { COBBLE, CRAFTING_TABLE, GLASS, PLANK, SAND, WOOD } from "./blocks";
+import { COBBLE, CRAFTING_TABLE, GLASS, PLANK, SAND, SPRUCE_WOOD, TORCH, WOOD } from "./blocks";
 import { isEmpty, type Slot } from "./inventory";
 import {
+  COAL,
   DIAMOND,
   DIAMOND_AXE,
   DIAMOND_PICKAXE,
@@ -39,6 +40,8 @@ export interface Recipe {
  */
 export const RECIPES: readonly Recipe[] = [
   { name: "板", out: PLANK, count: 4, ingredients: [WOOD] },
+  // 針葉樹林から始めても詰まないように、トウヒの原木からも板が作れる
+  { name: "板", out: PLANK, count: 4, ingredients: [SPRUCE_WOOD] },
   { name: "棒", out: STICK, count: 4, shape: ["P", "P"], key: { P: PLANK } },
   {
     name: "作業台",
@@ -48,6 +51,8 @@ export const RECIPES: readonly Recipe[] = [
     key: { P: PLANK },
   },
   { name: "ガラス", out: GLASS, count: 1, shape: ["SS", "SS"], key: { S: SAND } },
+  // 石炭を棒の上に。1 列なので 2x2 でも作れる（Minecraft と同じ）。
+  { name: "松明", out: TORCH, count: 4, shape: ["C", "S"], key: { C: COAL, S: STICK } },
 
   ...toolRecipes("木", PLANK, WOOD_PICKAXE, WOOD_AXE, WOOD_SHOVEL),
   ...toolRecipes("石", COBBLE, STONE_PICKAXE, STONE_AXE, STONE_SHOVEL),

@@ -14,6 +14,7 @@ console.log(`generateChunk   ${((performance.now() - t) / 200).toFixed(2)} ms/�
 // 地表付近の実データでメッシュ化を計測
 const pad = new Uint8Array(PAD_VOLUME);
 const lightPad = new Uint8Array(PAD_VOLUME).fill(MAX_LIGHT);
+const blockPad = new Uint8Array(PAD_VOLUME);
 gen.generateChunk(0, 2, 0, data);
 for (let y = 0; y < 16; y++) {
   for (let z = 0; z < 16; z++) {
@@ -22,7 +23,7 @@ for (let y = 0; y < 16; y++) {
 }
 let tris = 0;
 t = performance.now();
-for (let i = 0; i < 300; i++) tris = (buildChunkMesh(pad, lightPad).opaque?.indices.length ?? 0) / 3;
+for (let i = 0; i < 300; i++) tris = (buildChunkMesh(pad, lightPad, blockPad).opaque?.indices.length ?? 0) / 3;
 console.log(`buildChunkMesh  ${((performance.now() - t) / 300).toFixed(2)} ms/チャンク (${tris} 三角形)`);
 
 const world = new World(new Scene(), 999);

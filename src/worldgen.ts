@@ -1,19 +1,19 @@
 import {
   AIR,
   BEDROCK,
+  CACTUS,
   COAL_ORE,
   DIAMOND_ORE,
-  DIRT,
   GOLD_ORE,
-  GRASS,
   IRON_ORE,
   LEAVES,
-  SAND,
-  SNOW,
+  SPRUCE_LEAVES,
+  SPRUCE_WOOD,
   STONE,
   WATER,
   WOOD,
 } from "./blocks";
+import { biomeDef, classify, resolve, type TreeKind } from "./biomes";
 import { CHUNK_SIZE, SEA_LEVEL, WORLD_HEIGHT } from "./constants";
 import { Noise } from "./noise";
 
@@ -22,12 +22,15 @@ interface Tree {
   y: number;
   z: number;
   height: number;
+  kind: TreeKind;
 }
 
 interface ColumnData {
   /** 16x16 の地表高さ（その高さのブロックまでが地面）。 */
   readonly height: Int16Array;
-  /** この列に根を張る木。座標はワールド絶対座標。 */
+  /** 16x16 のバイオーム。高さと同じ添字で引く。 */
+  readonly biome: Uint8Array;
+  /** この列に根を張る木（サボテンもここに入る）。座標はワールド絶対座標。 */
   readonly trees: Tree[];
 }
 
@@ -82,6 +85,8 @@ export class WorldGen {
   private readonly detail: Noise;
   private readonly caveA: Noise;
   private readonly caveB: Noise;
+  private readonly temperature: Noise;
+  private readonly humidity: Noise;
   private readonly columns = new Map<string, ColumnData>();
 
   constructor(readonly seed: number) {
@@ -89,6 +94,35 @@ export class WorldGen {
     this.detail = new Noise(seed ^ 0x9e3779b9);
     this.caveA = new Noise(seed ^ 0x85ebca6b);
     this.caveB = new Noise(seed ^ 0xc2b2ae35);
+    this.temperature = new Noise(seed ^ 0x27d4eb2f);
+    this.humidity = new Noise(seed ^ 0x165667b1);
+  }
+
+  /**
+   * 気候だけで決まるバイオーム。**高さを見ない**（見ると循環する。biomes.ts 参照）。
+   * 波長 600 ブロックほど。細かくすると 1 歩ごとに地表が変わってまだらになる。
+   *
+   * オクターブ 2 は境目を入り組ませるためのもので、費用ではない
+   * （1 と 2 の差はチャンク 1 個あたり 0.006ms = 1% 未満。1 オクターブだと
+   * 境目が丸くなる代わりに、バイオームの割合はむしろ均等になる）。
+   */
+  private temperatureAt(x: number, z: number): number {
+    return this.temperature.fbm2(x * 0.0016, z * 0.0016, 2);
+  }
+
+  /**
+   * その座標の最終的なバイオーム。高さを外から渡すのは、`column()` が
+   * すでに求めた高さを使い回すため（`heightAt` は 1 列で 256 回呼ぶので二度引きしたくない）。
+   */
+  private biomeFor(x: number, z: number, height: number): number {
+    const t = this.temperatureAt(x, z);
+    const h = this.humidity.fbm2(x * 0.0019 + 91.7, z * 0.0019 - 43.1, 2);
+    return resolve(classify(t, h), height, t);
+  }
+
+  /** デバッグ表示・テスト用。 */
+  biomeAt(x: number, z: number): number {
+    return this.biomeFor(x, z, this.heightAt(x, z));
   }
 
   /**
@@ -136,23 +170,31 @@ export class WorldGen {
     if (cached) return cached;
 
     const height = new Int16Array(CHUNK_SIZE * CHUNK_SIZE);
+    const biome = new Uint8Array(CHUNK_SIZE * CHUNK_SIZE);
     const baseX = cx * CHUNK_SIZE;
     const baseZ = cz * CHUNK_SIZE;
     for (let lz = 0; lz < CHUNK_SIZE; lz++) {
       for (let lx = 0; lx < CHUNK_SIZE; lx++) {
-        height[lz * CHUNK_SIZE + lx] = this.heightAt(baseX + lx, baseZ + lz);
+        const wx = baseX + lx;
+        const wz = baseZ + lz;
+        const h = this.heightAt(wx, wz);
+        height[lz * CHUNK_SIZE + lx] = h;
+        biome[lz * CHUNK_SIZE + lx] = this.biomeFor(wx, wz, h);
       }
     }
 
     const trees: Tree[] = [];
     // 木は列ごとに数本まで。境界をまたぐ枝葉は隣の列の生成時にも参照される。
+    // 生えやすさと種類はバイオーム側の表から引く（判断を散らさない）。
     const attempts = 6;
     for (let i = 0; i < attempts; i++) {
       const r = hash2(cx * 31 + i, cz * 17 - i, this.seed ^ 0x1234);
-      if (r > 0.42) continue;
       const lx = Math.floor(hash2(cx + i, cz * 7 + i, this.seed ^ 0xabcd) * CHUNK_SIZE);
       const lz = Math.floor(hash2(cx * 5 - i, cz + i, this.seed ^ 0x5678) * CHUNK_SIZE);
-      const h = height[lz * CHUNK_SIZE + lx];
+      const at = lz * CHUNK_SIZE + lx;
+      const def = biomeDef(biome[at]);
+      if (r > def.trees) continue;
+      const h = height[at];
       // 水辺・高山・急斜面には生やさない
       if (h <= SEA_LEVEL + 1 || h >= 74) continue;
       const wx = baseX + lx;
@@ -160,11 +202,17 @@ export class WorldGen {
       if (Math.abs(this.heightAt(wx + 1, wz) - h) > 1) continue;
       if (Math.abs(this.heightAt(wx, wz + 1) - h) > 1) continue;
       if (trees.some((t) => Math.abs(t.x - wx) < 4 && Math.abs(t.z - wz) < 4)) continue;
-      const trunk = 4 + Math.floor(hash2(wx, wz, this.seed ^ 0x99) * 3);
-      trees.push({ x: wx, y: h + 1, z: wz, height: trunk });
+      const roll = hash2(wx, wz, this.seed ^ 0x99);
+      const trunk =
+        def.treeKind === "spruce"
+          ? 6 + Math.floor(roll * 4)
+          : def.treeKind === "cactus"
+            ? 1 + Math.floor(roll * 3)
+            : 4 + Math.floor(roll * 3);
+      trees.push({ x: wx, y: h + 1, z: wz, height: trunk, kind: def.treeKind });
     }
 
-    const data: ColumnData = { height, trees };
+    const data: ColumnData = { height, biome, trees };
     if (this.columns.size >= COLUMN_CACHE_LIMIT) {
       const oldest = this.columns.keys().next().value;
       if (oldest !== undefined) this.columns.delete(oldest);
@@ -175,7 +223,7 @@ export class WorldGen {
 
   /** チャンク 1 個分のボクセルを data に書き込む。 */
   generateChunk(cx: number, cy: number, cz: number, data: Uint8Array): void {
-    const { height } = this.column(cx, cz);
+    const { height, biome } = this.column(cx, cz);
     const baseX = cx * CHUNK_SIZE;
     const baseY = cy * CHUNK_SIZE;
     const baseZ = cz * CHUNK_SIZE;
@@ -184,9 +232,10 @@ export class WorldGen {
       const wz = baseZ + lz;
       for (let lx = 0; lx < CHUNK_SIZE; lx++) {
         const wx = baseX + lx;
-        const h = height[lz * CHUNK_SIZE + lx];
-        const beach = h <= SEA_LEVEL + 1;
-        const alpine = h >= 76;
+        const at = lz * CHUNK_SIZE + lx;
+        const h = height[at];
+        // 内側の 16 段で毎回引かないよう、ここで取り出しておく
+        const { surface, filler } = biomeDef(biome[at]);
 
         for (let ly = 0; ly < CHUNK_SIZE; ly++) {
           const wy = baseY + ly;
@@ -208,9 +257,9 @@ export class WorldGen {
 
           const depth = h - wy;
           if (depth === 0) {
-            data[index] = beach ? SAND : alpine ? SNOW : GRASS;
+            data[index] = surface;
           } else if (depth <= 3) {
-            data[index] = beach ? SAND : alpine ? STONE : DIRT;
+            data[index] = filler;
           } else {
             data[index] = this.oreAt(wx, wy, wz);
           }
@@ -252,20 +301,34 @@ export class WorldGen {
       data[index] = id;
     };
 
+    // サボテンは幹だけ。葉も枝も無いので、隣の列にはみ出すこともない。
+    if (tree.kind === "cactus") {
+      for (let i = 0; i < tree.height; i++) {
+        put(tree.x, tree.y + i, tree.z, CACTUS, true);
+      }
+      return;
+    }
+
+    const spruce = tree.kind === "spruce";
+    const wood = spruce ? SPRUCE_WOOD : WOOD;
+    const leaf = spruce ? SPRUCE_LEAVES : LEAVES;
     const top = tree.y + tree.height - 1;
-    // 葉: 幹の先端 (top) を含む 4 段。上 1 段は細く、下 3 段は広く。
-    // top + 1 にも葉を置かないと幹が空に突き出したままになる。
-    for (let dy = -2; dy <= 1; dy++) {
-      const r = dy >= 1 ? 1 : 2;
+
+    // 葉: 幹の先端 (top) を含む段。top + 1 にも置かないと幹が空に突き出したままになる。
+    // トウヒは下ほど広い円錐、オークは丸い塊。**半径は TREE_RADIUS を超えないこと**
+    // （超えると隣の列の生成時に切り落とされて、葉が欠ける）。
+    const lowest = spruce ? -4 : -2;
+    for (let dy = lowest; dy <= 1; dy++) {
+      const r = spruce ? (dy <= -3 ? 2 : dy <= -1 ? 1 : 0) : dy >= 1 ? 1 : 2;
       for (let dz = -r; dz <= r; dz++) {
         for (let dx = -r; dx <= r; dx++) {
           if (r === 2 && Math.abs(dx) === r && Math.abs(dz) === r) continue;
-          put(tree.x + dx, top + dy, tree.z + dz, LEAVES, false);
+          put(tree.x + dx, top + dy, tree.z + dz, leaf, false);
         }
       }
     }
     for (let i = 0; i < tree.height; i++) {
-      put(tree.x, tree.y + i, tree.z, WOOD, true);
+      put(tree.x, tree.y + i, tree.z, wood, true);
     }
   }
 }
