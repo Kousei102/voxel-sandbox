@@ -470,11 +470,32 @@ button.primary:hover {
   align-items: center;
 }
 
-.status {
-  margin: 0;
-  min-height: 18px;
-  font-size: 12px;
+/*
+ * 通知の帯。ホットバーと体力の上に浮かせる（Minecraft のアクションバーと同じ位置）。
+ * ui.ts が body 直下に作るので、パネルが隠れても消えない。
+ * z-index はインベントリや死亡画面より上（通知は常に読めるべき）。
+ */
+#status {
+  position: fixed;
+  left: 50%;
+  bottom: 118px;
+  transform: translateX(-50%);
+  max-width: min(560px, 88vw);
+  padding: 6px 14px;
+  border-radius: 7px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  font-size: 13px;
   color: var(--accent);
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s;
+  z-index: 8;
+}
+
+#status.on {
+  opacity: 1;
 }
 
 #loading {

@@ -37,6 +37,21 @@ export function heartStates(health: number, count = HEART_COUNT): HeartState[] {
   });
 }
 
+/**
+ * 通知の帯を自分で作って body の直下に置く。
+ *
+ * **メニューやインベントリのパネルの中に置かないこと。** それらは `class="hidden"` で
+ * 丸ごと消えるので、プレイ中に出したはずの通知が見えず、メニューを開いた人にだけ
+ * 遅れて見える（実際にそうなっていた）。index.html に書かずここで作っているのは、
+ * 置き場所を間違えられないようにするため。
+ */
+function createStatusBar(): HTMLElement {
+  const el = document.createElement("div");
+  el.id = "status";
+  document.body.appendChild(el);
+  return el;
+}
+
 export class Hud {
   private readonly slots: HTMLElement[] = [];
   private readonly hearts: HTMLElement[] = [];
@@ -45,7 +60,7 @@ export class Hud {
   private readonly hud = document.getElementById("hud") as HTMLElement;
   private readonly crosshair = document.getElementById("crosshair") as HTMLElement;
   private readonly loading = document.getElementById("loading") as HTMLElement;
-  private readonly status = document.getElementById("status") as HTMLElement;
+  private readonly status = createStatusBar();
   private readonly menu = document.getElementById("menu") as HTMLElement;
   private readonly vitals = document.getElementById("vitals") as HTMLElement;
   private readonly bubbleRow = document.getElementById("bubbles") as HTMLElement;
@@ -124,15 +139,18 @@ export class Hud {
     this.loading.classList.toggle("on", on);
   }
 
+  /** 画面下に数秒だけ出す通知。プレイ中でもメニュー中でも見える。 */
   flash(message: string): void {
     this.status.textContent = message;
+    this.status.classList.add("on");
     this.statusTimer = 3;
   }
 
   tick(dt: number): void {
     if (this.statusTimer > 0) {
       this.statusTimer -= dt;
-      if (this.statusTimer <= 0) this.status.textContent = "";
+      // 文字は残したまま透明にする（消してから薄れると途中で空になる）
+      if (this.statusTimer <= 0) this.status.classList.remove("on");
     }
   }
 }
