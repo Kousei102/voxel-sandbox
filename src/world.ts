@@ -1,4 +1,4 @@
-import { Color, DoubleSide, MeshBasicMaterial, type Scene } from "three";
+import { Color, DoubleSide, MeshBasicMaterial, type IUniform, type Scene } from "three";
 import {
   AIR,
   BEDROCK,
@@ -107,6 +107,26 @@ export class World {
    */
   setDaylight(tint: Color): void {
     this.daylight.value.copy(tint);
+  }
+
+  /**
+   * 昼夜の色の uniform。モブのマテリアルにも `useTerrainLighting()` で渡す。
+   *
+   * **同じオブジェクトを共有すること**（値をコピーした別のオブジェクトにすると、
+   * モブだけ足元のブロックと違う明るさになる瞬間ができる）。
+   */
+  daylightUniform(): IUniform<Color> {
+    return this.daylight;
+  }
+
+  /**
+   * その列のボクセルが生成済みか。
+   *
+   * **未生成の列では `getVoxel` が AIR を返す**（下の `getVoxel` を参照）ので、
+   * 確かめずにモブを湧かせると空中に出て、あとから地形が生えて閉じ込められる。
+   */
+  hasColumn(cx: number, cz: number): boolean {
+    return this.columns.has(`${cx},${cz}`);
   }
 
   // --- ボクセルアクセス -------------------------------------------------

@@ -35,6 +35,8 @@ import { Inventory } from "./inventory";
 import { InventoryScreen } from "./inventoryui";
 import { NO_ITEM, dropOf, itemName, placedBlock } from "./items";
 import { Mining, breakTime, canHarvest } from "./mining";
+import { MobRenderer } from "./mobrender";
+import { Mobs } from "./mobs";
 import { Player } from "./player";
 import { raycastVoxels, type RaycastHit } from "./raycast";
 import { DigCadence, StepCadence, clampVolume } from "./sfx";
@@ -100,6 +102,12 @@ const deathScreen = document.getElementById("death") as HTMLElement;
 const deathCause = document.getElementById("deathcause") as HTMLElement;
 
 let world!: World;
+/**
+ * モブ。**`mobRender` は `world` と一緒に作り直す**（昼夜の uniform は `World` が
+ * 持っていて、ワールドを作り直すと別のオブジェクトになるため）。
+ */
+const mobs = new Mobs();
+let mobRender!: MobRenderer;
 let playing = false;
 let saveDirty = false;
 let autosaveTimer = 0;
@@ -135,6 +143,11 @@ function startWorld(
   world = new World(scene, seed, edits);
   seedInput.value = String(seed);
 
+  // モブは保存しない（地形と同じで、シードから作り直せるものは持たない）。
+  mobs.clear();
+  mobRender?.dispose();
+  mobRender = new MobRenderer(scene, world.daylightUniform());
+
   const x = spawn?.x ?? SPAWN_X;
   const z = spawn?.z ?? SPAWN_Z;
   world.primeAround(x, z, 1);
@@ -147,6 +160,21 @@ function startWorld(
   player.clearKeys();
   player.syncCamera();
   world.update(player.position.x, player.position.z);
+  spawnDebugMobs(x, z);
+}
+
+/**
+ * 足場のできている所へ豚を数体置く。**自然な湧きが入るまでの仮の足場**で、
+ * 「モブが地面の上に立って、地形と同じ明るさで描かれるか」を目で見るためのもの。
+ * 湧きの条件（明るさ・地面・間隔）は次の区切りで `mobs.ts` に入る。
+ */
+function spawnDebugMobs(x: number, z: number): void {
+  for (let i = 0; i < 5; i++) {
+    const angle = (i / 5) * Math.PI * 2;
+    const mx = Math.floor(x + Math.cos(angle) * 5) + 0.5;
+    const mz = Math.floor(z + Math.sin(angle) * 5) + 0.5;
+    mobs.spawn("pig", mx, world.surfaceY(Math.floor(mx), Math.floor(mz)), mz, angle);
+  }
 }
 
 /** 初期位置へ戻す。ベッドがまだ無いので、リスポーン地点はワールドの初期位置ひとつだけ。 */
@@ -452,6 +480,18 @@ window.addEventListener("keydown", (event) => {
     case "KeyF":
       player.toggleFly();
       return;
+    case "KeyM":
+      // 狙った所に豚を 1 体。自然な湧きが入るまでの、目で見るための手段。
+      if (hit) {
+        mobs.spawn(
+          "pig",
+          hit.block.x + hit.normal.x + 0.5,
+          hit.block.y + hit.normal.y,
+          hit.block.z + hit.normal.z + 0.5,
+          player.yaw + Math.PI,
+        );
+      }
+      return;
     case "F3":
       event.preventDefault();
       hud.toggleDebug();
@@ -507,6 +547,11 @@ function frame(now: number): void {
 
   dayNight.advance(dt);
   updateEnvironment();
+  // モブは **updateVitals より前**に回すこと。ここでプレイヤーを殴らせておけば、
+  // updateVitals が体力の減りを見て hurt/death を鳴らし、赤い明滅も死亡画面も出す
+  // （main.ts 側にモブ用のダメージ処理を書かずに済む）。
+  if (playing) mobs.update(dt, world);
+  mobRender.sync(mobs.list, world);
   // 水中のこもりに underwater を使うので、updateEnvironment のあとに回す
   updateSounds();
   // 息の判定に水中かどうかを使うので、updateEnvironment のあとに回す
@@ -529,7 +574,8 @@ function frame(now: number): void {
       `  loaded ${stats.chunks}  queue ${stats.queued}\n` +
       `tris ${stats.triangles.toLocaleString()}  edits ${countEdits(world.editsForSave())}\n` +
       `time ${dayNight.clock()}  light ${(dayNight.brightness * 100).toFixed(0)}%  ${creative ? "creative" : "survival"}\n` +
-      `biome ${biomeName(world.gen.biomeAt(Math.floor(player.position.x), Math.floor(player.position.z)))}\n` +
+      `biome ${biomeName(world.gen.biomeAt(Math.floor(player.position.x), Math.floor(player.position.z)))}` +
+      `  mobs ${mobs.count}\n` +
       `hp ${vitals.health}/${MAX_HEALTH}  air ${(vitals.airFraction * 100).toFixed(0)}%\n` +
       `${player.flying ? "fly" : player.onGround ? "ground" : "air"}${player.inWater ? " / water" : ""}\n` +
       `hand ${inventory.selectedItem === NO_ITEM ? "-" : itemName(inventory.selectedItem)}\n` +
