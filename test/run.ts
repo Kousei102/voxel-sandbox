@@ -1,3 +1,4 @@
+import { run as blocks } from "./blocks.test";
 import { run as crafting } from "./crafting.test";
 import { run as daynight } from "./daynight.test";
 import { summary } from "./harness";
@@ -12,6 +13,7 @@ import { run as worldgen } from "./worldgen.test";
 
 worldgen();
 mesher();
+blocks();
 world();
 lighting();
 daynight();

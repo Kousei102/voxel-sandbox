@@ -1,10 +1,10 @@
 import {
   AIR,
-  BLOCKS,
   FACE_YN,
   FACE_YP,
   FACE_XP,
   FACE_ZP,
+  blockDef,
   blockModel,
   faceColor,
   isOpaque,
@@ -46,6 +46,8 @@ export interface ChunkMeshData {
 
 /** 面の向きによる明暗。上面が最も明るく、底面が最も暗い。 */
 const FACE_SHADE = [0.74, 0.74, 1.0, 0.5, 0.86, 0.86];
+/** 草（`model: "cross"`）の明暗。板の向きによらず一定にする。 */
+const CROSS_SHADE = FACE_SHADE[FACE_YP];
 /** AO 段階（0=最も暗い隅）ごとの明るさ。 */
 const AO_SHADE = [0.42, 0.62, 0.82, 1.0];
 /**
@@ -86,9 +88,6 @@ const WALL_TORCH_POST_HALF = 0.0625;
 /** 炎は柄のいちばん上に載る。 */
 const WALL_TORCH_FLAME = [0.25, 0.625, 0.4375, 0.78125];
 const WALL_TORCH_FLAME_HALF = 0.09375;
-
-/** サボテン。立方体より 1/16 ずつ細い（Minecraft と同じ）。 */
-const CACTUS_SHAPE = [0.0625, 0, 0.0625, 0.9375, 1, 0.9375];
 
 /**
  * 面を積む先。チャンクごとに作り直すと GC を煩わせるので、
@@ -329,7 +328,7 @@ export function buildChunkMesh(
 
           const face = d * 2 + (dir > 0 ? 0 : 1);
           faceColor(id, face, rgb);
-          const def = BLOCKS[id];
+          const def = blockDef(id);
           const target = isTranslucent(id) ? translucent : opaque;
           target.quad(
             [x[0], x[1], x[2]],
@@ -405,9 +404,16 @@ function buildProps(
             }
             break;
           }
-          case "cactus":
-            // 立方体より少し細いだけなので、面ごとの色をそのまま使う
-            box(builder, x, y, z, CACTUS_SHAPE, id, -1, sky, block);
+          case "boxes":
+            // ハーフ・階段・サボテン。当たり判定と同じ箱をそのまま積む。
+            // 面ごとの色は立方体と同じ引き方（上面は top、側面は side）。
+            for (const shape of blockDef(id).boxes) {
+              box(builder, x, y, z, shape, id, -1, sky, block);
+            }
+            break;
+          case "cross":
+            // 草。大きさは狙う判定と同じ箱から引く（形を 2 か所に書かない）。
+            cross(builder, x, y, z, blockDef(id).boxes[0], id, sky, block);
             break;
           default:
             break;
@@ -509,6 +515,79 @@ function box(
         boxBlock,
       );
     }
+  }
+}
+
+/**
+ * 草を描く。板を 2 枚交差させ、それぞれ表と裏を出す（計 4 枚）。
+ * 不透明マテリアルは裏面をカリングするので、1 枚ずつだと反対側から消える。
+ *
+ * **Minecraft のような斜めの × 型にはできない。** `Builder.quad()` は法線の成分の和で
+ * 頂点の巡回順を決めているので、(1,0,-1) のような斜めの法線は和が 0 になって裏返る。
+ * 軸に平行にすると上から見て + 型になるが、立って見ているぶんは見分けが付かない。
+ *
+ * 4 枚とも同じ明るさで塗る（面の向きによる明暗を掛けない）。掛けると 1 本の草の
+ * 手前と奥で明るさが変わり、平らな板だと分かってしまう。
+ */
+function cross(
+  builder: Builder,
+  ox: number,
+  oy: number,
+  oz: number,
+  shape: readonly number[],
+  id: number,
+  sky: number,
+  block: number,
+): void {
+  faceColor(id, FACE_YP, boxRgb);
+  for (let i = 0; i < 4; i++) {
+    boxSky[i] = sky;
+    boxBlock[i] = block;
+  }
+  const y0 = oy + shape[1];
+  const y1 = oy + shape[4];
+  const cx = ox + (shape[0] + shape[3]) / 2;
+  const cz = oz + (shape[2] + shape[5]) / 2;
+  const x0 = ox + shape[0];
+  const x1 = ox + shape[3];
+  const z0 = oz + shape[2];
+  const z1 = oz + shape[5];
+
+  // 頂点は greedy 側と同じ「u が増える向き → v が増える向き」で並べる
+  // （X 面の板は u=Y v=Z、Z 面の板は u=X v=Y）。
+  for (const dir of [1, -1]) {
+    builder.quad(
+      [cx, y0, z0],
+      [cx, y1, z0],
+      [cx, y1, z1],
+      [cx, y0, z1],
+      dir,
+      0,
+      0,
+      boxRgb,
+      1,
+      CROSS_SHADE,
+      boxAo,
+      boxSky,
+      boxBlock,
+    );
+  }
+  for (const dir of [1, -1]) {
+    builder.quad(
+      [x0, y0, cz],
+      [x1, y0, cz],
+      [x1, y1, cz],
+      [x0, y1, cz],
+      0,
+      0,
+      dir,
+      boxRgb,
+      1,
+      CROSS_SHADE,
+      boxAo,
+      boxSky,
+      boxBlock,
+    );
   }
 }
 

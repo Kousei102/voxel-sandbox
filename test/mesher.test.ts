@@ -3,12 +3,17 @@ import {
   CACTUS,
   GLASS,
   STONE,
+  STONE_SLAB,
+  STONE_SLAB_TOP,
+  STONE_STAIRS,
+  TALL_GRASS,
   TORCH,
   WALL_TORCH_XN,
   WALL_TORCH_XP,
   WALL_TORCH_ZN,
   WALL_TORCH_ZP,
   WATER,
+  shapeBoxes,
 } from "../src/blocks";
 import { CHUNK_SIZE, MAX_LIGHT } from "../src/constants";
 import { PAD_VOLUME, buildChunkMesh, padIndex, type MeshArrays } from "../src/mesher";
@@ -251,6 +256,115 @@ export function run(): void {
     "上面と側面で色が違う（面ごとの色を引いている）",
     [...cactusTones][0] !== [...cactusSideTones][0],
     `上 ${[...cactusTones]} / 側 ${[...cactusSideTones]}`,
+  );
+
+  // --- ハーフブロック ---
+  pad.fill(AIR);
+  put(5, 5, 5, STONE_SLAB);
+  const slab = buildChunkMesh(pad, lightPad, blockPad).opaque!;
+  check("ハーフは箱 1 つ", slab.indices.length / 3 === 12, `${slab.indices.length / 3} 三角形`);
+  verifyWinding("下付きハーフ", slab, [5.5, 5.25, 5.5]);
+  check(
+    "下付きハーフの面がすべて外を向く",
+    Math.abs(signedVolume(slab) - 0.5) < 1e-6,
+    `体積 ${signedVolume(slab).toFixed(6)}（想定 0.5）`,
+  );
+  check(
+    "下付きハーフは下半分に収まる",
+    slab.positions.every((v, i) => (i % 3 === 1 ? v >= 5 && v <= 5.5 : v >= 5 && v <= 6)),
+  );
+
+  pad.fill(AIR);
+  put(5, 5, 5, STONE_SLAB_TOP);
+  const slabTop = buildChunkMesh(pad, lightPad, blockPad).opaque!;
+  verifyWinding("上付きハーフ", slabTop, [5.5, 5.75, 5.5]);
+  check(
+    "上付きハーフは上半分に収まる",
+    slabTop.positions.every((v, i) => (i % 3 === 1 ? v >= 5.5 && v <= 6 : v >= 5 && v <= 6)),
+  );
+  check(
+    "上付きと下付きは体積が同じ",
+    Math.abs(signedVolume(slabTop) - signedVolume(slab)) < 1e-9,
+    `${signedVolume(slabTop).toFixed(6)} / ${signedVolume(slab).toFixed(6)}`,
+  );
+
+  // ハーフは opaque ではないので、下の床の面は消えない（消えると地面が透ける）
+  pad.fill(AIR);
+  for (let z = 0; z < CHUNK_SIZE; z++) for (let x = 0; x < CHUNK_SIZE; x++) put(x, 0, z, STONE);
+  put(5, 1, 5, STONE_SLAB);
+  const slabOnFloor = buildChunkMesh(pad, lightPad, blockPad).opaque!;
+  check(
+    "ハーフを置いても床は 1 枚に統合されたまま",
+    slabOnFloor.indices.length / 3 === 12 + 12,
+    `${slabOnFloor.indices.length / 3} 三角形（床 12 + ハーフ 12）`,
+  );
+
+  // --- 階段 ---
+  // 箱 2 個をそのまま積むので、内側で接する面も出る（24 三角形）。
+  // 数は増えるが、閉じた形なので体積で裏返りを見張れる。
+  pad.fill(AIR);
+  put(5, 5, 5, STONE_STAIRS);
+  const stairs = buildChunkMesh(pad, lightPad, blockPad).opaque!;
+  check("階段は箱 2 個ぶん", stairs.indices.length / 3 === 24, `${stairs.indices.length / 3} 三角形`);
+  verifyWinding("階段", stairs, null);
+  check(
+    "階段の面がすべて外を向く",
+    Math.abs(signedVolume(stairs) - 0.75) < 1e-6,
+    `体積 ${signedVolume(stairs).toFixed(6)}（想定 0.75 = ハーフ 0.5 + 段 0.25）`,
+  );
+  check(
+    "階段はブロックの中に収まる",
+    stairs.positions.every((v) => v >= 5 && v <= 6),
+  );
+  // 段は高いほうの側にだけ寄っている（大元は +X 向き）
+  const stairXs = new Set([...stairs.positions].filter((_, i) => i % 3 === 0));
+  check("段の境目が真ん中にある", stairXs.has(5.5), `x = ${[...stairXs].sort().join(" ")}`);
+
+  // --- 草むら ---
+  // 板 2 枚を交差させ、それぞれ表と裏を出す。裏を省くと反対側から見たとき消える
+  // （カリングで消えるので、GPU 無しでは面の枚数でしか押さえられない）。
+  pad.fill(AIR);
+  put(5, 5, 5, TALL_GRASS);
+  const grass = buildChunkMesh(pad, lightPad, blockPad).opaque!;
+  check("草は板 2 枚を表裏で 4 枚", grass.indices.length / 3 === 8, `${grass.indices.length / 3} 三角形`);
+  verifyWinding("草", grass, null);
+  const grassNormals = new Set<string>();
+  for (let i = 0; i < grass.normals.length; i += 3) {
+    grassNormals.add(`${grass.normals[i]},${grass.normals[i + 1]},${grass.normals[i + 2]}`);
+  }
+  check(
+    "板の向きは 4 通り（同じ板の表と裏がそろっている）",
+    grassNormals.size === 4 &&
+      ["1,0,0", "-1,0,0", "0,0,1", "0,0,-1"].every((n) => grassNormals.has(n)),
+    [...grassNormals].join(" / "),
+  );
+  // 形は blocks.ts の箱から引いている。ここがずれると、狙う判定と見た目が食い違う。
+  const grassBox = shapeBoxes(TALL_GRASS)[0];
+  check(
+    "草はブロックの中（当たり判定の箱の中）に収まる",
+    grass.positions.every((v, i) => {
+      const a = i % 3;
+      return v >= 5 + grassBox[a] - 1e-6 && v <= 5 + grassBox[a + 3] + 1e-6;
+    }),
+    `箱 y ${grassBox[1]}..${grassBox[4]}`,
+  );
+  const grassTop = Math.max(...[...grass.positions].filter((_, i) => i % 3 === 1)) - 5;
+  check("草の高さが立方体より低い", grassTop < 1, `上端 ${grassTop.toFixed(2)}`);
+  // 4 枚とも同じ明るさ（面の向きによる明暗を掛けていない）。掛けると 1 本の草が
+  // 手前と奥で違う色になり、平らな板だと分かってしまう。
+  const grassTones = new Set<number>();
+  for (let i = 0; i < grass.colors.length; i += 4) grassTones.add(Math.round(grass.colors[i] * 1000));
+  check("草は 4 枚とも同じ明るさ", grassTones.size === 1, `${[...grassTones].join(" / ")}`);
+
+  // 草は opaque ではないので、下の床の面は消えない
+  pad.fill(AIR);
+  for (let z = 0; z < CHUNK_SIZE; z++) for (let x = 0; x < CHUNK_SIZE; x++) put(x, 0, z, STONE);
+  put(5, 1, 5, TALL_GRASS);
+  const grassOnFloor = buildChunkMesh(pad, lightPad, blockPad).opaque!;
+  check(
+    "草を置いても床は 1 枚に統合されたまま",
+    grassOnFloor.indices.length / 3 === 12 + 8,
+    `${grassOnFloor.indices.length / 3} 三角形（床 12 + 草 8）`,
   );
 
   // 松明は不透明ではないので、隣のブロックの面は消えない

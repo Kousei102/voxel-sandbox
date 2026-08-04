@@ -144,8 +144,8 @@ export function run(): void {
   const fx = Math.floor(player.position.x);
   const fy = Math.floor(player.position.y);
   const fz = Math.floor(player.position.z);
-  check("自分がいるマスは設置不可と判定される", player.overlapsBlock(fx, fy, fz));
-  check("離れたマスは設置可能と判定される", !player.overlapsBlock(fx + 3, fy, fz));
+  check("自分がいるマスは設置不可と判定される", player.overlapsBlock(fx, fy, fz, STONE));
+  check("離れたマスは設置可能と判定される", !player.overlapsBlock(fx + 3, fy, fz, STONE));
 
   describe("ストリーミング（歩き続けたときの読み込み）");
 

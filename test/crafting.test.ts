@@ -1,4 +1,17 @@
-import { COBBLE, CRAFTING_TABLE, GLASS, PLANK, SAND, TORCH, WOOD } from "../src/blocks";
+import {
+  COBBLE,
+  CRAFTING_TABLE,
+  GLASS,
+  PLANK,
+  PLANK_SLAB,
+  PLANK_STAIRS,
+  SAND,
+  STONE,
+  STONE_SLAB,
+  STONE_STAIRS,
+  TORCH,
+  WOOD,
+} from "../src/blocks";
 import { RECIPES, consumeGrid, findRecipe } from "../src/crafting";
 import { isEmpty, type Slot } from "../src/inventory";
 import {
@@ -29,7 +42,7 @@ function grid(size: number, rows: string[], key: Record<string, number>): Slot[]
 export function run(): void {
   describe("クラフト");
 
-  const P = { P: PLANK, S: STICK, W: WOOD, C: COBBLE, D: DIAMOND, A: SAND, O: COAL };
+  const P = { P: PLANK, S: STICK, W: WOOD, C: COBBLE, D: DIAMOND, A: SAND, O: COAL, T: STONE };
 
   // --- 形なし ---
   const planks = findRecipe(grid(2, ["W."], P), 2);
@@ -62,6 +75,38 @@ export function run(): void {
   check("2x2 ではツルハシは作れない", pickIn2 === null);
   const shovel = findRecipe(grid(3, [".P.", ".S.", ".S."], P), 3);
   check("縦 3 のシャベルも作業台が要る", shovel?.out === WOOD_SHOVEL, shovel?.name ?? "無し");
+
+  // --- ハーフブロック ---
+  const stoneSlab = findRecipe(grid(3, ["TTT"], P), 3);
+  check(
+    "石 3 個（横）→ 石ハーフ 6 個",
+    stoneSlab?.out === STONE_SLAB && stoneSlab.count === 6,
+    stoneSlab?.name ?? "無し",
+  );
+  const slabLow = findRecipe(grid(3, ["...", "...", "TTT"], P), 3);
+  check("盤面のどこに置いても同じ", slabLow?.out === STONE_SLAB);
+  const slabIn2 = findRecipe(grid(2, ["TT"], P), 2);
+  check("2 個では作れない（3 列なので作業台が要る）", slabIn2 === null, slabIn2?.name ?? "無し");
+  const plankSlab = findRecipe(grid(3, ["PPP"], P), 3);
+  check(
+    "材質を変えるとハーフも変わる",
+    plankSlab?.out === PLANK_SLAB,
+    plankSlab?.name ?? "無し",
+  );
+
+  // --- 階段 ---
+  const stoneStairs = findRecipe(grid(3, ["T..", "TT.", "TTT"], P), 3);
+  check(
+    "石 6 個（段々）→ 石の階段 4 個",
+    stoneStairs?.out === STONE_STAIRS && stoneStairs.count === 4,
+    stoneStairs?.name ?? "無し",
+  );
+  const stairsMirrored = findRecipe(grid(3, ["..T", ".TT", "TTT"], P), 3);
+  check("階段は左右どちらの段々でも作れる", stairsMirrored?.out === STONE_STAIRS, stairsMirrored?.name ?? "無し");
+  const plankStairs = findRecipe(grid(3, ["P..", "PP.", "PPP"], P), 3);
+  check("材質を変えると階段も変わる", plankStairs?.out === PLANK_STAIRS, plankStairs?.name ?? "無し");
+  const stairsUpsideDown = findRecipe(grid(3, ["TTT", "TT.", "T.."], P), 3);
+  check("上下逆の段々では作れない", stairsUpsideDown === null, stairsUpsideDown?.name ?? "無し");
 
   // --- 左右反転（Minecraft と同じ） ---
   const axeRight = findRecipe(grid(3, ["CC.", "CS.", ".S."], P), 3);

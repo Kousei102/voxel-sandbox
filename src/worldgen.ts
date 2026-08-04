@@ -10,8 +10,10 @@ import {
   SPRUCE_LEAVES,
   SPRUCE_WOOD,
   STONE,
+  TALL_GRASS,
   WATER,
   WOOD,
+  isReplaceable,
 } from "./blocks";
 import { biomeDef, classify, resolve, type TreeKind } from "./biomes";
 import { CHUNK_SIZE, SEA_LEVEL, WORLD_HEIGHT } from "./constants";
@@ -235,14 +237,19 @@ export class WorldGen {
         const at = lz * CHUNK_SIZE + lx;
         const h = height[at];
         // 内側の 16 段で毎回引かないよう、ここで取り出しておく
-        const { surface, filler } = biomeDef(biome[at]);
+        const { surface, filler, grass } = biomeDef(biome[at]);
+        // 草むらは地表のすぐ上の 1 マスだけ。列ごとに 1 回引けば済む
+        const tuft =
+          grass > 0 && h > SEA_LEVEL && hash2(wx, wz, this.seed ^ 0x6a55) < grass
+            ? TALL_GRASS
+            : AIR;
 
         for (let ly = 0; ly < CHUNK_SIZE; ly++) {
           const wy = baseY + ly;
           const index = (ly * CHUNK_SIZE + lz) * CHUNK_SIZE + lx;
 
           if (wy > h) {
-            data[index] = wy <= SEA_LEVEL ? WATER : AIR;
+            data[index] = wy <= SEA_LEVEL ? WATER : wy === h + 1 ? tuft : AIR;
             continue;
           }
           if (wy === 0) {
@@ -297,7 +304,8 @@ export class WorldGen {
       if (lx < 0 || ly < 0 || lz < 0) return;
       if (lx >= CHUNK_SIZE || ly >= CHUNK_SIZE || lz >= CHUNK_SIZE) return;
       const index = (ly * CHUNK_SIZE + lz) * CHUNK_SIZE + lx;
-      if (!overwrite && data[index] !== AIR && data[index] !== WATER) return;
+      // 草むらは葉に押しのけられる（弾くと、木の下だけ葉が欠ける）
+      if (!overwrite && !isReplaceable(data[index])) return;
       data[index] = id;
     };
 

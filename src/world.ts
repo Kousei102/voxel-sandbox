@@ -171,7 +171,8 @@ export class World {
     const face = supportFace(id);
     if (face === NO_SUPPORT) return true;
     const [dx, dy, dz] = OFFSETS[face];
-    return canSupport(this.getVoxel(wx + dx, wy + dy, wz + dz));
+    // 支えになる側から見ると、こちらを向いた面が埋まっている必要がある
+    return canSupport(this.getVoxel(wx + dx, wy + dy, wz + dz), oppositeFace(face));
   }
 
   /**
@@ -182,7 +183,6 @@ export class World {
    * （Minecraft ではドロップする）。
    */
   private breakUnsupported(wx: number, wy: number, wz: number, id: number): void {
-    if (canSupport(id)) return;
     for (let face = 0; face < OFFSETS.length; face++) {
       const [dx, dy, dz] = OFFSETS[face];
       const nx = wx + dx;
@@ -190,8 +190,9 @@ export class World {
       const nz = wz + dz;
       const neighbor = this.getVoxel(nx, ny, nz);
       if (neighbor === AIR) continue;
-      // 隣が「こちら側」に支えを求めていたら、その支えが今まさに消えた
-      if (supportFace(neighbor) === oppositeFace(face)) this.setVoxel(nx, ny, nz, AIR);
+      // 隣が「こちら側」に支えを求めているなら、今の中身で支えられるか見る
+      if (supportFace(neighbor) !== oppositeFace(face)) continue;
+      if (!canSupport(id, face)) this.setVoxel(nx, ny, nz, AIR);
     }
   }
 

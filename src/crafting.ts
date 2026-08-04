@@ -1,4 +1,23 @@
-import { COBBLE, CRAFTING_TABLE, GLASS, PLANK, SAND, SPRUCE_WOOD, TORCH, WOOD } from "./blocks";
+import {
+  COBBLE,
+  COBBLE_SLAB,
+  COBBLE_STAIRS,
+  CRAFTING_TABLE,
+  GLASS,
+  PLANK,
+  PLANK_SLAB,
+  PLANK_STAIRS,
+  SAND,
+  SANDSTONE,
+  SANDSTONE_SLAB,
+  SANDSTONE_STAIRS,
+  SPRUCE_WOOD,
+  STONE,
+  STONE_SLAB,
+  STONE_STAIRS,
+  TORCH,
+  WOOD,
+} from "./blocks";
 import { isEmpty, type Slot } from "./inventory";
 import {
   COAL,
@@ -54,11 +73,42 @@ export const RECIPES: readonly Recipe[] = [
   // 石炭を棒の上に。1 列なので 2x2 でも作れる（Minecraft と同じ）。
   { name: "松明", out: TORCH, count: 4, shape: ["C", "S"], key: { C: COAL, S: STICK } },
 
+  // ハーフブロックは横 3 列から 6 個（Minecraft と同じ）。3 列なので作業台が要る。
+  slabRecipe("石", STONE, STONE_SLAB),
+  slabRecipe("丸石", COBBLE, COBBLE_SLAB),
+  slabRecipe("板", PLANK, PLANK_SLAB),
+  slabRecipe("砂岩", SANDSTONE, SANDSTONE_SLAB),
+
+  // 階段は 6 個から 4 個（Minecraft と同じで、少し目減りする）。
+  stairRecipe("石", STONE, STONE_STAIRS),
+  stairRecipe("丸石", COBBLE, COBBLE_STAIRS),
+  stairRecipe("板", PLANK, PLANK_STAIRS),
+  stairRecipe("砂岩", SANDSTONE, SANDSTONE_STAIRS),
+
   ...toolRecipes("木", PLANK, WOOD_PICKAXE, WOOD_AXE, WOOD_SHOVEL),
   ...toolRecipes("石", COBBLE, STONE_PICKAXE, STONE_AXE, STONE_SHOVEL),
   ...toolRecipes("鉄", IRON_INGOT, IRON_PICKAXE, IRON_AXE, IRON_SHOVEL),
   ...toolRecipes("ダイヤ", DIAMOND, DIAMOND_PICKAXE, DIAMOND_AXE, DIAMOND_SHOVEL),
 ];
+
+/** ハーフはどの材質も形が同じで、材料だけが変わる。 */
+function slabRecipe(name: string, material: number, slab: number): Recipe {
+  return { name: `${name}ハーフ`, out: slab, count: 6, shape: ["MMM"], key: { M: material } };
+}
+
+/**
+ * 階段もどの材質も形が同じ。左右反転を受け付けるので、
+ * 逆向きの段々（`["..M", ".MM", "MMM"]`）でも作れる。
+ */
+function stairRecipe(name: string, material: number, stairs: number): Recipe {
+  return {
+    name: `${name}の階段`,
+    out: stairs,
+    count: 4,
+    shape: ["M..", "MM.", "MMM"],
+    key: { M: material },
+  };
+}
 
 /** 道具 3 種はどの階層も形が同じで、材料だけが変わる。 */
 function toolRecipes(

@@ -6,9 +6,13 @@ import {
   NearestFilter,
   type Texture,
 } from "three";
+import { AIR, shapeBounds } from "./blocks";
 
 const STAGES = 10;
 const SIZE = 16;
+
+/** 形を囲む箱の控え。 */
+const bounds = [0, 0, 0, 1, 1, 1];
 
 /**
  * 採掘中のひび割れ。10 段階。
@@ -39,15 +43,25 @@ export class CrackOverlay {
     this.mesh.renderOrder = 1;
   }
 
-  /** stage は 0..9。-1 で消す。 */
-  setStage(stage: number, x = 0, y = 0, z = 0): void {
+  /**
+   * stage は 0..9。-1 で消す。
+   * `id` はひび割れを掛けるブロック。ハーフブロックなら半分の高さに縮める
+   * （立方体のまま出すと、何も無い所にひびが浮く）。
+   */
+  setStage(stage: number, x = 0, y = 0, z = 0, id = AIR): void {
     if (stage < 0) {
       this.mesh.visible = false;
       this.stage = -1;
       return;
     }
     this.mesh.visible = true;
-    this.mesh.position.set(x + 0.5, y + 0.5, z + 0.5);
+    shapeBounds(id, bounds);
+    this.mesh.scale.set(bounds[3] - bounds[0], bounds[4] - bounds[1], bounds[5] - bounds[2]);
+    this.mesh.position.set(
+      x + (bounds[0] + bounds[3]) / 2,
+      y + (bounds[1] + bounds[4]) / 2,
+      z + (bounds[2] + bounds[5]) / 2,
+    );
     const clamped = Math.min(STAGES - 1, stage);
     if (clamped === this.stage) return;
     this.stage = clamped;

@@ -14,6 +14,7 @@ import {
   SPRUCE_LEAVES,
   SPRUCE_WOOD,
   STONE,
+  TALL_GRASS,
   WATER,
   WOOD,
   blockName,
@@ -169,6 +170,37 @@ export function run(): void {
     "木の生成数が妥当",
     trunks > 3,
     `${trunks} 本 / 128x128 ブロック（${[...kinds].map(([id, c]) => `${blockName(id)} ${c}`).join(" / ")}）`,
+  );
+
+  // --- 草むら ---
+  // 地表のすぐ上に生え、生えやすさはバイオームの表どおり。浮いていたり
+  // 砂や雪の上に生えていたりすると、目で見るまで気付けない。
+  let tufts = 0;
+  let floatingTufts = 0;
+  let wrongSurface = 0;
+  const tuftBiomes = new Map<number, number>();
+  for (let x = -400; x < 400; x += 7) {
+    for (let z = -400; z < 400; z += 7) {
+      const h = gen.heightAt(x, z);
+      if (voxel(x, h + 1, z) !== TALL_GRASS) continue;
+      tufts++;
+      const b = gen.biomeAt(x, z);
+      tuftBiomes.set(b, (tuftBiomes.get(b) ?? 0) + 1);
+      if (voxel(x, h, z) === AIR) floatingTufts++;
+      if (biomeDef(b).grass === 0) wrongSurface++;
+    }
+  }
+  console.log(
+    `      草むら ${tufts} 本: ${[...tuftBiomes]
+      .map(([b, c]) => `${biomeName(b)} ${c}`)
+      .join(" / ")}`,
+  );
+  check("草むらが生える", tufts > 20, `${tufts} 本`);
+  check("草むらが浮いていない", floatingTufts === 0, `${floatingTufts} 本`);
+  check(
+    "草むらはバイオームの決めた場所にだけ生える",
+    wrongSurface === 0,
+    `${wrongSurface} 本`,
   );
 
   describe("バイオーム");

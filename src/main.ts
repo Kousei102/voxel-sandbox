@@ -15,14 +15,15 @@ import {
   CRAFTING_TABLE,
   NO_SUPPORT,
   PALETTE,
-  TORCH,
   WATER,
   baseBlock,
   blockName,
-  faceFromNormal,
-  isSolid,
+  faceFromYaw,
+  isReplaceable,
+  placeSpot,
+  placedVariant,
+  shapeBounds,
   supportFace,
-  torchVariant,
 } from "./blocks";
 import { biomeName } from "./biomes";
 import { AUTOSAVE_INTERVAL, CHUNK_BITS, REACH, RENDER_DISTANCE, CHUNK_SIZE } from "./constants";
@@ -308,6 +309,23 @@ document.addEventListener("mouseup", (event) => {
   }
 });
 
+/**
+ * 選択枠を、狙っているブロックの形に合わせる。ハーフブロックを狙って
+ * 立方体の枠が出ると、どちらの半分を狙っているのか分からなくなる。
+ */
+function fitHighlight(target: RaycastHit): void {
+  shapeBounds(target.id, bounds);
+  highlight.scale.set(bounds[3] - bounds[0], bounds[4] - bounds[1], bounds[5] - bounds[2]);
+  highlight.position.set(
+    target.block.x + (bounds[0] + bounds[3]) / 2,
+    target.block.y + (bounds[1] + bounds[4]) / 2,
+    target.block.z + (bounds[2] + bounds[5]) / 2,
+  );
+}
+
+/** 形を囲む箱の控え。毎フレーム使うので配列は使い回す。 */
+const bounds = [0, 0, 0, 1, 1, 1];
+
 /** 右クリック: 作業台なら開く、それ以外は持っているブロックを置く。 */
 function useOrPlace(): void {
   if (!hit) return;
@@ -320,19 +338,16 @@ function useOrPlace(): void {
   const base = placedBlock(item);
   if (base === AIR) return;
 
-  const x = hit.block.x + hit.normal.x;
-  const y = hit.block.y + hit.normal.y;
-  const z = hit.block.z + hit.normal.z;
+  // 置くマス（草むらを狙ったならそのマス自身）と向きは placeSpot() が決める。
+  // 階段は置く人の向きで決まるので、見ている向きも渡す。
+  const spot = placeSpot(hit, faceFromYaw(player.yaw));
+  const { x, y, z } = spot;
   const target = world.getVoxel(x, y, z);
-  if (target !== AIR && target !== WATER) return;
-  if (isSolid(base) && player.overlapsBlock(x, y, z)) return;
+  if (!isReplaceable(target)) return;
 
-  // 松明は「今クリックした面」に貼り付ける。狙ったブロックは新しいマスから見て
-  // 法線の逆側にあるので、支えの向きはその面番号になる（天井を向いていれば置けない）。
-  let id = base;
-  if (base === TORCH) {
-    id = torchVariant(faceFromNormal(-hit.normal.x, -hit.normal.y, -hit.normal.z));
-  }
+  const id = placedVariant(base, spot);
+
+  if (player.overlapsBlock(x, y, z, id)) return;
   if (supportFace(base) !== NO_SUPPORT) {
     if (id === AIR || target === WATER || !world.canPlaceAt(x, y, z, id)) {
       hud.flash(`${blockName(base)} は床か壁にしか付けられません`);
@@ -442,7 +457,7 @@ function frame(now: number): void {
   camera.getWorldDirection(lookDirection);
   hit = raycastVoxels(world, camera.position, lookDirection, REACH);
   highlight.visible = playing && hit !== null;
-  if (hit) highlight.position.set(hit.block.x + 0.5, hit.block.y + 0.5, hit.block.z + 0.5);
+  if (hit) fitHighlight(hit);
 
   updateMining(dt);
 
@@ -534,7 +549,7 @@ function updateMining(dt: number): void {
   }
 
   const target = mining.target;
-  if (target) crack.setStage(mining.stage, target.x, target.y, target.z);
+  if (target) crack.setStage(mining.stage, target.x, target.y, target.z, hit?.id ?? AIR);
   else crack.setStage(-1);
 }
 

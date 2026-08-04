@@ -52,6 +52,11 @@ export interface BiomeDef {
    */
   readonly trees: number;
   readonly treeKind: TreeKind;
+  /**
+   * 地表 1 マスごとに草むらが生える確率 0..1。
+   * 雪・砂・岩肌の上には生やさないので、地表が草のバイオームだけが 0 より大きい。
+   */
+  readonly grass: number;
 }
 
 /**
@@ -64,18 +69,19 @@ const DRY = 0.0;
 const WET = 0.02;
 
 export const BIOMES: readonly BiomeDef[] = [
-  { id: OCEAN, name: "海", surface: SAND, filler: SAND, trees: 0, treeKind: "oak" },
-  { id: BEACH, name: "浜", surface: SAND, filler: SAND, trees: 0, treeKind: "oak" },
+  { id: OCEAN, name: "海", surface: SAND, filler: SAND, trees: 0, treeKind: "oak", grass: 0 },
+  { id: BEACH, name: "浜", surface: SAND, filler: SAND, trees: 0, treeKind: "oak", grass: 0 },
   // 砂漠だけ木の代わりにサボテンが立つ
-  { id: DESERT, name: "砂漠", surface: SAND, filler: SANDSTONE, trees: 0.35, treeKind: "cactus" },
-  { id: PLAINS, name: "平原", surface: GRASS, filler: DIRT, trees: 0.3, treeKind: "oak" },
-  { id: FOREST, name: "森", surface: GRASS, filler: DIRT, trees: 0.8, treeKind: "oak" },
-  { id: TAIGA, name: "針葉樹林", surface: GRASS, filler: DIRT, trees: 0.65, treeKind: "spruce" },
-  { id: SNOWY, name: "雪原", surface: SNOW, filler: DIRT, trees: 0.15, treeKind: "spruce" },
-  { id: ALPINE, name: "高山", surface: SNOW, filler: STONE, trees: 0, treeKind: "spruce" },
+  { id: DESERT, name: "砂漠", surface: SAND, filler: SANDSTONE, trees: 0.35, treeKind: "cactus", grass: 0 },
+  // 平原がいちばん草深い（Minecraft と同じで、森は木の下なので少なめ）
+  { id: PLAINS, name: "平原", surface: GRASS, filler: DIRT, trees: 0.3, treeKind: "oak", grass: 0.3 },
+  { id: FOREST, name: "森", surface: GRASS, filler: DIRT, trees: 0.8, treeKind: "oak", grass: 0.15 },
+  { id: TAIGA, name: "針葉樹林", surface: GRASS, filler: DIRT, trees: 0.65, treeKind: "spruce", grass: 0.1 },
+  { id: SNOWY, name: "雪原", surface: SNOW, filler: DIRT, trees: 0.15, treeKind: "spruce", grass: 0 },
+  { id: ALPINE, name: "高山", surface: SNOW, filler: STONE, trees: 0, treeKind: "spruce", grass: 0 },
   // 暖かい土地の山。雪をかぶらないので、砂漠から生えた山も砂 → 岩肌になる。
-  { id: ALPINE_ROCK, name: "岩山", surface: STONE, filler: STONE, trees: 0, treeKind: "oak" },
-  { id: SNOWY_BEACH, name: "雪の浜", surface: SNOW, filler: SAND, trees: 0, treeKind: "spruce" },
+  { id: ALPINE_ROCK, name: "岩山", surface: STONE, filler: STONE, trees: 0, treeKind: "oak", grass: 0 },
+  { id: SNOWY_BEACH, name: "雪の浜", surface: SNOW, filler: SAND, trees: 0, treeKind: "spruce", grass: 0 },
 ];
 
 /** 気候だけで決まるバイオーム。**高さを見ないこと**（循環する）。 */
