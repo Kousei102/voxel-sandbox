@@ -18,6 +18,7 @@ import {
   WATER,
   baseBlock,
   blockName,
+  blockSound,
   faceFromYaw,
   isReplaceable,
   placeSpot,
@@ -25,6 +26,7 @@ import {
   shapeBounds,
   supportFace,
 } from "./blocks";
+import { AudioEngine } from "./audio";
 import { biomeName } from "./biomes";
 import { AUTOSAVE_INTERVAL, CHUNK_BITS, REACH, RENDER_DISTANCE, CHUNK_SIZE } from "./constants";
 import { CrackOverlay } from "./crack";
@@ -35,6 +37,7 @@ import { NO_ITEM, dropOf, itemName, placedBlock } from "./items";
 import { Mining, breakTime, canHarvest } from "./mining";
 import { Player } from "./player";
 import { raycastVoxels, type RaycastHit } from "./raycast";
+import { DigCadence, StepCadence, clampVolume } from "./sfx";
 import { Sky } from "./sky";
 import { clearSave, countEdits, deserializeEdits, load, save, serializeEdits } from "./storage";
 import { Hud } from "./ui";
@@ -82,6 +85,17 @@ const mining = new Mining();
 const vitals = new Vitals();
 const player = new Player(camera);
 
+// 音。鳴らすかどうかの判断は sfx.ts、実際に鳴らすのは audio.ts。
+// ここは「起きたこと」を渡すだけにして、条件を書かない。
+const audio = new AudioEngine();
+const stepCadence = new StepCadence();
+const digCadence = new DigCadence();
+/** 足音・着水の判定に使う、前のフレームの状態。 */
+let lastFootX = 0;
+let lastFootZ = 0;
+let wasOnGround = false;
+let wasInWater = false;
+
 const deathScreen = document.getElementById("death") as HTMLElement;
 const deathCause = document.getElementById("deathcause") as HTMLElement;
 
@@ -102,6 +116,8 @@ screen.onChange = () => {
   hud.refresh();
   saveDirty = true;
 };
+
+screen.onCraft = () => audio.play("craft");
 
 function setCreative(on: boolean): void {
   creative = on;
@@ -158,6 +174,7 @@ function currentSave() {
     creative,
     health: vitals.health,
     inventory: inventory.serialize(),
+    volume: audio.getVolume(),
     edits: serializeEdits(world.editsForSave()),
   };
 }
@@ -176,6 +193,7 @@ function saveNow(message = "保存しました"): void {
 const saved = load();
 if (typeof saved?.time === "number" && Number.isFinite(saved.time)) dayNight.setTime(saved.time);
 inventory.deserialize(saved?.inventory);
+audio.setVolume(clampVolume(saved?.volume));
 setCreative(saved?.creative ?? false);
 // 死んだまま保存された場合は満タンで再開する（読み込み直後に死亡画面を出さない）
 if (typeof saved?.health === "number" && saved.health > 0) {
@@ -190,6 +208,8 @@ startWorld(
 // --- 入力 ---------------------------------------------------------------
 
 function requestLock(): void {
+  // 自動再生の制限があるので、AudioContext はここ（ユーザー操作の中）で起こす
+  audio.resume();
   // ブラウザによっては Promise を返し、拒否されることがある
   Promise.resolve(canvas.requestPointerLock()).catch(() =>
     hud.flash("ポインタのロックに失敗しました。もう一度クリックしてください"),
@@ -228,6 +248,27 @@ timeInput.addEventListener("input", () => {
   saveDirty = true;
 });
 syncTimeInput();
+
+// 音量。0 で無音にできるようにしておく（音は好みが分かれるので、必ず切れること）。
+const volumeInput = document.getElementById("volume") as HTMLInputElement;
+const volumeLabel = document.getElementById("volumelabel") as HTMLElement;
+
+function syncVolumeInput(): void {
+  volumeInput.value = String(Math.round(audio.getVolume() * 100));
+  volumeLabel.textContent = `${Math.round(audio.getVolume() * 100)}%`;
+}
+
+volumeInput.addEventListener("input", () => {
+  audio.setVolume(Number(volumeInput.value) / 100);
+  volumeLabel.textContent = `${Math.round(audio.getVolume() * 100)}%`;
+  saveDirty = true;
+});
+volumeInput.addEventListener("change", () => {
+  // つまみを離したところで 1 回鳴らして、いまの音量が分かるようにする
+  audio.resume();
+  audio.play("place", "wood");
+});
+syncVolumeInput();
 
 modeButton.addEventListener("click", () => {
   setCreative(!creative);
@@ -355,6 +396,7 @@ function useOrPlace(): void {
     }
   }
   if (!world.setVoxel(x, y, z, id)) return;
+  audio.play("place", blockSound(id));
 
   if (!creative) inventory.consumeSelected(1);
   hud.refresh();
@@ -365,6 +407,8 @@ function useOrPlace(): void {
 function breakBlock(x: number, y: number, z: number, blockId: number, tool: number): void {
   if (!world.setVoxel(x, y, z, AIR)) return;
   saveDirty = true;
+  audio.play("break", blockSound(blockId));
+  digCadence.reset();
 
   if (creative) return;
   if (!canHarvest(blockId, tool)) return;
@@ -463,6 +507,8 @@ function frame(now: number): void {
 
   dayNight.advance(dt);
   updateEnvironment();
+  // 水中のこもりに underwater を使うので、updateEnvironment のあとに回す
+  updateSounds();
   // 息の判定に水中かどうかを使うので、updateEnvironment のあとに回す
   updateVitals(dt);
   sky.object.position.copy(camera.position);
@@ -501,6 +547,7 @@ function frame(now: number): void {
  */
 function updateVitals(dt: number): void {
   const wasDead = vitals.dead;
+  const beforeHealth = vitals.health;
 
   if (playing) {
     vitals.update(dt, {
@@ -515,6 +562,8 @@ function updateVitals(dt: number): void {
   }
 
   hud.setVitals(vitals.health, vitals.airFraction, vitals.hurtFlash, playing && !creative);
+  // 減ったときだけ鳴らす（自然回復で毎秒鳴らさない）
+  if (vitals.health < beforeHealth) audio.play(vitals.dead ? "death" : "hurt");
 
   if (vitals.dead && !wasDead) {
     breaking = false;
@@ -537,6 +586,7 @@ function formatBreakTime(blockId: number, tool: number): string {
 function updateMining(dt: number): void {
   if (!playing || !breaking || !hit) {
     mining.reset();
+    digCadence.reset();
     crack.setStage(-1);
     return;
   }
@@ -544,13 +594,51 @@ function updateMining(dt: number): void {
   const tool = inventory.selectedItem;
   const { x, y, z } = hit.block;
   const blockId = hit.id;
+  // 狙いを変えると進み具合は 0 に戻るので、増えたぶんだけを渡す
+  const before = mining.progress;
   if (mining.update(dt, hit.block, blockId, tool)) {
     breakBlock(x, y, z, blockId, tool);
+  } else if (digCadence.advance(Math.max(0, mining.progress - before))) {
+    // 掘っている間のコツコツ音。進み具合で刻むので、硬いブロックほど間隔が空く
+    audio.play("dig", blockSound(blockId));
   }
 
   const target = mining.target;
   if (target) crack.setStage(mining.stage, target.x, target.y, target.z, hit?.id ?? AIR);
   else crack.setStage(-1);
+}
+
+/**
+ * 足音・着地・水しぶきと、水中のこもり。
+ *
+ * **鳴らすかどうかの判断は `sfx.ts` に置いてある。** ここは「どれだけ動いたか」
+ * 「地面に着いたか」を渡すだけにして、条件をここに書かないこと
+ * （書くと DOM 込みでしか確かめられなくなる）。
+ */
+function updateSounds(): void {
+  audio.setUnderwater(underwater);
+
+  const { x, y, z } = player.position;
+  const moved = Math.hypot(x - lastFootX, z - lastFootZ);
+  lastFootX = x;
+  lastFootZ = z;
+
+  if (!playing) {
+    stepCadence.reset();
+    wasOnGround = player.onGround;
+    wasInWater = player.inWater;
+    return;
+  }
+
+  // 足元のブロック。立っている面の材質で足音が変わる
+  const ground = world.getVoxel(Math.floor(x), Math.floor(y - 0.1), Math.floor(z));
+
+  if (stepCadence.advance(moved, player)) audio.play("step", blockSound(ground));
+  if (player.onGround && !wasOnGround) audio.play("land", blockSound(ground));
+  if (player.inWater !== wasInWater) audio.play("splash");
+
+  wasOnGround = player.onGround;
+  wasInWater = player.inWater;
 }
 
 /**

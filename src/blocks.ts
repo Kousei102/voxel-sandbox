@@ -99,6 +99,14 @@ const STAIR_VARIANTS_PER_MATERIAL = 7;
 export type ToolKind = "pickaxe" | "axe" | "shovel";
 
 /**
+ * 音の材質グループ。足音・破壊・設置の音はここから作る（`sfx.ts` の表）。
+ * **既定は "stone" なので、柔らかいものには必ず書くこと。**
+ * 書き忘れても音が鳴らなくなるわけではなく「石の音がする」ので、
+ * `npm test` が全ブロックの割り当てを一覧で出す。
+ */
+export type SoundGroup = "grass" | "dirt" | "sand" | "stone" | "wood" | "glass" | "snow" | "none";
+
+/**
  * 面の番号。`0=+X 1=-X 2=+Y 3=-Y 4=+Z 5=-Z`（CLAUDE.md の規約）。
  * `lighting.ts` の `OFFSETS` はこの順に並べてあり、テストで一致を確かめている。
  */
@@ -198,6 +206,8 @@ export interface BlockDef {
   readonly minTier: number;
   /** 自分で出す光の量 0..15。0 なら光らない。スカイライトとは別の系統。 */
   readonly emission: number;
+  /** 足音・破壊・設置の音の材質。既定は "stone"。 */
+  readonly sound: SoundGroup;
   readonly model: BlockModel;
   /**
    * ブロックの形。既定は立方体 1 個。当たり判定は `solid` なブロックだけがこれを使う
@@ -232,6 +242,7 @@ const TORCH_OPTS = {
   hardness: 0,
   emission: TORCH_LIGHT,
   model: "torch" as const,
+  sound: "wood" as const,
 };
 
 function def(
@@ -258,6 +269,7 @@ function def(
     tool: opts.tool ?? null,
     minTier: opts.minTier ?? TIER_HAND,
     emission: opts.emission ?? 0,
+    sound: opts.sound ?? "stone",
     model: opts.model ?? "cube",
     boxes: opts.boxes ?? FULL_BOX,
     supportFace: opts.supportFace ?? NO_SUPPORT,
@@ -342,12 +354,12 @@ function stairSet(
 }
 
 export const BLOCKS: readonly BlockDef[] = [
-  def(AIR, "Air", { top: 0x000000 }, { opaque: false, solid: false, alpha: 0, replaceable: true }),
-  def(GRASS, "草", { top: 0x6aa84f, side: 0x7a6444, bottom: 0x6b533a }, { hardness: 0.6, tool: "shovel" }),
-  def(DIRT, "土", { top: 0x6b533a }, { hardness: 0.5, tool: "shovel" }),
+  def(AIR, "Air", { top: 0x000000 }, { opaque: false, solid: false, alpha: 0, replaceable: true, sound: "none" }),
+  def(GRASS, "草", { top: 0x6aa84f, side: 0x7a6444, bottom: 0x6b533a }, { hardness: 0.6, tool: "shovel", sound: "grass" }),
+  def(DIRT, "土", { top: 0x6b533a }, { hardness: 0.5, tool: "shovel", sound: "dirt" }),
   def(STONE, "石", { top: 0x8a8f96 }, { hardness: 1.5, tool: "pickaxe", minTier: TIER_WOOD }),
   def(COBBLE, "丸石", { top: 0x767b82 }, { hardness: 2, tool: "pickaxe", minTier: TIER_WOOD }),
-  def(SAND, "砂", { top: 0xd8c99a }, { hardness: 0.5, tool: "shovel" }),
+  def(SAND, "砂", { top: 0xd8c99a }, { hardness: 0.5, tool: "shovel", sound: "sand" }),
   def(
     WATER,
     "水",
@@ -359,19 +371,20 @@ export const BLOCKS: readonly BlockDef[] = [
       translucent: true,
       solid: false,
       replaceable: true,
+      sound: "none",
       alpha: 0.72,
       hardness: UNBREAKABLE,
     },
   ),
-  def(WOOD, "原木", { top: 0x8a6a3f, side: 0x5f4526 }, { hardness: 2, tool: "axe" }),
-  def(LEAVES, "葉", { top: 0x3f7a3a }, { hardness: 0.2 }),
-  def(SNOW, "雪", { top: 0xeef3f7, side: 0xdde5ec, bottom: 0x8a8f96 }, { hardness: 0.2, tool: "shovel" }),
-  def(PLANK, "板", { top: 0xb18a56 }, { hardness: 2, tool: "axe" }),
+  def(WOOD, "原木", { top: 0x8a6a3f, side: 0x5f4526 }, { hardness: 2, tool: "axe", sound: "wood" }),
+  def(LEAVES, "葉", { top: 0x3f7a3a }, { hardness: 0.2, sound: "grass" }),
+  def(SNOW, "雪", { top: 0xeef3f7, side: 0xdde5ec, bottom: 0x8a8f96 }, { hardness: 0.2, tool: "shovel", sound: "snow" }),
+  def(PLANK, "板", { top: 0xb18a56 }, { hardness: 2, tool: "axe", sound: "wood" }),
   def(
     GLASS,
     "ガラス",
     { top: 0xa9d8e8 },
-    { opaque: false, translucent: true, alpha: 0.3, hardness: 0.3 },
+    { opaque: false, translucent: true, alpha: 0.3, hardness: 0.3, sound: "glass" },
   ),
   def(BRICK, "レンガ", { top: 0xa4553f }, { hardness: 2, tool: "pickaxe", minTier: TIER_WOOD }),
   def(BEDROCK, "岩盤", { top: 0x2b2f35 }, { hardness: UNBREAKABLE }),
@@ -389,7 +402,7 @@ export const BLOCKS: readonly BlockDef[] = [
     CRAFTING_TABLE,
     "作業台",
     { top: 0x9a6f3e, side: 0x7d5730, bottom: 0xb18a56 },
-    { hardness: 2.5, tool: "axe" },
+    { hardness: 2.5, tool: "axe", sound: "wood" },
   ),
   // top = 炎の色、side = 柄の色。mesher の松明パスがこの 2 色を使い分ける。
   def(TORCH, "松明", TORCH_COLORS, { ...TORCH_OPTS, supportFace: FACE_YN }),
@@ -419,13 +432,14 @@ export const BLOCKS: readonly BlockDef[] = [
     tool: "pickaxe",
     minTier: TIER_WOOD,
   }),
-  def(SPRUCE_WOOD, "トウヒの原木", { top: 0x6b4f33, side: 0x3f2d1c }, { hardness: 2, tool: "axe" }),
-  def(SPRUCE_LEAVES, "トウヒの葉", { top: 0x2c5c3a }, { hardness: 0.2 }),
+  def(SPRUCE_WOOD, "トウヒの原木", { top: 0x6b4f33, side: 0x3f2d1c }, { hardness: 2, tool: "axe", sound: "wood" }),
+  def(SPRUCE_LEAVES, "トウヒの葉", { top: 0x2c5c3a }, { hardness: 0.2, sound: "grass" }),
   // 立方体より少し細いので、松明と同じ専用パスで描く。
   // opaque を true にすると、細いぶん隣の面が消えて地面が透けて見える。
   def(CACTUS, "サボテン", { top: 0x5c9b47, side: 0x4e8b3c, bottom: 0x3f7331 }, {
     opaque: false,
     hardness: 0.4,
+    sound: "grass",
     model: "boxes",
     boxes: CACTUS_BOX,
     supportFace: FACE_YN,
@@ -438,6 +452,7 @@ export const BLOCKS: readonly BlockDef[] = [
     solid: false,
     replaceable: true,
     hardness: 0,
+    sound: "grass",
     model: "cross",
     boxes: CROSS_BOX,
     supportFace: FACE_YN,
@@ -457,6 +472,7 @@ export const BLOCKS: readonly BlockDef[] = [
   ...slabPair(PLANK_SLAB, PLANK_SLAB_TOP, "板ハーフ", { top: 0xb18a56 }, {
     hardness: 2,
     tool: "axe",
+    sound: "wood",
   }),
   ...slabPair(
     SANDSTONE_SLAB,
@@ -484,7 +500,7 @@ export const BLOCKS: readonly BlockDef[] = [
     FIRST_STAIR_VARIANT + STAIR_VARIANTS_PER_MATERIAL * 2,
     "板の階段",
     { top: 0xb18a56 },
-    { hardness: 2, tool: "axe" },
+    { hardness: 2, tool: "axe", sound: "wood" },
   ),
   ...stairSet(
     SANDSTONE_STAIRS,
@@ -679,6 +695,11 @@ export function isReplaceable(id: number): boolean {
 
 export function blockModel(id: number): BlockModel {
   return blockDef(id).model;
+}
+
+/** 足音・破壊・設置の音の材質。実際の音作りは `sfx.ts`。 */
+export function blockSound(id: number): SoundGroup {
+  return blockDef(id).sound;
 }
 
 /**

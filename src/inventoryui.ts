@@ -41,6 +41,8 @@ export class InventoryScreen {
 
   /** 中身が変わったときに呼ばれる（ホットバーの再描画とセーブに使う）。 */
   onChange: () => void = () => {};
+  /** クラフトが成立して 1 回ぶん取り出したとき（音を鳴らすのに使う）。 */
+  onCraft: () => void = () => {};
 
   constructor(private readonly inventory: Inventory) {
     this.build(this.gridEl, this.gridSlots, GRID_SLOTS, (i, whole) => this.clickGrid(i, whole));
@@ -196,6 +198,7 @@ export class InventoryScreen {
       return;
     }
     consumeGrid(this.activeGrid());
+    this.onCraft();
     this.refresh();
   }
 

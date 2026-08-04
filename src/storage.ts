@@ -12,6 +12,8 @@ export interface SaveData {
   health?: number;
   /** [item, count, ...] を 36 スロット分。空きは 0,0。 */
   inventory?: number[];
+  /** 音量 0..1。古いセーブには無いので省略可（既定に戻る）。 */
+  volume?: number;
   /** チャンクキー -> [localIndex, blockId, ...] の平坦な配列。 */
   edits: Record<string, number[]>;
 }
