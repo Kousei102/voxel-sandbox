@@ -1,12 +1,9 @@
 import { Euler, Vector3, type PerspectiveCamera } from "three";
-import { WATER, collisionBoxes } from "./blocks";
+import { WATER } from "./blocks";
+import { PLAYER_SIZE, blockOverlapsBody, moveBody } from "./physics";
 import type { World } from "./world";
 
-const WIDTH = 0.6;
-const HEIGHT = 1.8;
 const EYE = 1.62;
-const HALF = WIDTH / 2;
-const EPS = 1e-3;
 
 const WALK_SPEED = 5.2;
 const SPRINT_SPEED = 8.4;
@@ -17,11 +14,6 @@ const GRAVITY = 30;
 const JUMP_SPEED = 9.2;
 const TERMINAL = 55;
 const SWIM_SPEED = 4.5;
-/**
- * 自動で登れる段差。ハーフブロック（0.5）と階段の 1 段は登れて、
- * 立方体（1.0）は登れない高さにしてある。
- */
-const STEP_HEIGHT = 0.6;
 
 const scratch = new Vector3();
 
@@ -88,7 +80,8 @@ export class Player {
       this.updateWalk(dt, sprinting);
     }
 
-    this.move(world, dt);
+    // 段差を登れるかは、横に動かす前の状態で決まる（`moveBody` のコメント参照）
+    moveBody(world, this, PLAYER_SIZE, dt, this.onGround && !this.flying);
     this.syncCamera();
   }
 
@@ -138,136 +131,12 @@ export class Player {
     }
   }
 
-  /** 軸ごとに動かして、めり込んだら接触面まで戻す。 */
-  private move(world: World, dt: number): void {
-    const p = this.position;
-
-    p.x += this.velocity.x * dt;
-    if (collides(world, p) && !this.stepUp(world, p)) {
-      p.x = this.velocity.x > 0 ? hitMin[0] - HALF - EPS : hitMax[0] + HALF + EPS;
-      this.velocity.x = 0;
-    }
-
-    p.z += this.velocity.z * dt;
-    if (collides(world, p) && !this.stepUp(world, p)) {
-      p.z = this.velocity.z > 0 ? hitMin[2] - HALF - EPS : hitMax[2] + HALF + EPS;
-      this.velocity.z = 0;
-    }
-
-    const wasFalling = this.velocity.y <= 0;
-    p.y += this.velocity.y * dt;
-    if (collides(world, p)) {
-      if (wasFalling) {
-        // ぶつかった箱のうち一番高い上面に立つ（ハーフブロックなら半分の高さ）
-        p.y = hitMax[1];
-        this.onGround = true;
-      } else {
-        p.y = hitMin[1] - HEIGHT - EPS;
-      }
-      this.velocity.y = 0;
-    } else if (wasFalling) {
-      // 足元に何も無ければ落下中
-      this.onGround = collides(world, scratch.copy(p).setY(p.y - EPS * 4));
-    }
-  }
-
-  /**
-   * 半ブロックまでの段差を自動で登る。**これが無いとハーフブロックと階段は
-   * ジャンプしないと上れず、階段を置く意味が無くなる。**
-   * 立方体は 1.0 あって `STEP_HEIGHT` を超えるので、壁は登れないまま。
-   *
-   * 呼ぶのは横移動でぶつかった直後だけ。`collides()` が残した `hitMax` を見るので、
-   * **間に別の `collides()` を挟まないこと。**
-   */
-  private stepUp(world: World, p: Vector3): boolean {
-    if (!this.onGround || this.flying) return false;
-    const top = hitMax[1];
-    if (top - p.y > STEP_HEIGHT || top <= p.y) return false;
-
-    const before = p.y;
-    p.y = top;
-    // 登った先の頭上が塞がっていたら、素直にぶつかったままにする
-    if (collides(world, p)) {
-      p.y = before;
-      return false;
-    }
-    return true;
-  }
-
   /**
    * このブロックを置いたらプレイヤーと重なるか（設置の可否判定に使う）。
    * ブロックごとに形が違うので、足元の下付きハーフのように
    * 重ならない形なら置ける。
    */
   overlapsBlock(x: number, y: number, z: number, id: number): boolean {
-    const p = this.position;
-    for (const b of collisionBoxes(id)) {
-      if (
-        x + b[3] > p.x - HALF &&
-        x + b[0] < p.x + HALF &&
-        y + b[4] > p.y &&
-        y + b[1] < p.y + HEIGHT &&
-        z + b[5] > p.z - HALF &&
-        z + b[2] < p.z + HALF
-      ) {
-        return true;
-      }
-    }
-    return false;
+    return blockOverlapsBody(x, y, z, id, this.position, PLAYER_SIZE);
   }
-}
-
-/**
- * 直近の `collides()` でぶつかった箱の範囲。軸ごとの押し戻し先になる。
- * `hitMin` は最も手前の面、`hitMax` は最も奥の面（複数にまたがったら、
- * どちらも押し出す側に安全な方をとる）。
- *
- * 呼ぶたびに配列を作るとフレームの最悪値に出るので、モジュール側に置いて使い回す。
- */
-const hitMin = [0, 0, 0];
-const hitMax = [0, 0, 0];
-
-/**
- * プレイヤーの AABB がブロックの当たり判定の箱と重なるか。
- * ブロックは 1x1x1 とは限らない（ハーフ・階段）ので、
- * **`isSolid` ではなく `collisionBoxes` を見ること。**
- */
-function collides(world: World, p: Vector3): boolean {
-  // 端がぴったり接しているだけの状態を「めり込み」と見ないよう、少し内側で見る
-  const px0 = p.x - HALF + EPS;
-  const px1 = p.x + HALF - EPS;
-  const py0 = p.y + EPS;
-  const py1 = p.y + HEIGHT - EPS;
-  const pz0 = p.z - HALF + EPS;
-  const pz1 = p.z + HALF - EPS;
-
-  hitMin[0] = hitMin[1] = hitMin[2] = Infinity;
-  hitMax[0] = hitMax[1] = hitMax[2] = -Infinity;
-  let hit = false;
-
-  for (let y = Math.floor(py0); y <= Math.floor(py1); y++) {
-    for (let z = Math.floor(pz0); z <= Math.floor(pz1); z++) {
-      for (let x = Math.floor(px0); x <= Math.floor(px1); x++) {
-        for (const b of collisionBoxes(world.getVoxel(x, y, z))) {
-          const bx0 = x + b[0];
-          const by0 = y + b[1];
-          const bz0 = z + b[2];
-          const bx1 = x + b[3];
-          const by1 = y + b[4];
-          const bz1 = z + b[5];
-          if (bx1 <= px0 || bx0 >= px1) continue;
-          if (by1 <= py0 || by0 >= py1) continue;
-          if (bz1 <= pz0 || bz0 >= pz1) continue;
-          hit = true;
-          if (bx0 < hitMin[0]) hitMin[0] = bx0;
-          if (by0 < hitMin[1]) hitMin[1] = by0;
-          if (bz0 < hitMin[2]) hitMin[2] = bz0;
-          if (bx1 > hitMax[0]) hitMax[0] = bx1;
-          if (by1 > hitMax[1]) hitMax[1] = by1;
-          if (bz1 > hitMax[2]) hitMax[2] = bz1;
-        }
-      }
-    }
-  }
-  return hit;
 }
