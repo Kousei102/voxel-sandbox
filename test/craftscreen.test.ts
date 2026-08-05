@@ -523,4 +523,68 @@ export function run(): void {
   );
   midDrag.release();
   check("離せばそのまま配られる", midDrag.inventory.count(DIRT) === 10, `${midDrag.inventory.count(DIRT)} 個`);
+
+  // --- セーブ ---
+  describe("インベントリ画面（セーブ）");
+
+  // craft は「省略可・無ければ既定」で足したキーなので、version は 1 のままでなければならない。
+  // 2 に上げると load() が既存プレイヤーのワールドを丸ごと弾く。
+  const storageSource = stripComments("src/storage.ts");
+  check(
+    "セーブの version を上げていない（古いセーブが読める）",
+    storageSource.includes("version !== 1") && storageSource.includes("version: 1"),
+    "version を上げると既存のワールドが全部読めなくなる",
+  );
+
+  const empty = screen(3);
+  check("空なら保存しない（キーごと省く）", empty.serialize() === undefined);
+
+  const saving = holding(10);
+  put(saving, 0, STONE, 4);
+  put(saving, 8, PLANK, 2);
+  const flat = saving.serialize() as number[];
+  check("盤面 9 + 手 1 の 20 要素", flat?.length === 20, `${flat?.length} 要素`);
+  check(
+    "並びは盤面 0..8 のあと手",
+    flat[0] === STONE && flat[1] === 4 && flat[16] === PLANK && flat[17] === 2 &&
+      flat[18] === DIRT && flat[19] === 10,
+    flat.join(","),
+  );
+  check("空きは 0,0 で位置を保つ", flat.slice(2, 16).every((n) => n === 0));
+
+  const loaded = screen(3);
+  loaded.deserialize(JSON.parse(JSON.stringify(flat)) as number[]);
+  check(
+    "JSON を通しても往復で一致する",
+    (loaded.serialize() as number[]).join(",") === flat.join(","),
+    (loaded.serialize() as number[]).join(","),
+  );
+
+  const wiped2 = screen(3);
+  put(wiped2, 0, STONE, 4);
+  wiped2.deserialize(undefined);
+  check("保存データが無ければ空になる", wiped2.grid.every(isEmpty) && wiped2.held === null);
+
+  const clamped = screen(3);
+  clamped.deserialize([STONE, 999, ...Array(18).fill(0)]);
+  check("壊れた保存データでも上限を超えない", clamped.grid[0].count === MAX_STACK, `${clamped.grid[0].count} 個`);
+
+  // 読み込み直後の運び。inventory を入れてから craft を返すこと。
+  const restart = new CraftScreen(new Inventory());
+  restart.deserialize(flat);
+  restart.returnAll();
+  check(
+    "読み込んだ盤面と手はインベントリへ返る",
+    restart.inventory.count(STONE) === 4 && restart.inventory.count(PLANK) === 2 &&
+      restart.inventory.count(DIRT) === 10,
+    `石 ${restart.inventory.count(STONE)} / 板 ${restart.inventory.count(PLANK)} / 土 ${restart.inventory.count(DIRT)}`,
+  );
+  check("返したあとは保存するものが無い", restart.serialize() === undefined);
+
+  // 二重に返らないこと（閉じるときの返却とセーブの両方が効いても増えない）。
+  const noDouble = new CraftScreen(new Inventory());
+  noDouble.deserialize(flat);
+  noDouble.returnAll();
+  noDouble.returnAll();
+  check("2 回返してもアイテムが増えない", noDouble.inventory.count(DIRT) === 10, `土 ${noDouble.inventory.count(DIRT)} 個`);
 }

@@ -328,6 +328,37 @@ export class CraftScreen {
     return recipe ? { item: recipe.out, count: recipe.count, name: recipe.name } : null;
   }
 
+  // --- セーブ ---
+
+  /**
+   * 盤面 9 + 掴んでいる山 1 = `[item, count, ...]` の 20 要素。空きは `0,0` で位置を保つ
+   * （`Inventory.serialize()` と同じ作法）。**全部空なら undefined を返してキーごと省く。**
+   *
+   * これは「盤面のスナップショット」ではなく**「まだインベントリに戻していない預かり物」**。
+   * 読み込み側は `returnAll()` で全部インベントリへ返すので、盤面の大きさは持たない
+   * （3x3 のまま復元すると、次に 2x2 で開いた人が外周 5 マスを取り出せなくなる）。
+   */
+  serialize(): number[] | undefined {
+    const all = [...this.grid, this.heldSlot];
+    if (all.every(isEmpty)) return undefined;
+    const flat: number[] = [];
+    for (const slot of all) flat.push(isEmpty(slot) ? 0 : slot.item, isEmpty(slot) ? 0 : slot.count);
+    return flat;
+  }
+
+  deserialize(flat: number[] | undefined): void {
+    const all = [...this.grid, this.heldSlot];
+    for (const slot of all) clearSlot(slot);
+    if (!Array.isArray(flat)) return;
+    for (let i = 0; i < all.length; i++) {
+      const item = flat[i * 2] ?? 0;
+      const count = flat[i * 2 + 1] ?? 0;
+      if (!item || count <= 0) continue;
+      all[i].item = item;
+      all[i].count = Math.min(count, itemStackLimit(item));
+    }
+  }
+
   /** 触ったスロット。使えない盤面の枠なら null。 */
   private slotAt(area: SlotArea, index: number): Slot | null {
     if (area === "grid") return this.usable(index) ? this.grid[index] : null;

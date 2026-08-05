@@ -234,6 +234,7 @@ function currentSave() {
     creative,
     health: vitals.health,
     inventory: inventory.serialize(),
+    craft: craft.serialize(),
     volume: audio.getVolume(),
     edits: serializeEdits(world.editsForSave()),
   };
@@ -253,6 +254,13 @@ function saveNow(message = "保存しました"): void {
 const saved = load();
 if (typeof saved?.time === "number" && Number.isFinite(saved.time)) dayNight.setTime(saved.time);
 inventory.deserialize(saved?.inventory);
+// **必ずインベントリを入れたあとで。** 盤面と掴んでいた山は「預かり物」なので、
+// 読んだらそのままインベントリへ返す（開いたままタブを閉じてもアイテムが消えない）。
+// 返しきれなかったぶんは盤面に残り、次に空きができたときにまた返る。
+craft.deserialize(saved?.craft);
+craft.returnAll();
+// 返したぶんを書き戻す（次の保存で craft のキーごと消える）。
+if (saved?.craft) saveDirty = true;
 audio.setVolume(clampVolume(saved?.volume));
 setCreative(saved?.creative ?? false);
 // 死んだまま保存された場合は満タンで再開する（読み込み直後に死亡画面を出さない）

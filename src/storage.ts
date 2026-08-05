@@ -12,6 +12,12 @@ export interface SaveData {
   health?: number;
   /** [item, count, ...] を 36 スロット分。空きは 0,0。 */
   inventory?: number[];
+  /**
+   * クラフト盤面 9 + 掴んでいる山 1 を [item, count, ...] の 20 要素で。空なら省略。
+   * **盤面のスナップショットではなく「まだインベントリに戻していない預かり物」**なので、
+   * 読み込み側は中身をインベントリへ返すだけ（盤面の大きさは持たない）。
+   */
+  craft?: number[];
   /** 音量 0..1。古いセーブには無いので省略可（既定に戻る）。 */
   volume?: number;
   /** チャンクキー -> [localIndex, blockId, ...] の平坦な配列。 */
