@@ -32,6 +32,7 @@ import {
   walkSwing,
   type MobContext,
   type MobDef,
+  type MobKind,
 } from "../src/mobs";
 import { boxBlocked } from "../src/physics";
 import { raycastVoxels } from "../src/raycast";
@@ -308,6 +309,46 @@ export function run(): void {
     stepper.update(1 / 60, slabArena.asWorld(), ctx());
   }
   check("ハーフブロックを歩いて登れる", climber.position.y >= 11.5, `y=${climber.position.y.toFixed(3)} x=${climber.position.x.toFixed(2)}`);
+  // 段差登りで上がれるものは**跳ばない**（跳ぶと階段を上るたびに跳ねて見える）
+  check("ハーフブロックでは跳ばない", climber.onGround, `接地 ${climber.onGround}`);
+
+  // **1 ブロックの段差は跳んで越える。** 段差登りは 0.5 までなので、これが無いと
+  // 地形のちょっとした起伏でモブが止まり、ゾンビは 1 段の壁で撒ける。
+  /**
+   * `wall` の高さぶんの壁へ向かって 6 秒歩かせ、越えられたかを返す。
+   * 接地しつづけたか（＝跳んだか）も返す。
+   */
+  function bumpInto(kind: MobKind, wall: number): { climbed: boolean; jumped: boolean; y: number } {
+    const arena = new Arena();
+    arena.fill(-20, 20, 10, 10, -20, 20, STONE);
+    arena.fill(3, 20, 11, 10 + wall, -20, 20, STONE);
+    quiet(arena);
+    const pack = new Mobs();
+    const mob = pack.spawn(kind, 0.5, 11, 0.5, -Math.PI / 2, seeded(33));
+    // **プレイヤーを離しておくこと。** 目の前に置くと、敵対モブは「殴る距離だから
+    // 止まる」判定で毎フレーム歩くのをやめ、壁に当たらないまま通ってしまう。
+    const away = ctx({ playerX: -40, playerZ: 0.5 });
+    let jumped = false;
+    for (let i = 0; i < 360; i++) {
+      mob.walking = true;
+      mob.yaw = mob.targetYaw = -Math.PI / 2; // +X 向き（壁のほう）
+      pack.update(1 / 60, arena.asWorld(), away);
+      if (!mob.onGround) jumped = true;
+      // 越えて着地したら止める。**歩かせ続けないこと** —— 向きを外から固定しているので
+      // 崖回避が効かず、速い個体は試験場の縁から落ちて y=0 で終わる。
+      if (mob.position.x > 4 && mob.onGround) break;
+    }
+    return { climbed: mob.position.x > 3, jumped, y: mob.position.y };
+  }
+
+  for (const kind of MOB_KINDS) {
+    const one = bumpInto(kind, 1);
+    console.log(`      ${MOBS[kind].name}: 1 段の壁 → ${one.climbed ? "越えた" : "越えられない"}（y=${one.y.toFixed(2)}）`);
+    check(`${MOBS[kind].name}: 1 ブロックの段差を跳び越える`, one.climbed && one.y >= 11, `x が壁の向こうへ / y=${one.y.toFixed(2)}`);
+  }
+  // 2 段は越えられないこと。**越えられると囲いの意味が無くなる**（家の壁も柵も効かない）。
+  const two = bumpInto("zombie", 2);
+  check("2 ブロックの壁は越えられない", !two.climbed && two.jumped, `跳んだ ${two.jumped} / 越えた ${two.climbed}`);
 
   // 水中で沈み続けない（水底を歩き続けると、あとで溺れを入れたときに黙って死ぬ）
   const poolArena = new Arena();

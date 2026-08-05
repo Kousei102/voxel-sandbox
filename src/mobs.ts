@@ -285,6 +285,20 @@ const WATER_RISE = 1.4;
 /** 横方向の加速。接地しているときのほうがよく効く（空中で方向転換しない）。 */
 const ACCEL_GROUND = 26;
 const ACCEL_AIR = 4;
+/**
+ * 1 ブロックの壁を跳び越えるときの初速。`GRAVITY`(30) で約 1.2 ブロック上がるので、
+ * 立方体 1 個ぶん（段差登りの 0.5 では越えられない高さ）を越えられる。
+ * 上げすぎると 2 段の壁まで登ってしまい、囲いの意味が無くなる。
+ */
+const JUMP_SPEED = 8.6;
+/**
+ * 跳んでいるあいだ、前へ出す速さを保つ長さ (秒)。
+ *
+ * **これが無いと跳んでも越えられない。** 壁に当たった時点で `moveBody` が横の速度を
+ * 0 にしていて、空中の加速（`ACCEL_AIR`）は 1 フレームに 0.07 しか戻さないので、
+ * 真上に跳んでその場に落ちる（＝壁の前で延々と跳ね続ける）。
+ */
+const HOP_TIME = 0.7;
 
 export interface Mob {
   readonly id: number;
@@ -322,6 +336,8 @@ export interface Mob {
   burnTick: number;
   /** 次にプレイヤーを殴れるまでの残り (秒)。**1 体ごとに持つ。** */
   attackTimer: number;
+  /** 壁を跳び越えている残り (秒)。このあいだは加速を待たずに前へ出す。 */
+  hopTimer: number;
 }
 
 // --- AI と湧きの決まり ---------------------------------------------------
@@ -563,6 +579,7 @@ export class Mobs {
       burnTimer: 0,
       burnTick: 0,
       attackTimer: 0,
+      hopTimer: 0,
     };
     this.list.push(mob);
     return mob;
@@ -762,8 +779,17 @@ export class Mobs {
     const accel = (mob.onGround ? ACCEL_GROUND : ACCEL_AIR) * dt;
     const targetX = forward[0] * speed;
     const targetZ = forward[1] * speed;
-    mob.velocity.x += clamp(targetX - mob.velocity.x, -accel, accel);
-    mob.velocity.z += clamp(targetZ - mob.velocity.z, -accel, accel);
+    if (mob.hopTimer > 0) mob.hopTimer = Math.max(0, mob.hopTimer - dt);
+    if (mob.hopTimer > 0 && speed > 0) {
+      // 跳び越えている間だけは加速を待たない。**壁に当たるたび `moveBody` が
+      // 横の速度を 0 にする**ので、加速任せだと真上に跳んで壁の前に落ちるだけになる。
+      // 歩くのをやめたら普通の減速に戻す（空中で急に止まると落ち方が不自然になる）。
+      mob.velocity.x = targetX;
+      mob.velocity.z = targetZ;
+    } else {
+      mob.velocity.x += clamp(targetX - mob.velocity.x, -accel, accel);
+      mob.velocity.z += clamp(targetZ - mob.velocity.z, -accel, accel);
+    }
 
     if (mob.inWater) {
       // 落ちてきた勢いを殺しつつ、水面へ向かって浮く
@@ -773,7 +799,17 @@ export class Mobs {
       if (mob.velocity.y < -TERMINAL) mob.velocity.y = -TERMINAL;
     }
 
-    moveBody(world, mob, def.size, dt, mob.onGround);
+    const blocked = moveBody(world, mob, def.size, dt, mob.onGround);
+
+    // **段差登り（0.5）で越えられなかった壁は跳んで越える。**
+    // 立方体 1 個ぶんの段差はマイクラでも跳ぶところで、これが無いと
+    // 地形のちょっとした起伏でモブが止まり、ゾンビは 1 段の壁で撒ける。
+    // 跳べるのは接地しているあいだだけ（空中でも跳べると壁を登っていける）。
+    if (blocked && mob.onGround && mob.walking && !mob.inWater) {
+      mob.velocity.y = JUMP_SPEED;
+      mob.hopTimer = HOP_TIME;
+      mob.onGround = false;
+    }
 
     // 歩いた距離で位相を進める（時間で進めると、壁際で足踏みして見える）
     const moved = Math.hypot(mob.position.x - beforeX, mob.position.z - beforeZ);

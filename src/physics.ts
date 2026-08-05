@@ -127,6 +127,10 @@ function stepUp(world: World, p: Vector3, size: BodySize): boolean {
  * **切り出す前は `stepUp()` の中で `onGround && !flying` を毎回見ていたが、
  * `onGround` が書かれるのは X・Z のあとの Y 相だけで、飛行側は `move()` を呼ぶ前に
  * `onGround = false` にしている。だから頭で 1 回決めるのと完全に同じ結果になる。**
+ *
+ * 戻り値は**横で押し戻されたか**（段差で登れたぶんは入らない ＝「登れない壁に当たった」）。
+ * モブがジャンプするかどうかの唯一の材料。プレイヤーは見ない（跳ぶかどうかは人が決める）。
+ * **押し戻しそのものは 1 行も変えていない**ので、`test/physics.test.ts` の軌跡は動かない。
  */
 export function moveBody(
   world: World,
@@ -134,20 +138,23 @@ export function moveBody(
   size: BodySize,
   dt: number,
   canStep: boolean,
-): void {
+): boolean {
   const p = body.position;
   const v = body.velocity;
+  let blocked = false;
 
   p.x += v.x * dt;
   if (collides(world, p.x, p.y, p.z, size) && !(canStep && stepUp(world, p, size))) {
     p.x = v.x > 0 ? contactMin[0] - size.half - EPS : contactMax[0] + size.half + EPS;
     v.x = 0;
+    blocked = true;
   }
 
   p.z += v.z * dt;
   if (collides(world, p.x, p.y, p.z, size) && !(canStep && stepUp(world, p, size))) {
     p.z = v.z > 0 ? contactMin[2] - size.half - EPS : contactMax[2] + size.half + EPS;
     v.z = 0;
+    blocked = true;
   }
 
   const wasFalling = v.y <= 0;
@@ -165,6 +172,8 @@ export function moveBody(
     // 足元に何も無ければ落下中
     body.onGround = collides(world, p.x, p.y - EPS * 4, p.z, size);
   }
+
+  return blocked;
 }
 
 /**
