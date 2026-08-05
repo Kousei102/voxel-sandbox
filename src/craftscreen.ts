@@ -1,5 +1,12 @@
 import { consumeGrid, findRecipe } from "./crafting";
-import { clearSlot, isEmpty, type Inventory, type Slot } from "./inventory";
+import {
+  HOTBAR_SIZE,
+  INVENTORY_SIZE,
+  clearSlot,
+  isEmpty,
+  type Inventory,
+  type Slot,
+} from "./inventory";
 import { NO_ITEM, itemStackLimit } from "./items";
 
 /** 作業台なら 3x3、手持ちなら 2x2。 */
@@ -31,6 +38,22 @@ interface SlotRef {
   index: number;
 }
 
+/**
+ * 押したときに一緒に押されていたもの。**DOM の事実だけを渡すこと**（意味は付けない）。
+ * どれがどの操作になるかを決めるのは `press()` の仕事。
+ */
+export interface PressMods {
+  /** Shift が押されていた（`MouseEvent.shiftKey`）。 */
+  shift: boolean;
+  /** 2 回目のクリックだった（`MouseEvent.detail === 2`）。 */
+  double: boolean;
+}
+
+const NO_MODS: PressMods = { shift: false, double: false };
+
+/** 一括クラフトの空回り止め。盤面は毎回 1 個ずつ減るので、本来ここまで回らない。 */
+const MAX_QUICK_CRAFT = 512;
+
 function emptySlot(): Slot {
   return { item: NO_ITEM, count: 0 };
 }
@@ -61,6 +84,12 @@ export class CraftScreen {
   private dragSlots: SlotRef[] = [];
   private dragItem = NO_ITEM;
   private dragTotal = 0;
+
+  /**
+   * いまカーソルが乗っているスロット。**UI にこれを持たせないこと**
+   * （数字キーの行き先を決めるのは判断なので、こちら側で持つ）。
+   */
+  private hovered: SlotRef | null = null;
 
   constructor(readonly inventory: Inventory) {}
 
@@ -124,7 +153,11 @@ export class CraftScreen {
    * ボタンを押した。**掴んでいるものがあるときは、ここでは何も書かずにドラッグを構える**。
    * 確定は `release()` まで遅らせるので、`cancelDrag()` に巻き戻しが要らない。
    */
-  press(area: SlotArea, index: number, button: MouseButton): ScreenResult {
+  press(area: SlotArea, index: number, button: MouseButton, mods: PressMods = NO_MODS): ScreenResult {
+    // どの入力がどの操作かを決めるのはここ。UI は shiftKey / detail をそのまま渡すだけ。
+    if (button === 0 && mods.shift) return this.quickMove(area, index);
+    if (button === 0 && mods.double) return this.gather();
+
     this.cancelDrag();
     const slot = this.slotAt(area, index);
     if (!slot) return NOTHING;
@@ -143,13 +176,26 @@ export class CraftScreen {
     return CHANGED;
   }
 
-  /** 押したまま別のスロットに入った。構えていなければ何もしない。 */
-  dragOver(area: SlotArea, index: number): ScreenResult {
-    if (this.dragButton === null) return NOTHING;
-    if (!this.slotAt(area, index)) return NOTHING;
-    if (this.dragSlots.some((ref) => ref.area === area && ref.index === index)) return NOTHING;
+  /**
+   * カーソルがスロットに入った。`pressed` は `MouseEvent.buttons !== 0`（DOM の事実）。
+   *
+   * 押したままなら撫でた集合に足し、離れていれば構えを確定する
+   * （窓の外でボタンを離して戻ってきた場合。取りこぼすと配分が宙に浮く）。
+   * 同時にカーソルの居場所も覚える —— 数字キーの行き先がこれで決まる。
+   */
+  hover(area: SlotArea, index: number, pressed: boolean): ScreenResult {
+    const released = pressed ? NOTHING : this.release();
+    this.hovered = this.slotAt(area, index) ? { area, index } : null;
+    if (!pressed || this.dragButton === null) return released;
+    if (this.dragSlots.some((ref) => ref.area === area && ref.index === index)) return released;
+    if (!this.slotAt(area, index)) return released;
     this.dragSlots.push({ area, index });
     return CHANGED;
+  }
+
+  /** カーソルがスロットから出た。出た先が別のスロットなら `hover` が上書きする。 */
+  hoverOut(area: SlotArea, index: number): void {
+    if (this.hovered?.area === area && this.hovered.index === index) this.hovered = null;
   }
 
   /**
@@ -196,6 +242,87 @@ export class CraftScreen {
     this.dragSlots = [];
     this.dragItem = NO_ITEM;
     this.dragTotal = 0;
+  }
+
+  // --- シフトクリック・ダブルクリック・数字キー ---
+
+  /**
+   * シフトクリックの一発移動。**掴んでいる最中は効かない**（Minecraft と同じ。
+   * 手に持ったまま動かすと、どっちを動かしたのか分からなくなる）。
+   *
+   * 行き先は「いま居ない側」: 盤面 → インベントリ、ホットバー → 収納、収納 → ホットバー。
+   * 入りきらなかったぶんはその場に残す（黙って消さない）。
+   */
+  quickMove(area: SlotArea, index: number): ScreenResult {
+    if (!isEmpty(this.heldSlot)) return NOTHING;
+    const slot = this.slotAt(area, index);
+    if (!slot || isEmpty(slot)) return NOTHING;
+
+    const left =
+      area === "grid"
+        ? this.inventory.add(slot.item, slot.count)
+        : index < HOTBAR_SIZE
+          ? this.inventory.addRange(slot.item, slot.count, HOTBAR_SIZE, INVENTORY_SIZE)
+          : this.inventory.addRange(slot.item, slot.count, 0, HOTBAR_SIZE);
+
+    if (left === slot.count) return NOTHING; // 1 個も動かなかった
+    slot.count = left;
+    if (left <= 0) clearSlot(slot);
+    return CHANGED;
+  }
+
+  /**
+   * ダブルクリックのかき集め。掴んでいる山と同じアイテムを、上限まで集める。
+   *
+   * **半端な山から先に取る**（Minecraft と同じ）。満杯の山から崩すと、
+   * 集めたあとにインベントリが半端な山だらけになる。
+   */
+  gather(): ScreenResult {
+    if (isEmpty(this.heldSlot)) return NOTHING;
+    const item = this.heldSlot.item;
+    const limit = itemStackLimit(item);
+    if (this.heldSlot.count >= limit) return NOTHING;
+
+    const pool = [...this.inventory.slots, ...this.grid.filter((_, i) => this.usable(i))];
+    let moved = 0;
+    for (const partial of [true, false]) {
+      for (const slot of pool) {
+        if (this.heldSlot.count >= limit) break;
+        if (slot === this.heldSlot || slot.item !== item || isEmpty(slot)) continue;
+        if (partial !== slot.count < limit) continue;
+        const take = Math.min(limit - this.heldSlot.count, slot.count);
+        this.heldSlot.count += take;
+        slot.count -= take;
+        moved += take;
+        if (slot.count <= 0) clearSlot(slot);
+      }
+    }
+    return moved > 0 ? CHANGED : NOTHING;
+  }
+
+  /**
+   * カーソルの下のスロットと、ホットバーの `hotbarIndex` 枠を入れ替える（数字キー）。
+   * カーソルがスロットの上に無い／掴んでいる／ドラッグ中なら何もしない。
+   */
+  swapHotbar(hotbarIndex: number): ScreenResult {
+    if (hotbarIndex < 0 || hotbarIndex >= HOTBAR_SIZE) return NOTHING;
+    if (!isEmpty(this.heldSlot) || this.dragButton !== null) return NOTHING;
+    const at = this.hovered;
+    if (!at) return NOTHING;
+    // 同じ枠を指しているなら何もしない（自分自身と入れ替えても意味がない）
+    if (at.area === "inv" && at.index === hotbarIndex) return NOTHING;
+    const slot = this.slotAt(at.area, at.index);
+    const target = this.inventory.slots[hotbarIndex];
+    if (!slot) return NOTHING;
+    if (isEmpty(slot) && isEmpty(target)) return NOTHING;
+
+    const item = slot.item;
+    const count = slot.count;
+    slot.item = target.item;
+    slot.count = target.count;
+    target.item = item;
+    target.count = count;
+    return CHANGED;
   }
 
   // --- ドラッグ中のプレビュー（確定と同じ planDrag を通すので食い違わない） ---
@@ -292,8 +419,14 @@ export class CraftScreen {
     held.count = count;
   }
 
-  /** 出来上がりを受け取る。掴んでいる山に足せるときだけ成立する。 */
-  takeResult(): ScreenResult {
+  /**
+   * 出来上がりを受け取る。`all`（シフトクリック）なら**作れるだけ作ってインベントリへ直接**入れる。
+   *
+   * 一括のほうは掴んでいる山を経由しません（上限 64 で頭打ちになって、
+   * 「シフトを押したのに 1 回ぶんしか作れない」形になるため）。
+   */
+  takeResult(all = false): ScreenResult {
+    if (all) return this.quickCraft();
     const recipe = findRecipe(this.activeGrid(), this.craftSize);
     if (!recipe) return NOTHING;
 
@@ -308,6 +441,23 @@ export class CraftScreen {
     }
     consumeGrid(this.activeGrid());
     return CRAFTED;
+  }
+
+  /**
+   * 作れるだけ作ってインベントリへ入れる（結果スロットのシフトクリック）。
+   * **入りきらなくなった時点で止める** —— 作ってから捨てることになってはいけない。
+   */
+  private quickCraft(): ScreenResult {
+    let made = 0;
+    for (let n = 0; n < MAX_QUICK_CRAFT; n++) {
+      const recipe = findRecipe(this.activeGrid(), this.craftSize);
+      if (!recipe) break;
+      if (this.inventory.roomFor(recipe.out) < recipe.count) break;
+      consumeGrid(this.activeGrid());
+      this.inventory.add(recipe.out, recipe.count);
+      made++;
+    }
+    return made > 0 ? CRAFTED : NOTHING;
   }
 
   /**

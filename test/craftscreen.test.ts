@@ -7,7 +7,7 @@ import {
   planDrag,
   type SlotArea,
 } from "../src/craftscreen";
-import { Inventory, isEmpty, type Slot } from "../src/inventory";
+import { HOTBAR_SIZE, Inventory, isEmpty, type Slot } from "../src/inventory";
 import { MAX_STACK, NO_ITEM, STICK, WOOD_PICKAXE } from "../src/items";
 import { check, describe } from "./harness";
 
@@ -39,7 +39,7 @@ function click(craft: CraftScreen, area: SlotArea, index: number, button: MouseB
 /** ドラッグ = 押して、順に撫でて、離す。 */
 function drag(craft: CraftScreen, button: MouseButton, refs: [SlotArea, number][]): void {
   craft.press(refs[0][0], refs[0][1], button);
-  for (const [area, index] of refs.slice(1)) craft.dragOver(area, index);
+  for (const [area, index] of refs.slice(1)) craft.hover(area, index, true);
   craft.release();
 }
 
@@ -388,9 +388,9 @@ export function run(): void {
 
   const twiceOver = holding(9);
   twiceOver.press("inv", 1, 0);
-  twiceOver.dragOver("inv", 2);
-  twiceOver.dragOver("inv", 2); // 同じ枠を撫で直す
-  twiceOver.dragOver("inv", 3);
+  twiceOver.hover("inv", 2, true);
+  twiceOver.hover("inv", 2, true); // 同じ枠を撫で直す
+  twiceOver.hover("inv", 3, true);
   twiceOver.release();
   check(
     "同じ枠を 2 回撫でても二重に配らない",
@@ -400,7 +400,7 @@ export function run(): void {
 
   const releaseTwice = holding(8);
   releaseTwice.press("inv", 1, 0);
-  releaseTwice.dragOver("inv", 2);
+  releaseTwice.hover("inv", 2, true);
   releaseTwice.release();
   const afterFirst = releaseTwice.inventory.slots[1].count;
   const second = releaseTwice.release();
@@ -459,9 +459,9 @@ export function run(): void {
   // --- プレビュー（確定と同じ planDrag を通ること） ---
   const preview = holding(10);
   preview.press("inv", 1, 0);
-  preview.dragOver("inv", 2);
-  preview.dragOver("inv", 3);
-  preview.dragOver("inv", 4);
+  preview.hover("inv", 2, true);
+  preview.hover("inv", 3, true);
+  preview.hover("inv", 4, true);
   const planned = [1, 2, 3, 4].map((i) => preview.dragPlanFor("inv", i));
   const leftInHand = preview.heldPreviewCount();
   check("撫でている枠に配る予定が出る", planned.join(",") === "2,2,2,2", planned.join(","));
@@ -514,7 +514,7 @@ export function run(): void {
   // 撫でた先に配るつもりだったものを、途中で消してしまわないこと。
   const midDrag = holding(10);
   midDrag.press("inv", 1, 0);
-  midDrag.dragOver("inv", 2);
+  midDrag.hover("inv", 2, true);
   const duringDrag = midDrag.discardHeld(true);
   check(
     "ドラッグを構えている間は捨てない",
@@ -587,4 +587,250 @@ export function run(): void {
   noDouble.returnAll();
   noDouble.returnAll();
   check("2 回返してもアイテムが増えない", noDouble.inventory.count(DIRT) === 10, `土 ${noDouble.inventory.count(DIRT)} 個`);
+
+  // --- シフトクリックの一発移動 ---
+  describe("インベントリ画面（シフトクリック）");
+
+  const SHIFT = { shift: true, double: false };
+  const DOUBLE = { shift: false, double: true };
+
+  const toStorage = screen();
+  toStorage.inventory.slots[3].item = DIRT;
+  toStorage.inventory.slots[3].count = 12;
+  toStorage.press("inv", 3, 0, SHIFT);
+  check(
+    "ホットバーから収納へ飛ぶ",
+    isEmpty(toStorage.inventory.slots[3]) && toStorage.inventory.slots[HOTBAR_SIZE].count === 12,
+    `収納の先頭 ${toStorage.inventory.slots[HOTBAR_SIZE].count} 個`,
+  );
+
+  const toHotbar = screen();
+  toHotbar.inventory.slots[20].item = STONE;
+  toHotbar.inventory.slots[20].count = 7;
+  toHotbar.press("inv", 20, 0, SHIFT);
+  check(
+    "収納からホットバーへ戻る",
+    isEmpty(toHotbar.inventory.slots[20]) && toHotbar.inventory.slots[0].count === 7,
+    `ホットバー先頭 ${toHotbar.inventory.slots[0].count} 個`,
+  );
+
+  const fromGrid = screen(3);
+  put(fromGrid, 4, PLANK, 9);
+  fromGrid.press("grid", 4, 0, SHIFT);
+  check(
+    "盤面からインベントリへ飛ぶ",
+    isEmpty(fromGrid.grid[4]) && fromGrid.inventory.count(PLANK) === 9,
+    `板 ${fromGrid.inventory.count(PLANK)} 個`,
+  );
+
+  // 行き先が満杯なら、動いたぶんだけ減って残りはその場に残る（黙って消さない）。
+  const partial = screen();
+  for (let i = HOTBAR_SIZE; i < 36; i++) {
+    partial.inventory.slots[i].item = STONE;
+    partial.inventory.slots[i].count = MAX_STACK;
+  }
+  partial.inventory.slots[35].count = MAX_STACK - 5;
+  partial.inventory.slots[0].item = STONE;
+  partial.inventory.slots[0].count = 20;
+  partial.press("inv", 0, 0, SHIFT);
+  check(
+    "行き先に入るぶんだけ動き、残りはその場に残る",
+    partial.inventory.slots[0].count === 15 && partial.inventory.slots[35].count === MAX_STACK,
+    `手元に ${partial.inventory.slots[0].count} 個残る`,
+  );
+
+  const stuckFull = screen();
+  for (let i = HOTBAR_SIZE; i < 36; i++) {
+    stuckFull.inventory.slots[i].item = STONE;
+    stuckFull.inventory.slots[i].count = MAX_STACK;
+  }
+  stuckFull.inventory.slots[0].item = DIRT;
+  stuckFull.inventory.slots[0].count = 5;
+  check("1 個も動かないなら何も起きない", !stuckFull.press("inv", 0, 0, SHIFT).changed);
+
+  const holdingShift = holding(10);
+  holdingShift.inventory.slots[5].item = STONE;
+  holdingShift.inventory.slots[5].count = 3;
+  holdingShift.press("inv", 5, 0, SHIFT);
+  check(
+    "掴んでいる間はシフトクリックが効かない",
+    holdingShift.inventory.slots[5].count === 3 && holdingShift.held?.count === 10,
+    `スロット5 ${holdingShift.inventory.slots[5].count} / 手 ${holdingShift.held?.count}`,
+  );
+
+  // 結果スロットのシフトクリック = 作れるだけ作ってインベントリへ直接。
+  const bulk = screen(2);
+  put(bulk, 0, WOOD, 5);
+  const bulkResult = bulk.takeResult(true);
+  check("一括クラフトが成立する", bulkResult.crafted);
+  check(
+    "原木 5 個から板 20 枚（掴んでいる山を経由しない）",
+    bulk.inventory.count(PLANK) === 20 && bulk.held === null && isEmpty(bulk.grid[0]),
+    `板 ${bulk.inventory.count(PLANK)} 枚 / 手 ${bulk.held?.count ?? 0}`,
+  );
+
+  // 入りきらなくなったら止める（作ってから捨てることになってはいけない）。
+  const bulkFull = screen(2);
+  put(bulkFull, 0, WOOD, 5);
+  for (let i = 0; i < 35; i++) {
+    bulkFull.inventory.slots[i].item = STONE;
+    bulkFull.inventory.slots[i].count = MAX_STACK;
+  }
+  bulkFull.inventory.slots[35].item = PLANK;
+  bulkFull.inventory.slots[35].count = MAX_STACK - 9;
+  bulkFull.takeResult(true);
+  check(
+    "入りきらなくなったら止まる",
+    bulkFull.inventory.slots[35].count === MAX_STACK - 1 && bulkFull.grid[0].count === 3,
+    `板 ${bulkFull.inventory.slots[35].count} / 原木 ${bulkFull.grid[0].count} 個残り`,
+  );
+
+  // --- ダブルクリックのかき集め ---
+  describe("インベントリ画面（かき集め）");
+
+  const gather = screen();
+  gather.inventory.slots[0].item = DIRT;
+  gather.inventory.slots[0].count = 10;
+  gather.inventory.slots[4].item = DIRT;
+  gather.inventory.slots[4].count = 20;
+  gather.inventory.slots[9].item = DIRT;
+  gather.inventory.slots[9].count = 5;
+  gather.inventory.slots[7].item = STONE;
+  gather.inventory.slots[7].count = 30;
+  click(gather, "inv", 0, 0); // 手に 10
+  gather.press("inv", 0, 0, DOUBLE);
+  check("同じアイテムを上限まで集める", gather.held?.count === 35, `手 ${gather.held?.count} 個`);
+  check("別アイテムには触らない", gather.inventory.count(STONE) === 30, `石 ${gather.inventory.count(STONE)} 個`);
+  check(
+    "集めたぶんインベントリから消えている",
+    gather.inventory.count(DIRT) === 0,
+    `土 ${gather.inventory.count(DIRT)} 個`,
+  );
+
+  // 半端な山から先に取る。満杯の山を崩すと、あとに半端な山だけが残る。
+  const order = screen();
+  order.inventory.slots[0].item = DIRT;
+  order.inventory.slots[0].count = 1;
+  order.inventory.slots[1].item = DIRT;
+  order.inventory.slots[1].count = MAX_STACK;
+  order.inventory.slots[2].item = DIRT;
+  order.inventory.slots[2].count = 10;
+  click(order, "inv", 0, 0); // 手に 1
+  order.press("inv", 0, 0, DOUBLE);
+  check("上限ちょうどまで集める", order.held?.count === MAX_STACK, `手 ${order.held?.count} 個`);
+  // 半端（10 個）を先に空にしてから満杯を崩すので、満杯側に 11 残る。
+  // 逆順に取ると満杯が 1 だけ減って、半端な山が 10 個そのまま居座る。
+  check(
+    "半端な山から先に取り、満杯の山は最後に崩す",
+    isEmpty(order.inventory.slots[2]) && order.inventory.slots[1].count === 11,
+    `満杯側 ${order.inventory.slots[1].count} / 半端側 ${order.inventory.slots[2].count}`,
+  );
+
+  const gatherGrid = screen(3);
+  put(gatherGrid, 5, DIRT, 6);
+  gatherGrid.inventory.slots[0].item = DIRT;
+  gatherGrid.inventory.slots[0].count = 2;
+  click(gatherGrid, "inv", 0, 0);
+  gatherGrid.press("inv", 0, 0, DOUBLE);
+  check("盤面からも集める", gatherGrid.held?.count === 8 && isEmpty(gatherGrid.grid[5]), `手 ${gatherGrid.held?.count} 個`);
+
+  const gatherEmpty = screen();
+  check("手が空ならかき集めない", !gatherEmpty.press("inv", 0, 0, DOUBLE).changed);
+
+  const gatherFull = screen();
+  gatherFull.inventory.slots[0].item = DIRT;
+  gatherFull.inventory.slots[0].count = MAX_STACK;
+  gatherFull.inventory.slots[1].item = DIRT;
+  gatherFull.inventory.slots[1].count = 5;
+  click(gatherFull, "inv", 0, 0);
+  gatherFull.press("inv", 0, 0, DOUBLE);
+  check(
+    "すでに上限なら何も動かない",
+    gatherFull.held?.count === MAX_STACK && gatherFull.inventory.slots[1].count === 5,
+    `手 ${gatherFull.held?.count} / 残り ${gatherFull.inventory.slots[1].count}`,
+  );
+
+  // --- 数字キーでホットバーへ ---
+  describe("インベントリ画面（数字キー）");
+
+  const num = screen();
+  num.inventory.slots[20].item = STONE;
+  num.inventory.slots[20].count = 8;
+  num.inventory.slots[2].item = DIRT;
+  num.inventory.slots[2].count = 3;
+  num.hover("inv", 20, false);
+  num.swapHotbar(2);
+  check(
+    "カーソルの下の枠とホットバーが入れ替わる",
+    num.inventory.slots[2].item === STONE && num.inventory.slots[20].item === DIRT,
+    `ホットバー2 ${num.inventory.slots[2].item} / 収納 ${num.inventory.slots[20].item}`,
+  );
+
+  const numEmpty = screen();
+  numEmpty.inventory.slots[20].item = STONE;
+  numEmpty.inventory.slots[20].count = 8;
+  numEmpty.hover("inv", 20, false);
+  numEmpty.swapHotbar(5);
+  check(
+    "空のホットバー枠へも移せる",
+    numEmpty.inventory.slots[5].count === 8 && isEmpty(numEmpty.inventory.slots[20]),
+    `ホットバー5 ${numEmpty.inventory.slots[5].count} 個`,
+  );
+
+  const numGrid = screen(3);
+  put(numGrid, 7, PLANK, 4);
+  numGrid.hover("grid", 7, false);
+  numGrid.swapHotbar(0);
+  check(
+    "盤面の枠からもホットバーへ移せる",
+    numGrid.inventory.slots[0].count === 4 && isEmpty(numGrid.grid[7]),
+    `ホットバー0 ${numGrid.inventory.slots[0].count} 個`,
+  );
+
+  const noHover = screen();
+  noHover.inventory.slots[20].item = STONE;
+  noHover.inventory.slots[20].count = 8;
+  noHover.hover("inv", 20, false);
+  noHover.hoverOut("inv", 20);
+  check("カーソルがスロットの上に無ければ何も起きない", !noHover.swapHotbar(2).changed);
+
+  const numHolding = holding(10);
+  numHolding.hover("inv", 20, false);
+  check("掴んでいる間は数字キーが効かない", !numHolding.swapHotbar(2).changed);
+
+  const numSelf = screen();
+  numSelf.inventory.slots[3].item = STONE;
+  numSelf.inventory.slots[3].count = 8;
+  numSelf.hover("inv", 3, false);
+  check("同じ枠を指していれば何も起きない", !numSelf.swapHotbar(3).changed);
+
+  const numBoth = screen();
+  numBoth.hover("inv", 20, false);
+  check("両方とも空なら何も起きない", !numBoth.swapHotbar(2).changed);
+
+  const numDrag = holding(10);
+  numDrag.press("inv", 1, 0);
+  numDrag.hover("inv", 2, true);
+  check("ドラッグ中は数字キーが効かない", !numDrag.swapHotbar(3).changed);
+
+  // hover は「押したまま入った」ときに撫でた集合へも足す。両方が同じ入口。
+  const hoverDrag = holding(8);
+  hoverDrag.press("inv", 1, 0);
+  hoverDrag.hover("inv", 2, true);
+  hoverDrag.release();
+  check(
+    "hover はドラッグの撫でた集合も兼ねる",
+    hoverDrag.inventory.slots[1].count === 4 && hoverDrag.inventory.slots[2].count === 4,
+    `${hoverDrag.inventory.slots[1].count},${hoverDrag.inventory.slots[2].count}`,
+  );
+
+  // ボタンを離した状態で入ってきたら、宙に浮いた構えを確定する。
+  const backInside = holding(8);
+  backInside.press("inv", 1, 0);
+  backInside.hover("inv", 2, false);
+  check(
+    "離した状態で入ってきたら構えを確定する",
+    !backInside.isDragging && backInside.inventory.slots[1].count === 8,
+    `ドラッグ中 ${backInside.isDragging} / スロット1 ${backInside.inventory.slots[1].count} 個`,
+  );
 }

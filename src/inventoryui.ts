@@ -46,7 +46,7 @@ export class InventoryScreen {
     this.outEl.innerHTML = slotMarkup();
     this.outEl.addEventListener("mousedown", (event) => {
       event.preventDefault();
-      this.apply(this.craft.takeResult());
+      this.apply(this.craft.takeResult(event.shiftKey));
     });
 
     this.root.addEventListener("contextmenu", (event) => event.preventDefault());
@@ -107,15 +107,20 @@ export class InventoryScreen {
       el.addEventListener("mousedown", (event) => {
         if (event.button !== 0 && event.button !== 2) return;
         event.preventDefault();
-        this.apply(this.craft.press(area, i + offset, event.button as MouseButton));
+        // shiftKey と detail は DOM の事実。どの操作になるかは craft 側が決める。
+        this.apply(
+          this.craft.press(area, i + offset, event.button as MouseButton, {
+            shift: event.shiftKey,
+            double: event.detail === 2,
+          }),
+        );
       });
-      // 押したままスロットに入った、という事実だけを渡す。1 スロットにつき 1 回しか
+      // カーソルがスロットに入った／出た、という事実だけを渡す。1 スロットにつき 1 回しか
       // 飛ばないので、撫でた集合の組み立てもヒットテストもここには要らない。
       el.addEventListener("mouseenter", (event) => {
-        // 窓の外で離して戻ってきた場合。ボタンが押されていないのは DOM の事実。
-        if (event.buttons === 0) this.apply(this.craft.release());
-        else this.apply(this.craft.dragOver(area, i + offset));
+        this.apply(this.craft.hover(area, i + offset, event.buttons !== 0));
       });
+      el.addEventListener("mouseleave", () => this.craft.hoverOut(area, i + offset));
       parent.appendChild(el);
       into.push(el);
     }
@@ -131,6 +136,11 @@ export class InventoryScreen {
   /** 掴んでいる山を 1 個捨てる（Q キー）。入口は main.ts。 */
   discardOne(): void {
     this.apply(this.craft.discardHeld(false));
+  }
+
+  /** カーソルの下のスロットとホットバーの枠を入れ替える（数字キー）。入口は main.ts。 */
+  swapHotbar(index: number): void {
+    this.apply(this.craft.swapHotbar(index));
   }
 
   /**

@@ -81,6 +81,51 @@ export function run(): void {
     `0 は空 / 5 は ${sw.slots[5].count} 個`,
   );
 
+  // --- 範囲を絞って入れる（シフトクリックの行き先） ---
+  const ranged = new Inventory();
+  ranged.addRange(DIRT, 5, HOTBAR_SIZE, INVENTORY_SIZE);
+  check(
+    "範囲の外には入らない",
+    ranged.slots.slice(0, HOTBAR_SIZE).every(isEmpty) && ranged.slots[HOTBAR_SIZE].count === 5,
+    `ホットバー ${countUsed(ranged)} 枠 / 収納の先頭 ${ranged.slots[HOTBAR_SIZE].count} 個`,
+  );
+  const narrow = new Inventory();
+  const spill = narrow.addRange(STONE, MAX_STACK * 2 + 3, 0, 2);
+  check("範囲が埋まったら残りを返す", spill === 3, `残り ${spill} 個`);
+  check("範囲ちょうどまで入る", narrow.count(STONE) === MAX_STACK * 2, `${narrow.count(STONE)} 個`);
+
+  // --- あと何個入るか（一括クラフトの打ち切り） ---
+  const room = new Inventory();
+  check("空なら全スロットぶん入る", room.roomFor(DIRT) === INVENTORY_SIZE * MAX_STACK, `${room.roomFor(DIRT)} 個`);
+  room.add(DIRT, 10);
+  check(
+    "半端な山の空きも数える",
+    room.roomFor(DIRT) === INVENTORY_SIZE * MAX_STACK - 10,
+    `${room.roomFor(DIRT)} 個`,
+  );
+  room.slots[1].item = STONE;
+  room.slots[1].count = MAX_STACK;
+  check(
+    "別アイテムが埋めた枠は数えない",
+    room.roomFor(DIRT) === (INVENTORY_SIZE - 1) * MAX_STACK - 10,
+    `${room.roomFor(DIRT)} 個`,
+  );
+  check("持てないものは 0", room.roomFor(NO_ITEM) === 0);
+
+  // --- 選択中から捨てる（プレイ中の Q） ---
+  const toss = new Inventory();
+  toss.add(COBBLE, 3);
+  toss.select(0);
+  const thrown = toss.discardSelected(1);
+  check(
+    "選択中から 1 個捨てられる",
+    thrown?.item === COBBLE && thrown.count === 1 && toss.count(COBBLE) === 2,
+    `${thrown?.item} x${thrown?.count} / 残り ${toss.count(COBBLE)}`,
+  );
+  toss.discardSelected(5);
+  check("持っている数より多くは捨てられない", isEmpty(toss.selectedSlot) && toss.count(COBBLE) === 0);
+  check("空のスロットからは捨てられない", toss.discardSelected() === null);
+
   // --- 保存 ---
   const src = new Inventory();
   src.add(DIRT, 70);

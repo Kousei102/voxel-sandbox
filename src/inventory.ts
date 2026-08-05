@@ -49,13 +49,21 @@ export class Inventory {
 
   /** 入れられなかった数を返す（0 なら全部入った）。 */
   add(item: number, count = 1): number {
+    return this.addRange(item, count, 0, INVENTORY_SIZE);
+  }
+
+  /**
+   * `[start, end)` のスロットにだけ入れる。入れられなかった数を返す。
+   * シフトクリックの「ホットバー ↔ 収納」がこれを使う（行き先を絞るため）。
+   */
+  addRange(item: number, count: number, start: number, end: number): number {
     if (item === NO_ITEM || count <= 0) return 0;
     const limit = itemStackLimit(item);
     let left = count;
 
     // まず同じアイテムの山に足す
-    for (const slot of this.slots) {
-      if (left === 0) break;
+    for (let i = start; i < end && left > 0; i++) {
+      const slot = this.slots[i];
       if (slot.item !== item || slot.count >= limit) continue;
       const room = limit - slot.count;
       const put = Math.min(room, left);
@@ -63,8 +71,8 @@ export class Inventory {
       left -= put;
     }
     // 空きスロットへ
-    for (const slot of this.slots) {
-      if (left === 0) break;
+    for (let i = start; i < end && left > 0; i++) {
+      const slot = this.slots[i];
       if (!isEmpty(slot)) continue;
       const put = Math.min(limit, left);
       slot.item = item;
@@ -72,6 +80,18 @@ export class Inventory {
       left -= put;
     }
     return left;
+  }
+
+  /** そのアイテムをあと何個入れられるか（一括クラフトが回せるかの判定に使う）。 */
+  roomFor(item: number): number {
+    if (item === NO_ITEM) return 0;
+    const limit = itemStackLimit(item);
+    let room = 0;
+    for (const slot of this.slots) {
+      if (isEmpty(slot)) room += limit;
+      else if (slot.item === item) room += Math.max(0, limit - slot.count);
+    }
+    return room;
   }
 
   count(item: number): number {
@@ -107,6 +127,22 @@ export class Inventory {
     slot.count -= count;
     if (slot.count <= 0) clearSlot(slot);
     return true;
+  }
+
+  /**
+   * 選択中のスロットから捨てる（プレイ中の Q）。捨てたものを返す。空なら null。
+   *
+   * **落ちたアイテムの仕組みが無いので、捨てたものは戻りません。**
+   * だから 1 個ずつにしてあり、呼ぶ側は必ず何を捨てたか画面に出すこと。
+   */
+  discardSelected(count = 1): { item: number; count: number } | null {
+    const slot = this.selectedSlot;
+    if (isEmpty(slot)) return null;
+    const item = slot.item;
+    const taken = Math.min(count, slot.count);
+    slot.count -= taken;
+    if (slot.count <= 0) clearSlot(slot);
+    return { item, count: taken };
   }
 
   /** そのアイテムが入っているホットバーのスロットを選ぶ（スポイト）。 */

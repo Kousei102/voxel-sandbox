@@ -508,16 +508,21 @@ window.addEventListener("wheel", (event) => {
 });
 
 window.addEventListener("keydown", (event) => {
-  // インベントリを開いているときは E と Esc で閉じる、Q で 1 個捨てるだけ
+  // インベントリを開いているときは、閉じる・捨てる・ホットバーへ入れ替えるだけ
   if (screen.isOpen) {
     if (event.code === "KeyE" || event.code === "Escape") {
       event.preventDefault();
       closeInventory();
     } else if (event.code === "KeyQ") {
-      // **プレイ中には割り当てないこと。** 落ちたアイテムの仕組みが無いので
-      // 捨てたものは戻らず、歩きながらの押し間違いが永久の削除になる。
       event.preventDefault();
       screen.discardOne();
+    } else if (event.code.startsWith("Digit")) {
+      const n = Number(event.code.slice(5));
+      // 行き先はカーソルの下のスロット。それを覚えているのは craftscreen.ts 側。
+      if (n >= 1 && n <= 9) {
+        event.preventDefault();
+        screen.swapHotbar(n - 1);
+      }
     }
     return;
   }
@@ -535,6 +540,17 @@ window.addEventListener("keydown", (event) => {
       event.preventDefault();
       openInventory(2);
       return;
+    case "KeyQ": {
+      // **捨てたものは戻らない**（落ちたアイテムの仕組みが無い）ので、
+      // 1 個ずつにして、何を捨てたかを必ず出す。
+      const thrown = inventory.discardSelected(1);
+      if (thrown) {
+        hud.flash(`${itemName(thrown.item)} x${thrown.count} を捨てました`);
+        hud.refresh();
+        saveDirty = true;
+      }
+      return;
+    }
     case "KeyF":
       player.toggleFly();
       return;
