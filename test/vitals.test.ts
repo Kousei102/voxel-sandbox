@@ -185,6 +185,29 @@ export function run(): void {
   revived.respawn();
   check("リスポーンで無敵時間が消える", revived.damage(2, "モンスター", MOB_HURT_COOLDOWN));
 
+  // --- 受けたダメージの拾い方 ---
+  // **音と死亡画面はこれで拾う。「前後の体力を比べる」書き方にしないこと。**
+  // モブのダメージは main.ts の updateVitals より前に入るので、前後を比べる形だと
+  // 差分がもう済んでいて拾えない（実際、ゾンビに殺されても死亡画面が出なかった）。
+  const notified = new Vitals();
+  check("何も無ければ拾うものが無い", notified.takeDamage() === null);
+  notified.damage(2, "モンスター", MOB_HURT_COOLDOWN);
+  // **ダメージのあとに update() を挟んでも消えないこと**（挟むのが実際の順番）。
+  advance(notified, 0.05);
+  check("受けたダメージを拾える", notified.takeDamage() === "モンスター");
+  check("拾えるのは 1 回だけ（自然回復で鳴り続けない）", notified.takeDamage() === null);
+  advance(notified, REGEN_DELAY + REGEN_INTERVAL * 2);
+  check("回復では何も拾わない", notified.takeDamage() === null && notified.health > MAX_HEALTH - 2);
+
+  // 死んだフレームで「死んだこと」を拾えること。ここが取れないと死亡画面が出ない。
+  const slain = new Vitals();
+  slain.damage(MAX_HEALTH, "モンスター", MOB_HURT_COOLDOWN);
+  advance(slain, 1);
+  check("倒された瞬間を拾える", slain.takeDamage() === "モンスター" && slain.dead, `hp ${slain.health}`);
+  check("死んだあとは何度見ても拾わない", slain.takeDamage() === null);
+  slain.respawn();
+  check("リスポーンで拾い残しも消える", slain.takeDamage() === null);
+
   // --- クリエイティブ ---
   const godmode = new Vitals();
   drop(godmode, 40, { invulnerable: true });

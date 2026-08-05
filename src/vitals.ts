@@ -68,6 +68,8 @@ export class Vitals {
   private peakY = 0;
   /** 無敵時間の残り (秒)。`cooldown` を渡すダメージだけが読み書きする。 */
   private iframe = 0;
+  /** まだ拾われていないダメージの死因。`takeDamage()` が読むと消える。 */
+  private pending: DamageCause | null = null;
   private sinceDamage = REGEN_DELAY;
   private regenTimer = 0;
   private drownTimer = 0;
@@ -100,8 +102,24 @@ export class Vitals {
     this.regenTimer = 0;
     this.hurtFlash = 1;
     this.cause = cause;
+    this.pending = cause;
     if (this.health === 0) this.dead = true;
     return true;
+  }
+
+  /**
+   * このフレームで受けたダメージの死因。**読むと消える**（1 回だけ拾える）。
+   *
+   * 音・死亡画面はこれで拾うこと。**「フレームの前後で体力を比べる」書き方にしないこと** ——
+   * ダメージを入れるのはプレイヤーの落下だけではなく、モブは `updateVitals()` より
+   * 前に走る。前後を比べる形にすると、その差分が控えを取る前に済んでいて、
+   * **ゾンビに殺されても死亡画面が出ない**（実際にそうなっていた）。
+   * こちらは誰がいつ減らしても、次に拾った人が必ず 1 回受け取れる。
+   */
+  takeDamage(): DamageCause | null {
+    const cause = this.pending;
+    this.pending = null;
+    return cause;
   }
 
   heal(amount: number): void {
@@ -118,6 +136,7 @@ export class Vitals {
     this.lastFall = 0;
     this.airborne = false;
     this.iframe = 0;
+    this.pending = null;
     this.sinceDamage = REGEN_DELAY;
     this.regenTimer = 0;
     this.drownTimer = 0;

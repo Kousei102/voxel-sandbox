@@ -583,9 +583,10 @@ function frame(now: number): void {
 
   dayNight.advance(dt);
   updateEnvironment();
-  // モブは **updateVitals より前**に回すこと。ここでプレイヤーを殴らせておけば、
-  // updateVitals が体力の減りを見て hurt/death を鳴らし、赤い明滅も死亡画面も出す
-  // （main.ts 側にモブ用のダメージ処理を書かずに済む）。
+  // ここでプレイヤーが殴られる。音・赤い明滅・死亡画面は updateVitals が
+  // vitals.takeDamage() で拾うので、モブ用のダメージ処理は書かずに済む
+  // （拾い方が「前後の体力の比較」だった頃は、ここが先に走るせいで
+  //   ゾンビに殺されても死亡画面が出なかった。vitals.ts のコメント参照）。
   if (playing) mobs.update(dt, world, mobContext());
   mobRender.sync(mobs.list, world);
   // 水中のこもりに underwater を使うので、updateEnvironment のあとに回す
@@ -628,9 +629,6 @@ function frame(now: number): void {
  * クリエイティブでは何も受けず、奈落に落ちたら初期位置へ戻す（死なせない）。
  */
 function updateVitals(dt: number): void {
-  const wasDead = vitals.dead;
-  const beforeHealth = vitals.health;
-
   if (playing) {
     vitals.update(dt, {
       y: player.position.y,
@@ -644,10 +642,15 @@ function updateVitals(dt: number): void {
   }
 
   hud.setVitals(vitals.health, vitals.airFraction, vitals.hurtFlash, playing && !creative);
-  // 減ったときだけ鳴らす（自然回復で毎秒鳴らさない）
-  if (vitals.health < beforeHealth) audio.play(vitals.dead ? "death" : "hurt");
 
-  if (vitals.dead && !wasDead) {
+  // **`takeDamage()` で拾うこと。前後の体力を比べないこと。**
+  // モブは `updateVitals()` より前に走るので、ここで控えを取る形にすると
+  // その差分がもう済んでいて、ゾンビに殺されても死亡画面が出ない（実際にそうなっていた）。
+  const hurt = vitals.takeDamage();
+  // 減ったときだけ鳴らす（自然回復で毎秒鳴らさない）
+  if (hurt) audio.play(vitals.dead ? "death" : "hurt");
+
+  if (hurt && vitals.dead) {
     breaking = false;
     mining.reset();
     deathCause.textContent = vitals.cause ? `死因: ${vitals.cause}` : "";
