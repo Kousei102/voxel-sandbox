@@ -56,7 +56,13 @@ export const DIAMOND_SHOVEL = 80;
  */
 export const RAW_PORK = 81;
 
-export const MAX_ITEM_ID = RAW_PORK;
+/**
+ * 腐った肉。ゾンビが落とす。生豚肉と同じ理由で**まだ食べられない**
+ * （Minecraft でも空腹を減らす危ない食べ物なので、空腹が入るまで意味を持てない）。
+ */
+export const ROTTEN_FLESH = 82;
+
+export const MAX_ITEM_ID = ROTTEN_FLESH;
 
 export const MAX_STACK = 64;
 
@@ -117,6 +123,7 @@ item({ id: IRON_INGOT, name: "鉄インゴット", block: AIR, stack: MAX_STACK,
 item({ id: GOLD_INGOT, name: "金インゴット", block: AIR, stack: MAX_STACK, color: 0xf2d15c, tool: null });
 item({ id: DIAMOND, name: "ダイヤモンド", block: AIR, stack: MAX_STACK, color: 0x4fe3d8, tool: null });
 item({ id: RAW_PORK, name: "生豚肉", block: AIR, stack: MAX_STACK, color: 0xe08f8f, tool: null });
+item({ id: ROTTEN_FLESH, name: "腐った肉", block: AIR, stack: MAX_STACK, color: 0x8a6b4f, tool: null });
 
 /** 道具は 4 階層 x 3 種類。ID は tier ごとに pickaxe / axe / shovel の順。 */
 const TOOL_KINDS: ToolKind[] = ["pickaxe", "axe", "shovel"];

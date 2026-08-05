@@ -2,6 +2,7 @@ import {
   AIR_SECONDS,
   DROWN_DAMAGE,
   MAX_HEALTH,
+  MOB_HURT_COOLDOWN,
   REGEN_DELAY,
   REGEN_INTERVAL,
   VOID_Y,
@@ -140,6 +141,49 @@ export function run(): void {
     "リスポーンで満タンに戻る",
     !dying.dead && dying.health === MAX_HEALTH && dying.airFraction === 1 && dying.cause === null,
   );
+
+  // --- 無敵時間（モブのダメージ） ---
+  // **`cooldown` を渡したときだけ効く形にしてあること。** 一律に掛けると
+  // 溺れ（1 秒ごと）と奈落（0.5 秒ごと）が黙って半分になる。
+  const guarded = new Vitals();
+  check("モブのダメージが入る", guarded.damage(2, "モンスター", MOB_HURT_COOLDOWN));
+  check(
+    "無敵時間のあいだは 2 発目が入らない",
+    !guarded.damage(2, "モンスター", MOB_HURT_COOLDOWN) && guarded.health === MAX_HEALTH - 2,
+    `hp ${guarded.health}`,
+  );
+  // ぴったり MOB_HURT_COOLDOWN 秒ぶんだと、1/60 の足し込みの誤差で
+  // 窓が 5e-17 秒だけ残る。1 フレームぶん多く進めてから見る。
+  advance(guarded, MOB_HURT_COOLDOWN + STEP);
+  check(
+    "明ければまた入る",
+    guarded.damage(2, "モンスター", MOB_HURT_COOLDOWN) && guarded.health === MAX_HEALTH - 4,
+    `hp ${guarded.health}`,
+  );
+
+  // **既定の経路が変わっていない証明。** cooldown を渡さない呼び出しは
+  // 無敵時間を読みも書きもしないので、連続で入る。
+  const unguarded = new Vitals();
+  const first = unguarded.damage(2, "落下");
+  const second = unguarded.damage(2, "落下");
+  check(
+    "cooldown を渡さなければ連続で入る（落下・溺れ・奈落）",
+    first && second && unguarded.health === MAX_HEALTH - 4,
+    `hp ${unguarded.health}`,
+  );
+  // モブに殴られた直後でも、落下ダメージは無敵時間に弾かれない（窓を共有しない）
+  const mixed = new Vitals();
+  mixed.damage(2, "モンスター", MOB_HURT_COOLDOWN);
+  check(
+    "モブの無敵時間は落下ダメージを止めない",
+    mixed.damage(5, "落下") && mixed.health === MAX_HEALTH - 7,
+    `hp ${mixed.health}`,
+  );
+
+  const revived = new Vitals();
+  revived.damage(2, "モンスター", MOB_HURT_COOLDOWN);
+  revived.respawn();
+  check("リスポーンで無敵時間が消える", revived.damage(2, "モンスター", MOB_HURT_COOLDOWN));
 
   // --- クリエイティブ ---
   const godmode = new Vitals();

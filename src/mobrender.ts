@@ -42,10 +42,16 @@ interface Rig {
  * 全種類・全個体で 1 枚を共有する（1 体ごとの確保はゼロ）。
  */
 const HURT_TINT = 0xff8080;
+/**
+ * 日光で燃えているモブの色。赤より橙に寄せて、殴られた瞬間の赤と見分けが付くようにする
+ * （同じ色にすると、朝に燃えているのか殴られているのか分からない）。
+ */
+const BURN_TINT = 0xffb060;
 
 export class MobRenderer {
   private readonly material: MeshBasicMaterial;
   private readonly hurtMaterial: MeshBasicMaterial;
+  private readonly burnMaterial: MeshBasicMaterial;
   private readonly rigs = new Map<number, Rig>();
   /** 種類ごとの形。1 回作って使い回す（幾何は全個体で同じ）。 */
   private readonly shapes = new Map<MobKind, MobPartMesh[]>();
@@ -56,9 +62,11 @@ export class MobRenderer {
   ) {
     this.material = new MeshBasicMaterial({ vertexColors: true, fog: true });
     this.hurtMaterial = new MeshBasicMaterial({ vertexColors: true, fog: true, color: HURT_TINT });
+    this.burnMaterial = new MeshBasicMaterial({ vertexColors: true, fog: true, color: BURN_TINT });
     // 地形と同じ patch・同じ uniform オブジェクト。**別の GLSL を書かないこと。**
     useTerrainLighting(this.material, daylight);
     useTerrainLighting(this.hurtMaterial, daylight);
+    useTerrainLighting(this.burnMaterial, daylight);
   }
 
   /** 毎フレーム、いま居るモブに合わせて `Object3D` を作り・動かし・片付ける。 */
@@ -78,8 +86,10 @@ export class MobRenderer {
       // player.ts の forward の作り方とそのまま一致する。
       rig.root.rotation.y = mob.yaw;
 
-      // 殴られている間だけ赤い版に差し替える（判断は mobs.ts の hurtTimer）
-      const material = mob.hurtTimer > 0 ? this.hurtMaterial : this.material;
+      // 殴られている間は赤、燃えている間は橙に差し替える
+      // （どちらも判断は mobs.ts のタイマー。ここは貼るだけ）。
+      const material =
+        mob.hurtTimer > 0 ? this.hurtMaterial : mob.burnTimer > 0 ? this.burnMaterial : this.material;
 
       for (const { mesh, part } of rig.parts) {
         if (mesh.material !== material) mesh.material = material;
@@ -164,6 +174,7 @@ export class MobRenderer {
     this.rigs.clear();
     this.material.dispose();
     this.hurtMaterial.dispose();
+    this.burnMaterial.dispose();
   }
 }
 

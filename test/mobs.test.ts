@@ -3,11 +3,17 @@ import { Vector3 } from "three";
 import { AIR, BEDROCK, GRASS, SAND, STONE, STONE_SLAB, WATER, WOOL } from "../src/blocks";
 import { MAX_LIGHT, WORLD_HEIGHT } from "../src/constants";
 import { DayNight } from "../src/daynight";
-import { NO_ITEM, RAW_PORK, STONE_AXE, WOOD_PICKAXE, itemName } from "../src/items";
+import { NO_ITEM, RAW_PORK, ROTTEN_FLESH, STONE_AXE, WOOD_PICKAXE, itemName } from "../src/items";
 import { SKY_LIGHT } from "../src/lighting";
 import { buildMobMesh } from "../src/mobmesh";
 import {
+  ATTACK_RANGE,
   DESPAWN_DISTANCE,
+  HOSTILE_LIGHT_MAX,
+  HOSTILE_SIGHT,
+  MAX_HOSTILE,
+  MOB_ATTACK_COOLDOWN,
+  MOB_DAMAGE,
   PLAYER_ATTACK_COOLDOWN,
   attackDamage,
   LOOK_DISTANCE,
@@ -18,9 +24,11 @@ import {
   PASSIVE_SKY_MIN,
   SPAWN_MIN_DISTANCE,
   WALK_SWING,
+  canSpawnHostile,
   canSpawnPassive,
   mobRgb,
   spawnLight,
+  sunlightBurns,
   walkSwing,
   type MobContext,
   type MobDef,
@@ -28,6 +36,7 @@ import {
 import { boxBlocked } from "../src/physics";
 import { raycastVoxels } from "../src/raycast";
 import type { Sfx } from "../src/sfx";
+import { MAX_HEALTH, MOB_HURT_COOLDOWN, Vitals } from "../src/vitals";
 import type { World } from "../src/world";
 import { signedVolume, verifyWinding } from "./geometry";
 import { check, describe } from "./harness";
@@ -95,6 +104,17 @@ function flatGrass(): Arena {
   const arena = new Arena();
   arena.fill(-80, 80, 10, 10, -80, 80, GRASS);
   arena.sky = MAX_LIGHT;
+  return arena;
+}
+
+/**
+ * 自然な湧きを止めた試験場。**スカイライトを 0 にするだけでは止まらない** ——
+ * 暗い所はそのまま敵対モブの湧き条件になるので、松明ぶんのブロックライトも要る。
+ * （受動は sky < 9 で止まり、敵対は max(sky * 明るさ, block) > 7 で止まる。）
+ */
+function quiet(arena: Arena): Arena {
+  arena.sky = 0;
+  arena.block = MAX_LIGHT;
   return arena;
 }
 
@@ -225,7 +245,7 @@ export function run(): void {
   describe("モブの物理");
 
   const flat = flatGrass();
-  flat.sky = 0; // このグループでは自然な湧きを起こさない
+  quiet(flat); // このグループでは自然な湧きを起こさない
   const world = flat.asWorld();
   const mobs = new Mobs();
   const pigMob = mobs.spawn("pig", 0.5, 16, 0.5, 0, seeded(1));
@@ -407,11 +427,69 @@ export function run(): void {
   }
   check("プレイヤーが離れると消える", wild.count === 0, `${before} 体 → ${wild.count} 体`);
 
+  describe("敵対モブの湧き");
+
+  // **湧きの式はシェーダの合成と同じもの**（`spawnLight`）。ここがずれると
+  // 「明るく見えるのにゾンビが湧く」場所ができる。
+  console.log("      場所            sky block 明るさ  実効光  ゾンビが湧く");
+  const spots: [string, number, number, number][] = [
+    ["地表・南中    ", 15, 0, noon],
+    ["地表・真夜中  ", 15, 0, midnight],
+    ["洞窟・南中    ", 0, 0, noon],
+    ["松明のそば・夜", 15, 14, midnight],
+  ];
+  for (const [name, sky, block, b] of spots) {
+    console.log(
+      `      ${name}  ${String(sky).padStart(2)}  ${String(block).padStart(4)}` +
+        `  ${b.toFixed(3)}  ${spawnLight(sky, block, b).toFixed(2).padStart(6)}` +
+        `    ${canSpawnHostile(sky, block, b) ? "はい" : "いいえ"}`,
+    );
+  }
+  check("真夜中の地表には湧く", canSpawnHostile(15, 0, midnight));
+  check("南中の地表には湧かない", !canSpawnHostile(15, 0, noon));
+  check("洞窟は昼でも湧く", canSpawnHostile(0, 0, noon));
+  // ここが「松明に意味がある」の中身。**受動と違って明るさを掛ける**ので、
+  // 夜でも松明の下だけは湧かない。
+  check("真夜中でも松明のそばには湧かない", !canSpawnHostile(15, 14, midnight));
+  check("しきい値が Minecraft と同じ 7 以下", HOSTILE_LIGHT_MAX === 7);
+
+  /** 30 秒回して、種類ごとの数を数える。 */
+  function census(arena: Arena, over: Partial<MobContext>, frames = 1800): Record<string, number> {
+    const group = new Mobs();
+    const world = arena.asWorld();
+    const c = ctx(over);
+    for (let f = 0; f < frames; f++) group.update(1 / 60, world, c);
+    const counts: Record<string, number> = { 豚: 0, 羊: 0, ゾンビ: 0 };
+    for (const mob of group.list) counts[MOBS[mob.kind].name]++;
+    return counts;
+  }
+
+  const stone = new Arena();
+  stone.fill(-80, 80, 10, 10, -80, 80, STONE);
+
+  const atNight = census(flatGrass(), { brightness: midnight, random: seeded(41) });
+  const atNoon = census(flatGrass(), { brightness: noon, random: seeded(41) });
+  const torchlit = census((() => { const a = flatGrass(); a.block = 14; return a; })(), { brightness: midnight, random: seeded(41) });
+  const inCave = census(stone, { brightness: noon, random: seeded(41) });
+  const show = (c: Record<string, number>) => `豚 ${c.豚} / 羊 ${c.羊} / ゾンビ ${c.ゾンビ}`;
+  console.log(`      夜の草地      ${show(atNight)}`);
+  console.log(`      昼の草地      ${show(atNoon)}`);
+  console.log(`      夜+松明の草地 ${show(torchlit)}`);
+  console.log(`      昼の洞窟(石)  ${show(inCave)}`);
+
+  check("夜の地表にゾンビが湧く", atNight.ゾンビ > 0, show(atNight));
+  check("敵対の上限を超えない", atNight.ゾンビ <= MAX_HOSTILE, `${atNight.ゾンビ} / ${MAX_HOSTILE}`);
+  check("昼の地表にはゾンビが湧かない", atNoon.ゾンビ === 0, show(atNoon));
+  check("松明を置いた所には湧かない", torchlit.ゾンビ === 0, show(torchlit));
+  check("昼でも暗い洞窟には湧く", inCave.ゾンビ > 0, show(inCave));
+  // 草でない地面には受動が湧かない（暗さで敵対に振り分けたあとも変わらない）
+  check("石の上に受動は湧かない", inCave.豚 === 0 && inCave.羊 === 0, show(inCave));
+
   describe("モブの AI");
 
   // 徘徊。固まりもせず、無限遠へも行かない。
   const roam = flatGrass();
-  roam.sky = 0;
+  quiet(roam);
   const roamers = new Mobs();
   const pig = roamers.spawn("pig", 0.5, 11, 0.5, 0, seeded(7));
   // **プレイヤーを遠くに置かないこと。** DESPAWN_DISTANCE を超えて消え、
@@ -425,7 +503,7 @@ export function run(): void {
   // **崖から落ちない。** これが無いと、そのうち全部が穴に落ちて世界からモブが消える。
   const ledge = new Arena();
   ledge.fill(-3, 3, 10, 10, -3, 3, GRASS);
-  ledge.sky = 0;
+  quiet(ledge);
   const survivors = new Mobs();
   const walkers = [
     survivors.spawn("pig", 0.5, 11, 0.5, 0, seeded(11)),
@@ -518,8 +596,7 @@ export function run(): void {
   /** 湧きを止めた（sky = 0）平地。戦闘の途中で数が変わらないようにする。 */
   function fightArena(): Arena {
     const arena = flatGrass();
-    arena.sky = 0;
-    return arena;
+    return quiet(arena);
   }
   const advance = (m: Mobs, a: Arena, c: MobContext, frames: number): void => {
     for (let i = 0; i < frames; i++) m.update(1 / 60, a.asWorld(), c);
@@ -573,10 +650,15 @@ export function run(): void {
       hits === expected && fight.count === 0,
       `${hits} 回 / 期待 ${expected} 回`,
     );
+    // 確率つきのドロップ（ゾンビの腐った肉）は出ないこともある。
+    // **出るなら 1 回だけ・中身は表どおり**が守るべきところ。
+    const certain = MOBS[kind].drop.chance >= 1;
     check(
-      `${MOBS[kind].name}: ドロップが 1 回だけ入る`,
-      drops.length === 1 && drop.item === MOBS[kind].drop.item && drop.count === MOBS[kind].drop.count,
-      `${drops.length} 回`,
+      `${MOBS[kind].name}: ドロップは多くても 1 回で、中身は表どおり`,
+      drops.length <= 1 &&
+        (!drop || (drop.item === MOBS[kind].drop.item && drop.count === MOBS[kind].drop.count)) &&
+        (!certain || drops.length === 1),
+      `${drops.length} 回（確率 ${MOBS[kind].drop.chance}）`,
     );
     check(
       `${MOBS[kind].name}: 殴った回数だけ悲鳴、倒した瞬間に断末魔`,
@@ -642,6 +724,172 @@ export function run(): void {
     `ブロック ${wallDistance.toFixed(2)} < モブ ${front?.distance.toFixed(2)}`,
   );
 
+  describe("敵対モブの AI（追跡と日光）");
+
+  const chaseArena = quiet(flatGrass());
+  const chase = new Mobs();
+  const hunter = chase.spawn("zombie", 0.5, 11, -10.5, 0, seeded(51));
+  // ここでは `vitals` を渡さない。**追いかけてくるかどうかだけ**を見る。
+  const chaseCtx = ctx({ random: seeded(53) });
+  const chaseStart = Math.hypot(hunter.position.x - 0.5, hunter.position.z - 0.5);
+  for (let i = 0; i < 300; i++) chase.update(1 / 60, chaseArena.asWorld(), chaseCtx);
+  const chaseGap = Math.hypot(hunter.position.x - 0.5, hunter.position.z - 0.5);
+  check(
+    "見つけたら追いかけてくる",
+    chaseGap < 2,
+    `${chaseStart.toFixed(1)} → ${chaseGap.toFixed(2)} ブロック（5 秒）`,
+  );
+  // 当たり判定の合計（ゾンビ 0.4 + プレイヤー 0.3）より離れて止まること。
+  // 重なると、ゾンビの胴がカメラの中に入って画面が塗りつぶされる。
+  check(
+    "目の前で止まる（プレイヤーに重ならない）",
+    chaseGap > MOBS.zombie.size.half + 0.3,
+    `${chaseGap.toFixed(2)} ブロック / 判定の合計 ${(MOBS.zombie.size.half + 0.3).toFixed(2)}`,
+  );
+
+  /**
+   * 索敵の外・クリエイティブでは**追跡そのものが始まらない**ことを見る。
+   * 徘徊で偶然近づく／離れるに左右されないよう、待機で固定してから回す
+   * （追跡は `stateTimer` に関わらず `walking` を立てるので、立てば追跡と分かる）。
+   */
+  function chases(distance: number, over: Partial<MobContext> = {}): boolean {
+    const arena = quiet(flatGrass());
+    const pack = new Mobs();
+    const mob = pack.spawn("zombie", 0.5, 11, 0.5 - distance, 0, seeded(57));
+    mob.walking = false;
+    mob.stateTimer = 1000; // 徘徊の抽選が来ないようにしておく
+    const c = ctx({ random: seeded(59), ...over });
+    for (let i = 0; i < 120; i++) pack.update(1 / 60, arena.asWorld(), c);
+    return mob.walking;
+  }
+  console.log(`      索敵範囲 ${HOSTILE_SIGHT} ブロック`);
+  check("索敵範囲の内側なら追う", chases(HOSTILE_SIGHT - 2));
+  check("索敵範囲の外なら追わない", !chases(HOSTILE_SIGHT + 6));
+  // クリエイティブは **`Vitals` ではなく `Mobs` 側で弾く**（`damage()` は元から invulnerable を見ない）
+  check("クリエイティブは狙われない", !chases(4, { invulnerable: true }));
+
+  /** 日光の下に 15 秒置く。`{ 生き残ったか, ドロップ数, 断末魔 }` を返す。 */
+  function sunbathe(arena: Arena, over: Partial<MobContext> = {}): { alive: boolean; drops: number; death: number; seconds: number } {
+    const pack = new Mobs();
+    let drops = 0;
+    let death = 0;
+    pack.onDrop = () => drops++;
+    pack.onSound = (sfx) => { if (sfx === "mobdeath") death++; };
+    pack.spawn("zombie", 0.5, 11, 3.5, 0, seeded(61));
+    const c = ctx({ random: seeded(63), ...over });
+    const world = arena.asWorld();
+    let frames = 0;
+    for (; frames < 900 && pack.count > 0; frames++) pack.update(1 / 60, world, c);
+    return { alive: pack.count > 0, drops, death, seconds: frames / 60 };
+  }
+
+  /** 石の地面。**草にすると受動が湧いて数が動く**ので、日光の試験場は石にする。 */
+  function sunnyGround(): Arena {
+    const arena = new Arena();
+    arena.fill(-40, 40, 10, 10, -40, 40, STONE);
+    arena.sky = MAX_LIGHT;
+    return arena;
+  }
+
+  const burned = sunbathe(sunnyGround());
+  console.log(`      朝日の下: ${burned.seconds.toFixed(1)} 秒で消えた / ドロップ ${burned.drops} 件`);
+  check("朝日が当たると燃えて消える", !burned.alive, `${burned.seconds.toFixed(1)} 秒`);
+  // **焼死ではドロップしない。** 遠くで勝手に焼けたゾンビの肉が手元に湧いてはいけない。
+  check("焼死ではドロップしない", burned.drops === 0, `${burned.drops} 件`);
+  check("焼死でも断末魔は鳴る", burned.death === 1, `${burned.death} 回`);
+
+  const shaded = sunnyGround();
+  shaded.sky = MAX_LIGHT - 1;
+  check("木の下・屋根の下では燃えない", sunbathe(shaded).alive);
+  check("夜は燃えない", sunbathe(sunnyGround(), { brightness: midnight }).alive);
+
+  // 水中では燃えない。浮き上がって水から出ないよう、蓋をした水路に入れる。
+  const submerged = new Arena();
+  submerged.fill(-20, 20, 0, 9, -20, 20, STONE);
+  submerged.fill(-6, 6, 10, 20, -6, 6, WATER);
+  submerged.fill(-6, 6, 21, 21, -6, 6, STONE);
+  submerged.sky = MAX_LIGHT;
+  check("水中では燃えない", sunbathe(submerged).alive);
+
+  console.log(
+    `      日光の判定: sky15+昼 ${sunlightBurns(15, noon)} / sky14+昼 ${sunlightBurns(14, noon)}` +
+      ` / sky15+夜 ${sunlightBurns(15, midnight)}`,
+  );
+  check(
+    "燃えるのは真上が空いている昼だけ",
+    sunlightBurns(MAX_LIGHT, noon) && !sunlightBurns(MAX_LIGHT - 1, noon) && !sunlightBurns(MAX_LIGHT, midnight),
+  );
+
+  describe("敵対モブの攻撃（プレイヤーへのダメージ）");
+
+  /**
+   * ゾンビ n 体に囲まれて `seconds` 秒。**本物の `Vitals`** を使う
+   * （無敵時間の効きを見たいので、模造品では意味がない）。
+   */
+  function besieged(count: number, seconds: number, invulnerable = false) {
+    const arena = quiet(flatGrass());
+    const pack = new Mobs();
+    const vitals = new Vitals();
+    const velocity = new Vector3();
+    const c = ctx({ random: seeded(71), vitals, playerVelocity: velocity, invulnerable });
+    for (let i = 0; i < count; i++) {
+      const a = (i / count) * Math.PI * 2;
+      const mob = pack.spawn("zombie", 0.5 + Math.cos(a) * 1.2, 11, 0.5 + Math.sin(a) * 1.2, 0, seeded(80 + i));
+      // 実際には全員が同時に着くわけではないので、殴り始めをずらす。
+      // そろえると全員が同じ窓を待つ形になり、無敵時間の効きを甘く見積もる。
+      mob.attackTimer = i * 0.15;
+    }
+    const world = arena.asWorld();
+    for (let f = 0; f < seconds * 60; f++) {
+      pack.update(1 / 60, world, c);
+      vitals.update(1 / 60, { y: 11, onGround: true, inWater: false, headInWater: false, flying: false, invulnerable });
+    }
+    return { lost: MAX_HEALTH - vitals.health, cause: vitals.cause, velocity, dead: vitals.dead };
+  }
+
+  const solo = besieged(1, 2);
+  const swarm = besieged(6, 2);
+  console.log(
+    `      2 秒で減る体力: 1 体 ${solo.lost} / 6 体 ${swarm.lost}` +
+      `（1 体の理論値 ${(MOB_DAMAGE / MOB_ATTACK_COOLDOWN) * 2} / 無敵時間の頭打ち ${(MOB_DAMAGE / MOB_HURT_COOLDOWN) * 2}）`,
+  );
+  check("殴られると体力が減る", solo.lost > 0, `${solo.lost} 減った`);
+  check("死因がモンスターになる", solo.cause === "モンスター", `${solo.cause}`);
+  check(
+    "無敵時間で頭打ちになる（人数ぶんには増えない）",
+    swarm.lost <= (MOB_DAMAGE / MOB_HURT_COOLDOWN) * 2 && swarm.lost <= solo.lost * 2,
+    `1 体 ${solo.lost} → 6 体 ${swarm.lost}（6 倍なら ${solo.lost * 6}）`,
+  );
+  check(
+    "ノックバックでプレイヤーが押される",
+    solo.velocity.x < 0 && solo.velocity.y > 0,
+    `速度 (${solo.velocity.x.toFixed(1)}, ${solo.velocity.y.toFixed(1)}, ${solo.velocity.z.toFixed(1)})`,
+  );
+  const safe = besieged(6, 2, true);
+  check("クリエイティブでは殴られない", safe.lost === 0 && safe.velocity.lengthSq() === 0, `${safe.lost} 減った`);
+  check("殴れる距離が届く距離と同じくらい", ATTACK_RANGE > 1 && ATTACK_RANGE < 3, `${ATTACK_RANGE} ブロック`);
+
+  // 腐った肉は確率つき（0.6）。1 回では確かめられないので、まとめて倒して割合で見る。
+  const bulkCtx = ctx({ random: seeded(91) });
+  // **乱数は 1 本を回し続けること。** 1 体ごとに `seeded(...)` を作ると、
+  // 線形合同法の 1 個目の値が種にそのまま引きずられて 200 回全部が同じ側に転ぶ
+  // （実際それで「確率 0.6 なのに 100%」が通ってしまった）。
+  const dropRandom = seeded(91);
+  let dropped = 0;
+  const trials = 200;
+  for (let i = 0; i < trials; i++) {
+    // クールダウンは `Mobs` が持つので、1 体ずつ新しい群れで殴る（フレームを回さずに済む）
+    const bulk = new Mobs();
+    bulk.onDrop = (item) => { if (item === ROTTEN_FLESH) dropped++; };
+    const mob = bulk.spawn("zombie", 0.5, 11, 2.5, 0, dropRandom);
+    mob.health = 1; // 1 発で倒れるようにしておく
+    bulk.attack(mob, STONE_AXE, bulkCtx, dropRandom);
+  }
+  const rate = dropped / trials;
+  console.log(`      腐った肉の落ちる割合: ${(rate * 100).toFixed(0)}%（表は ${MOBS.zombie.drop.chance * 100}%）`);
+  check("腐った肉は表どおりの割合で落ちる", Math.abs(rate - MOBS.zombie.drop.chance) < 0.1, `${(rate * 100).toFixed(0)}%`);
+  check("ゾンビは腐った肉を落とす（まだ食べられない）", MOBS.zombie.drop.item === ROTTEN_FLESH);
+
   describe("モブの費用");
 
   // 上限まで居る状態のフレーム時間。**constants.ts の予算から上限を導かないこと**
@@ -650,9 +898,12 @@ export function run(): void {
   const crowd = new Mobs();
   for (let i = 0; i < MAX_MOBS; i++) {
     const a = (i / MAX_MOBS) * Math.PI * 2;
-    crowd.spawn(i % 2 ? "pig" : "sheep", Math.cos(a) * 20 + 0.5, 11, Math.sin(a) * 20 + 0.5, a, seeded(100 + i));
+    // 3 種類を混ぜる（ゾンビが入ると追跡と日光の判定も費用に乗る）
+    crowd.spawn(MOB_KINDS[i % MOB_KINDS.length], Math.cos(a) * 20 + 0.5, 11, Math.sin(a) * 20 + 0.5, a, seeded(100 + i));
   }
-  const busyCtx = ctx({ random: seeded(31) });
+  // **真夜中で測ること。** 昼にするとゾンビが焼け死んで数が減り、
+  // 「上限まで居るときの費用」を測っていないことに気付けない。
+  const busyCtx = ctx({ random: seeded(31), brightness: midnight });
   for (let i = 0; i < 60; i++) crowd.update(1 / 60, busy.asWorld(), busyCtx); // 暖機
   const frames: number[] = [];
   for (let i = 0; i < 900; i++) {
@@ -668,6 +919,8 @@ export function run(): void {
   );
   // チャンク 1 個の生成が約 1ms。モブはその半分に収まっていること。
   check("上限まで居ても 1 フレームが軽い", median < 0.5, `中央 ${median.toFixed(3)}ms / 上限 0.5ms`);
+  // 測っている最中に減っていないこと（減っていたら上の数字は上限の費用ではない）
+  check("測っているあいだ数が減っていない", crowd.count === MAX_MOBS, `${crowd.count} / ${MAX_MOBS} 体`);
 
   crowd.clear();
   check("clear で全部消える", crowd.count === 0);

@@ -180,13 +180,22 @@ function startWorld(
   mobs.populate(world, mobContext());
 }
 
-/** モブに渡す周りの状況。判断は全部 `mobs.ts` 側なので、ここは値を集めるだけ。 */
+/**
+ * モブに渡す周りの状況。判断は全部 `mobs.ts` 側なので、ここは値を集めるだけ。
+ *
+ * `vitals` をそのまま渡すので、**ダメージの死因（「モンスター」）も無敵時間も
+ * `mobs.ts` が決める。** ここに `damage()` の呼び出しを書くと、戦闘の判断が
+ * DOM 込みでしか確かめられないファイルへ移ってしまう。
+ */
 function mobContext(): MobContext {
   return {
     playerX: player.position.x,
     playerY: player.position.y,
     playerZ: player.position.z,
     brightness: dayNight.brightness,
+    playerVelocity: player.velocity,
+    invulnerable: creative,
+    vitals,
   };
 }
 

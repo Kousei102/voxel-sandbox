@@ -11,17 +11,18 @@
 
 import { Color, Vector3 } from "three";
 import { GRASS, WATER, WOOL, isSolid } from "./blocks";
-import { CHUNK_BITS, WORLD_HEIGHT } from "./constants";
-import { RAW_PORK, toolOf } from "./items";
-import { SKY_LIGHT } from "./lighting";
+import { CHUNK_BITS, MAX_LIGHT, WORLD_HEIGHT } from "./constants";
+import { RAW_PORK, ROTTEN_FLESH, toolOf } from "./items";
+import { BLOCK_LIGHT, SKY_LIGHT } from "./lighting";
 import { type BodySize, boxBlocked, groundBelow, moveBody } from "./physics";
 import { rayBox } from "./raycast";
 import type { Sfx } from "./sfx";
+import { MOB_HURT_COOLDOWN, type DamageCause } from "./vitals";
 import type { World } from "./world";
 
 // --- 種類の表 -----------------------------------------------------------
 
-export type MobKind = "pig" | "sheep";
+export type MobKind = "pig" | "sheep" | "zombie";
 
 /** 部位の動き方。 */
 export type MobMotion =
@@ -186,8 +187,60 @@ const SHEEP: MobDef = {
   ],
 };
 
-export const MOBS: Record<MobKind, MobDef> = { pig: PIG, sheep: SHEEP };
-export const MOB_KINDS: readonly MobKind[] = ["pig", "sheep"];
+const ZOMBIE_SKIN = 0x5f9e46;
+const ZOMBIE_SHIRT = 0x2f6b6b;
+const ZOMBIE_PANTS = 0x3b4a86;
+const ZOMBIE_EYE = 0x16240f;
+
+/**
+ * ゾンビ。**唯一の敵対モブ。** 暗い所に湧いてプレイヤーを追いかけ、日光で燃える。
+ *
+ * 当たり判定は 0.8 x 1.9（プレイヤーの 0.6 x 1.8 より少し太い）。腕を体の横に付けると
+ * 幅 0.375 になるので、これより細くすると腕が判定からはみ出す（＝壁に腕が刺さって見える）。
+ * 段差は `STEP_HEIGHT` と同じ 0.6 にしてあり、**プレイヤーが登れる所には付いてくる。**
+ * ここだけ受動モブ（0.5）より大きいのは、階段で撒けてしまうと追われている感じが出ないため。
+ *
+ * グループの並び: 0 = 体（固定）、1 = 頭、2..3 = 腕、4..5 = 脚。
+ * 腕は同じ側の脚と逆の位相にする（人の歩き方。そろえると行進して見える）。
+ */
+const ZOMBIE: MobDef = {
+  kind: "zombie",
+  name: "ゾンビ",
+  size: { half: 0.4, height: 1.9, step: 0.6 },
+  maxHealth: 12,
+  // プレイヤーの歩き (5.2) よりわずかに遅く、走り (8.4) からは離される速さ。
+  // 歩きより速くすると、一度見つかったら振り切れなくなる。
+  speed: 4.6,
+  hostile: true,
+  drop: { item: ROTTEN_FLESH, count: 1, chance: 0.6 },
+  voice: 0.7,
+  groups: [
+    { motion: "fixed", pivot: [0, 0, 0], phase: 0 },
+    { motion: "head", pivot: [0, px(22), 0], phase: 0 },
+    { motion: "swing", pivot: [px(-5), px(21), 0], phase: Math.PI },
+    { motion: "swing", pivot: [px(5), px(21), 0], phase: 0 },
+    { motion: "swing", pivot: [px(-2), px(11), 0], phase: 0 },
+    { motion: "swing", pivot: [px(2), px(11), 0], phase: Math.PI },
+  ],
+  boxes: [
+    // 胴
+    { group: 0, box: [px(-4), px(11), px(-2), px(4), px(22), px(2)], color: ZOMBIE_SHIRT },
+    // 頭（軸は首。箱は軸からの相対）
+    { group: 1, box: [px(-4), 0, px(-4), px(4), px(8), px(4)], color: ZOMBIE_SKIN },
+    { group: 1, box: [px(-2.5), px(4), px(-4.1), px(-1), px(5.5), px(-4)], color: ZOMBIE_EYE },
+    { group: 1, box: [px(1), px(4), px(-4.1), px(2.5), px(5.5), px(-4)], color: ZOMBIE_EYE },
+    // 腕・脚（**軸からぶら下げる = y1 が 0**。0 でないと肘や足首で回る）
+    { group: 2, box: [px(-1), px(-10), px(-2), px(1), 0, px(2)], color: ZOMBIE_SKIN },
+    { group: 3, box: [px(-1), px(-10), px(-2), px(1), 0, px(2)], color: ZOMBIE_SKIN },
+    { group: 4, box: [px(-2), px(-11), px(-2), px(2), 0, px(2)], color: ZOMBIE_PANTS },
+    { group: 5, box: [px(-2), px(-11), px(-2), px(2), 0, px(2)], color: ZOMBIE_PANTS },
+  ],
+};
+
+export const MOBS: Record<MobKind, MobDef> = { pig: PIG, sheep: SHEEP, zombie: ZOMBIE };
+export const MOB_KINDS: readonly MobKind[] = ["pig", "sheep", "zombie"];
+/** 湧きの抽選に使う受動モブ。**敵対と混ぜないこと**（湧く条件も上限も別）。 */
+const PASSIVE_KINDS: readonly MobKind[] = ["pig", "sheep"];
 
 /**
  * sRGB hex を線形空間の RGB へ。**ブロックの色とまったく同じ道を通すこと**
@@ -260,6 +313,15 @@ export interface Mob {
   hurtTimer: number;
   /** 逃げている残り (秒)。0 より大きいあいだは、プレイヤーと反対を向いて速く歩く。 */
   fleeTimer: number;
+  /**
+   * 燃えている残り (秒)。日光に当たっているあいだ延び続け、日陰に入っても
+   * しばらく残る。**描画はこれを見て色を差し替えるだけ**（判断はここ）。
+   */
+  burnTimer: number;
+  /** 焦げるまでの溜め。1 秒ごとに 1 回ダメージを入れるのに使う。 */
+  burnTick: number;
+  /** 次にプレイヤーを殴れるまでの残り (秒)。**1 体ごとに持つ。** */
+  attackTimer: number;
 }
 
 // --- AI と湧きの決まり ---------------------------------------------------
@@ -283,9 +345,43 @@ export const LEDGE_MAX_DROP = 3;
 
 /** 受動モブが湧くのに要るスカイライト。 */
 export const PASSIVE_SKY_MIN = 9;
+/**
+ * 敵対モブが湧ける明るさの上限（Minecraft と同じ「7 以下」）。
+ * **`spawnLight()` の値で見ること**（下記）。
+ */
+export const HOSTILE_LIGHT_MAX = 7;
 /** 同時に居られる数。 */
 export const MAX_MOBS = 40;
 export const MAX_PASSIVE = 16;
+export const MAX_HOSTILE = 24;
+
+/** これより近いプレイヤーを追いかける。 */
+export const HOSTILE_SIGHT = 18;
+/** 殴れる距離（水平）と高さの差。 */
+export const ATTACK_RANGE = 1.4;
+export const ATTACK_HEIGHT = 1.5;
+/** 1 体が殴れる間隔 (秒) とダメージ。 */
+export const MOB_ATTACK_COOLDOWN = 1;
+export const MOB_DAMAGE = 2;
+/** 殴られたプレイヤーが押される強さ。**押し「続け」はしない**（下記）。 */
+const PLAYER_KNOCKBACK = 5;
+const PLAYER_KNOCKBACK_LIFT = 3.5;
+/**
+ * これ以上近いと止まって殴る。**止まってから滑るぶん（約 0.4）を見込んで、
+ * 当たり判定の合計（0.4 + 0.3 = 0.7）より広く取ってある。**
+ * 詰めすぎるとプレイヤーと重なり、ゾンビの胴がカメラの中に入る。
+ */
+const ATTACK_STOP = 1.3;
+
+/**
+ * 日光で燃え始める昼夜の明るさ。日の出の 6 分後あたりから燃え、日没の少し前に止む。
+ * **`brightness` で見ること**（`dayness` や時刻で別の昼夜判定を作らない）。
+ */
+export const BURN_BRIGHTNESS = 0.8;
+/** 日陰に入っても燃え続ける長さ (秒)。0 にすると木の下を通るたび点いたり消えたりする。 */
+const BURN_LINGER = 2;
+/** 燃えているあいだのダメージ（毎秒）。 */
+const BURN_DAMAGE = 2;
 /** 湧きを試す間隔と、1 回に試す回数。 */
 export const SPAWN_INTERVAL = 0.5;
 export const SPAWN_ATTEMPTS = 6;
@@ -365,6 +461,31 @@ export function canSpawnPassive(sky: number, ground: number): boolean {
   return sky >= PASSIVE_SKY_MIN && ground === GRASS;
 }
 
+/**
+ * 敵対モブが湧ける暗さか。**受動と違って `brightness` を掛ける** ——
+ * 掛けないと夜の地表（スカイライト 15）に 1 体も湧かない。
+ * これで「夜の外は危ない／松明を置いた所は安全／洞窟は昼でも危ない」が同時に決まる。
+ */
+export function canSpawnHostile(sky: number, block: number, brightness: number): boolean {
+  return spawnLight(sky, block, brightness) <= HOSTILE_LIGHT_MAX;
+}
+
+/**
+ * 日光で燃えるか。**スカイライトが最大（真上が完全に空いている）ときだけ。**
+ * 木の下・屋根の下・水の中では燃えない（水は呼ぶ側で見る）。
+ */
+export function sunlightBurns(sky: number, brightness: number): boolean {
+  return sky >= MAX_LIGHT && brightness >= BURN_BRIGHTNESS;
+}
+
+/**
+ * ダメージの受け口。**`Vitals` が構造的に満たす**ので、`main.ts` はそれをそのまま渡す。
+ * 死因（「モンスター」）と無敵時間をここで指定するので、**戦闘の判断が `main.ts` に漏れない。**
+ */
+export interface MobTarget {
+  damage(amount: number, cause: DamageCause, cooldown?: number): boolean;
+}
+
 /** モブの周りの状況。`main.ts` から毎フレーム渡す。 */
 export interface MobContext {
   readonly playerX: number;
@@ -372,6 +493,19 @@ export interface MobContext {
   readonly playerZ: number;
   /** 昼夜の明るさ 0..1（`DayNight.brightness`）。 */
   readonly brightness: number;
+  /**
+   * ノックバックを足す先（`Player.velocity`）。
+   * **モブがプレイヤーを押し続けることはしない** ——
+   * 押し続けると `collides()` の押し戻しと喧嘩して壁にめり込む。
+   */
+  readonly playerVelocity?: Vector3;
+  /**
+   * クリエイティブ。**狙われも殴られもしない。**
+   * `Vitals.damage()` はもともと `invulnerable` を見ていないので、ここで弾く。
+   */
+  readonly invulnerable?: boolean;
+  /** プレイヤーの体力。渡さなければ誰も殴られない（テストと、遊んでいない間）。 */
+  readonly vitals?: MobTarget;
   /** 乱数。テストで固定できるように差し替えられる形にしておく。 */
   readonly random?: () => number;
 }
@@ -426,6 +560,9 @@ export class Mobs {
       headPitch: 0,
       hurtTimer: 0,
       fleeTimer: 0,
+      burnTimer: 0,
+      burnTick: 0,
+      attackTimer: 0,
     };
     this.list.push(mob);
     return mob;
@@ -456,7 +593,9 @@ export class Mobs {
 
     this.despawnFar(ctx);
 
-    for (const mob of this.list) {
+    // **後ろから回すこと。** 日光で焼け死んだモブはその場で list から抜ける。
+    for (let i = this.list.length - 1; i >= 0; i--) {
+      const mob = this.list[i];
       const def = MOBS[mob.kind];
 
       // ボクセルの無い列に居るあいだは動かさない。`getVoxel` が AIR を返すので、
@@ -469,7 +608,12 @@ export class Mobs {
         this.think(mob, def, world, ctx, random);
       }
 
-      this.step(mob, def, world, dt);
+      this.step(mob, def, world, dt, ctx);
+
+      if (!def.hostile) continue;
+      // 焼け死んだらここで list から消えているので、続きに触らない
+      if (this.burn(mob, def, dt, ctx)) continue;
+      this.strike(mob, dt, ctx);
     }
   }
 
@@ -481,27 +625,11 @@ export class Mobs {
     ctx: MobContext,
     random: () => number,
   ): void {
-    if (mob.fleeTimer > 0) {
-      mob.fleeTimer = Math.max(0, mob.fleeTimer - AI_TICK);
-      // 逃げているあいだは徘徊の抽選をしない。**プレイヤーの反対を向き続けること** ——
-      // 向きを 1 回決めるだけだと、追いかけられたときに正面へ突っ込んでいく。
-      mob.walking = true;
-      mob.targetYaw = awayFrom(mob, ctx);
-      // 逃げ終わった直後にすぐ止まらないよう、状態の残りは短く持ち直す
-      mob.stateTimer = Math.max(mob.stateTimer, 1);
-    } else {
-      mob.stateTimer -= AI_TICK;
-      if (mob.stateTimer <= 0) {
-        mob.walking = !mob.walking;
-        mob.stateTimer = pick(random, mob.walking ? WANDER_TIME : IDLE_TIME);
-        if (mob.walking) mob.targetYaw = random() * Math.PI * 2;
-      }
-      if (random() < SAY_CHANCE && distanceTo(mob, ctx) < SAY_DISTANCE) {
-        this.onSound?.("mobsay", def.voice);
-      }
-    }
+    if (def.hostile) this.thinkHostile(mob, def, world, ctx, random);
+    else this.thinkPassive(mob, def, ctx, random);
 
     // 進む先が崖なら引き返す。**これが無いと、そのうち全部が穴に落ちる。**
+    // 追いかけている最中も同じ（プレイヤーを追って谷へ飛び込まない）。
     if (mob.walking && mob.onGround) {
       const ahead = forwardOf(mob.targetYaw);
       const gx = mob.position.x + ahead[0] * LEDGE_LOOKAHEAD;
@@ -517,6 +645,71 @@ export class Mobs {
     }
 
     this.aimHead(mob, ctx);
+  }
+
+  /**
+   * 敵対モブの判断。**プレイヤーを追う・日光で燃える・見失えば徘徊に戻る。**
+   * クリエイティブのプレイヤーは狙わない（`Vitals` 側では弾けない。あちらの
+   * `damage()` はもともと `invulnerable` を見ていないので、ここで切る）。
+   */
+  private thinkHostile(
+    mob: Mob,
+    def: MobDef,
+    world: World,
+    ctx: MobContext,
+    random: () => number,
+  ): void {
+    // 日光。**スカイライトが最大の所だけ**なので、屋根の下・木の下・洞窟では燃えない。
+    // 水に浸かっているあいだも燃えない（Minecraft と同じ）。
+    if (!mob.inWater) {
+      const sky = world.getLight(
+        Math.floor(mob.position.x),
+        Math.floor(mob.position.y + def.size.height * 0.8),
+        Math.floor(mob.position.z),
+        SKY_LIGHT,
+      );
+      if (sunlightBurns(sky, ctx.brightness)) mob.burnTimer = BURN_LINGER;
+    }
+
+    const distance = distanceTo(mob, ctx);
+    if (!ctx.invulnerable && distance <= HOSTILE_SIGHT) {
+      mob.targetYaw = toward(mob, ctx);
+      // 目の前まで来たら止まって殴る（歩き続けるとプレイヤーに重なって見える）
+      mob.walking = distance > ATTACK_STOP;
+      // 見失った次の判断で、すぐ徘徊の抽選に入れるようにしておく
+      mob.stateTimer = 0;
+    } else {
+      this.wander(mob, random);
+    }
+
+    if (random() < SAY_CHANCE && distance < SAY_DISTANCE) this.onSound?.("mobsay", def.voice);
+  }
+
+  /** 受動モブの判断。殴られたら逃げ、あとは歩いたり止まったり。 */
+  private thinkPassive(mob: Mob, def: MobDef, ctx: MobContext, random: () => number): void {
+    if (mob.fleeTimer > 0) {
+      mob.fleeTimer = Math.max(0, mob.fleeTimer - AI_TICK);
+      // 逃げているあいだは徘徊の抽選をしない。**プレイヤーの反対を向き続けること** ——
+      // 向きを 1 回決めるだけだと、追いかけられたときに正面へ突っ込んでいく。
+      mob.walking = true;
+      mob.targetYaw = awayFrom(mob, ctx);
+      // 逃げ終わった直後にすぐ止まらないよう、状態の残りは短く持ち直す
+      mob.stateTimer = Math.max(mob.stateTimer, 1);
+    } else {
+      this.wander(mob, random);
+      if (random() < SAY_CHANCE && distanceTo(mob, ctx) < SAY_DISTANCE) {
+        this.onSound?.("mobsay", def.voice);
+      }
+    }
+  }
+
+  /** 歩いたり止まったり。向きは止まっているあいだは変えない（その場で回ると不自然）。 */
+  private wander(mob: Mob, random: () => number): void {
+    mob.stateTimer -= AI_TICK;
+    if (mob.stateTimer > 0) return;
+    mob.walking = !mob.walking;
+    mob.stateTimer = pick(random, mob.walking ? WANDER_TIME : IDLE_TIME);
+    if (mob.walking) mob.targetYaw = random() * Math.PI * 2;
   }
 
   /**
@@ -541,11 +734,15 @@ export class Mobs {
   }
 
   /** 物理（毎フレーム）。 */
-  private step(mob: Mob, def: MobDef, world: World, dt: number): void {
+  private step(mob: Mob, def: MobDef, world: World, dt: number, ctx: MobContext): void {
     const beforeX = mob.position.x;
     const beforeZ = mob.position.z;
 
     if (mob.hurtTimer > 0) mob.hurtTimer = Math.max(0, mob.hurtTimer - dt);
+
+    // **止まる判断だけは毎フレーム見ること。** 判断は 5Hz なので、そのあいだに
+    // 0.9 ブロック進む。ティックだけで止めるとプレイヤーに重なるまで踏み込んでしまう。
+    if (mob.walking && def.hostile && distanceTo(mob, ctx) <= ATTACK_STOP) mob.walking = false;
 
     mob.inWater =
       world.getVoxel(
@@ -584,6 +781,74 @@ export class Mobs {
   }
 
   /**
+   * 燃えているぶんのダメージ（毎フレーム）。焼け死んだら true。
+   * 火が点くかどうかは 5Hz の `thinkHostile` が決めていて、ここは残りとダメージだけ。
+   *
+   * **焼死ではドロップしない。** 40 ブロック先で朝日を浴びたゾンビの肉が
+   * 手元に湧いてはいけない（`onDrop` はプレイヤーが倒したときだけ）。
+   */
+  private burn(mob: Mob, def: MobDef, dt: number, ctx: MobContext): boolean {
+    if (mob.burnTimer <= 0) return false;
+    mob.burnTimer = Math.max(0, mob.burnTimer - dt);
+    mob.burnTick += dt;
+    while (mob.burnTick >= 1) {
+      mob.burnTick -= 1;
+      if (!this.wound(mob, BURN_DAMAGE)) continue;
+      // 断末魔だけ鳴らす（毎秒の悲鳴は、夜明けに何十体ぶんも重なってうるさい）
+      if (distanceTo(mob, ctx) < SAY_DISTANCE) this.onSound?.("mobdeath", def.voice);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * 敵対モブがプレイヤーを殴る（毎フレーム）。
+   *
+   * **プレイヤーを押し続けることはしない。** ノックバックとして速度を 1 回足すだけ。
+   * 押し続けると `collides()` の押し戻しと喧嘩して、壁にめり込む。
+   */
+  private strike(mob: Mob, dt: number, ctx: MobContext): void {
+    if (mob.attackTimer > 0) {
+      mob.attackTimer = Math.max(0, mob.attackTimer - dt);
+      return;
+    }
+    // クリエイティブは殴られない。**`Vitals` 側では弾けない**ので必ずここで見る。
+    if (ctx.invulnerable || !ctx.vitals) return;
+
+    const dx = ctx.playerX - mob.position.x;
+    const dz = ctx.playerZ - mob.position.z;
+    const flat = Math.hypot(dx, dz);
+    if (flat > ATTACK_RANGE) return;
+    if (Math.abs(ctx.playerY - mob.position.y) >= ATTACK_HEIGHT) return;
+
+    // 届いたら**当たったかどうかに関わらず**1 回ぶん待つ。無敵時間に弾かれるたび
+    // 次のフレームで振り直すと、囲まれたときに全員が窓の明ける瞬間を待ち構える形になり、
+    // 体力が人数ぶん速く減る（無敵時間で頭打ちにした意味が無くなる）。
+    mob.attackTimer = MOB_ATTACK_COOLDOWN;
+    if (!ctx.vitals.damage(MOB_DAMAGE, "モンスター", MOB_HURT_COOLDOWN)) return;
+
+    const push = ctx.playerVelocity;
+    if (push && flat > 1e-4) {
+      push.x += (dx / flat) * PLAYER_KNOCKBACK;
+      push.z += (dz / flat) * PLAYER_KNOCKBACK;
+      if (push.y < PLAYER_KNOCKBACK_LIFT) push.y = PLAYER_KNOCKBACK_LIFT;
+    }
+  }
+
+  /**
+   * 体力を減らす。倒れたら `list` から抜いて true。
+   * **音とドロップは呼ぶ側が決める**（プレイヤーが倒したときと焼死とで違う）。
+   */
+  private wound(mob: Mob, amount: number): boolean {
+    mob.health -= amount;
+    mob.hurtTimer = HURT_FLASH;
+    if (mob.health > 0) return false;
+    const index = this.list.indexOf(mob);
+    if (index >= 0) this.list.splice(index, 1);
+    return true;
+  }
+
+  /**
    * 遠くなったモブを消す。数が増え続けないのはここと湧きの上限の 2 つで保つ。
    * 上限を超えているぶんも遠いものから消す。
    */
@@ -614,8 +879,12 @@ export class Mobs {
   private trySpawn(world: World, ctx: MobContext, random: () => number): void {
     if (this.list.length >= MAX_MOBS) return;
     let passive = 0;
-    for (const mob of this.list) if (!MOBS[mob.kind].hostile) passive++;
-    if (passive >= MAX_PASSIVE) return;
+    let hostile = 0;
+    for (const mob of this.list) {
+      if (MOBS[mob.kind].hostile) hostile++;
+      else passive++;
+    }
+    if (passive >= MAX_PASSIVE && hostile >= MAX_HOSTILE) return;
 
     const angle = random() * Math.PI * 2;
     const radius = SPAWN_MIN_DISTANCE + random() * (SPAWN_MAX_DISTANCE - SPAWN_MIN_DISTANCE);
@@ -631,9 +900,18 @@ export class Mobs {
 
     const ground = world.getVoxel(x, y - 1, z);
     if (world.getVoxel(x, y, z) === WATER) return;
-    if (!canSpawnPassive(world.getLight(x, y, z, SKY_LIGHT), ground)) return;
 
-    const kind: MobKind = random() < 0.5 ? "pig" : "sheep";
+    // **暗さの判定を先に見ること。** 夜の草地は「敵対が湧ける明るさ」でもあり
+    // 「受動が湧ける地面」でもあるので、順番がそのまま優先順位になる。
+    const sky = world.getLight(x, y, z, SKY_LIGHT);
+    const block = world.getLight(x, y, z, BLOCK_LIGHT);
+    let kind: MobKind | null = null;
+    if (canSpawnHostile(sky, block, ctx.brightness)) {
+      if (hostile < MAX_HOSTILE) kind = "zombie";
+    } else if (passive < MAX_PASSIVE && canSpawnPassive(sky, ground)) {
+      kind = PASSIVE_KINDS[Math.floor(random() * PASSIVE_KINDS.length)];
+    }
+    if (!kind) return;
     const px = x + 0.5;
     const pz = z + 0.5;
     // 形のあるブロック（ハーフ・階段）の中に湧かないよう、当たり判定の箱で見る
@@ -703,8 +981,7 @@ export class Mobs {
     this.attackTimer = PLAYER_ATTACK_COOLDOWN;
 
     const def = MOBS[mob.kind];
-    mob.health -= attackDamage(item);
-    mob.hurtTimer = HURT_FLASH;
+    const died = this.wound(mob, attackDamage(item));
 
     // のけぞり。プレイヤーから見て奥へ押して、少し浮かせる。
     const dx = mob.position.x - ctx.playerX;
@@ -716,17 +993,18 @@ export class Mobs {
     }
     if (mob.onGround) mob.velocity.y = KNOCKBACK_LIFT;
 
-    if (mob.health > 0) {
+    if (!died) {
       this.onSound?.("mobhurt", def.voice);
-      mob.fleeTimer = FLEE_TIME;
-      mob.walking = true;
-      mob.targetYaw = awayFrom(mob, ctx);
+      // **敵対モブは逃げない。** 殴られても向かってくるから怖い。
+      if (!def.hostile) {
+        mob.fleeTimer = FLEE_TIME;
+        mob.walking = true;
+        mob.targetYaw = awayFrom(mob, ctx);
+      }
       return true;
     }
 
     this.onSound?.("mobdeath", def.voice);
-    const index = this.list.indexOf(mob);
-    if (index >= 0) this.list.splice(index, 1);
     const drop = def.drop;
     if (drop.count > 0 && (drop.chance >= 1 || random() < drop.chance)) {
       this.onDrop?.(drop.item, drop.count);
@@ -755,6 +1033,11 @@ const hitBox = [0, 0, 0, 0, 0, 0];
 /** プレイヤーに背を向ける向き。`aimHead` の「見る向き」の裏返し。 */
 function awayFrom(mob: Mob, ctx: MobContext): number {
   return Math.atan2(ctx.playerX - mob.position.x, ctx.playerZ - mob.position.z);
+}
+
+/** プレイヤーのほうを向く向き（`awayFrom` の真裏）。yaw 0 = -Z の規約に合わせてある。 */
+function toward(mob: Mob, ctx: MobContext): number {
+  return Math.atan2(mob.position.x - ctx.playerX, mob.position.z - ctx.playerZ);
 }
 
 /** yaw 0 のとき前は -Z（`player.ts` の forward と同じ）。 */
