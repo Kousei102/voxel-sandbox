@@ -1,4 +1,11 @@
-import { type CraftScreen, type CraftSize, GRID_SLOTS, type MouseButton, type SlotArea } from "./craftscreen";
+import {
+  type CraftScreen,
+  type CraftSize,
+  GRID_SLOTS,
+  type MouseButton,
+  type ScreenResult,
+  type SlotArea,
+} from "./craftscreen";
 import { HOTBAR_SIZE, STORAGE_SIZE, type Slot } from "./inventory";
 import { itemCssColor, itemName } from "./items";
 import { paintSlot, slotMarkup } from "./ui";
@@ -28,6 +35,8 @@ export class InventoryScreen {
   onChange: () => void = () => {};
   /** クラフトが成立して 1 回ぶん取り出したとき（音を鳴らすのに使う）。 */
   onCraft: () => void = () => {};
+  /** アイテムを捨てたとき（通知を出すのに使う）。**捨てたものは戻らない。** */
+  onDiscard: (item: number, count: number) => void = () => {};
 
   constructor(private readonly craft: CraftScreen) {
     this.build(this.gridEl, this.gridSlots, GRID_SLOTS, "grid", 0);
@@ -41,6 +50,15 @@ export class InventoryScreen {
     });
 
     this.root.addEventListener("contextmenu", (event) => event.preventDefault());
+
+    // パネルの外（暗幕）を狙ったクリックで捨てる。パネルの中で起きたイベントは
+    // target が子要素になるので弾かれる。左 = 山ごと、右 = 1 個（他の操作と同じ規則）。
+    this.root.addEventListener("mousedown", (event) => {
+      if (event.target !== this.root) return;
+      if (event.button !== 0 && event.button !== 2) return;
+      event.preventDefault();
+      this.apply(this.craft.discardHeld(event.button === 0));
+    });
     document.addEventListener("mousemove", (event) => {
       if (!this.craft.isOpen) return;
       this.heldEl.style.left = `${event.clientX}px`;
@@ -103,10 +121,16 @@ export class InventoryScreen {
     }
   }
 
-  /** 判断の結果を画面と音に反映するだけ。 */
-  private apply(result: { changed: boolean; crafted: boolean }): void {
+  /** 判断の結果を画面・音・通知に反映するだけ。 */
+  private apply(result: ScreenResult): void {
     if (result.crafted) this.onCraft();
+    if (result.discarded) this.onDiscard(result.discarded.item, result.discarded.count);
     if (result.changed) this.refresh();
+  }
+
+  /** 掴んでいる山を 1 個捨てる（Q キー）。入口は main.ts。 */
+  discardOne(): void {
+    this.apply(this.craft.discardHeld(false));
   }
 
   /**

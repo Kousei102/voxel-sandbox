@@ -14,15 +14,17 @@ export type SlotArea = "grid" | "inv";
 /** 左 = 0、右 = 2（`MouseEvent.button` と同じ番号）。中クリックは受けない。 */
 export type MouseButton = 0 | 2;
 
-/** 入力 1 回の結果。UI はこれを見て描き直す／音を鳴らすだけ。 */
+/** 入力 1 回の結果。UI はこれを見て描き直す／音を鳴らす／通知を出すだけ。 */
 export interface ScreenResult {
   changed: boolean;
   crafted: boolean;
+  /** 捨てたもの（通知に出す）。捨てていなければ null。 */
+  discarded: { item: number; count: number } | null;
 }
 
-const NOTHING: ScreenResult = { changed: false, crafted: false };
-const CHANGED: ScreenResult = { changed: true, crafted: false };
-const CRAFTED: ScreenResult = { changed: true, crafted: true };
+const NOTHING: ScreenResult = { changed: false, crafted: false, discarded: null };
+const CHANGED: ScreenResult = { changed: true, crafted: false, discarded: null };
+const CRAFTED: ScreenResult = { changed: true, crafted: true, discarded: null };
 
 interface SlotRef {
   area: SlotArea;
@@ -215,6 +217,25 @@ export class CraftScreen {
   /** 配る予定のアイテム（プレビューの色に使う）。 */
   get dragPreviewItem(): number {
     return this.dragItem;
+  }
+
+  // --- 破棄 ---
+
+  /**
+   * 掴んでいる山を捨てる。**落ちたアイテムの仕組みがまだ無いので、捨てたものは戻らない。**
+   *
+   * だから既定（Q キー）は 1 個だけにして、丸ごと捨てるのは
+   * 「画面外を狙って左クリックした」ときにだけ与えている。
+   * ドラッグを構えている最中は捨てない（撫でた先に配るつもりだったものを消さない）。
+   */
+  discardHeld(all: boolean): ScreenResult {
+    if (this.dragButton !== null) return NOTHING;
+    if (isEmpty(this.heldSlot)) return NOTHING;
+    const item = this.heldSlot.item;
+    const count = all ? this.heldSlot.count : 1;
+    this.heldSlot.count -= count;
+    if (this.heldSlot.count <= 0) clearSlot(this.heldSlot);
+    return { changed: true, crafted: false, discarded: { item, count } };
   }
 
   private dragPlan(): number[] {

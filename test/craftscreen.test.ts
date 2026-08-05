@@ -476,4 +476,51 @@ export function run(): void {
     `確定 ${preview.inventory.slots.slice(1, 5).map((s) => s.count).join(",")} / 手 ${preview.held?.count}`,
   );
   check("離したら予定は消える", preview.dragPlanFor("inv", 1) === 0 && !preview.isDragging);
+
+  // --- 破棄 ---
+  describe("インベントリ画面（捨てる）");
+
+  // 落ちたアイテムの仕組みが無いので、捨てたものは戻らない。
+  // 「総数が本当に減っている」ことまで見る（どこかに残っていたら破棄になっていない）。
+  const dropOne = holding(10);
+  const dropped = dropOne.discardHeld(false);
+  check("Q で 1 個捨てる", dropOne.held?.count === 9, `手 ${dropOne.held?.count} 個`);
+  check(
+    "何を捨てたかが返る",
+    dropped.discarded?.item === DIRT && dropped.discarded.count === 1,
+    `${dropped.discarded?.item} x${dropped.discarded?.count}`,
+  );
+  check(
+    "捨てたぶんは世界のどこにも残らない",
+    dropOne.inventory.count(DIRT) + (dropOne.held?.count ?? 0) === 9,
+    `インベントリ ${dropOne.inventory.count(DIRT)} + 手 ${dropOne.held?.count}`,
+  );
+
+  const dropAll = holding(10);
+  const wiped = dropAll.discardHeld(true);
+  check("暗幕を左クリックで山ごと捨てる", dropAll.held === null, `手 ${dropAll.held?.count ?? 0} 個`);
+  check("捨てた数も返る", wiped.discarded?.count === 10, `x${wiped.discarded?.count}`);
+  check("総数が 10 減っている", dropAll.inventory.count(DIRT) === 0, `${dropAll.inventory.count(DIRT)} 個`);
+
+  const nothingHeld = screen();
+  const noop = nothingHeld.discardHeld(true);
+  check("何も掴んでいなければ捨てられない", noop.discarded === null && !noop.changed);
+
+  const keepGrid = holding(5);
+  put(keepGrid, 0, STONE, 3);
+  keepGrid.discardHeld(true);
+  check("捨てても盤面は変わらない", keepGrid.grid[0].count === 3, `枠0 ${keepGrid.grid[0].count} 個`);
+
+  // 撫でた先に配るつもりだったものを、途中で消してしまわないこと。
+  const midDrag = holding(10);
+  midDrag.press("inv", 1, 0);
+  midDrag.dragOver("inv", 2);
+  const duringDrag = midDrag.discardHeld(true);
+  check(
+    "ドラッグを構えている間は捨てない",
+    duringDrag.discarded === null && midDrag.held?.count === 10,
+    `手 ${midDrag.held?.count} 個`,
+  );
+  midDrag.release();
+  check("離せばそのまま配られる", midDrag.inventory.count(DIRT) === 10, `${midDrag.inventory.count(DIRT)} 個`);
 }

@@ -131,6 +131,12 @@ screen.onChange = () => {
 
 screen.onCraft = () => audio.play("craft");
 
+// **捨てたものは戻らない**（落ちたアイテムの仕組みがまだ無い）ので、必ず何を捨てたか出す。
+screen.onDiscard = (item, count) => {
+  hud.flash(`${itemName(item)} x${count} を捨てました`);
+  saveDirty = true;
+};
+
 /**
  * 倒したモブのドロップ。**落ちたアイテムの仕組みがまだ無いので、
  * 倒した瞬間にインベントリへ入れる**（`breakBlock` と同じ形）。
@@ -494,11 +500,16 @@ window.addEventListener("wheel", (event) => {
 });
 
 window.addEventListener("keydown", (event) => {
-  // インベントリを開いているときは E と Esc で閉じるだけ
+  // インベントリを開いているときは E と Esc で閉じる、Q で 1 個捨てるだけ
   if (screen.isOpen) {
     if (event.code === "KeyE" || event.code === "Escape") {
       event.preventDefault();
       closeInventory();
+    } else if (event.code === "KeyQ") {
+      // **プレイ中には割り当てないこと。** 落ちたアイテムの仕組みが無いので
+      // 捨てたものは戻らず、歩きながらの押し間違いが永久の削除になる。
+      event.preventDefault();
+      screen.discardOne();
     }
     return;
   }
