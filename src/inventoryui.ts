@@ -64,7 +64,10 @@ export class InventoryScreen {
     if (!this.craft.isOpen) return;
     this.craft.close();
     this.root.classList.add("hidden");
-    this.onChange();
+    // **必ず描き直すこと。** #held は body の直下にあるので `#inventory` を隠しても
+    // 一緒には消えず、掴んだまま閉じるとカーソルにアイテムが residue として残る。
+    // refresh() の末尾が onChange() を呼ぶので、ホットバーと保存もここで済む。
+    this.refresh();
   }
 
   private build(
@@ -116,7 +119,9 @@ export class InventoryScreen {
         ? "2x2 まで。道具は作業台が要ります"
         : "";
 
-    const held = this.craft.held;
+    // 画面を閉じている間は出さない。インベントリが満杯で戻しきれなかったぶんは
+    // held に残るので、`held === null` だけを見ているとプレイ中も表示が残る。
+    const held = this.craft.isOpen ? this.craft.held : null;
     this.heldEl.classList.toggle("hidden", held === null);
     if (held) {
       this.heldEl.style.background = itemCssColor(held.item);

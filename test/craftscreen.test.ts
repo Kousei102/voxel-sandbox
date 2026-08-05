@@ -246,5 +246,18 @@ export function run(): void {
     `盤面 ${overflow.grid[0].count} 個`,
   );
 
+  // 満杯だと閉じても手に残る。だから inventoryui.ts は「held が空か」ではなく
+  // 「画面が開いているか」で #held を出し分ける（残っているとカーソルに表示が居座る）。
+  const stuck = screen(3);
+  stuck.inventory.add(DIRT, 36 * MAX_STACK);
+  stuck.click("inv", 0, 0); // 満杯のスロットから 64 個掴む
+  stuck.inventory.add(STONE, MAX_STACK); // 空いた枠を別のもので埋め直す
+  stuck.close();
+  check(
+    "満杯なら閉じても手に残る（表示は isOpen で切る）",
+    stuck.held?.count === MAX_STACK && !stuck.isOpen,
+    `手 ${stuck.held?.count} 個 / isOpen ${stuck.isOpen}`,
+  );
+
   check("盤面は常に 9 枠", screen().grid.length === GRID_SLOTS);
 }
