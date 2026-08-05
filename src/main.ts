@@ -36,7 +36,7 @@ import { InventoryScreen } from "./inventoryui";
 import { NO_ITEM, dropOf, itemName, placedBlock } from "./items";
 import { Mining, breakTime, canHarvest } from "./mining";
 import { MobRenderer } from "./mobrender";
-import { Mobs } from "./mobs";
+import { MOB_KINDS, Mobs, type MobContext } from "./mobs";
 import { Player } from "./player";
 import { raycastVoxels, type RaycastHit } from "./raycast";
 import { DigCadence, StepCadence, clampVolume } from "./sfx";
@@ -160,21 +160,19 @@ function startWorld(
   player.clearKeys();
   player.syncCamera();
   world.update(player.position.x, player.position.z);
-  spawnDebugMobs(x, z);
+  // モブは保存しないので、読み込み直後は必ず 0 体。まとめて湧かせて、
+  // 最初の 1 分が空っぽにならないようにする（届く範囲だけなので数は控えめ）。
+  mobs.populate(world, mobContext());
 }
 
-/**
- * 足場のできている所へ豚を数体置く。**自然な湧きが入るまでの仮の足場**で、
- * 「モブが地面の上に立って、地形と同じ明るさで描かれるか」を目で見るためのもの。
- * 湧きの条件（明るさ・地面・間隔）は次の区切りで `mobs.ts` に入る。
- */
-function spawnDebugMobs(x: number, z: number): void {
-  for (let i = 0; i < 5; i++) {
-    const angle = (i / 5) * Math.PI * 2;
-    const mx = Math.floor(x + Math.cos(angle) * 5) + 0.5;
-    const mz = Math.floor(z + Math.sin(angle) * 5) + 0.5;
-    mobs.spawn("pig", mx, world.surfaceY(Math.floor(mx), Math.floor(mz)), mz, angle);
-  }
+/** モブに渡す周りの状況。判断は全部 `mobs.ts` 側なので、ここは値を集めるだけ。 */
+function mobContext(): MobContext {
+  return {
+    playerX: player.position.x,
+    playerY: player.position.y,
+    playerZ: player.position.z,
+    brightness: dayNight.brightness,
+  };
 }
 
 /** 初期位置へ戻す。ベッドがまだ無いので、リスポーン地点はワールドの初期位置ひとつだけ。 */
@@ -481,10 +479,11 @@ window.addEventListener("keydown", (event) => {
       player.toggleFly();
       return;
     case "KeyM":
-      // 狙った所に豚を 1 体。自然な湧きが入るまでの、目で見るための手段。
+      // 狙った所にモブを 1 体。湧きの条件に関わらず出せるので、
+      // 「湧かない場所」と「描けていない」を切り分けるのに使える。
       if (hit) {
         mobs.spawn(
-          "pig",
+          MOB_KINDS[Math.floor(Math.random() * MOB_KINDS.length)],
           hit.block.x + hit.normal.x + 0.5,
           hit.block.y + hit.normal.y,
           hit.block.z + hit.normal.z + 0.5,
@@ -550,7 +549,7 @@ function frame(now: number): void {
   // モブは **updateVitals より前**に回すこと。ここでプレイヤーを殴らせておけば、
   // updateVitals が体力の減りを見て hurt/death を鳴らし、赤い明滅も死亡画面も出す
   // （main.ts 側にモブ用のダメージ処理を書かずに済む）。
-  if (playing) mobs.update(dt, world);
+  if (playing) mobs.update(dt, world, mobContext());
   mobRender.sync(mobs.list, world);
   // 水中のこもりに underwater を使うので、updateEnvironment のあとに回す
   updateSounds();

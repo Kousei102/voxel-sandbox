@@ -71,6 +71,10 @@ export class MobRenderer {
       for (const { mesh, part } of rig.parts) {
         if (part.group.motion === "swing") {
           mesh.rotation.x = walkSwing(mob.walkPhase + part.group.phase);
+        } else if (part.group.motion === "head") {
+          // 向きは mobs.ts が決めている（体からの相対で、振り向ける角度に上限つき）
+          mesh.rotation.y = mob.headYaw;
+          mesh.rotation.x = mob.headPitch;
         }
       }
 
