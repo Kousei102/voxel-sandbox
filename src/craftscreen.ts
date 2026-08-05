@@ -24,6 +24,11 @@ const NOTHING: ScreenResult = { changed: false, crafted: false };
 const CHANGED: ScreenResult = { changed: true, crafted: false };
 const CRAFTED: ScreenResult = { changed: true, crafted: true };
 
+interface SlotRef {
+  area: SlotArea;
+  index: number;
+}
+
 function emptySlot(): Slot {
   return { item: NO_ITEM, count: 0 };
 }
@@ -49,6 +54,12 @@ export class CraftScreen {
   private craftSize: CraftSize = 2;
   private open = false;
 
+  private dragButton: MouseButton | null = null;
+  /** 撫でたスロット。撫でた順のまま、重複なし。 */
+  private dragSlots: SlotRef[] = [];
+  private dragItem = NO_ITEM;
+  private dragTotal = 0;
+
   constructor(readonly inventory: Inventory) {}
 
   /** 掴んでいる山。空なら null（UI 側に `isEmpty` を持たせないため）。 */
@@ -64,6 +75,10 @@ export class CraftScreen {
     return this.open;
   }
 
+  get isDragging(): boolean {
+    return this.dragButton !== null;
+  }
+
   openScreen(size: CraftSize): void {
     this.craftSize = size;
     this.open = true;
@@ -72,6 +87,7 @@ export class CraftScreen {
   /** 盤面と掴んでいる山を戻してから閉じる。 */
   close(): void {
     if (!this.open) return;
+    this.cancelDrag();
     this.returnAll();
     this.open = false;
   }
@@ -102,11 +118,112 @@ export class CraftScreen {
 
   // --- 入力 ---
 
-  click(area: SlotArea, index: number, button: MouseButton): ScreenResult {
+  /**
+   * ボタンを押した。**掴んでいるものがあるときは、ここでは何も書かずにドラッグを構える**。
+   * 確定は `release()` まで遅らせるので、`cancelDrag()` に巻き戻しが要らない。
+   */
+  press(area: SlotArea, index: number, button: MouseButton): ScreenResult {
+    this.cancelDrag();
     const slot = this.slotAt(area, index);
     if (!slot) return NOTHING;
-    this.transfer(slot, button === 0);
+
+    // 手が空なら、その場で掴んで終わり（空手でのスイープは持たない）
+    if (isEmpty(this.heldSlot)) {
+      if (isEmpty(slot)) return NOTHING;
+      this.transfer(slot, button === 0);
+      return CHANGED;
+    }
+
+    this.dragButton = button;
+    this.dragSlots = [{ area, index }];
+    this.dragItem = this.heldSlot.item;
+    this.dragTotal = this.heldSlot.count;
     return CHANGED;
+  }
+
+  /** 押したまま別のスロットに入った。構えていなければ何もしない。 */
+  dragOver(area: SlotArea, index: number): ScreenResult {
+    if (this.dragButton === null) return NOTHING;
+    if (!this.slotAt(area, index)) return NOTHING;
+    if (this.dragSlots.some((ref) => ref.area === area && ref.index === index)) return NOTHING;
+    this.dragSlots.push({ area, index });
+    return CHANGED;
+  }
+
+  /**
+   * ボタンを離して確定する。
+   *
+   * **撫でたのが 1 枠だけなら、今までのクリックと同じ扱いにすること。**
+   * ドラッグの規則（別アイテムの枠は飛ばす）とクリックの規則（別アイテムは入れ替える）は
+   * 違うので、ここを分けないと**今までの入れ替え操作が黙って効かなくなる**。
+   */
+  release(): ScreenResult {
+    if (this.dragButton === null) return NOTHING;
+    const whole = this.dragButton === 0;
+    const refs = this.dragSlots;
+    this.clearDrag();
+
+    if (refs.length === 1) {
+      const slot = this.slotAt(refs[0].area, refs[0].index);
+      if (slot) this.transfer(slot, whole);
+      return CHANGED;
+    }
+
+    const targets = this.slotsOf(refs);
+    const item = this.heldSlot.item;
+    const plan = planDrag(targets, item, this.heldSlot.count, whole);
+    for (let i = 0; i < targets.length; i++) {
+      if (plan[i] <= 0) continue;
+      targets[i].item = item;
+      targets[i].count += plan[i];
+      this.heldSlot.count -= plan[i];
+    }
+    if (this.heldSlot.count <= 0) clearSlot(this.heldSlot);
+    return CHANGED;
+  }
+
+  /** 構えを捨てる。まだ何も書いていないので巻き戻しは要らない。 */
+  cancelDrag(): ScreenResult {
+    if (this.dragButton === null) return NOTHING;
+    this.clearDrag();
+    return CHANGED;
+  }
+
+  private clearDrag(): void {
+    this.dragButton = null;
+    this.dragSlots = [];
+    this.dragItem = NO_ITEM;
+    this.dragTotal = 0;
+  }
+
+  // --- ドラッグ中のプレビュー（確定と同じ planDrag を通すので食い違わない） ---
+
+  /** そのスロットへ乗る予定の個数（0 = 予定なし）。 */
+  dragPlanFor(area: SlotArea, index: number): number {
+    if (this.dragButton === null || this.dragSlots.length < 2) return 0;
+    const at = this.dragSlots.findIndex((ref) => ref.area === area && ref.index === index);
+    if (at < 0) return 0;
+    return this.dragPlan()[at];
+  }
+
+  /** 配ったあと手に残る予定の数。構えていなければ今の数。 */
+  heldPreviewCount(): number {
+    if (this.dragButton === null || this.dragSlots.length < 2) return this.heldSlot.count;
+    return this.dragTotal - this.dragPlan().reduce((sum, n) => sum + n, 0);
+  }
+
+  /** 配る予定のアイテム（プレビューの色に使う）。 */
+  get dragPreviewItem(): number {
+    return this.dragItem;
+  }
+
+  private dragPlan(): number[] {
+    return planDrag(
+      this.slotsOf(this.dragSlots),
+      this.dragItem,
+      this.dragTotal,
+      this.dragButton === 0,
+    );
   }
 
   /**
@@ -195,4 +312,45 @@ export class CraftScreen {
     if (area === "grid") return this.usable(index) ? this.grid[index] : null;
     return this.inventory.slots[index] ?? null;
   }
+
+  private slotsOf(refs: readonly SlotRef[]): Slot[] {
+    return refs.map((ref) => this.slotAt(ref.area, ref.index) as Slot);
+  }
+}
+
+/**
+ * 撫でたスロットへの配り方。**今回の判定の芯**なので、純関数にして単独でテストする。
+ *
+ * 配れるのは「空か、同じアイテムでまだ空きがある」枠だけ（別アイテムの枠は飛ばす）。
+ * 均等（左ドラッグ）なら頭数で割り、1 個ずつ（右ドラッグ）なら 1。
+ * **上限で入りきらなかったぶんは配り直さず手に残す**（Minecraft と同じ）。
+ *
+ * **不変条件: 配った合計 + 手に残る数 = 開始時の数。** ここが崩れるとアイテムが増減する。
+ */
+export function planDrag(
+  targets: readonly Slot[],
+  item: number,
+  total: number,
+  even: boolean,
+): number[] {
+  const plan = targets.map(() => 0);
+  if (item === NO_ITEM || total <= 0) return plan;
+
+  const limit = itemStackLimit(item);
+  const room = targets.map((slot) =>
+    isEmpty(slot) ? limit : slot.item === item ? limit - slot.count : 0,
+  );
+  const eligible = room.filter((n) => n > 0).length;
+  if (eligible === 0) return plan;
+
+  // max(1, ...) が要る。3 個を 4 枠に配るときの 1,1,1,0 で、floor だけだと全部 0 になる。
+  const share = even ? Math.max(1, Math.floor(total / eligible)) : 1;
+  let left = total;
+  for (let i = 0; i < targets.length && left > 0; i++) {
+    if (room[i] <= 0) continue;
+    const give = Math.min(share, room[i], left);
+    plan[i] = give;
+    left -= give;
+  }
+  return plan;
 }

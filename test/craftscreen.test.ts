@@ -1,8 +1,14 @@
 import { readFileSync } from "node:fs";
 import { DIRT, PLANK, STONE, WOOD } from "../src/blocks";
-import { CraftScreen, GRID_SLOTS } from "../src/craftscreen";
-import { Inventory, isEmpty } from "../src/inventory";
-import { MAX_STACK, STICK, WOOD_PICKAXE } from "../src/items";
+import {
+  CraftScreen,
+  GRID_SLOTS,
+  type MouseButton,
+  planDrag,
+  type SlotArea,
+} from "../src/craftscreen";
+import { Inventory, isEmpty, type Slot } from "../src/inventory";
+import { MAX_STACK, NO_ITEM, STICK, WOOD_PICKAXE } from "../src/items";
 import { check, describe } from "./harness";
 
 function stripComments(path: string): string {
@@ -23,6 +29,26 @@ function put(craft: CraftScreen, index: number, item: number, count = 1): void {
   craft.grid[index].item = item;
   craft.grid[index].count = count;
 }
+
+/** クリック = 押して、同じ枠で離す。実際のブラウザと同じ経路を通す。 */
+function click(craft: CraftScreen, area: SlotArea, index: number, button: MouseButton): void {
+  craft.press(area, index, button);
+  craft.release();
+}
+
+/** ドラッグ = 押して、順に撫でて、離す。 */
+function drag(craft: CraftScreen, button: MouseButton, refs: [SlotArea, number][]): void {
+  craft.press(refs[0][0], refs[0][1], button);
+  for (const [area, index] of refs.slice(1)) craft.dragOver(area, index);
+  craft.release();
+}
+
+/** 空きスロットを並べた盤面（planDrag を単体で試すため）。 */
+function slots(spec: readonly (readonly [number, number])[]): Slot[] {
+  return spec.map(([item, count]) => ({ item, count }));
+}
+
+const EMPTY4 = () => slots([[NO_ITEM, 0], [NO_ITEM, 0], [NO_ITEM, 0], [NO_ITEM, 0]]);
 
 export function run(): void {
   describe("インベントリ画面（判断と描画の切り分け）");
@@ -73,12 +99,12 @@ export function run(): void {
 
   const grab = screen();
   put(grab, 0, DIRT, 7);
-  grab.click("grid", 0, 0);
+  click(grab, "grid", 0, 0);
   check("左クリックで山ごと掴む", grab.held?.count === 7 && isEmpty(grab.grid[0]), `手 ${grab.held?.count} 個`);
 
   const half = screen();
   put(half, 0, DIRT, 7);
-  half.click("grid", 0, 2);
+  click(half, "grid", 0, 2);
   check(
     "右クリックで半分掴む（多いほうが手に来る）",
     half.held?.count === 4 && half.grid[0].count === 3,
@@ -87,8 +113,8 @@ export function run(): void {
 
   const putAll = screen();
   put(putAll, 0, DIRT, 7);
-  putAll.click("grid", 0, 0);
-  putAll.click("inv", 5, 0);
+  click(putAll, "grid", 0, 0);
+  click(putAll, "inv", 5, 0);
   check(
     "空きスロットへ左クリックで全部置く",
     putAll.held === null && putAll.inventory.slots[5].count === 7,
@@ -97,8 +123,8 @@ export function run(): void {
 
   const putOne = screen();
   put(putOne, 0, DIRT, 7);
-  putOne.click("grid", 0, 0);
-  putOne.click("inv", 5, 2);
+  click(putOne, "grid", 0, 0);
+  click(putOne, "inv", 5, 2);
   check(
     "空きスロットへ右クリックで 1 個だけ置く",
     putOne.held?.count === 6 && putOne.inventory.slots[5].count === 1,
@@ -109,8 +135,8 @@ export function run(): void {
   merge.inventory.slots[0].item = DIRT;
   merge.inventory.slots[0].count = 60;
   put(merge, 0, DIRT, 20);
-  merge.click("grid", 0, 0);
-  merge.click("inv", 0, 0);
+  click(merge, "grid", 0, 0);
+  click(merge, "inv", 0, 0);
   check(
     "同じアイテムは上限まで合流し、余りは手に残る",
     merge.inventory.slots[0].count === MAX_STACK && merge.held?.count === 16,
@@ -121,15 +147,15 @@ export function run(): void {
   swapItems.inventory.slots[0].item = STONE;
   swapItems.inventory.slots[0].count = 5;
   put(swapItems, 0, DIRT, 3);
-  swapItems.click("grid", 0, 0);
-  swapItems.click("inv", 0, 0);
+  click(swapItems, "grid", 0, 0);
+  click(swapItems, "inv", 0, 0);
   check(
     "別アイテムは左クリックで入れ替わる",
     swapItems.inventory.slots[0].item === DIRT && swapItems.held?.item === STONE,
     `スロット ${swapItems.inventory.slots[0].item} / 手 ${swapItems.held?.item}`,
   );
   const heldBefore = swapItems.held?.count ?? 0;
-  swapItems.click("inv", 0, 2);
+  click(swapItems, "inv", 0, 2);
   check(
     "別アイテムは右クリックでは何も起きない",
     swapItems.held?.count === heldBefore && swapItems.inventory.slots[0].item === DIRT,
@@ -139,8 +165,8 @@ export function run(): void {
   tool.inventory.slots[0].item = WOOD_PICKAXE;
   tool.inventory.slots[0].count = 1;
   put(tool, 0, WOOD_PICKAXE, 1);
-  tool.click("grid", 0, 0);
-  tool.click("inv", 0, 0);
+  click(tool, "grid", 0, 0);
+  click(tool, "inv", 0, 0);
   check(
     "上限 1 の道具は合流できず手に残る",
     tool.held?.count === 1 && tool.inventory.slots[0].count === 1,
@@ -149,7 +175,7 @@ export function run(): void {
 
   const locked = screen(2);
   put(locked, 2, DIRT, 5); // 2x2 では使えない枠
-  locked.click("grid", 2, 0);
+  click(locked, "grid", 2, 0);
   check("2x2 で使えない枠は掴めない", locked.held === null && locked.grid[2].count === 5);
   check("2x2 の外周は usable が false", !locked.usable(2) && !locked.usable(8) && locked.usable(4));
   check("3x3 では全部使える", screen(3).usable(8));
@@ -218,7 +244,7 @@ export function run(): void {
   const closing = screen(3);
   put(closing, 0, DIRT, 5);
   put(closing, 8, STONE, 3);
-  closing.click("grid", 0, 0); // 手に 5 個
+  click(closing, "grid", 0, 0); // 手に 5 個
   closing.close();
   check(
     "閉じると盤面も手持ちもインベントリへ戻る",
@@ -250,7 +276,7 @@ export function run(): void {
   // 「画面が開いているか」で #held を出し分ける（残っているとカーソルに表示が居座る）。
   const stuck = screen(3);
   stuck.inventory.add(DIRT, 36 * MAX_STACK);
-  stuck.click("inv", 0, 0); // 満杯のスロットから 64 個掴む
+  click(stuck, "inv", 0, 0); // 満杯のスロットから 64 個掴む
   stuck.inventory.add(STONE, MAX_STACK); // 空いた枠を別のもので埋め直す
   stuck.close();
   check(
@@ -260,4 +286,194 @@ export function run(): void {
   );
 
   check("盤面は常に 9 枠", screen().grid.length === GRID_SLOTS);
+
+  // --- 配り方（純関数） ---
+  describe("インベントリ画面（ドラッグの配り方）");
+
+  const cases: [string, Slot[], number, number, boolean, number[]][] = [
+    ["10 個を空 4 枠へ均等", EMPTY4(), DIRT, 10, true, [2, 2, 2, 2]],
+    ["3 個を空 4 枠へ均等（1 個ずつで打ち切り）", EMPTY4(), DIRT, 3, true, [1, 1, 1, 0]],
+    ["4 個を空 4 枠へ均等（ちょうど）", EMPTY4(), DIRT, 4, true, [1, 1, 1, 1]],
+    ["5 個を右ドラッグで 4 枠へ", EMPTY4(), DIRT, 5, false, [1, 1, 1, 1]],
+    ["2 個を右ドラッグで 4 枠へ", EMPTY4(), DIRT, 2, false, [1, 1, 0, 0]],
+    [
+      "別アイテムの枠は飛ばす",
+      slots([[NO_ITEM, 0], [STONE, 5], [NO_ITEM, 0], [NO_ITEM, 0]]),
+      DIRT,
+      64,
+      true,
+      [21, 0, 21, 21],
+    ],
+    [
+      "同じアイテムの空きぶんだけ入る",
+      slots([[DIRT, 60], [NO_ITEM, 0]]),
+      DIRT,
+      42,
+      true,
+      [4, 21],
+    ],
+    ["満杯の枠には配らない", slots([[DIRT, MAX_STACK], [NO_ITEM, 0]]), DIRT, 10, true, [0, 10]],
+    ["配れる枠が無ければ全部 0", slots([[STONE, 1], [STONE, 1]]), DIRT, 10, true, [0, 0]],
+    ["上限 1 の道具は 1 枠 1 個", EMPTY4(), WOOD_PICKAXE, 3, true, [1, 1, 1, 0]],
+    ["手が空なら何も配らない", EMPTY4(), NO_ITEM, 5, true, [0, 0, 0, 0]],
+  ];
+
+  let conserved = 0;
+  for (const [label, targets, item, total, even, want] of cases) {
+    const got = planDrag(targets, item, total, even);
+    check(label, got.join(",") === want.join(","), `${got.join(",")} / 期待 ${want.join(",")}`);
+    // 配った合計 + 手に残る数 = 開始時の数。崩れるとアイテムが増減する。
+    const sum = got.reduce((a, b) => a + b, 0);
+    if (sum <= total && total - sum >= 0) conserved++;
+  }
+  check("どの配り方でもアイテムが増減しない", conserved === cases.length, `${conserved} / ${cases.length} 件`);
+
+  // --- 状態機械 ---
+  describe("インベントリ画面（ドラッグの状態機械）");
+
+  /** 10 個を掴んだ状態から始める（配るには先に掴んでいる必要がある）。 */
+  function holding(count = 10, item = DIRT): CraftScreen {
+    const craft = screen();
+    craft.inventory.slots[0].item = item;
+    craft.inventory.slots[0].count = count;
+    click(craft, "inv", 0, 0);
+    return craft;
+  }
+
+  const even = holding(10);
+  drag(even, 0, [["inv", 1], ["inv", 2], ["inv", 3], ["inv", 4]]);
+  check(
+    "左ドラッグで均等に配れる",
+    [1, 2, 3, 4].every((i) => even.inventory.slots[i].count === 2),
+    `${even.inventory.slots.slice(1, 5).map((s) => s.count).join(",")}`,
+  );
+  check("余りは手に残る", even.held?.count === 2, `手 ${even.held?.count} 個`);
+
+  const one = holding(10);
+  drag(one, 2, [["inv", 1], ["inv", 2], ["inv", 3]]);
+  check(
+    "右ドラッグは 1 個ずつ",
+    [1, 2, 3].every((i) => one.inventory.slots[i].count === 1),
+    `${one.inventory.slots.slice(1, 4).map((s) => s.count).join(",")}`,
+  );
+  check("右ドラッグでも残りは手に", one.held?.count === 7, `手 ${one.held?.count} 個`);
+
+  const onto = holding(20);
+  onto.inventory.slots[1].item = DIRT;
+  onto.inventory.slots[1].count = 5;
+  onto.inventory.slots[2].item = STONE;
+  onto.inventory.slots[2].count = 5;
+  drag(onto, 0, [["inv", 1], ["inv", 2], ["inv", 3]]);
+  check(
+    "同じアイテムの枠には足し、別アイテムの枠は飛ばす",
+    onto.inventory.slots[1].count === 15 && onto.inventory.slots[2].count === 5 &&
+      onto.inventory.slots[3].count === 10,
+    `${onto.inventory.slots.slice(1, 4).map((s) => s.count).join(",")}`,
+  );
+
+  // 撫でたのが 1 枠だけなら「今までのクリック」。ドラッグの規則（別アイテムは飛ばす）を
+  // ここに掛けると、入れ替え操作が黙って効かなくなる。
+  const single = screen();
+  single.inventory.slots[0].item = STONE;
+  single.inventory.slots[0].count = 5;
+  single.inventory.slots[1].item = DIRT;
+  single.inventory.slots[1].count = 3;
+  click(single, "inv", 0, 0);
+  drag(single, 0, [["inv", 1]]);
+  check(
+    "1 枠だけなら別アイテムでも入れ替わる（クリックと同じ）",
+    single.inventory.slots[1].item === STONE && single.held?.item === DIRT,
+    `スロット ${single.inventory.slots[1].item} / 手 ${single.held?.item}`,
+  );
+
+  const twiceOver = holding(9);
+  twiceOver.press("inv", 1, 0);
+  twiceOver.dragOver("inv", 2);
+  twiceOver.dragOver("inv", 2); // 同じ枠を撫で直す
+  twiceOver.dragOver("inv", 3);
+  twiceOver.release();
+  check(
+    "同じ枠を 2 回撫でても二重に配らない",
+    [1, 2, 3].every((i) => twiceOver.inventory.slots[i].count === 3),
+    `${twiceOver.inventory.slots.slice(1, 4).map((s) => s.count).join(",")}`,
+  );
+
+  const releaseTwice = holding(8);
+  releaseTwice.press("inv", 1, 0);
+  releaseTwice.dragOver("inv", 2);
+  releaseTwice.release();
+  const afterFirst = releaseTwice.inventory.slots[1].count;
+  const second = releaseTwice.release();
+  check(
+    "release を 2 回呼んでも 2 回配らない",
+    !second.changed && releaseTwice.inventory.slots[1].count === afterFirst,
+    `${afterFirst} 個のまま`,
+  );
+
+  const bare = screen();
+  check("構えていないのに release しても何も起きない", !bare.release().changed);
+
+  const emptyHand = screen();
+  emptyHand.inventory.slots[0].item = DIRT;
+  emptyHand.inventory.slots[0].count = 8;
+  emptyHand.press("inv", 0, 0);
+  check("手が空なら押した時点で掴み、ドラッグは始まらない", !emptyHand.isDragging && emptyHand.held?.count === 8);
+
+  const armed = screen();
+  armed.inventory.slots[0].item = DIRT;
+  armed.inventory.slots[0].count = 8;
+  click(armed, "inv", 0, 0);
+  armed.press("inv", 1, 0);
+  check("掴んだまま押すと構える（まだ書かない）", armed.isDragging && isEmpty(armed.inventory.slots[1]));
+  armed.cancelDrag();
+  armed.release();
+  check(
+    "cancelDrag のあとの release は効かない",
+    armed.held?.count === 8 && isEmpty(armed.inventory.slots[1]),
+    `手 ${armed.held?.count} 個`,
+  );
+
+  const outer = screen(2);
+  outer.inventory.slots[0].item = DIRT;
+  outer.inventory.slots[0].count = 8;
+  click(outer, "inv", 0, 0);
+  drag(outer, 0, [["grid", 0], ["grid", 2], ["grid", 5]]); // 2 と 5 は 2x2 の外
+  check(
+    "2x2 の外周はドラッグの対象にならない",
+    outer.grid[0].count === 8 && isEmpty(outer.grid[2]) && isEmpty(outer.grid[5]),
+    `枠0 ${outer.grid[0].count} / 枠2 ${outer.grid[2].count}`,
+  );
+
+  const closeMid = screen();
+  closeMid.inventory.slots[0].item = DIRT;
+  closeMid.inventory.slots[0].count = 8;
+  click(closeMid, "inv", 0, 0);
+  closeMid.press("inv", 1, 0);
+  closeMid.close();
+  check(
+    "ドラッグ中に閉じても手持ちは戻る",
+    closeMid.inventory.count(DIRT) === 8 && closeMid.held === null && !closeMid.isDragging,
+    `土 ${closeMid.inventory.count(DIRT)} 個`,
+  );
+
+  // --- プレビュー（確定と同じ planDrag を通ること） ---
+  const preview = holding(10);
+  preview.press("inv", 1, 0);
+  preview.dragOver("inv", 2);
+  preview.dragOver("inv", 3);
+  preview.dragOver("inv", 4);
+  const planned = [1, 2, 3, 4].map((i) => preview.dragPlanFor("inv", i));
+  const leftInHand = preview.heldPreviewCount();
+  check("撫でている枠に配る予定が出る", planned.join(",") === "2,2,2,2", planned.join(","));
+  check("撫でていない枠には予定が出ない", preview.dragPlanFor("inv", 8) === 0);
+  check("手に残る予定も出る", leftInHand === 2, `${leftInHand} 個`);
+  check("予定を見ただけでは盤面が変わらない", preview.inventory.slots[1].count === 0);
+  preview.release();
+  check(
+    "プレビューと確定が一致する",
+    [1, 2, 3, 4].every((i, k) => preview.inventory.slots[i].count === planned[k]) &&
+      preview.held?.count === leftInHand,
+    `確定 ${preview.inventory.slots.slice(1, 5).map((s) => s.count).join(",")} / 手 ${preview.held?.count}`,
+  );
+  check("離したら予定は消える", preview.dragPlanFor("inv", 1) === 0 && !preview.isDragging);
 }

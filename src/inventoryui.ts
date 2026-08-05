@@ -1,5 +1,5 @@
 import { type CraftScreen, type CraftSize, GRID_SLOTS, type MouseButton, type SlotArea } from "./craftscreen";
-import { HOTBAR_SIZE, STORAGE_SIZE } from "./inventory";
+import { HOTBAR_SIZE, STORAGE_SIZE, type Slot } from "./inventory";
 import { itemCssColor, itemName } from "./items";
 import { paintSlot, slotMarkup } from "./ui";
 
@@ -46,6 +46,11 @@ export class InventoryScreen {
       this.heldEl.style.left = `${event.clientX}px`;
       this.heldEl.style.top = `${event.clientY}px`;
     });
+
+    // 撫でて配るぶんの確定。窓の外で離しても取りこぼさないよう window で受ける。
+    // 構えていなければ CraftScreen 側が何もしないので、ここに判断は要らない。
+    window.addEventListener("mouseup", () => this.apply(this.craft.release()));
+    window.addEventListener("blur", () => this.apply(this.craft.release()));
   }
 
   get isOpen(): boolean {
@@ -84,7 +89,14 @@ export class InventoryScreen {
       el.addEventListener("mousedown", (event) => {
         if (event.button !== 0 && event.button !== 2) return;
         event.preventDefault();
-        this.apply(this.craft.click(area, i + offset, event.button as MouseButton));
+        this.apply(this.craft.press(area, i + offset, event.button as MouseButton));
+      });
+      // 押したままスロットに入った、という事実だけを渡す。1 スロットにつき 1 回しか
+      // 飛ばないので、撫でた集合の組み立てもヒットテストもここには要らない。
+      el.addEventListener("mouseenter", (event) => {
+        // 窓の外で離して戻ってきた場合。ボタンが押されていないのは DOM の事実。
+        if (event.buttons === 0) this.apply(this.craft.release());
+        else this.apply(this.craft.dragOver(area, i + offset));
       });
       parent.appendChild(el);
       into.push(el);
@@ -97,17 +109,32 @@ export class InventoryScreen {
     if (result.changed) this.refresh();
   }
 
+  /**
+   * スロット 1 枠を描く。ドラッグ中に配る予定があれば、その予定を乗せた姿にする。
+   * **予定の数は `dragPlanFor()` に聞くこと**（確定と同じ `planDrag` を通るので食い違わない）。
+   */
+  private paint(el: HTMLElement, slot: Slot | null, area: SlotArea, index: number): void {
+    const plan = this.craft.dragPlanFor(area, index);
+    if (plan > 0) {
+      const base = slot && slot.count > 0 ? slot.count : 0;
+      paintSlot(el, { item: this.craft.dragPreviewItem, count: base + plan });
+    } else {
+      paintSlot(el, slot);
+    }
+    el.classList.toggle("preview", plan > 0);
+  }
+
   refresh(): void {
     for (let i = 0; i < GRID_SLOTS; i++) {
       const usable = this.craft.usable(i);
       this.gridSlots[i].classList.toggle("disabled", !usable);
-      paintSlot(this.gridSlots[i], usable ? this.craft.grid[i] : null);
+      this.paint(this.gridSlots[i], usable ? this.craft.grid[i] : null, "grid", i);
     }
     for (let i = 0; i < this.storageSlots.length; i++) {
-      paintSlot(this.storageSlots[i], this.craft.inventory.slots[i + HOTBAR_SIZE]);
+      this.paint(this.storageSlots[i], this.craft.inventory.slots[i + HOTBAR_SIZE], "inv", i + HOTBAR_SIZE);
     }
     for (let i = 0; i < this.hotbarSlots.length; i++) {
-      paintSlot(this.hotbarSlots[i], this.craft.inventory.slots[i]);
+      this.paint(this.hotbarSlots[i], this.craft.inventory.slots[i], "inv", i);
       this.hotbarSlots[i].classList.toggle("active", i === this.craft.inventory.selected);
     }
 
@@ -124,8 +151,10 @@ export class InventoryScreen {
     const held = this.craft.isOpen ? this.craft.held : null;
     this.heldEl.classList.toggle("hidden", held === null);
     if (held) {
+      // 撫でている間は「配ったあとに残る数」を出す。離すとそのまま確定する。
+      const left = this.craft.heldPreviewCount();
       this.heldEl.style.background = itemCssColor(held.item);
-      this.heldEl.textContent = held.count > 1 ? String(held.count) : "";
+      this.heldEl.textContent = left > 1 ? String(left) : "";
       this.heldEl.title = itemName(held.item);
     }
     this.onChange();

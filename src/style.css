@@ -333,6 +333,15 @@ body {
   cursor: default;
 }
 
+/* 撫でて配る予定のぶん。離すまでは確定していないことが分かるように薄くする。 */
+#inventory .slot.preview .swatch {
+  opacity: 0.55;
+}
+
+#inventory .slot.preview {
+  border-color: var(--accent);
+}
+
 #inventory .slot.out {
   border-color: var(--line);
   background: rgba(111, 208, 140, 0.08);
