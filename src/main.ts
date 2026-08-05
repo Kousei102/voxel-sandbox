@@ -30,6 +30,7 @@ import { AudioEngine } from "./audio";
 import { biomeName } from "./biomes";
 import { AUTOSAVE_INTERVAL, CHUNK_BITS, REACH, RENDER_DISTANCE, CHUNK_SIZE } from "./constants";
 import { CrackOverlay } from "./crack";
+import { CraftScreen } from "./craftscreen";
 import { DayNight } from "./daynight";
 import { Inventory } from "./inventory";
 import { InventoryScreen } from "./inventoryui";
@@ -82,7 +83,10 @@ scene.add(crack.mesh);
 
 const inventory = new Inventory();
 const hud = new Hud(inventory);
-const screen = new InventoryScreen(inventory);
+// 判断は craft、描画とマウスの配線は screen。
+// **画面が出ている間の状態変更は screen 経由**（craft を直接触ってよいのはセーブと読み込みだけ）。
+const craft = new CraftScreen(inventory);
+const screen = new InventoryScreen(craft);
 const mining = new Mining();
 const vitals = new Vitals();
 const player = new Player(camera);

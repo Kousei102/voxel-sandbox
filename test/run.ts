@@ -1,5 +1,6 @@
 import { run as blocks } from "./blocks.test";
 import { run as crafting } from "./crafting.test";
+import { run as craftscreen } from "./craftscreen.test";
 import { run as daynight } from "./daynight.test";
 import { summary } from "./harness";
 import { run as inventory } from "./inventory.test";
@@ -24,6 +25,7 @@ daynight();
 mining();
 inventory();
 crafting();
+craftscreen();
 vitals();
 mobs();
 sfx();
