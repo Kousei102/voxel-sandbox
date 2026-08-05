@@ -66,6 +66,21 @@ export function run(): void {
   check("収納にあるものはホットバーへ持ってくる", pick.selectItem(STONE) && pick.selectedItem === STONE);
   check("持っていないものは選べない", !pick.selectItem(WOOD_PICKAXE));
 
+  // --- 入れ替え ---
+  // craftscreen.ts が slots[i] の Slot 参照を持ち回るので、
+  // 配列要素の差し替えにすると持ち回った側が古いままになる。
+  const sw = new Inventory();
+  sw.slots[0].item = STONE;
+  sw.slots[0].count = 3;
+  const before = sw.slots[0];
+  sw.swap(0, 5);
+  check("swap のあともスロットのオブジェクトは同じ", sw.slots[0] === before, "参照が差し替わっていない");
+  check(
+    "swap で中身が入れ替わる",
+    isEmpty(sw.slots[0]) && sw.slots[5].item === STONE && sw.slots[5].count === 3,
+    `0 は空 / 5 は ${sw.slots[5].count} 個`,
+  );
+
   // --- 保存 ---
   const src = new Inventory();
   src.add(DIRT, 70);

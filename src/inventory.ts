@@ -128,10 +128,17 @@ export class Inventory {
     return false;
   }
 
+  /**
+   * **中身だけを入れ替える。** 配列の要素そのものを差し替えると、
+   * `slots[i]` の `Slot` を持ち回っている側（`craftscreen.ts`）の参照が古いままになる。
+   */
   swap(a: number, b: number): void {
-    const tmp = { ...this.slots[a] };
-    this.slots[a] = this.slots[b];
-    this.slots[b] = tmp;
+    const item = this.slots[a].item;
+    const count = this.slots[a].count;
+    this.slots[a].item = this.slots[b].item;
+    this.slots[a].count = this.slots[b].count;
+    this.slots[b].item = item;
+    this.slots[b].count = count;
   }
 
   clear(): void {
