@@ -127,6 +127,21 @@ screen.onChange = () => {
 
 screen.onCraft = () => audio.play("craft");
 
+/**
+ * 倒したモブのドロップ。**落ちたアイテムの仕組みがまだ無いので、
+ * 倒した瞬間にインベントリへ入れる**（`breakBlock` と同じ形）。
+ * `Mobs` はプレイヤーが倒したときにしかここを呼ばない。
+ */
+mobs.onDrop = (item, count) => {
+  const left = inventory.add(item, count);
+  if (left > 0) hud.flash("インベントリがいっぱいです");
+  hud.refresh();
+  saveDirty = true;
+};
+
+/** モブの声。**何をいつ鳴らすかは `mobs.ts` が決めている**ので、ここは素通し。 */
+mobs.onSound = (sfx, pitch) => audio.play(sfx, "none", pitch);
+
 function setCreative(on: boolean): void {
   creative = on;
   modeButton.textContent = creative ? "クリエイティブ" : "サバイバル";
@@ -350,14 +365,27 @@ document.addEventListener("contextmenu", (event) => {
 });
 
 document.addEventListener("mousedown", (event) => {
-  if (!playing || !hit) return;
+  // **`hit` が無くても降りないこと。** 何も無い所の向こうにモブが居る場合がある。
+  if (!playing) return;
   event.preventDefault();
 
   if (event.button === 0) {
-    // クリエイティブは 1 クリック 1 個。サバイバルは押しっぱなしで掘り進める。
-    if (creative) breakBlock(hit.block.x, hit.block.y, hit.block.z, hit.id, NO_ITEM);
-    else breaking = true;
+    // モブとブロックのどちらが手前かで決める。距離は `hit.point` から取る
+    // （`RaycastHit` に距離のフィールドを足さない）。
+    const target = mobs.pick(camera.position, lookDirection, REACH);
+    const blockDistance = hit ? hit.point.distanceTo(camera.position) : Infinity;
+    if (target && target.distance < blockDistance) {
+      mobs.attack(target.mob, inventory.selectedItem, mobContext());
+      // 殴っている間は掘らない（ひび割れが出ると、何を壊しているのか分からない）
+      breaking = false;
+      mining.reset();
+    } else if (hit) {
+      // クリエイティブは 1 クリック 1 個。サバイバルは押しっぱなしで掘り進める。
+      if (creative) breakBlock(hit.block.x, hit.block.y, hit.block.z, hit.id, NO_ITEM);
+      else breaking = true;
+    }
   } else if (event.button === 1) {
+    if (!hit) return;
     // スポイト: クリエイティブなら手元に湧かせ、サバイバルは持っていれば選ぶ。
     // 壁掛けの松明のような別置き版は、大元のアイテムに読み替える。
     const picked = baseBlock(hit.id);

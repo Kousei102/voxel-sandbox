@@ -1,11 +1,15 @@
 import { readFileSync } from "node:fs";
-import { AIR, BEDROCK, GRASS, SAND, STONE, STONE_SLAB, WATER } from "../src/blocks";
+import { Vector3 } from "three";
+import { AIR, BEDROCK, GRASS, SAND, STONE, STONE_SLAB, WATER, WOOL } from "../src/blocks";
 import { MAX_LIGHT, WORLD_HEIGHT } from "../src/constants";
 import { DayNight } from "../src/daynight";
+import { NO_ITEM, RAW_PORK, STONE_AXE, WOOD_PICKAXE, itemName } from "../src/items";
 import { SKY_LIGHT } from "../src/lighting";
 import { buildMobMesh } from "../src/mobmesh";
 import {
   DESPAWN_DISTANCE,
+  PLAYER_ATTACK_COOLDOWN,
+  attackDamage,
   LOOK_DISTANCE,
   MAX_MOBS,
   MOBS,
@@ -22,6 +26,8 @@ import {
   type MobDef,
 } from "../src/mobs";
 import { boxBlocked } from "../src/physics";
+import { raycastVoxels } from "../src/raycast";
+import type { Sfx } from "../src/sfx";
 import type { World } from "../src/world";
 import { signedVolume, verifyWinding } from "./geometry";
 import { check, describe } from "./harness";
@@ -342,8 +348,20 @@ export function run(): void {
   const wild = new Mobs();
   const wildCtx = ctx();
   const counts: number[] = [];
+  // **湧いた瞬間の距離を見ること。** 30 秒ぶん回したあとの位置で見ると、
+  // 徘徊で近づいてきただけの個体を「目の前に湧いた」と読み違える。
+  const seen = new Set<number>();
+  let tooClose = 0;
+  let nearest = Infinity;
   for (let frame = 0; frame < 1800; frame++) {
     wild.update(1 / 60, field.asWorld(), wildCtx);
+    for (const mob of wild.list) {
+      if (seen.has(mob.id)) continue;
+      seen.add(mob.id);
+      const d = Math.hypot(mob.position.x - wildCtx.playerX, mob.position.z - wildCtx.playerZ);
+      nearest = Math.min(nearest, d);
+      if (d < SPAWN_MIN_DISTANCE) tooClose++;
+    }
     if (frame % 300 === 299) counts.push(wild.count);
   }
   console.log(`      5 秒ごとの個体数: ${counts.join(" → ")}`);
@@ -351,16 +369,18 @@ export function run(): void {
   check("上限を超えない", wild.count <= MAX_MOBS, `${wild.count} / ${MAX_MOBS}`);
 
   let buried = 0;
-  let tooClose = 0;
   let outOfRange = 0;
   for (const mob of wild.list) {
     if (boxBlocked(field.asWorld(), mob.position.x, mob.position.y, mob.position.z, MOBS[mob.kind].size)) buried++;
     const d = Math.hypot(mob.position.x - wildCtx.playerX, mob.position.z - wildCtx.playerZ);
-    if (d < SPAWN_MIN_DISTANCE - 4) tooClose++;
     if (d > DESPAWN_DISTANCE) outOfRange++;
   }
   check("ブロックに埋まっているモブが居ない", buried === 0, `${buried} 体`);
-  check("目の前には湧かない", tooClose === 0, `${tooClose} 体が ${SPAWN_MIN_DISTANCE} ブロック以内`);
+  check(
+    "目の前には湧かない",
+    tooClose === 0,
+    `${seen.size} 体中 ${tooClose} 体が ${SPAWN_MIN_DISTANCE} ブロック以内（最短 ${nearest.toFixed(1)}）`,
+  );
   check("デスポーン距離を超えて残らない", outOfRange === 0, `${outOfRange} 体`);
   check("両方の種類が湧く", new Set(wild.list.map((m) => m.kind)).size === 2, [...new Set(wild.list.map((m) => m.kind))].join(" "));
 
@@ -450,6 +470,177 @@ export function run(): void {
   check("近くのプレイヤーを見る", near > 0.01, `頭 yaw ${nearYaw.toFixed(2)} pitch ${nearPitch.toFixed(2)}`);
   check("遠ざかると前を向く", watcher.headYaw === 0 && watcher.headPitch === 0);
   check("見る距離に上限がある", LOOK_DISTANCE > 0 && LOOK_DISTANCE < DESPAWN_DISTANCE, `${LOOK_DISTANCE} ブロック`);
+
+  describe("モブの戦闘（ダメージと狙い）");
+
+  // 攻撃力の表。**`ItemDef` に damage を足さない**ので、戦闘の数値はここ 1 か所に揃う。
+  const TOOL_KIND_NAMES = ["ツルハシ", "斧    ", "シャベル"];
+  const TIER_NAMES = ["木", "石", "鉄", "ダイヤ"];
+  console.log(`      道具      素手 ${TIER_NAMES.map((n) => n.padStart(4)).join(" ")}`);
+  const damageRows: number[][] = [];
+  for (let k = 0; k < 3; k++) {
+    const row = [attackDamage(NO_ITEM)];
+    for (let tier = 0; tier < 4; tier++) row.push(attackDamage(WOOD_PICKAXE + tier * 3 + k));
+    damageRows.push(row);
+    console.log(`      ${TOOL_KIND_NAMES[k]}  ${row.map((d) => d.toFixed(1).padStart(4)).join(" ")}`);
+  }
+  const allDamage = damageRows.flat();
+  check(
+    "素手がいちばん弱い",
+    allDamage.every((d) => d >= attackDamage(NO_ITEM)),
+    `素手 ${attackDamage(NO_ITEM)}`,
+  );
+  check(
+    "階層が上がるほど強い",
+    damageRows.every((row) => row.every((d, i) => i === 0 || d > row[i - 1])),
+  );
+  check(
+    "斧 > ツルハシ > シャベル",
+    // 添字 0 は 3 行とも素手なので飛ばす（比べるのは道具を持っている列だけ）
+    damageRows[1].every((d, i) => i === 0 || (d > damageRows[0][i] && damageRows[0][i] > damageRows[2][i])),
+    `ダイヤ: 斧 ${damageRows[1][4]} / ツルハシ ${damageRows[0][4]} / シャベル ${damageRows[2][4]}`,
+  );
+  check(
+    "極端な値が無い（1〜8）",
+    allDamage.every((d) => d >= 1 && d <= 8),
+    `${Math.min(...allDamage)} 〜 ${Math.max(...allDamage)}`,
+  );
+
+  // 声色。低すぎると唸り声にも聞こえず、高すぎると耳障りになる。
+  console.log(
+    `      声の高さ: ${MOB_KINDS.map((k) => `${MOBS[k].name} x${MOBS[k].voice}`).join(" / ")}`,
+  );
+  check(
+    "声色が極端でない",
+    MOB_KINDS.every((k) => MOBS[k].voice >= 0.5 && MOBS[k].voice <= 2),
+  );
+
+  /** 湧きを止めた（sky = 0）平地。戦闘の途中で数が変わらないようにする。 */
+  function fightArena(): Arena {
+    const arena = flatGrass();
+    arena.sky = 0;
+    return arena;
+  }
+  const advance = (m: Mobs, a: Arena, c: MobContext, frames: number): void => {
+    for (let i = 0; i < frames; i++) m.update(1 / 60, a.asWorld(), c);
+  };
+  /** 攻撃のクールダウンが明けるまでのフレーム数。 */
+  const COOLDOWN_FRAMES = Math.ceil(PLAYER_ATTACK_COOLDOWN * 60) + 1;
+
+  // クールダウンは **`main.ts` の let ではなく `Mobs` の中**。だからここで確かめられる。
+  const rapid = new Mobs();
+  const rapidCtx = ctx({ random: seeded(5) });
+  const punched = rapid.spawn("pig", 0.5, 11, 2.5, 0, seeded(3));
+  let landed = 0;
+  for (let i = 0; i < 10; i++) if (rapid.attack(punched, NO_ITEM, rapidCtx)) landed++;
+  check(
+    "1 フレームに 10 回クリックしても 1 回",
+    landed === 1 && punched.health === MOBS.pig.maxHealth - attackDamage(NO_ITEM),
+    `${landed} 回 / 体力 ${punched.health}`,
+  );
+  advance(rapid, fightArena(), rapidCtx, COOLDOWN_FRAMES);
+  check("クールダウンが明ければまた殴れる", rapid.attack(punched, NO_ITEM, rapidCtx));
+
+  // 倒れるまでの回数とドロップ。落ちたアイテムの仕組みがまだ無いので、
+  // 倒した瞬間に onDrop が 1 回だけ鳴る。
+  console.log("      種類  体力  道具        1 発  倒すまで  ドロップ");
+  for (const kind of MOB_KINDS) {
+    const arena = fightArena();
+    const fight = new Mobs();
+    const drops: { item: number; count: number }[] = [];
+    const sounds: Sfx[] = [];
+    fight.onDrop = (item, count) => drops.push({ item, count });
+    fight.onSound = (sfx) => sounds.push(sfx);
+
+    const fightCtx = ctx({ random: seeded(17) });
+    const victim = fight.spawn(kind, 0.5, 11, 1.5, 0, seeded(9));
+    const weapon = STONE_AXE;
+    const perHit = attackDamage(weapon);
+    const expected = Math.ceil(MOBS[kind].maxHealth / perHit);
+    let hits = 0;
+    while (fight.count > 0 && hits < 50) {
+      if (fight.attack(victim, weapon, fightCtx)) hits++;
+      advance(fight, arena, fightCtx, COOLDOWN_FRAMES);
+    }
+    const drop = drops[0];
+    console.log(
+      `      ${MOBS[kind].name}    ${String(MOBS[kind].maxHealth).padStart(2)}  ${itemName(weapon).padEnd(8)}` +
+        `  ${perHit.toFixed(1)}   ${String(hits).padStart(2)} 回     ` +
+        `${drop ? `${itemName(drop.item)} x${drop.count}` : "なし"}`,
+    );
+    check(
+      `${MOBS[kind].name}: ceil(体力 / ダメージ) 回でちょうど倒れる`,
+      hits === expected && fight.count === 0,
+      `${hits} 回 / 期待 ${expected} 回`,
+    );
+    check(
+      `${MOBS[kind].name}: ドロップが 1 回だけ入る`,
+      drops.length === 1 && drop.item === MOBS[kind].drop.item && drop.count === MOBS[kind].drop.count,
+      `${drops.length} 回`,
+    );
+    check(
+      `${MOBS[kind].name}: 殴った回数だけ悲鳴、倒した瞬間に断末魔`,
+      sounds.filter((s) => s === "mobhurt").length === expected - 1 &&
+        sounds.filter((s) => s === "mobdeath").length === 1,
+      `悲鳴 ${sounds.filter((s) => s === "mobhurt").length} / 断末魔 ${sounds.filter((s) => s === "mobdeath").length}`,
+    );
+  }
+  check("羊は置ける羊毛を落とす", MOBS.sheep.drop.item === WOOL);
+  check("豚は生豚肉を落とす（まだ食べられない）", MOBS.pig.drop.item === RAW_PORK);
+
+  // のけぞりと逃走。**向きだけ変えても逃げない**（向きは少しずつしか変わらない）ので、
+  // 実際に距離が開くところまで見る。
+  const fleeArena = fightArena();
+  const flee = new Mobs();
+  const fleeCtx = ctx({ random: seeded(23) });
+  const runner = flee.spawn("pig", 0.5, 11, 3.5, 0, seeded(29));
+  const startDistance = Math.hypot(runner.position.x - 0.5, runner.position.z - 0.5);
+  flee.attack(runner, NO_ITEM, fleeCtx);
+  const knockZ = runner.velocity.z;
+  check(
+    "のけぞりはプレイヤーと反対へ向く",
+    knockZ > 0,
+    `プレイヤー z 0.5 / モブ z 3.5 → vz ${knockZ.toFixed(2)}`,
+  );
+  check("殴られると赤く光る", runner.hurtTimer > 0, `${runner.hurtTimer.toFixed(2)} 秒`);
+  advance(flee, fleeArena, fleeCtx, 180);
+  const fledDistance = Math.hypot(runner.position.x - 0.5, runner.position.z - 0.5);
+  check(
+    "殴ると 3 秒で距離が開く",
+    fledDistance > startDistance + 2,
+    `${startDistance.toFixed(1)} → ${fledDistance.toFixed(1)} ブロック`,
+  );
+  advance(flee, fleeArena, fleeCtx, 60);
+  check("逃げ終われば元に戻る", runner.fleeTimer === 0 && runner.hurtTimer === 0);
+
+  // 狙い。**ブロックとの手前・奥は `hit.point` からの距離で決める**
+  // （`RaycastHit` に距離のフィールドを足さない）。
+  const aimArena = fightArena();
+  const aim = new Mobs();
+  const aimed = aim.spawn("pig", 0.5, 11, -3.5, 0, seeded(31));
+  const eye = new Vector3(0.5, 11.4, 0.5);
+  const ahead = new Vector3(0, 0, -1);
+  const front = aim.pick(eye, ahead, 6);
+  check(
+    "正面のモブに当たる",
+    // 目 z=0.5 からモブの手前の面 z=-3.05（中心 -3.5 + 半幅 0.45）まで
+    front?.mob === aimed && Math.abs((front?.distance ?? 0) - 3.55) < 0.01,
+    `距離 ${front?.distance.toFixed(2) ?? "なし"}`,
+  );
+  check("1 ブロック横は外れる", aim.pick(new Vector3(2.5, 11.4, 0.5), ahead, 6) === null);
+  check("届く距離の外は外れる", aim.pick(eye, ahead, 2) === null);
+  check("モブが 1 体も居なければ null", new Mobs().pick(eye, ahead, 6) === null);
+
+  // 壁越しに殴れないこと。判定そのものは main.ts の 2 行だが、
+  // 「どちらが手前か」の材料（モブの距離とブロックの距離）はここで確かめられる。
+  aimArena.fill(0, 0, 11, 11, -1, -1, STONE);
+  const wall = raycastVoxels(aimArena.asWorld(), eye, ahead, 6);
+  const wallDistance = wall ? wall.point.distanceTo(eye) : Infinity;
+  check(
+    "壁越しならブロックが勝つ",
+    wall !== null && wallDistance < (front?.distance ?? Infinity),
+    `ブロック ${wallDistance.toFixed(2)} < モブ ${front?.distance.toFixed(2)}`,
+  );
 
   describe("モブの費用");
 

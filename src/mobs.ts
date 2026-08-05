@@ -10,10 +10,13 @@
  */
 
 import { Color, Vector3 } from "three";
-import { GRASS, WATER, isSolid } from "./blocks";
+import { GRASS, WATER, WOOL, isSolid } from "./blocks";
 import { CHUNK_BITS, WORLD_HEIGHT } from "./constants";
+import { RAW_PORK, toolOf } from "./items";
 import { SKY_LIGHT } from "./lighting";
 import { type BodySize, boxBlocked, groundBelow, moveBody } from "./physics";
+import { rayBox } from "./raycast";
+import type { Sfx } from "./sfx";
 import type { World } from "./world";
 
 // --- 種類の表 -----------------------------------------------------------
@@ -55,6 +58,14 @@ export interface MobBox {
   readonly color: number;
 }
 
+/** 倒したときに出るもの。 */
+export interface MobDrop {
+  readonly item: number;
+  readonly count: number;
+  /** 落ちる確率。1 なら必ず。 */
+  readonly chance: number;
+}
+
 export interface MobDef {
   readonly kind: MobKind;
   readonly name: string;
@@ -68,6 +79,16 @@ export interface MobDef {
    * 湧きの上限を受動と別に持つので、受動しか居なくても意味がある。
    */
   readonly hostile: boolean;
+  /**
+   * 倒したときのドロップ。**落ちたアイテムの仕組みがまだ無いので、
+   * 倒した瞬間にインベントリへ入れる**（`CLAUDE.md` の見取り図どおり）。
+   */
+  readonly drop: MobDrop;
+  /**
+   * 声の高さの倍率。**種類ごとに `Sfx` を増やさないこと**
+   * （出来事 × 種類で膨らむ）。`recipeFor` が freq と cutoff に掛ける。
+   */
+  readonly voice: number;
   readonly groups: readonly MobGroup[];
   readonly boxes: readonly MobBox[];
 }
@@ -98,6 +119,8 @@ const PIG: MobDef = {
   maxHealth: 10,
   speed: 1.7,
   hostile: false,
+  drop: { item: RAW_PORK, count: 1, chance: 1 },
+  voice: 1.4,
   groups: [
     { motion: "fixed", pivot: [0, 0, 0], phase: 0 },
     { motion: "head", pivot: [0, px(10), px(-3)], phase: 0 },
@@ -137,6 +160,8 @@ const SHEEP: MobDef = {
   maxHealth: 8,
   speed: 1.5,
   hostile: false,
+  drop: { item: WOOL, count: 1, chance: 1 },
+  voice: 1.25,
   groups: [
     { motion: "fixed", pivot: [0, 0, 0], phase: 0 },
     { motion: "head", pivot: [0, px(15), px(-2)], phase: 0 },
@@ -231,6 +256,10 @@ export interface Mob {
   /** 頭の向き（体からの相対）。近くのプレイヤーを見る。 */
   headYaw: number;
   headPitch: number;
+  /** 殴られた直後の赤い明滅の残り (秒)。描画がこれを見て色を差し替える。 */
+  hurtTimer: number;
+  /** 逃げている残り (秒)。0 より大きいあいだは、プレイヤーと反対を向いて速く歩く。 */
+  fleeTimer: number;
 }
 
 // --- AI と湧きの決まり ---------------------------------------------------
@@ -275,6 +304,46 @@ export const DESPAWN_DISTANCE = 72;
 /** 半径 8 以内にこの数以上居たら、そこにはもう湧かせない（固まって湧かないように）。 */
 const CROWD_RADIUS = 8;
 const CROWD_LIMIT = 2;
+// --- 戦闘の決まり -------------------------------------------------------
+
+/**
+ * プレイヤーが殴れる間隔。**`main.ts` の `let` ではなくここに置くこと。**
+ * 「1 フレームに 10 回クリックしても 1 回」はヘッドレスで確かめられる類の判断で、
+ * DOM の側に置くとブラウザを開くまで確かめられなくなる。
+ */
+export const PLAYER_ATTACK_COOLDOWN = 0.5;
+/** 殴られたあと赤く光る長さ。 */
+const HURT_FLASH = 0.35;
+/** 殴られたあと逃げる長さと、そのあいだの速さの倍率。 */
+const FLEE_TIME = 3;
+const FLEE_SPEED = 1.6;
+/** のけぞり。横に押されて、少し浮く。 */
+const KNOCKBACK = 5.5;
+const KNOCKBACK_LIFT = 4;
+
+/**
+ * 道具の種類ごとの攻撃力の素。**`ItemDef` に `damage` を足さないこと**
+ * （戦闘の数値がアイテムの表とここに散る）。素手は 1 で、これがいちばん低い。
+ */
+const TOOL_ATTACK: Record<string, number> = { axe: 3, pickaxe: 2, shovel: 1 };
+/** 階層 1 つにつき増える攻撃力。 */
+const TIER_ATTACK = 0.5;
+
+/**
+ * その道具で殴ったときのダメージ。斧 > ツルハシ > シャベル > 素手 で、
+ * 同じ種類なら階層が上ほど強い（素手 1 〜 ダイヤの斧 5）。
+ */
+export function attackDamage(item: number): number {
+  const tool = toolOf(item);
+  if (!tool) return 1;
+  return TOOL_ATTACK[tool.kind] + tool.tier * TIER_ATTACK;
+}
+
+/** ときどき鳴く。判断は 5Hz なので、1 体あたりおよそ 15 秒に 1 回になる。 */
+const SAY_CHANCE = 0.013;
+/** これより遠いモブの声は鳴らさない（距離で音量を落とす仕組みがまだ無い）。 */
+const SAY_DISTANCE = 24;
+
 /** 湧く高さを探すとき、プレイヤーの頭上いくつから下へいくつまで見るか。 */
 const SPAWN_SCAN_UP = 16;
 const SPAWN_SCAN_DEPTH = 24;
@@ -316,6 +385,20 @@ export class Mobs {
   readonly list: Mob[] = [];
   private nextId = 1;
   private spawnTimer = 0;
+  /** プレイヤーが次に殴れるまでの残り。 */
+  private attackTimer = 0;
+
+  /**
+   * 倒したときの受け取り口。`screen.onChange` と同じ形で `main.ts` から繋ぐ。
+   * **プレイヤーが倒したときだけ発火させること**（遠くで勝手に消えたモブの肉が
+   * インベントリに入ってはいけない）。
+   */
+  onDrop?: (item: number, count: number) => void;
+  /**
+   * 音の受け取り口。**何をいつ鳴らすかはここで決めて、`audio.ts` へは素通しさせる**
+   * （`CLAUDE.md`「判断を `audio.ts` や `main.ts` に書かないこと」）。
+   */
+  onSound?: (sfx: Sfx, pitch: number) => void;
 
   get count(): number {
     return this.list.length;
@@ -341,6 +424,8 @@ export class Mobs {
       thinkTimer: random() * AI_TICK,
       headYaw: 0,
       headPitch: 0,
+      hurtTimer: 0,
+      fleeTimer: 0,
     };
     this.list.push(mob);
     return mob;
@@ -349,6 +434,7 @@ export class Mobs {
   clear(): void {
     this.list.length = 0;
     this.spawnTimer = 0;
+    this.attackTimer = 0;
   }
 
   /**
@@ -359,6 +445,8 @@ export class Mobs {
    */
   update(dt: number, world: World, ctx: MobContext): void {
     const random = ctx.random ?? Math.random;
+
+    if (this.attackTimer > 0) this.attackTimer = Math.max(0, this.attackTimer - dt);
 
     this.spawnTimer += dt;
     if (this.spawnTimer >= SPAWN_INTERVAL) {
@@ -393,11 +481,24 @@ export class Mobs {
     ctx: MobContext,
     random: () => number,
   ): void {
-    mob.stateTimer -= AI_TICK;
-    if (mob.stateTimer <= 0) {
-      mob.walking = !mob.walking;
-      mob.stateTimer = pick(random, mob.walking ? WANDER_TIME : IDLE_TIME);
-      if (mob.walking) mob.targetYaw = random() * Math.PI * 2;
+    if (mob.fleeTimer > 0) {
+      mob.fleeTimer = Math.max(0, mob.fleeTimer - AI_TICK);
+      // 逃げているあいだは徘徊の抽選をしない。**プレイヤーの反対を向き続けること** ——
+      // 向きを 1 回決めるだけだと、追いかけられたときに正面へ突っ込んでいく。
+      mob.walking = true;
+      mob.targetYaw = awayFrom(mob, ctx);
+      // 逃げ終わった直後にすぐ止まらないよう、状態の残りは短く持ち直す
+      mob.stateTimer = Math.max(mob.stateTimer, 1);
+    } else {
+      mob.stateTimer -= AI_TICK;
+      if (mob.stateTimer <= 0) {
+        mob.walking = !mob.walking;
+        mob.stateTimer = pick(random, mob.walking ? WANDER_TIME : IDLE_TIME);
+        if (mob.walking) mob.targetYaw = random() * Math.PI * 2;
+      }
+      if (random() < SAY_CHANCE && distanceTo(mob, ctx) < SAY_DISTANCE) {
+        this.onSound?.("mobsay", def.voice);
+      }
     }
 
     // 進む先が崖なら引き返す。**これが無いと、そのうち全部が穴に落ちる。**
@@ -444,6 +545,8 @@ export class Mobs {
     const beforeX = mob.position.x;
     const beforeZ = mob.position.z;
 
+    if (mob.hurtTimer > 0) mob.hurtTimer = Math.max(0, mob.hurtTimer - dt);
+
     mob.inWater =
       world.getVoxel(
         Math.floor(mob.position.x),
@@ -457,7 +560,7 @@ export class Mobs {
     // 向きが目標からずれているあいだは前へ出さない。**曲がりながら進ませないこと。**
     // 崖の手前で向きを変えても、古い向きのまま滑っていって落ちる。
     const aligned = Math.max(0, Math.cos(wrapAngle(mob.targetYaw - mob.yaw)));
-    const speed = mob.walking ? def.speed * aligned : 0;
+    const speed = mob.walking ? def.speed * (mob.fleeTimer > 0 ? FLEE_SPEED : 1) * aligned : 0;
     const forward = forwardOf(mob.yaw);
     const accel = (mob.onGround ? ACCEL_GROUND : ACCEL_AIR) * dt;
     const targetX = forward[0] * speed;
@@ -547,6 +650,90 @@ export class Mobs {
     this.spawn(kind, px, y, pz, random() * Math.PI * 2, random);
   }
 
+  // --- 戦闘 -------------------------------------------------------------
+
+  /**
+   * 光線の先にいるいちばん近いモブ。当たらなければ null。
+   *
+   * 距離はここで返す。**`RaycastHit` に距離のフィールドを足さないこと** ——
+   * `raycastVoxels` は正規化した向きで点を作っているので、
+   * `hit.point.distanceTo(origin)` がそのまま距離になる。足すと、
+   * 2 つの return 経路で整合を保たなければならない物が 1 つ増える。
+   */
+  pick(origin: Vector3, direction: Vector3, reach: number): { mob: Mob; distance: number } | null {
+    rayOrigin[0] = origin.x;
+    rayOrigin[1] = origin.y;
+    rayOrigin[2] = origin.z;
+    rayDir[0] = direction.x;
+    rayDir[1] = direction.y;
+    rayDir[2] = direction.z;
+
+    let best: Mob | null = null;
+    let bestDistance = reach;
+    for (const mob of this.list) {
+      const size = MOBS[mob.kind].size;
+      hitBox[0] = -size.half;
+      hitBox[1] = 0;
+      hitBox[2] = -size.half;
+      hitBox[3] = size.half;
+      hitBox[4] = size.height;
+      hitBox[5] = size.half;
+      const enter = rayBox(
+        rayOrigin,
+        rayDir,
+        hitBox,
+        mob.position.x,
+        mob.position.y,
+        mob.position.z,
+        pickNormal,
+      );
+      if (enter < 0 || enter > bestDistance) continue;
+      bestDistance = enter;
+      best = mob;
+    }
+    return best ? { mob: best, distance: bestDistance } : null;
+  }
+
+  /**
+   * プレイヤーがモブを 1 回殴る。クールダウン中なら何もせず false。
+   * 倒れたら `onDrop` が 1 回だけ鳴る（**プレイヤーが倒したときだけ**）。
+   */
+  attack(mob: Mob, item: number, ctx: MobContext, random = ctx.random ?? Math.random): boolean {
+    if (this.attackTimer > 0) return false;
+    this.attackTimer = PLAYER_ATTACK_COOLDOWN;
+
+    const def = MOBS[mob.kind];
+    mob.health -= attackDamage(item);
+    mob.hurtTimer = HURT_FLASH;
+
+    // のけぞり。プレイヤーから見て奥へ押して、少し浮かせる。
+    const dx = mob.position.x - ctx.playerX;
+    const dz = mob.position.z - ctx.playerZ;
+    const flat = Math.hypot(dx, dz);
+    if (flat > 1e-4) {
+      mob.velocity.x += (dx / flat) * KNOCKBACK;
+      mob.velocity.z += (dz / flat) * KNOCKBACK;
+    }
+    if (mob.onGround) mob.velocity.y = KNOCKBACK_LIFT;
+
+    if (mob.health > 0) {
+      this.onSound?.("mobhurt", def.voice);
+      mob.fleeTimer = FLEE_TIME;
+      mob.walking = true;
+      mob.targetYaw = awayFrom(mob, ctx);
+      return true;
+    }
+
+    this.onSound?.("mobdeath", def.voice);
+    const index = this.list.indexOf(mob);
+    if (index >= 0) this.list.splice(index, 1);
+    const drop = def.drop;
+    if (drop.count > 0 && (drop.chance >= 1 || random() < drop.chance)) {
+      this.onDrop?.(drop.item, drop.count);
+    }
+    return true;
+  }
+
   /**
    * まとめて湧かせる。ワールドを開いた直後が空っぽにならないように使う
    * （モブは保存しないので、読み込み直後は必ず 0 体から始まる）。
@@ -558,6 +745,17 @@ export class Mobs {
 }
 
 // --- 小物 ---------------------------------------------------------------
+
+/** 狙い判定の控え。1 クリックに何度も使うので配列は使い回す（確保ゼロ）。 */
+const rayOrigin = [0, 0, 0];
+const rayDir = [0, 0, 0];
+const pickNormal = [0, 0, 0];
+const hitBox = [0, 0, 0, 0, 0, 0];
+
+/** プレイヤーに背を向ける向き。`aimHead` の「見る向き」の裏返し。 */
+function awayFrom(mob: Mob, ctx: MobContext): number {
+  return Math.atan2(ctx.playerX - mob.position.x, ctx.playerZ - mob.position.z);
+}
 
 /** yaw 0 のとき前は -Z（`player.ts` の forward と同じ）。 */
 function forwardOf(yaw: number): [number, number] {

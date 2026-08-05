@@ -48,7 +48,15 @@ export const DIAMOND_PICKAXE = 78;
 export const DIAMOND_AXE = 79;
 export const DIAMOND_SHOVEL = 80;
 
-export const MAX_ITEM_ID = DIAMOND_SHOVEL;
+/**
+ * 生豚肉。**まだ食べられない**（空腹がまだ無く、食べられるようにすると
+ * 残してある自然回復と正面から衝突する）。ID をいま置いておけば、
+ * 空腹の区切りは「挙動を足すだけ」になり、今日のセーブがそのまま生きる。
+ * 何も落とさない豚は不具合に見えるので、落とすものだけ先に決めておく。
+ */
+export const RAW_PORK = 81;
+
+export const MAX_ITEM_ID = RAW_PORK;
 
 export const MAX_STACK = 64;
 
@@ -108,6 +116,7 @@ item({ id: COAL, name: "石炭", block: AIR, stack: MAX_STACK, color: 0x23262b, 
 item({ id: IRON_INGOT, name: "鉄インゴット", block: AIR, stack: MAX_STACK, color: 0xd8d2c8, tool: null });
 item({ id: GOLD_INGOT, name: "金インゴット", block: AIR, stack: MAX_STACK, color: 0xf2d15c, tool: null });
 item({ id: DIAMOND, name: "ダイヤモンド", block: AIR, stack: MAX_STACK, color: 0x4fe3d8, tool: null });
+item({ id: RAW_PORK, name: "生豚肉", block: AIR, stack: MAX_STACK, color: 0xe08f8f, tool: null });
 
 /** 道具は 4 階層 x 3 種類。ID は tier ごとに pickaxe / axe / shovel の順。 */
 const TOOL_KINDS: ToolKind[] = ["pickaxe", "axe", "shovel"];

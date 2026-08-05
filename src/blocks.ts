@@ -61,6 +61,9 @@ export const COBBLE_STAIRS = 34;
 export const PLANK_STAIRS = 35;
 export const SANDSTONE_STAIRS = 36;
 
+/** 羊毛。羊を倒すと落ちる。いまのところ**置ける**ことがそのまま見返りになっている。 */
+export const WOOL = 37;
+
 /**
  * ブロック ID の枠は 2 段に分けてある。
  *
@@ -104,7 +107,16 @@ export type ToolKind = "pickaxe" | "axe" | "shovel";
  * 書き忘れても音が鳴らなくなるわけではなく「石の音がする」ので、
  * `npm test` が全ブロックの割り当てを一覧で出す。
  */
-export type SoundGroup = "grass" | "dirt" | "sand" | "stone" | "wood" | "glass" | "snow" | "none";
+export type SoundGroup =
+  | "grass"
+  | "dirt"
+  | "sand"
+  | "stone"
+  | "wood"
+  | "glass"
+  | "snow"
+  | "wool"
+  | "none";
 
 /**
  * 面の番号。`0=+X 1=-X 2=+Y 3=-Y 4=+Z 5=-Z`（CLAUDE.md の規約）。
@@ -456,6 +468,12 @@ export const BLOCKS: readonly BlockDef[] = [
     model: "cross",
     boxes: CROSS_BOX,
     supportFace: FACE_YN,
+  }),
+
+  // 羊のドロップ。柔らかいので sound は "wool"（書き忘れると石の音がする）。
+  def(WOOL, "羊毛", { top: 0xe8e4dc, side: 0xe2ded5, bottom: 0xd8d3c9 }, {
+    hardness: 0.8,
+    sound: "wool",
   }),
 
   // ハーフブロック。硬さと道具は元の材質に合わせる。

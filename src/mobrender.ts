@@ -36,8 +36,16 @@ interface Rig {
   block: number;
 }
 
+/**
+ * 殴られたモブの色。`MeshBasicMaterial.color` は光の合成より**前**に
+ * `diffuseColor` へ掛かるので、赤く光らせるのに新しい GLSL は要らない。
+ * 全種類・全個体で 1 枚を共有する（1 体ごとの確保はゼロ）。
+ */
+const HURT_TINT = 0xff8080;
+
 export class MobRenderer {
   private readonly material: MeshBasicMaterial;
+  private readonly hurtMaterial: MeshBasicMaterial;
   private readonly rigs = new Map<number, Rig>();
   /** 種類ごとの形。1 回作って使い回す（幾何は全個体で同じ）。 */
   private readonly shapes = new Map<MobKind, MobPartMesh[]>();
@@ -47,8 +55,10 @@ export class MobRenderer {
     daylight: IUniform<Color>,
   ) {
     this.material = new MeshBasicMaterial({ vertexColors: true, fog: true });
+    this.hurtMaterial = new MeshBasicMaterial({ vertexColors: true, fog: true, color: HURT_TINT });
     // 地形と同じ patch・同じ uniform オブジェクト。**別の GLSL を書かないこと。**
     useTerrainLighting(this.material, daylight);
+    useTerrainLighting(this.hurtMaterial, daylight);
   }
 
   /** 毎フレーム、いま居るモブに合わせて `Object3D` を作り・動かし・片付ける。 */
@@ -68,7 +78,11 @@ export class MobRenderer {
       // player.ts の forward の作り方とそのまま一致する。
       rig.root.rotation.y = mob.yaw;
 
+      // 殴られている間だけ赤い版に差し替える（判断は mobs.ts の hurtTimer）
+      const material = mob.hurtTimer > 0 ? this.hurtMaterial : this.material;
+
       for (const { mesh, part } of rig.parts) {
+        if (mesh.material !== material) mesh.material = material;
         if (part.group.motion === "swing") {
           mesh.rotation.x = walkSwing(mob.walkPhase + part.group.phase);
         } else if (part.group.motion === "head") {
@@ -149,6 +163,7 @@ export class MobRenderer {
     for (const rig of this.rigs.values()) disposeRig(rig);
     this.rigs.clear();
     this.material.dispose();
+    this.hurtMaterial.dispose();
   }
 }
 

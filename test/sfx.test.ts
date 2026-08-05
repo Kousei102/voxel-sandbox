@@ -13,6 +13,7 @@ import {
   TALL_GRASS,
   WATER,
   WOOD,
+  WOOL,
   blockName,
   blockSound,
 } from "../src/blocks";
@@ -29,7 +30,27 @@ import {
 } from "../src/sfx";
 import { check, describe } from "./harness";
 
-const EVENTS: Sfx[] = ["step", "dig", "break", "place", "land", "hurt", "death", "splash", "craft"];
+const EVENTS: Sfx[] = [
+  "step",
+  "dig",
+  "break",
+  "place",
+  "land",
+  "hurt",
+  "death",
+  "splash",
+  "craft",
+  "mobsay",
+  "mobhurt",
+  "mobdeath",
+];
+
+/**
+ * 値域を確かめる声色の幅。**両端で回すこと** ——
+ * `recipeFor` は pitch を freq にも cutoff にも掛けるので、
+ * 素の値だけ見ていると低い声が可聴域を割ったのに気付けない。
+ */
+const PITCHES = [0.7, 1, 1.4];
 
 export function run(): void {
   describe("音（何をいつ鳴らすか）");
@@ -72,6 +93,12 @@ export function run(): void {
     `石ハーフ=${blockSound(STONE_SLAB)} / 板の階段=${blockSound(PLANK_STAIRS)}`,
   );
   check("空気と水は音を持たない", blockSound(AIR) === "none" && blockSound(WATER) === "none");
+  // 羊毛は既定の "stone" のままだと「羊毛が石の音」で静かに間違える
+  check(
+    "羊毛は布の音（いちばん柔らかい）",
+    blockSound(WOOL) === "wool" && recipeFor("step", "wool").cutoff < recipeFor("step", "snow").cutoff,
+    `${blockSound(WOOL)} / ${recipeFor("step", "wool").cutoff}Hz < 雪 ${recipeFor("step", "snow").cutoff}Hz`,
+  );
 
   // 材質で音が変わること。全部同じ数値になっていたら、材質を見ていない。
   const stepCutoffs = new Set(
@@ -94,18 +121,31 @@ export function run(): void {
   // 耳で確かめられないので、明らかにおかしい値（無音・爆音・鳴り止まない）を弾く。
   const bad: string[] = [];
   for (const event of EVENTS) {
-    for (const group of ["grass", "stone", "none"] as const) {
-      const r = recipeFor(event, group);
-      if (!(r.gain > 0 && r.gain <= 1)) bad.push(`${event}/${group} gain ${r.gain}`);
-      if (!(r.duration > 0 && r.duration <= 1)) bad.push(`${event}/${group} duration ${r.duration}`);
-      // 可聴域を大きく外れると、音が出ないか耳障りな超高音になる
-      if (!(r.freq >= 20 && r.freq * Math.max(1, r.sweep) <= 12000)) bad.push(`${event}/${group} freq ${r.freq}`);
-      if (!(r.cutoff >= 100 && r.cutoff <= 20000)) bad.push(`${event}/${group} cutoff ${r.cutoff}`);
-      if (!(r.noise >= 0 && r.noise <= 1)) bad.push(`${event}/${group} noise ${r.noise}`);
-      if (!(r.spread >= 0 && r.spread < 0.5)) bad.push(`${event}/${group} spread ${r.spread}`);
+    for (const group of ["grass", "stone", "wool", "none"] as const) {
+      for (const pitch of PITCHES) {
+        const r = recipeFor(event, group, pitch);
+        const at = `${event}/${group}@${pitch}`;
+        if (!(r.gain > 0 && r.gain <= 1)) bad.push(`${at} gain ${r.gain}`);
+        if (!(r.duration > 0 && r.duration <= 1)) bad.push(`${at} duration ${r.duration}`);
+        // 可聴域を大きく外れると、音が出ないか耳障りな超高音になる
+        if (!(r.freq >= 20 && r.freq * Math.max(1, r.sweep) <= 12000)) bad.push(`${at} freq ${r.freq}`);
+        if (!(r.cutoff >= 100 && r.cutoff <= 20000)) bad.push(`${at} cutoff ${r.cutoff}`);
+        if (!(r.noise >= 0 && r.noise <= 1)) bad.push(`${at} noise ${r.noise}`);
+        if (!(r.spread >= 0 && r.spread < 0.5)) bad.push(`${at} spread ${r.spread}`);
+      }
     }
   }
-  check(`${EVENTS.length} 種類の音の数値がすべて妥当`, bad.length === 0, bad.join(" / "));
+  check(
+    `${EVENTS.length} 種類の音の数値が ${PITCHES.length} 通りの声色すべてで妥当`,
+    bad.length === 0,
+    bad.join(" / "),
+  );
+  check(
+    "声色は音程をそのまま動かす",
+    Math.abs(recipeFor("mobsay", "none", 2).freq - recipeFor("mobsay").freq * 2) < 1e-9 &&
+      recipeFor("mobsay", "none", 0.7).cutoff < recipeFor("mobsay").cutoff,
+    `x1 ${recipeFor("mobsay").freq}Hz / x2 ${recipeFor("mobsay", "none", 2).freq}Hz`,
+  );
   check("知らない材質を渡しても落ちない", recipeFor("step", "none").gain > 0);
 
   // 音程のばらつき。同じ音が続いても機械的に聞こえないように散らす。

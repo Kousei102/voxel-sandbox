@@ -87,7 +87,7 @@ export function raycastVoxels(
       }
       let best = Infinity;
       for (const box of boxes) {
-        const enter = rayBox(box, x, y, z);
+        const enter = rayBox(rayOrigin, rayDir, box, x, y, z, boxNormal);
         if (enter < 0 || enter >= best) continue;
         best = enter;
         bestNormal[0] = boxNormal[0];
@@ -137,21 +137,33 @@ const boxNormal = [0, 0, 0];
 const bestNormal = [0, 0, 0];
 
 /**
- * 光線と箱 1 個の交差（slab method）。当たれば入るまでの距離、外れれば -1。
+ * 光線と軸並行の箱 1 個の交差（slab method）。当たれば入るまでの距離、外れれば -1。
  * 始点が箱の中なら 0 で、法線は 0 ベクトルになる（面を跨いでいないため）。
- * 法線は `boxNormal` に入れて返す。
+ * 法線は `outNormal` に入れて返す（配列は使い回してよい。確保はしない）。
+ *
+ * `box` は原点 `(ox, oy, oz)` からの相対。ブロックならセルの座標、
+ * モブなら足元の座標を渡す。**slab 法を写さないこと**（2 つ目の実装ができると、
+ * 片方だけ直したときに「狙えるのに当たらない」形で静かに食い違う）。
  */
-function rayBox(box: readonly number[], cx: number, cy: number, cz: number): number {
+export function rayBox(
+  origin: readonly number[],
+  dir: readonly number[],
+  box: readonly number[],
+  ox: number,
+  oy: number,
+  oz: number,
+  outNormal: number[],
+): number {
   let near = 0;
   let far = Infinity;
-  boxNormal[0] = boxNormal[1] = boxNormal[2] = 0;
+  outNormal[0] = outNormal[1] = outNormal[2] = 0;
 
   for (let a = 0; a < 3; a++) {
-    const cell = a === 0 ? cx : a === 1 ? cy : cz;
+    const cell = a === 0 ? ox : a === 1 ? oy : oz;
     const lo = cell + box[a];
     const hi = cell + box[a + 3];
-    const o = rayOrigin[a];
-    const d = rayDir[a];
+    const o = origin[a];
+    const d = dir[a];
 
     if (d === 0) {
       if (o < lo || o > hi) return -1;
@@ -168,8 +180,8 @@ function rayBox(box: readonly number[], cx: number, cy: number, cz: number): num
     }
     if (enter > near) {
       near = enter;
-      boxNormal[0] = boxNormal[1] = boxNormal[2] = 0;
-      boxNormal[a] = sign;
+      outNormal[0] = outNormal[1] = outNormal[2] = 0;
+      outNormal[a] = sign;
     }
     if (exit < far) far = exit;
     if (near > far) return -1;

@@ -21,7 +21,11 @@ export type Sfx =
   | "hurt"
   | "death"
   | "splash"
-  | "craft";
+  | "craft"
+  /** モブの鳴き声・悲鳴・断末魔。**種類ごとの声色は音程の倍率で付ける**（`MOB_VOICE`）。 */
+  | "mobsay"
+  | "mobhurt"
+  | "mobdeath";
 
 /**
  * 音 1 つぶんの作り方。ノイズとトーンを混ぜてローパスに通し、包絡線で減衰させる。
@@ -56,6 +60,8 @@ const MATERIAL: Record<SoundGroup, { freq: number; cutoff: number; noise: number
   wood: { freq: 320, cutoff: 1800, noise: 0.55 },
   glass: { freq: 900, cutoff: 6000, noise: 0.35 },
   snow: { freq: 160, cutoff: 650, noise: 1 },
+  // 布はいちばん柔らかい。cutoff を snow より下げ、ノイズだけにする。
+  wool: { freq: 130, cutoff: 480, noise: 1 },
   none: { freq: 400, cutoff: 2000, noise: 0.7 },
 };
 
@@ -90,15 +96,28 @@ const EVENTS: Record<Sfx, EventDef> = {
   death: { material: false, duration: 0.9, gain: 0.55, spread: 0, sweep: 0.35, freq: 260, cutoff: 1400, noise: 0.35 },
   splash: { material: false, duration: 0.35, gain: 0.4, spread: 0.1, sweep: 1.6, freq: 500, cutoff: 3500, noise: 0.95 },
   craft: { material: false, duration: 0.18, gain: 0.3, spread: 0, sweep: 1.5, freq: 660, cutoff: 5000, noise: 0.05 },
+
+  // モブの声。トーン寄り（noise 低め）にしないと「声」に聞こえない。
+  // 高さは種類ごとの倍率で散らすので、ここは真ん中の 1 種類だけ持つ。
+  mobsay: { material: false, duration: 0.36, gain: 0.3, spread: 0.14, sweep: 0.85, freq: 320, cutoff: 2200, noise: 0.35 },
+  mobhurt: { material: false, duration: 0.2, gain: 0.42, spread: 0.1, sweep: 0.6, freq: 380, cutoff: 2600, noise: 0.4 },
+  mobdeath: { material: false, duration: 0.6, gain: 0.48, spread: 0.05, sweep: 0.4, freq: 300, cutoff: 2000, noise: 0.35 },
 };
 
-/** その出来事を、その材質で鳴らすときの数値。 */
-export function recipeFor(sfx: Sfx, group: SoundGroup = "none"): SoundRecipe {
+/**
+ * その出来事を、その材質・その声色で鳴らすときの数値。
+ *
+ * `pitch` は音程の倍率で、**モブの種類ごとの声色をこれ 1 つで付ける**
+ * （種類ごとに `Sfx` を増やすと出来事 × 種類で膨らむし、`SoundGroup` を流用すると
+ * 「ブロックの材質」という意味が壊れる）。倍率は `cutoff` にも掛ける ——
+ * 低い声だけ明るくこもらない、という不自然さが出ないように。
+ */
+export function recipeFor(sfx: Sfx, group: SoundGroup = "none", pitch = 1): SoundRecipe {
   const event = EVENTS[sfx];
   const base = MATERIAL[group] ?? MATERIAL.none;
   return {
-    freq: event.material ? base.freq * event.freq : event.freq,
-    cutoff: event.material ? base.cutoff * event.cutoff : event.cutoff,
+    freq: (event.material ? base.freq * event.freq : event.freq) * pitch,
+    cutoff: (event.material ? base.cutoff * event.cutoff : event.cutoff) * pitch,
     noise: event.material ? base.noise : (event.noise ?? 0.5),
     sweep: event.sweep,
     duration: event.duration,

@@ -78,11 +78,14 @@ export class AudioEngine {
     );
   }
 
-  /** 出来事を鳴らす。材質で音が変わるものは `group` を渡す。 */
-  play(sfx: Sfx, group: SoundGroup = "none"): void {
+  /**
+   * 出来事を鳴らす。材質で音が変わるものは `group`、声色が変わるものは `pitch` を渡す。
+   * **どちらも素通しするだけ**（数値を決めるのは `mobs.ts`、掛け算は `sfx.ts`）。
+   */
+  play(sfx: Sfx, group: SoundGroup = "none", pitch = 1): void {
     if (this.volume <= 0) return;
     if (!this.ctx) return;
-    this.emit(recipeFor(sfx, group));
+    this.emit(recipeFor(sfx, group, pitch));
   }
 
   private emit(recipe: SoundRecipe): void {
