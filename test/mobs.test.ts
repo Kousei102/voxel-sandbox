@@ -369,6 +369,40 @@ export function run(): void {
     `いま y=${swimmer.position.y.toFixed(2)} / いちばん沈んだ所 y=${sank.toFixed(2)}（水底は 10）`,
   );
 
+  // 水の中は遅くなる。**プレイヤーと同じ 0.6 倍にすること** ——
+  // ずれると、水に逃げ込んだときの追いかけっこの勝敗が一方的になる。
+  /** `wet` なら蓋をした水路、そうでなければ平地を 3 秒歩いた距離。 */
+  function swimDistance(wet: boolean): number {
+    const arena = new Arena();
+    arena.fill(-20, 60, 0, 9, -20, 20, STONE);
+    if (wet) {
+      arena.fill(-20, 60, 10, 20, -6, 6, WATER);
+      arena.fill(-20, 60, 21, 21, -6, 6, STONE); // 浮いて水から出ないよう蓋をする
+    }
+    quiet(arena);
+    const pack = new Mobs();
+    const mob = pack.spawn("zombie", 0.5, 11, 0.5, -Math.PI / 2, seeded(37));
+    const away = ctx({ playerX: -40, playerZ: 0.5 });
+    for (let i = 0; i < 180; i++) {
+      mob.walking = true;
+      mob.yaw = mob.targetYaw = -Math.PI / 2; // +X 向き
+      pack.update(1 / 60, arena.asWorld(), away);
+    }
+    check(`水中の判定が効いている（${wet ? "水路" : "平地"}）`, mob.inWater === wet, `inWater ${mob.inWater}`);
+    return mob.position.x - 0.5;
+  }
+  const onLand = swimDistance(false);
+  const inWater = swimDistance(true);
+  console.log(
+    `      ゾンビが 3 秒で進む距離: 平地 ${onLand.toFixed(2)} / 水中 ${inWater.toFixed(2)}` +
+      ` = ${(inWater / onLand).toFixed(2)} 倍（プレイヤーは 0.6 倍）`,
+  );
+  check(
+    "水の中では遅くなる（プレイヤーと同じ 0.6 倍）",
+    Math.abs(inWater / onLand - 0.6) < 0.08,
+    `${(inWater / onLand).toFixed(2)} 倍`,
+  );
+
   describe("モブの湧き（明るさの判定）");
 
   // **シェーダの合成とまったく同じ式であること。** ずれると「明るく見えるのに湧く」場所ができる。

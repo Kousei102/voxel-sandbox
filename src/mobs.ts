@@ -281,6 +281,12 @@ const TERMINAL = 55;
  * 水面まで来ると頭が出て `inWater` が落ち、重力で少し沈む — その繰り返しで水面に浮く。
  */
 const WATER_RISE = 1.4;
+/**
+ * 水中での速さの倍率。**`player.ts` の 0.6 と同じにすること。**
+ * ずれると、水に入った瞬間にプレイヤーとゾンビの追いかけっこの勝敗が変わる
+ * （速いほうへ逃げ込めば必ず振り切れる／絶対に振り切れない、のどちらかになる）。
+ */
+const WATER_SPEED = 0.6;
 
 /** 横方向の加速。接地しているときのほうがよく効く（空中で方向転換しない）。 */
 const ACCEL_GROUND = 26;
@@ -774,7 +780,9 @@ export class Mobs {
     // 向きが目標からずれているあいだは前へ出さない。**曲がりながら進ませないこと。**
     // 崖の手前で向きを変えても、古い向きのまま滑っていって落ちる。
     const aligned = Math.max(0, Math.cos(wrapAngle(mob.targetYaw - mob.yaw)));
-    const speed = mob.walking ? def.speed * (mob.fleeTimer > 0 ? FLEE_SPEED : 1) * aligned : 0;
+    const speed = mob.walking
+      ? def.speed * (mob.fleeTimer > 0 ? FLEE_SPEED : 1) * aligned * (mob.inWater ? WATER_SPEED : 1)
+      : 0;
     const forward = forwardOf(mob.yaw);
     const accel = (mob.onGround ? ACCEL_GROUND : ACCEL_AIR) * dt;
     const targetX = forward[0] * speed;
