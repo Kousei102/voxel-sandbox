@@ -25,7 +25,9 @@ npm run build      # typecheck + dist/ に静的ファイル一式
 ```
 
 次に何を入れるかは `ROADMAP.md`。**着手する順はユーザーと決めること。**
-いまの状況（未コミットのもの・push の有無）は `HANDOFF.md`。
+いまの状況（未コミットのもの・push の有無・どこまでブラウザで確認済みか）は `HANDOFF.md`。
+**`HANDOFF.md` は消さずに、セッションの終わりに丸ごと書き直して次へ渡すこと**
+（引き写さず、`git fetch` と `npm test` で裏を取ってから）。
 
 ## この環境では WebGL が動かない
 
