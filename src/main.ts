@@ -32,6 +32,8 @@ import { AUTOSAVE_INTERVAL, CHUNK_BITS, REACH, RENDER_DISTANCE, CHUNK_SIZE } fro
 import { CrackOverlay } from "./crack";
 import { CraftScreen } from "./craftscreen";
 import { DayNight } from "./daynight";
+import { Drops, type DropContext } from "./drops";
+import { DropRenderer } from "./droprender";
 import { Inventory } from "./inventory";
 import { InventoryScreen } from "./inventoryui";
 import { NO_ITEM, dropOf, itemName, placedBlock } from "./items";
@@ -112,6 +114,12 @@ let world!: World;
  */
 const mobs = new Mobs();
 let mobRender!: MobRenderer;
+/**
+ * 落ちたアイテム。**モブと違って保存する**（`storage.ts` の `drops`）。
+ * `dropRender` は `mobRender` と同じ理由で `world` と一緒に作り直す。
+ */
+const drops = new Drops();
+let dropRender!: DropRenderer;
 let playing = false;
 let saveDirty = false;
 let autosaveTimer = 0;
@@ -131,20 +139,27 @@ screen.onChange = () => {
 
 screen.onCraft = () => audio.play("craft");
 
-// **捨てたものは戻らない**（落ちたアイテムの仕組みがまだ無い）ので、必ず何を捨てたか出す。
+// インベントリ画面で捨てたぶんは足元に落ちる（拾い直せる）。
 screen.onDiscard = (item, count) => {
-  hud.flash(`${itemName(item)} x${count} を捨てました`);
+  drops.throwOut(item, count, player.position.x, player.position.y + 1.2, player.position.z, player.yaw, player.pitch);
+  hud.flash(`${itemName(item)} x${count} を落としました`);
   saveDirty = true;
 };
 
 /**
- * 倒したモブのドロップ。**落ちたアイテムの仕組みがまだ無いので、
- * 倒した瞬間にインベントリへ入れる**（`breakBlock` と同じ形）。
- * `Mobs` はプレイヤーが倒したときにしかここを呼ばない。
+ * 倒したモブのドロップ。**倒れた場所に落とす。**
+ * `Mobs` はプレイヤーが倒したときにしかここを呼ばない
+ * （遠くで焼け死んだモブの肉が湧いてはいけない）。
  */
-mobs.onDrop = (item, count) => {
-  const left = inventory.add(item, count);
-  if (left > 0) hud.flash("インベントリがいっぱいです");
+mobs.onDrop = (item, count, x, y, z) => {
+  drops.burst(item, count, x, y + 0.3, z);
+  saveDirty = true;
+};
+
+/** 拾った音。**何をいつ鳴らすかは `drops.ts` が決めている**ので、ここは素通し。 */
+drops.onSound = (sfx) => audio.play(sfx);
+
+drops.onChange = () => {
   hud.refresh();
   saveDirty = true;
 };
@@ -172,6 +187,20 @@ function startWorld(
   mobs.clear();
   mobRender?.dispose();
   mobRender = new MobRenderer(scene, world.daylightUniform());
+
+  // 落ちたアイテムは保存する。ここでは空にしておき、セーブがあれば読み込み側が戻す。
+  drops.clear();
+  dropRender?.dispose();
+  dropRender = new DropRenderer(scene, world.daylightUniform());
+
+  // 支えを失って勝手に壊れたぶんを地面へ。**壊した本人が居なくても落ちる**ので、
+  // クリエイティブかどうかはここで見る（判断を `world.ts` に持ち込まない）。
+  world.onAutoBreak = (x, y, z, id) => {
+    if (creative) return;
+    const drop = dropOf(id);
+    if (drop.item === NO_ITEM || drop.count <= 0) return;
+    drops.burst(drop.item, drop.count, x + 0.5, y + 0.25, z + 0.5);
+  };
 
   const x = spawn?.x ?? SPAWN_X;
   const z = spawn?.z ?? SPAWN_Z;
@@ -209,6 +238,16 @@ function mobContext(): MobContext {
   };
 }
 
+/** 落ちたアイテムに渡す周りの状況。判断は全部 `drops.ts` 側なので、値を集めるだけ。 */
+function dropContext(): DropContext {
+  return {
+    playerX: player.position.x,
+    playerY: player.position.y,
+    playerZ: player.position.z,
+    inventory,
+  };
+}
+
 /** 初期位置へ戻す。ベッドがまだ無いので、リスポーン地点はワールドの初期位置ひとつだけ。 */
 function moveToSpawn(): void {
   world.primeAround(SPAWN_X, SPAWN_Z, 1);
@@ -236,6 +275,7 @@ function currentSave() {
     inventory: inventory.serialize(),
     craft: craft.serialize(),
     volume: audio.getVolume(),
+    drops: drops.serialize(),
     edits: serializeEdits(world.editsForSave()),
   };
 }
@@ -272,6 +312,8 @@ startWorld(
   deserializeEdits(saved?.edits),
   saved?.player,
 );
+// **`startWorld()` のあとで。** あちらが `drops.clear()` を呼ぶので、先に入れると消える。
+drops.deserialize(saved?.drops);
 
 // --- 入力 ---------------------------------------------------------------
 
@@ -290,6 +332,8 @@ document.getElementById("wipe")?.addEventListener("click", () => {
   clearSave();
   inventory.clear();
   craft.discardAll();
+  // 地面に落ちているぶんも消す（残すと、消したはずの持ち物が拾い直せてしまう）。
+  drops.clear();
   hud.refresh();
   saveDirty = false;
   hud.flash("保存データを削除しました");
@@ -487,7 +531,7 @@ function useOrPlace(): void {
   saveDirty = true;
 }
 
-/** 掘り切ったときの処理。ドロップをインベントリに入れる。 */
+/** 掘り切ったときの処理。ドロップはマスの中心に落ちる（拾うのは `drops.ts`）。 */
 function breakBlock(x: number, y: number, z: number, blockId: number, tool: number): void {
   if (!world.setVoxel(x, y, z, AIR)) return;
   saveDirty = true;
@@ -499,9 +543,7 @@ function breakBlock(x: number, y: number, z: number, blockId: number, tool: numb
   const drop = dropOf(blockId);
   if (drop.item === NO_ITEM || drop.count <= 0) return;
   if (drop.chance < 1 && Math.random() >= drop.chance) return;
-  const left = inventory.add(drop.item, drop.count);
-  if (left > 0) hud.flash("インベントリがいっぱいです");
-  hud.refresh();
+  drops.burst(drop.item, drop.count, x + 0.5, y + 0.35, z + 0.5);
 }
 
 window.addEventListener("wheel", (event) => {
@@ -544,11 +586,21 @@ window.addEventListener("keydown", (event) => {
       openInventory(2);
       return;
     case "KeyQ": {
-      // **捨てたものは戻らない**（落ちたアイテムの仕組みが無い）ので、
-      // 1 個ずつにして、何を捨てたかを必ず出す。
+      // 落としたものは地面に残るので拾い直せる。**まとめ捨てはまだ足さない**
+      // （`CLAUDE.md`「インベントリ画面」。落ちたアイテムを実地で確かめてから）。
       const thrown = inventory.discardSelected(1);
       if (thrown) {
-        hud.flash(`${itemName(thrown.item)} x${thrown.count} を捨てました`);
+        // 目線の高さから投げる。猶予（拾い直さない時間）は `drops.ts` が決める。
+        drops.throwOut(
+          thrown.item,
+          thrown.count,
+          player.position.x,
+          player.position.y + 1.2,
+          player.position.z,
+          player.yaw,
+          player.pitch,
+        );
+        hud.flash(`${itemName(thrown.item)} x${thrown.count} を落としました`);
         hud.refresh();
         saveDirty = true;
       }
@@ -631,6 +683,10 @@ function frame(now: number): void {
   //   ゾンビに殺されても死亡画面が出なかった。vitals.ts のコメント参照）。
   if (playing) mobs.update(dt, world, mobContext());
   mobRender.sync(mobs.list, world);
+  // 落ちたアイテム。**モブと同じく `world.update()` の外**（`test/world.test.ts` の
+  // p99 に混ぜると、ストリーミングの退行と区別できなくなる）。
+  if (playing) drops.update(dt, world, dropContext());
+  dropRender.sync(drops.list, world);
   // 水中のこもりに underwater を使うので、updateEnvironment のあとに回す
   updateSounds();
   // 息の判定に水中かどうかを使うので、updateEnvironment のあとに回す
@@ -654,7 +710,7 @@ function frame(now: number): void {
       `tris ${stats.triangles.toLocaleString()}  edits ${countEdits(world.editsForSave())}\n` +
       `time ${dayNight.clock()}  light ${(dayNight.brightness * 100).toFixed(0)}%  ${creative ? "creative" : "survival"}\n` +
       `biome ${biomeName(world.gen.biomeAt(Math.floor(player.position.x), Math.floor(player.position.z)))}` +
-      `  mobs ${mobs.count}\n` +
+      `  mobs ${mobs.count}  drops ${drops.count}\n` +
       `hp ${vitals.health}/${MAX_HEALTH}  air ${(vitals.airFraction * 100).toFixed(0)}%\n` +
       `${player.flying ? "fly" : player.onGround ? "ground" : "air"}${player.inWater ? " / water" : ""}\n` +
       `hand ${inventory.selectedItem === NO_ITEM ? "-" : itemName(inventory.selectedItem)}\n` +

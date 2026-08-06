@@ -349,7 +349,7 @@ export class CraftScreen {
   // --- 破棄 ---
 
   /**
-   * 掴んでいる山を捨てる。**落ちたアイテムの仕組みがまだ無いので、捨てたものは戻らない。**
+   * 掴んでいる山を捨てる。捨てたぶんは `onDiscard` で外へ出し、`main.ts` が地面に落とす。
    *
    * だから既定（Q キー）は 1 個だけにして、丸ごと捨てるのは
    * 「画面外を狙って左クリックした」ときにだけ与えている。
@@ -496,7 +496,7 @@ export class CraftScreen {
     return flat;
   }
 
-  /** 盤面と掴んでいる山を、インベントリへ戻さず空にする。捨てたものは戻らない。 */
+  /** 盤面と掴んでいる山を、インベントリへ戻さず空にする（保存データの削除で使う）。 */
   discardAll(): void {
     for (const slot of [...this.grid, this.heldSlot]) clearSlot(slot);
   }

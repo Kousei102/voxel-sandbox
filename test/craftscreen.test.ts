@@ -493,7 +493,7 @@ export function run(): void {
   // --- 破棄 ---
   describe("インベントリ画面（捨てる）");
 
-  // 落ちたアイテムの仕組みが無いので、捨てたものは戻らない。
+  // 捨てたぶんは `onDiscard` で外へ出て、`main.ts` が地面に落とす（インベントリには戻らない）。
   // 「総数が本当に減っている」ことまで見る（どこかに残っていたら破棄になっていない）。
   const dropOne = holding(10);
   const dropped = dropOne.discardHeld(false);

@@ -22,6 +22,8 @@ export type Sfx =
   | "death"
   | "splash"
   | "craft"
+  /** 落ちたアイテムを拾った音（`drops.ts` が鳴らす）。 */
+  | "pickup"
   /** モブの鳴き声・悲鳴・断末魔。**種類ごとの声色は音程の倍率で付ける**（`MOB_VOICE`）。 */
   | "mobsay"
   | "mobhurt"
@@ -96,6 +98,9 @@ const EVENTS: Record<Sfx, EventDef> = {
   death: { material: false, duration: 0.9, gain: 0.55, spread: 0, sweep: 0.35, freq: 260, cutoff: 1400, noise: 0.35 },
   splash: { material: false, duration: 0.35, gain: 0.4, spread: 0.1, sweep: 1.6, freq: 500, cutoff: 3500, noise: 0.95 },
   craft: { material: false, duration: 0.18, gain: 0.3, spread: 0, sweep: 1.5, freq: 660, cutoff: 5000, noise: 0.05 },
+  // 拾った瞬間の「ポッ」。**歩いているだけで何度も鳴るので、いちばん短く小さく。**
+  // クラフトと同じ「上がる」向きにして、失う音（hurt）と取り違えないようにする。
+  pickup: { material: false, duration: 0.1, gain: 0.24, spread: 0.18, sweep: 1.7, freq: 820, cutoff: 5200, noise: 0.08 },
 
   // モブの声。トーン寄り（noise 低め）にしないと「声」に聞こえない。
   // 高さは種類ごとの倍率で散らすので、ここは真ん中の 1 種類だけ持つ。

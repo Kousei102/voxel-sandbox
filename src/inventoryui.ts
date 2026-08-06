@@ -35,7 +35,7 @@ export class InventoryScreen {
   onChange: () => void = () => {};
   /** クラフトが成立して 1 回ぶん取り出したとき（音を鳴らすのに使う）。 */
   onCraft: () => void = () => {};
-  /** アイテムを捨てたとき（通知を出すのに使う）。**捨てたものは戻らない。** */
+  /** アイテムを捨てたとき（地面に落とし、通知を出すのに使う）。 */
   onDiscard: (item: number, count: number) => void = () => {};
 
   constructor(private readonly craft: CraftScreen) {

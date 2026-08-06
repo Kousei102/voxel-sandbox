@@ -11,7 +11,7 @@
 
 import { Color, Vector3 } from "three";
 import { GRASS, WATER, WOOL, isSolid } from "./blocks";
-import { CHUNK_BITS, MAX_LIGHT, WORLD_HEIGHT } from "./constants";
+import { MAX_LIGHT, WORLD_HEIGHT, columnOf } from "./constants";
 import { RAW_PORK, ROTTEN_FLESH, toolOf } from "./items";
 import { BLOCK_LIGHT, SKY_LIGHT } from "./lighting";
 import { type BodySize, boxBlocked, groundBelow, moveBody } from "./physics";
@@ -80,10 +80,7 @@ export interface MobDef {
    * 湧きの上限を受動と別に持つので、受動しか居なくても意味がある。
    */
   readonly hostile: boolean;
-  /**
-   * 倒したときのドロップ。**落ちたアイテムの仕組みがまだ無いので、
-   * 倒した瞬間にインベントリへ入れる**（`CLAUDE.md` の見取り図どおり）。
-   */
+  /** 倒したときのドロップ。倒れた場所に落ちる（`onDrop` → `main.ts` → `drops.ts`）。 */
   readonly drop: MobDrop;
   /**
    * 声の高さの倍率。**種類ごとに `Sfx` を増やさないこと**
@@ -546,10 +543,13 @@ export class Mobs {
 
   /**
    * 倒したときの受け取り口。`screen.onChange` と同じ形で `main.ts` から繋ぐ。
-   * **プレイヤーが倒したときだけ発火させること**（遠くで勝手に消えたモブの肉が
-   * インベントリに入ってはいけない）。
+   * **プレイヤーが倒したときだけ発火させること**（遠くで勝手に焼け死んだモブの肉が
+   * 地面に湧いてはいけない）。座標は倒れた場所。
+   *
+   * **`mobs.ts` は `drops.ts` を import しない。** 座標を渡すだけにしておけば、
+   * 落とし物の仕組みが変わってもモブの判断は動かない。
    */
-  onDrop?: (item: number, count: number) => void;
+  onDrop?: (item: number, count: number, x: number, y: number, z: number) => void;
   /**
    * 音の受け取り口。**何をいつ鳴らすかはここで決めて、`audio.ts` へは素通しさせる**
    * （`CLAUDE.md`「判断を `audio.ts` や `main.ts` に書かないこと」）。
@@ -1051,7 +1051,9 @@ export class Mobs {
     this.onSound?.("mobdeath", def.voice);
     const drop = def.drop;
     if (drop.count > 0 && (drop.chance >= 1 || random() < drop.chance)) {
-      this.onDrop?.(drop.item, drop.count);
+      // **倒れた場所を渡すこと。** 受け取る側（`main.ts`）はそこに落とすので、
+      // 座標が無いと「遠くで倒したものが足元に湧く」形に戻る。
+      this.onDrop?.(drop.item, drop.count, mob.position.x, mob.position.y, mob.position.z);
     }
     return true;
   }
@@ -1121,10 +1123,3 @@ function findGround(world: World, x: number, from: number, z: number): number {
   return -1;
 }
 
-/**
- * ワールド座標 → 列の座標。**`>>` に直接渡さないこと。**
- * ビット演算は 0 に向かって切り捨てるので、-0.5 が 0 になって隣の列を見てしまう。
- */
-function columnOf(v: number): number {
-  return Math.floor(v) >> CHUNK_BITS;
-}

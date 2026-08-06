@@ -1,10 +1,9 @@
 import { readFileSync } from "node:fs";
 import { Vector3 } from "three";
-import { AIR, BEDROCK, GRASS, SAND, STONE, STONE_SLAB, WATER, WOOL } from "../src/blocks";
-import { MAX_LIGHT, WORLD_HEIGHT } from "../src/constants";
+import { GRASS, SAND, STONE, STONE_SLAB, WATER, WOOL } from "../src/blocks";
+import { MAX_LIGHT } from "../src/constants";
 import { DayNight } from "../src/daynight";
 import { NO_ITEM, RAW_PORK, ROTTEN_FLESH, STONE_AXE, WOOD_PICKAXE, itemName } from "../src/items";
-import { SKY_LIGHT } from "../src/lighting";
 import { buildMobMesh } from "../src/mobmesh";
 import {
   ATTACK_RANGE,
@@ -38,64 +37,10 @@ import { boxBlocked } from "../src/physics";
 import { raycastVoxels } from "../src/raycast";
 import type { Sfx } from "../src/sfx";
 import { MAX_HEALTH, MOB_HURT_COOLDOWN, Vitals } from "../src/vitals";
-import type { World } from "../src/world";
+import { Arena, seeded } from "./arena";
 import { signedVolume, verifyWinding } from "./geometry";
 import { check, describe } from "./harness";
 
-/**
- * `getVoxel` / `getLight` / `hasColumn` だけを持つ試験場
- * （`physics.test.ts` と同じ理由で、当たり判定と湧きが見るのはこれだけ）。
- */
-class Arena {
-  private readonly cells = new Map<number, number>();
-  /** 一律のスカイライト。0 のままなら受動モブは 1 体も湧かない。 */
-  sky = 0;
-  block = 0;
-
-  private key(x: number, y: number, z: number): number {
-    return ((x + 512) * 1024 + (z + 512)) * 128 + y;
-  }
-
-  fill(
-    x0: number, x1: number,
-    y0: number, y1: number,
-    z0: number, z1: number,
-    id: number,
-  ): void {
-    for (let x = x0; x <= x1; x++) {
-      for (let y = y0; y <= y1; y++) {
-        for (let z = z0; z <= z1; z++) this.cells.set(this.key(x, y, z), id);
-      }
-    }
-  }
-
-  getVoxel(x: number, y: number, z: number): number {
-    if (y < 0) return BEDROCK;
-    if (y >= WORLD_HEIGHT) return AIR;
-    return this.cells.get(this.key(x, y, z)) ?? AIR;
-  }
-
-  getLight(_x: number, _y: number, _z: number, channel = SKY_LIGHT): number {
-    return channel === SKY_LIGHT ? this.sky : this.block;
-  }
-
-  hasColumn(): boolean {
-    return true;
-  }
-
-  asWorld(): World {
-    return this as unknown as World;
-  }
-}
-
-/** 決まった順で同じ数列を返す乱数。湧きと AI のテストを再現できるようにする。 */
-function seeded(seed: number): () => number {
-  let state = seed >>> 0;
-  return () => {
-    state = (state * 1664525 + 1013904223) >>> 0;
-    return state / 0x100000000;
-  };
-}
 
 function ctx(over: Partial<MobContext> = {}): MobContext {
   return { playerX: 0.5, playerY: 11, playerZ: 0.5, brightness: 1, random: seeded(12345), ...over };
@@ -693,7 +638,7 @@ export function run(): void {
   advance(rapid, fightArena(), rapidCtx, COOLDOWN_FRAMES);
   check("クールダウンが明ければまた殴れる", rapid.attack(punched, NO_ITEM, rapidCtx));
 
-  // 倒れるまでの回数とドロップ。落ちたアイテムの仕組みがまだ無いので、
+  // 倒れるまでの回数とドロップ。落とす場所は `onDrop` が渡すので、
   // 倒した瞬間に onDrop が 1 回だけ鳴る。
   console.log("      種類  体力  道具        1 発  倒すまで  ドロップ");
   for (const kind of MOB_KINDS) {

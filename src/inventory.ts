@@ -132,8 +132,9 @@ export class Inventory {
   /**
    * 選択中のスロットから捨てる（プレイ中の Q）。捨てたものを返す。空なら null。
    *
-   * **落ちたアイテムの仕組みが無いので、捨てたものは戻りません。**
-   * だから 1 個ずつにしてあり、呼ぶ側は必ず何を捨てたか画面に出すこと。
+   * 捨てたぶんは呼ぶ側が地面に落とすので拾い直せます（`drops.ts`）。
+   * それでも 1 個ずつにしてあり、呼ぶ側は必ず何を落としたか画面に出すこと
+   * （画面外へ飛ぶことがあるため）。
    */
   discardSelected(count = 1): { item: number; count: number } | null {
     const slot = this.selectedSlot;

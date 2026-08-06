@@ -40,6 +40,7 @@ const EVENTS: Sfx[] = [
   "death",
   "splash",
   "craft",
+  "pickup",
   "mobsay",
   "mobhurt",
   "mobdeath",

@@ -73,6 +73,13 @@ export class World {
   private lastCenter: [number, number] = [Number.NaN, Number.NaN];
   private triangles = 0;
 
+  /**
+   * 支えを失って勝手に壊れたブロックの知らせ（`breakUnsupported`）。
+   * **プレイヤーが直接壊したぶんでは鳴らない**（あちらは `main.ts` の `breakBlock` が落とす）。
+   * `main.ts` が受けて地面にアイテムを落とす。
+   */
+  onAutoBreak?: (wx: number, wy: number, wz: number, id: number) => void;
+
   /** 昼夜の色。シェーダの uniform としてそのまま渡すので、中身だけ差し替える。 */
   private readonly daylight = { value: new Color(1, 1, 1) };
 
@@ -199,8 +206,9 @@ export class World {
    * 支えを失ったブロックを壊す。**`setVoxel` で支えでなくなったときに必ず呼ぶこと。**
    * 置く側（`canPlaceAt`）と対になっていて、片方だけ直すと壁の松明が空中に残る。
    *
-   * 落ちたアイテムの仕組みがまだ無いので、ここで壊れたぶんは手に入らない
-   * （Minecraft ではドロップする）。
+   * 壊れたぶんは `onAutoBreak` で外へ知らせる（`main.ts` が地面に落とす）。
+   * **`World` が `drops.ts` を知らないのが肝心** —— ここはストリーミングのファイルで、
+   * 落とし物の判断（何を・いくつ・クリエイティブでは落とさない）を持たせる場所ではない。
    */
   private breakUnsupported(wx: number, wy: number, wz: number, id: number): void {
     for (let face = 0; face < OFFSETS.length; face++) {
@@ -212,7 +220,10 @@ export class World {
       if (neighbor === AIR) continue;
       // 隣が「こちら側」に支えを求めているなら、今の中身で支えられるか見る
       if (supportFace(neighbor) !== oppositeFace(face)) continue;
-      if (!canSupport(id, face)) this.setVoxel(nx, ny, nz, AIR);
+      if (canSupport(id, face)) continue;
+      // **壊す前に知らせること。** あとにすると、連鎖で更に壊れたぶんと順番が入れ替わる。
+      this.onAutoBreak?.(nx, ny, nz, neighbor);
+      this.setVoxel(nx, ny, nz, AIR);
     }
   }
 

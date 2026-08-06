@@ -53,3 +53,15 @@ export const NIGHT_BRIGHTNESS = 0.28;
 
 export const STORAGE_KEY = "voxel-sandbox:v1";
 export const AUTOSAVE_INTERVAL = 15;
+
+/**
+ * ワールド座標 → 列の座標。**`>>` に直接渡さないこと。**
+ * ビット演算は 0 に向かって切り捨てるので、-0.5 が 0 になって隣の列を見てしまう。
+ *
+ * モブ（`mobs.ts`）と落ちたアイテム（`drops.ts`）が「ボクセルの無い列では動かさない」
+ * 判定に使う。**2 か所に写さないこと** —— 片方だけ間違えると、そちらだけが
+ * 世界を突き抜けて落ちる（`getVoxel` が AIR を返すため）。
+ */
+export function columnOf(v: number): number {
+  return Math.floor(v) >> CHUNK_BITS;
+}

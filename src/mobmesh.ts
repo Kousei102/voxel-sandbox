@@ -82,6 +82,28 @@ function emitBox(shape: readonly number[], color: Float32Array): void {
 }
 
 /**
+ * 箱 1 個ぶんの `MeshArrays`。**落ちたアイテムの立方体がこれを使う。**
+ *
+ * わざわざモブの側に置いてあるのは、**巡回順の発行点を増やさないため**。
+ * 同じ `emitBox()` を通るので、ドロップの形も `test/geometry.ts` の
+ * 巡回順・体積の検査にそのまま乗る（面の裏返りは画面が真っ黒になる形でしか
+ * 出ないので、この環境では検査に乗せる以外に気付く手が無い）。
+ */
+export function buildBoxMesh(
+  box: readonly number[],
+  color: number,
+  rgbOf: (hex: number, out: Float32Array) => void,
+): MeshArrays {
+  builder.reset();
+  rgbOf(color, rgb);
+  emitBox(box, rgb);
+  const mesh = builder.toArrays();
+  // 箱 1 個なら必ず 6 面出る。出なかったのは寸法が潰れている（書き間違い）。
+  if (!mesh) throw new Error(`箱 [${box.join(", ")}] から面が 1 枚も出なかった`);
+  return mesh;
+}
+
+/**
  * 1 種類ぶんの形を、グループごとの `MeshArrays` に積む。
  * **形は軸に平行なまま作ること。** 回すのは `Object3D` の側で、
  * `Builder.quad()` の「法線の成分の和で巡回順を決める」規約は
