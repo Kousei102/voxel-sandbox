@@ -496,10 +496,15 @@ export class CraftScreen {
     return flat;
   }
 
+  /** 盤面と掴んでいる山を、インベントリへ戻さず空にする。捨てたものは戻らない。 */
+  discardAll(): void {
+    for (const slot of [...this.grid, this.heldSlot]) clearSlot(slot);
+  }
+
   deserialize(flat: number[] | undefined): void {
-    const all = [...this.grid, this.heldSlot];
-    for (const slot of all) clearSlot(slot);
+    this.discardAll();
     if (!Array.isArray(flat)) return;
+    const all = [...this.grid, this.heldSlot];
     for (let i = 0; i < all.length; i++) {
       const item = flat[i * 2] ?? 0;
       const count = flat[i * 2 + 1] ?? 0;

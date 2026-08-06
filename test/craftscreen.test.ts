@@ -261,6 +261,19 @@ export function run(): void {
   twice.returnAll();
   check("returnAll を 2 回呼んでも増えない", twice.inventory.count(DIRT) === 5, `${twice.inventory.count(DIRT)} 個`);
 
+  // discardAll は returnAll と違い、インベントリへ一切戻さず盤面と手を空にする（完全リセット用）。
+  const discarding = screen(3);
+  put(discarding, 0, DIRT, 5);
+  put(discarding, 8, STONE, 3);
+  click(discarding, "grid", 0, 0); // 手に 5 個
+  discarding.discardAll();
+  check("discardAll で盤面と手が空になる", discarding.grid.every(isEmpty) && discarding.held === null);
+  check(
+    "discardAll はインベントリへ戻さない",
+    discarding.inventory.count(DIRT) === 0 && discarding.inventory.count(STONE) === 0,
+    `土 ${discarding.inventory.count(DIRT)} / 石 ${discarding.inventory.count(STONE)}`,
+  );
+
   // 満杯なら戻しきれず盤面に残る（消えはしない）。
   const overflow = screen(3);
   overflow.inventory.add(STONE, 36 * MAX_STACK);

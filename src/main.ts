@@ -288,6 +288,9 @@ document.getElementById("play")?.addEventListener("click", requestLock);
 document.getElementById("save")?.addEventListener("click", () => saveNow());
 document.getElementById("wipe")?.addEventListener("click", () => {
   clearSave();
+  inventory.clear();
+  craft.discardAll();
+  hud.refresh();
   saveDirty = false;
   hud.flash("保存データを削除しました");
 });
