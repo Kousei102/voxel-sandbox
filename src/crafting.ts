@@ -3,11 +3,10 @@ import {
   COBBLE_SLAB,
   COBBLE_STAIRS,
   CRAFTING_TABLE,
-  GLASS,
+  FURNACE,
   PLANK,
   PLANK_SLAB,
   PLANK_STAIRS,
-  SAND,
   SANDSTONE,
   SANDSTONE_SLAB,
   SANDSTONE_STAIRS,
@@ -54,8 +53,8 @@ export interface Recipe {
 }
 
 /**
- * かまどがまだ無いので、砂 → ガラスだけはクラフトで代用している（本来は精錬）。
- * 鉄・金は鉱石を掘った時点でインゴットになる（items.ts の DROPS 参照）。
+ * クラフトの表。**焼いて作るものはここに置かないこと**（`smelting.ts` の仕事）。
+ * かまどが無かった頃は砂 4 個 → ガラスを代用で置いていたが、精錬が入ったので外した。
  */
 export const RECIPES: readonly Recipe[] = [
   { name: "板", out: PLANK, count: 4, ingredients: [WOOD] },
@@ -69,9 +68,11 @@ export const RECIPES: readonly Recipe[] = [
     shape: ["PP", "PP"],
     key: { P: PLANK },
   },
-  { name: "ガラス", out: GLASS, count: 1, shape: ["SS", "SS"], key: { S: SAND } },
   // 石炭を棒の上に。1 列なので 2x2 でも作れる（Minecraft と同じ）。
   { name: "松明", out: TORCH, count: 4, shape: ["C", "S"], key: { C: COAL, S: STICK } },
+
+  // かまどは丸石 8 個の輪（Minecraft と同じ）。3x3 なので作業台が要る。
+  { name: "かまど", out: FURNACE, count: 1, shape: ["CCC", "C.C", "CCC"], key: { C: COBBLE } },
 
   // ハーフブロックは横 3 列から 6 個（Minecraft と同じ）。3 列なので作業台が要る。
   slabRecipe("石", STONE, STONE_SLAB),

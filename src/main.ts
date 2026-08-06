@@ -13,6 +13,8 @@ import {
 import {
   AIR,
   CRAFTING_TABLE,
+  FURNACE,
+  FURNACE_LIT,
   NO_SUPPORT,
   PALETTE,
   WATER,
@@ -28,12 +30,20 @@ import {
 } from "./blocks";
 import { AudioEngine } from "./audio";
 import { biomeName } from "./biomes";
-import { AUTOSAVE_INTERVAL, CHUNK_BITS, REACH, RENDER_DISTANCE, CHUNK_SIZE } from "./constants";
+import {
+  AUTOSAVE_INTERVAL,
+  CHUNK_BITS,
+  CHUNK_SIZE,
+  REACH,
+  RENDER_DISTANCE,
+  columnOf,
+} from "./constants";
 import { CrackOverlay } from "./crack";
 import { CraftScreen } from "./craftscreen";
 import { DayNight } from "./daynight";
 import { Drops, type DropContext } from "./drops";
 import { DropRenderer } from "./droprender";
+import { Furnaces } from "./furnaces";
 import { Inventory } from "./inventory";
 import { InventoryScreen } from "./inventoryui";
 import { NO_ITEM, dropOf, itemName, placedBlock } from "./items";
@@ -56,6 +66,8 @@ const WATER_FOG = 0x1b4f8c;
 const NEW_WORLD_TIME = 0.05;
 const SPAWN_X = 0.5;
 const SPAWN_Z = 0.5;
+/** かまどの画面を描き直す間隔 (秒)。数字が動くだけなので、これで十分。 */
+const FURNACE_UI_INTERVAL = 0.25;
 
 const canvas = document.getElementById("viewport") as HTMLCanvasElement;
 const renderer = new WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance" });
@@ -120,12 +132,19 @@ let mobRender!: MobRenderer;
  */
 const drops = new Drops();
 let dropRender!: DropRenderer;
+/**
+ * 置いてあるかまど。**「位置ごとに状態を持つブロック」の初めての例。**
+ * モブや落とし物と違って `world` の外にあるので、ワールドを作り直しても
+ * 明示的に空にすること（`startWorld`）。
+ */
+const furnaces = new Furnaces();
 let playing = false;
 let saveDirty = false;
 let autosaveTimer = 0;
 let hit: RaycastHit | null = null;
 let underwater = false;
 let breaking = false;
+let furnaceUiTimer = 0;
 /** クリエイティブでは即掘れて、置いてもアイテムが減らない。 */
 let creative = false;
 
@@ -159,6 +178,10 @@ mobs.onDrop = (item, count, x, y, z) => {
 /** 拾った音。**何をいつ鳴らすかは `drops.ts` が決めている**ので、ここは素通し。 */
 drops.onSound = (sfx) => audio.play(sfx);
 
+furnaces.onChange = () => {
+  saveDirty = true;
+};
+
 drops.onChange = () => {
   hud.refresh();
   saveDirty = true;
@@ -188,7 +211,9 @@ function startWorld(
   mobRender?.dispose();
   mobRender = new MobRenderer(scene, world.daylightUniform());
 
-  // 落ちたアイテムは保存する。ここでは空にしておき、セーブがあれば読み込み側が戻す。
+  // かまどと落ちたアイテムは保存する。ここでは空にしておき、
+  // セーブがあれば読み込み側が戻す。
+  furnaces.clear();
   drops.clear();
   dropRender?.dispose();
   dropRender = new DropRenderer(scene, world.daylightUniform());
@@ -248,6 +273,42 @@ function dropContext(): DropContext {
   };
 }
 
+/**
+ * 点火中かどうかをワールドのブロック ID に反映する。
+ *
+ * **`setVoxel` が成功したときだけ「合った」ことにする。** 未読み込みの列では
+ * 書き込みが黙って失敗するので、`furnaces.ts` 側が持ち越して次のフレームでまた試す
+ * （そうしないと「火が消えているのに光ったままのかまど」が残る）。
+ */
+function syncFurnaceBlocks(): void {
+  furnaces.syncLit((x, y, z, lit) => {
+    // 列がまだ無いなら確かめようがない。**ここで true を返さないこと**
+    // （`getVoxel` が AIR を返すので「かまどが無くなった」と誤読する）。
+    if (!world.hasColumn(columnOf(x), columnOf(z))) return false;
+    const current = world.getVoxel(x, y, z);
+    // もうかまどが無い（掘られた・上書きされた）なら、合わせるものが無い。
+    if (baseBlock(current) !== FURNACE) return true;
+    const want = lit ? FURNACE_LIT : FURNACE;
+    if (current === want) return true;
+    return world.setVoxel(x, y, z, want);
+  });
+}
+
+/**
+ * かまどを開いている間だけ、焼き上がりと燃料の残りを描き直す。
+ * **毎フレームは要らない**（動くのは数字と矢印の色だけ）。
+ */
+function refreshFurnaceUi(dt: number): void {
+  if (!screen.isOpen || !craft.furnace) {
+    furnaceUiTimer = 0;
+    return;
+  }
+  furnaceUiTimer += dt;
+  if (furnaceUiTimer < FURNACE_UI_INTERVAL) return;
+  furnaceUiTimer = 0;
+  screen.refresh();
+}
+
 /** 初期位置へ戻す。ベッドがまだ無いので、リスポーン地点はワールドの初期位置ひとつだけ。 */
 function moveToSpawn(): void {
   world.primeAround(SPAWN_X, SPAWN_Z, 1);
@@ -276,6 +337,7 @@ function currentSave() {
     craft: craft.serialize(),
     volume: audio.getVolume(),
     drops: drops.serialize(),
+    furnaces: furnaces.serialize(),
     edits: serializeEdits(world.editsForSave()),
   };
 }
@@ -312,8 +374,9 @@ startWorld(
   deserializeEdits(saved?.edits),
   saved?.player,
 );
-// **`startWorld()` のあとで。** あちらが `drops.clear()` を呼ぶので、先に入れると消える。
+// **`startWorld()` のあとで。** あちらが `clear()` を呼ぶので、先に入れると消える。
 drops.deserialize(saved?.drops);
+furnaces.deserialize(saved?.furnaces);
 
 // --- 入力 ---------------------------------------------------------------
 
@@ -332,8 +395,10 @@ document.getElementById("wipe")?.addEventListener("click", () => {
   clearSave();
   inventory.clear();
   craft.discardAll();
-  // 地面に落ちているぶんも消す（残すと、消したはずの持ち物が拾い直せてしまう）。
+  // 地面に落ちているぶんとかまどの中身も消す
+  // （残すと、消したはずの持ち物が拾い直せてしまう）。
   drops.clear();
+  furnaces.clear();
   hud.refresh();
   saveDirty = false;
   hud.flash("保存データを削除しました");
@@ -422,6 +487,19 @@ function openInventory(size: 2 | 3): void {
   document.exitPointerLock();
 }
 
+/**
+ * かまどを開く。中身は `furnaces.ts` が位置ごとに持っていて、画面はそれを借りるだけ。
+ * **閉じても中身は返さない**（ワールドに置いてあるもの。`craftscreen.ts` の `close()`）。
+ */
+function openFurnace(x: number, y: number, z: number): void {
+  if (screen.isOpen) return;
+  breaking = false;
+  mining.reset();
+  screen.showFurnace(furnaces.at(x, y, z));
+  hud.setPlaying(false, false);
+  document.exitPointerLock();
+}
+
 function closeInventory(): void {
   if (!screen.isOpen) return;
   screen.hide();
@@ -503,6 +581,12 @@ function useOrPlace(): void {
     return;
   }
 
+  // かまど。点火中も同じ 1 台なので、大元の ID で見る。
+  if (baseBlock(hit.id) === FURNACE) {
+    openFurnace(hit.block.x, hit.block.y, hit.block.z);
+    return;
+  }
+
   const item = inventory.selectedItem;
   const base = placedBlock(item);
   if (base === AIR) return;
@@ -537,6 +621,14 @@ function breakBlock(x: number, y: number, z: number, blockId: number, tool: numb
   saveDirty = true;
   audio.play("break", blockSound(blockId));
   digCadence.reset();
+
+  // かまどを壊したら中身も出す。**クリエイティブでも出すこと** ——
+  // 中身は集めたアイテムで、壊し方によって消えてよいものではない。
+  if (baseBlock(blockId) === FURNACE) {
+    for (const held of furnaces.remove(x, y, z)) {
+      drops.burst(held.item, held.count, x + 0.5, y + 0.5, z + 0.5);
+    }
+  }
 
   if (creative) return;
   if (!canHarvest(blockId, tool)) return;
@@ -687,6 +779,12 @@ function frame(now: number): void {
   // p99 に混ぜると、ストリーミングの退行と区別できなくなる）。
   if (playing) drops.update(dt, world, dropContext());
   dropRender.sync(drops.list, world);
+  // かまど。**画面を開いていても止めないこと** —— 開けた瞬間に止まると、
+  // 焼き上がるところを見ていられない（`playing` はポインタが外れると false になる）。
+  // 落とし物と同じく `world.update()` の外で回す。
+  if (playing || screen.isOpen) furnaces.update(dt);
+  syncFurnaceBlocks();
+  refreshFurnaceUi(dt);
   // 水中のこもりに underwater を使うので、updateEnvironment のあとに回す
   updateSounds();
   // 息の判定に水中かどうかを使うので、updateEnvironment のあとに回す
@@ -710,7 +808,7 @@ function frame(now: number): void {
       `tris ${stats.triangles.toLocaleString()}  edits ${countEdits(world.editsForSave())}\n` +
       `time ${dayNight.clock()}  light ${(dayNight.brightness * 100).toFixed(0)}%  ${creative ? "creative" : "survival"}\n` +
       `biome ${biomeName(world.gen.biomeAt(Math.floor(player.position.x), Math.floor(player.position.z)))}` +
-      `  mobs ${mobs.count}  drops ${drops.count}\n` +
+      `  mobs ${mobs.count}  drops ${drops.count}  furnaces ${furnaces.count}\n` +
       `hp ${vitals.health}/${MAX_HEALTH}  air ${(vitals.airFraction * 100).toFixed(0)}%\n` +
       `${player.flying ? "fly" : player.onGround ? "ground" : "air"}${player.inWater ? " / water" : ""}\n` +
       `hand ${inventory.selectedItem === NO_ITEM ? "-" : itemName(inventory.selectedItem)}\n` +

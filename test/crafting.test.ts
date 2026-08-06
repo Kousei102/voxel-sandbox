@@ -1,7 +1,6 @@
 import {
   COBBLE,
   CRAFTING_TABLE,
-  GLASS,
   PLANK,
   PLANK_SLAB,
   PLANK_STAIRS,
@@ -60,8 +59,10 @@ export function run(): void {
 
   const table = findRecipe(grid(2, ["PP", "PP"], P), 2);
   check("板 4 枚 → 作業台", table?.out === CRAFTING_TABLE);
+  // かまどが入ったので、砂 4 個 → ガラスの代用レシピは外した。
+  // **これが戻っていたら、精錬を飛ばせる抜け道ができている。**
   const glass = findRecipe(grid(2, ["AA", "AA"], P), 2);
-  check("砂 4 個 → ガラス（かまどの代用）", glass?.out === GLASS);
+  check("砂はクラフトではガラスにならない（かまどで焼く）", glass === null, glass?.name ?? "無し");
 
   const torch = findRecipe(grid(2, ["O.", "S."], P), 2);
   check("石炭 + 棒 → 松明 4 本", torch?.out === TORCH && torch.count === 4, torch?.name ?? "無し");

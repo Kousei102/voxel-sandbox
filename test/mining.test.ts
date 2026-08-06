@@ -17,8 +17,6 @@ import {
   COAL,
   DIAMOND,
   DIAMOND_PICKAXE,
-  GOLD_INGOT,
-  IRON_INGOT,
   IRON_PICKAXE,
   NO_ITEM,
   STONE_PICKAXE,
@@ -82,9 +80,11 @@ export function run(): void {
   check("石を掘ると丸石が出る", dropOf(STONE).item === COBBLE);
   check("草を掘ると土が出る", dropOf(GRASS).item === DIRT);
   check("石炭鉱石から石炭", dropOf(COAL_ORE).item === COAL);
+  // かまどが入ったので、鉱石は鉱石のまま落ちる（焼いてインゴットにする）。
+  // **ここが IRON_INGOT に戻っていたら、精錬を飛ばせる抜け道ができている。**
   check(
-    "鉄と金の鉱石はインゴットを落とす（かまどの代用）",
-    dropOf(IRON_ORE).item === IRON_INGOT && dropOf(GOLD_ORE).item === GOLD_INGOT,
+    "鉄と金の鉱石は鉱石のまま落ちる（焼いてインゴットにする）",
+    dropOf(IRON_ORE).item === IRON_ORE && dropOf(GOLD_ORE).item === GOLD_ORE,
   );
   check("ダイヤ鉱石からダイヤモンド", dropOf(DIAMOND_ORE).item === DIAMOND);
   check("葉はたまにしか落ちない", dropOf(LEAVES).chance < 1, `${(dropOf(LEAVES).chance * 100).toFixed(0)}%`);

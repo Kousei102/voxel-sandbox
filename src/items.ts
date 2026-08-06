@@ -6,9 +6,7 @@ import {
   DIAMOND_ORE,
   DIRT,
   GLASS,
-  GOLD_ORE,
   GRASS,
-  IRON_ORE,
   LEAVES,
   MAX_BLOCK_ID,
   SPRUCE_LEAVES,
@@ -62,7 +60,14 @@ export const RAW_PORK = 81;
  */
 export const ROTTEN_FLESH = 82;
 
-export const MAX_ITEM_ID = ROTTEN_FLESH;
+/**
+ * 焼き豚。かまどで生豚肉を焼くと出る。生豚肉と同じで**まだ食べられない**が、
+ * 「焼く」という手順そのものが精錬の見せ場なので、鉱石と一緒にここで置いておく。
+ * 空腹を入れるときは、これがいちばん強い食べ物になる。
+ */
+export const COOKED_PORK = 83;
+
+export const MAX_ITEM_ID = COOKED_PORK;
 
 export const MAX_STACK = 64;
 
@@ -124,6 +129,7 @@ item({ id: GOLD_INGOT, name: "金インゴット", block: AIR, stack: MAX_STACK,
 item({ id: DIAMOND, name: "ダイヤモンド", block: AIR, stack: MAX_STACK, color: 0x4fe3d8, tool: null });
 item({ id: RAW_PORK, name: "生豚肉", block: AIR, stack: MAX_STACK, color: 0xe08f8f, tool: null });
 item({ id: ROTTEN_FLESH, name: "腐った肉", block: AIR, stack: MAX_STACK, color: 0x8a6b4f, tool: null });
+item({ id: COOKED_PORK, name: "焼き豚", block: AIR, stack: MAX_STACK, color: 0xc4763f, tool: null });
 
 /** 道具は 4 階層 x 3 種類。ID は tier ごとに pickaxe / axe / shovel の順。 */
 const TOOL_KINDS: ToolKind[] = ["pickaxe", "axe", "shovel"];
@@ -183,15 +189,15 @@ export interface Drop {
 /**
  * ブロックを壊したときに出るアイテム。
  *
- * かまどがまだ無いので、**鉄と金の鉱石はインゴットを直接落とす**（精錬の代用）。
+ * **鉄と金の鉱石は鉱石のまま落ちます**（インゴットにするにはかまどで焼く）。
+ * かまどが無かった頃はインゴットを直接落としていましたが、精錬が入ったので戻しました。
+ * 石炭とダイヤは Minecraft と同じで、掘った時点でそのまま使えます。
  * ガラスは Minecraft と同じで何も落とさない。
  */
 const DROPS = new Map<number, Drop>([
   [GRASS, { item: DIRT, count: 1, chance: 1 }],
   [STONE, { item: COBBLE, count: 1, chance: 1 }],
   [COAL_ORE, { item: COAL, count: 1, chance: 1 }],
-  [IRON_ORE, { item: IRON_INGOT, count: 1, chance: 1 }],
-  [GOLD_ORE, { item: GOLD_INGOT, count: 1, chance: 1 }],
   [DIAMOND_ORE, { item: DIAMOND, count: 1, chance: 1 }],
   [GLASS, { item: NO_ITEM, count: 0, chance: 0 }],
   // 苗木がまだ無いので、葉からはたまに棒だけ出る

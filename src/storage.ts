@@ -31,6 +31,14 @@ export interface SaveData {
    * 5 分の猶予が戻るほうが安全側（`drops.ts` の `serialize` を参照）。
    */
   drops?: number[];
+  /**
+   * 置いてあるかまど。`"x,y,z"` -> 中身 3 枠 x 2 + タイマー 3 の 9 要素。空なら省略。
+   *
+   * **地形の差分（`edits`）とは別に持つ。** `edits` はブロック ID だけの表で、
+   * 1 マスに 1 個の数しか入らない。中身を持つブロック（チェスト・醸造台）を
+   * 足すときも、ここと同じ「位置をキーにした省略可のキー」に並べること。
+   */
+  furnaces?: Record<string, number[]>;
   /** チャンクキー -> [localIndex, blockId, ...] の平坦な配列。 */
   edits: Record<string, number[]>;
 }

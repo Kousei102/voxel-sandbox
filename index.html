@@ -35,12 +35,29 @@
     <div id="inventory" class="hidden">
       <div class="panel">
         <h2 id="invtitle">インベントリ</h2>
-        <div class="craft">
+        <div id="craftrow" class="craft">
           <div id="craftgrid" class="grid craftgrid small"></div>
           <span class="arrow">→</span>
           <div class="slotwrap">
             <div id="craftout" class="slot out"></div>
             <span id="recipehint" class="hint"></span>
+          </div>
+        </div>
+        <div id="furnacerow" class="craft hidden">
+          <div class="furnacecol">
+            <div class="slotwrap">
+              <div id="furnacein" class="slot"></div>
+              <span class="hint">材料</span>
+            </div>
+            <div class="slotwrap">
+              <div id="furnacefuel" class="slot"></div>
+              <span class="hint">燃料</span>
+            </div>
+          </div>
+          <span id="furnacearrow" class="arrow">→</span>
+          <div class="slotwrap">
+            <div id="furnaceout" class="slot out"></div>
+            <span id="furnacehint" class="hint"></span>
           </div>
         </div>
         <div id="storage" class="grid storage"></div>

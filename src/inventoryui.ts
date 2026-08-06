@@ -1,6 +1,8 @@
 import {
   type CraftScreen,
   type CraftSize,
+  FURNACE_AREAS,
+  type FurnaceState,
   GRID_SLOTS,
   type MouseButton,
   type ScreenResult,
@@ -19,7 +21,11 @@ import { paintSlot, slotMarkup } from "./ui";
  */
 export class InventoryScreen {
   private readonly root = document.getElementById("inventory") as HTMLElement;
+  private readonly craftRow = document.getElementById("craftrow") as HTMLElement;
   private readonly gridEl = document.getElementById("craftgrid") as HTMLElement;
+  private readonly furnaceRow = document.getElementById("furnacerow") as HTMLElement;
+  private readonly furnaceArrow = document.getElementById("furnacearrow") as HTMLElement;
+  private readonly furnaceHint = document.getElementById("furnacehint") as HTMLElement;
   private readonly outEl = document.getElementById("craftout") as HTMLElement;
   private readonly storageEl = document.getElementById("storage") as HTMLElement;
   private readonly hotbarEl = document.getElementById("invhotbar") as HTMLElement;
@@ -28,6 +34,8 @@ export class InventoryScreen {
   private readonly recipeHint = document.getElementById("recipehint") as HTMLElement;
 
   private readonly gridSlots: HTMLElement[] = [];
+  /** かまどの 3 枠。並びは `FURNACE_AREAS`（材料・燃料・焼き上がり）。 */
+  private readonly furnaceSlots: HTMLElement[] = [];
   private readonly storageSlots: HTMLElement[] = [];
   private readonly hotbarSlots: HTMLElement[] = [];
 
@@ -40,6 +48,20 @@ export class InventoryScreen {
 
   constructor(private readonly craft: CraftScreen) {
     this.build(this.gridEl, this.gridSlots, GRID_SLOTS, "grid", 0);
+
+    // かまどの 3 枠は index.html に書いてあるので、作らずに中身と配線だけ入れる。
+    // **id は文字列のまま並べること** —— `test/ui.test.ts` は id を引いている箇所の
+    // 綴りを index.html と突き合わせているので、変数に逃がすとその検査が届かなくなる。
+    this.furnaceSlots.push(
+      document.getElementById("furnacein") as HTMLElement,
+      document.getElementById("furnacefuel") as HTMLElement,
+      document.getElementById("furnaceout") as HTMLElement,
+    );
+    this.furnaceSlots.forEach((el, i) => {
+      el.innerHTML = slotMarkup();
+      this.wire(el, FURNACE_AREAS[i], 0);
+    });
+
     this.build(this.storageEl, this.storageSlots, STORAGE_SIZE, "inv", HOTBAR_SIZE);
     this.build(this.hotbarEl, this.hotbarSlots, HOTBAR_SIZE, "inv", 0);
 
@@ -83,6 +105,14 @@ export class InventoryScreen {
     this.refresh();
   }
 
+  /** かまどを開く。中身は `furnaces.ts` が持っているものを借りて描くだけ。 */
+  showFurnace(state: FurnaceState): void {
+    this.craft.openFurnace(state);
+    this.root.classList.remove("hidden");
+    this.titleEl.textContent = "かまど";
+    this.refresh();
+  }
+
   hide(): void {
     if (!this.craft.isOpen) return;
     this.craft.close();
@@ -104,26 +134,34 @@ export class InventoryScreen {
       const el = document.createElement("div");
       el.className = "slot";
       el.innerHTML = slotMarkup();
-      el.addEventListener("mousedown", (event) => {
-        if (event.button !== 0 && event.button !== 2) return;
-        event.preventDefault();
-        // shiftKey と detail は DOM の事実。どの操作になるかは craft 側が決める。
-        this.apply(
-          this.craft.press(area, i + offset, event.button as MouseButton, {
-            shift: event.shiftKey,
-            double: event.detail === 2,
-          }),
-        );
-      });
-      // カーソルがスロットに入った／出た、という事実だけを渡す。1 スロットにつき 1 回しか
-      // 飛ばないので、撫でた集合の組み立てもヒットテストもここには要らない。
-      el.addEventListener("mouseenter", (event) => {
-        this.apply(this.craft.hover(area, i + offset, event.buttons !== 0));
-      });
-      el.addEventListener("mouseleave", () => this.craft.hoverOut(area, i + offset));
+      this.wire(el, area, i + offset);
       parent.appendChild(el);
       into.push(el);
     }
+  }
+
+  /**
+   * スロット 1 枠にマウスを繋ぐ。**作った枠（盤面・収納）と、index.html に書いてある枠
+   * （かまど）で同じ配線を使う** —— 分けると、片方だけ操作が効かない状態が作れてしまう。
+   */
+  private wire(el: HTMLElement, area: SlotArea, index: number): void {
+    el.addEventListener("mousedown", (event) => {
+      if (event.button !== 0 && event.button !== 2) return;
+      event.preventDefault();
+      // shiftKey と detail は DOM の事実。どの操作になるかは craft 側が決める。
+      this.apply(
+        this.craft.press(area, index, event.button as MouseButton, {
+          shift: event.shiftKey,
+          double: event.detail === 2,
+        }),
+      );
+    });
+    // カーソルがスロットに入った／出た、という事実だけを渡す。1 スロットにつき 1 回しか
+    // 飛ばないので、撫でた集合の組み立てもヒットテストもここには要らない。
+    el.addEventListener("mouseenter", (event) => {
+      this.apply(this.craft.hover(area, index, event.buttons !== 0));
+    });
+    el.addEventListener("mouseleave", () => this.craft.hoverOut(area, index));
   }
 
   /** 判断の結果を画面・音・通知に反映するだけ。 */
@@ -159,10 +197,25 @@ export class InventoryScreen {
   }
 
   refresh(): void {
+    // 作業台の列とかまどの列は片方だけ出す。**どちらを出すかは craft 側の mode**
+    // （UI が「かまどか」を判断すると、そこだけテストが届かなくなる）。
+    const furnace = this.craft.furnace;
+    this.craftRow.classList.toggle("hidden", furnace !== null);
+    this.furnaceRow.classList.toggle("hidden", furnace === null);
+
     for (let i = 0; i < GRID_SLOTS; i++) {
       const usable = this.craft.usable(i);
       this.gridSlots[i].classList.toggle("disabled", !usable);
       this.paint(this.gridSlots[i], usable ? this.craft.grid[i] : null, "grid", i);
+    }
+    for (let i = 0; i < this.furnaceSlots.length; i++) {
+      const area = FURNACE_AREAS[i];
+      this.paint(this.furnaceSlots[i], furnace ? this.craft.slotFor(area) : null, area, 0);
+    }
+    if (furnace) {
+      const status = this.craft.furnaceStatus();
+      this.furnaceArrow.classList.toggle("lit", status?.lit === true);
+      this.furnaceHint.textContent = status?.text ?? "";
     }
     for (let i = 0; i < this.storageSlots.length; i++) {
       this.paint(this.storageSlots[i], this.craft.inventory.slots[i + HOTBAR_SIZE], "inv", i + HOTBAR_SIZE);

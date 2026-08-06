@@ -65,6 +65,18 @@ export const SANDSTONE_STAIRS = 36;
 export const WOOL = 37;
 
 /**
+ * かまど。燃えている間だけ別 ID（`FURNACE_LIT`）に差し替えて、光らせる。
+ *
+ * **点火中の版も 1..63 に置くこと。** 立方体なので greedy の統合キー（`encodeFace` の
+ * id 6 ビット）を通ります。64 以降は `isProp()` が true の向き違いだけの枠です。
+ *
+ * `variantOf` を `FURNACE` にしてあるので、**アイテムもドロップも名前も消えたかまどに揃います**
+ * （松明の壁掛け版とまったく同じ仕掛け。点火中のかまどを掘っても、出るのはかまど 1 個）。
+ */
+export const FURNACE = 38;
+export const FURNACE_LIT = 39;
+
+/**
  * ブロック ID の枠は 2 段に分けてある。
  *
  * - **1..63**: 立方体と、**アイテムとして持てる**ブロック（ハーフや階段の「大元」も含む）。
@@ -474,6 +486,22 @@ export const BLOCKS: readonly BlockDef[] = [
   def(WOOL, "羊毛", { top: 0xe8e4dc, side: 0xe2ded5, bottom: 0xd8d3c9 }, {
     hardness: 0.8,
     sound: "wool",
+  }),
+
+  // かまど。上面に石の縁、側面が焚口。点火中は側面を炎の色にして emission を持たせる。
+  // **色を変えるだけで済むのは、面ごとに色を持てる（top / side / bottom）から。**
+  def(FURNACE, "かまど", { top: 0x74736e, side: 0x5d5c58, bottom: 0x6a6964 }, {
+    hardness: 3.5,
+    tool: "pickaxe",
+    minTier: TIER_WOOD,
+  }),
+  def(FURNACE_LIT, "かまど", { top: 0x74736e, side: 0xd8863a, bottom: 0x6a6964 }, {
+    hardness: 3.5,
+    tool: "pickaxe",
+    minTier: TIER_WOOD,
+    // 松明（14）より少し暗い。かまどだけで洞窟を照らし切らない程度。
+    emission: 13,
+    variantOf: FURNACE,
   }),
 
   // ハーフブロック。硬さと道具は元の材質に合わせる。

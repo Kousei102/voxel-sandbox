@@ -324,6 +324,17 @@ body {
   gap: 4px;
 }
 
+/* かまどの材料と燃料。上下に積んで、右の焼き上がりへ矢印で繋ぐ。 */
+.furnacecol {
+  display: grid;
+  gap: 8px;
+}
+
+/* 火が点いている間だけ矢印を炎の色にする（点いているかは craftscreen が決める）。 */
+#furnacearrow.lit {
+  color: #d8863a;
+}
+
 #inventory .slot {
   cursor: pointer;
 }
