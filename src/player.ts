@@ -25,6 +25,14 @@ export class Player {
   flying = false;
   onGround = false;
   inWater = false;
+  /**
+   * 走れるか。**毎フレーム外から入れる**（判断は `vitals.ts` の `canSprint`）。
+   * ここで空腹を見に行かないこと —— 移動が体力の都合を知り始めると、
+   * どちらもブラウザでしか確かめられなくなる。
+   */
+  canSprint = true;
+  /** いま走っているか（消耗と足音の判断材料として外へ渡す）。 */
+  sprinting = false;
 
   private readonly keys = new Set<string>();
   private readonly euler = new Euler(0, 0, 0, "YXZ");
@@ -72,7 +80,10 @@ export class Player {
     if (this.keys.has("KeyA")) this.wish.sub(this.right);
     if (this.wish.lengthSq() > 0) this.wish.normalize();
 
-    const sprinting = this.keys.has("ShiftLeft") || this.keys.has("ShiftRight");
+    // 腹が減ると走れない（Minecraft と同じ）。飛行は空腹と関係ない。
+    const holding = this.keys.has("ShiftLeft") || this.keys.has("ShiftRight");
+    const sprinting = holding && (this.flying || this.canSprint);
+    this.sprinting = sprinting && !this.flying && this.wish.lengthSq() > 0;
 
     if (this.flying) {
       this.updateFly(dt, sprinting);

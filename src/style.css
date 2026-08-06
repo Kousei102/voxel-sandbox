@@ -5,6 +5,14 @@
   --text: #e7ecf2;
   --muted: #97a3b2;
   --accent: #6fd08c;
+  /*
+   * ホットバーの位置と高さ。**体力ゲージ（#vitals）の高さはここから計算する。**
+   * 別々に数値で書くと、スロットの大きさを変えたときにゲージだけ取り残されて重なる
+   * （実際、74px 直書きだったせいで 4px 食い込んでいた）。
+   */
+  --hotbar-bottom: 18px;
+  --hotbar-height: 60px; /* スロット 46 + 内側の余白 6x2 + 枠 1x2 */
+  --hotbar-gap: 8px;
 }
 
 * {
@@ -85,7 +93,7 @@ body {
 #hotbar {
   position: absolute;
   left: 50%;
-  bottom: 18px;
+  bottom: var(--hotbar-bottom);
   transform: translateX(-50%);
   display: flex;
   gap: 6px;
@@ -136,11 +144,12 @@ body {
   letter-spacing: 0.02em;
 }
 
-/* --- 体力と息 --- */
+/* --- 体力・空腹・息 --- */
 #vitals {
   position: absolute;
   left: 50%;
-  bottom: 74px;
+  /* ホットバーの上端 + すき間。**直に数値を書かないこと**（上の変数のコメント参照） */
+  bottom: calc(var(--hotbar-bottom) + var(--hotbar-height) + var(--hotbar-gap));
   transform: translateX(-50%);
   display: grid;
   gap: 3px;
@@ -148,6 +157,7 @@ body {
 }
 
 #hearts,
+#hunger,
 #bubbles {
   display: flex;
   gap: 2px;
@@ -191,6 +201,46 @@ body {
 }
 
 .heart.full::after {
+  clip-path: inset(0 0 0 0);
+}
+
+/*
+ * 空腹の肉ゲージ。ハートとまったく同じ作り（空の上に色付きを重ねて clip-path で削る）。
+ * **絵文字は使わないこと** —— 環境ごとにフォントが違い、色つき絵文字だと
+ * 半分に削っても色が変わらない。字形は幾何記号、色は焼き豚のアイテム色に合わせてある。
+ */
+.meat {
+  position: relative;
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+}
+
+.meat::before,
+.meat::after {
+  content: "◆";
+  position: absolute;
+  inset: 0;
+  font-size: 13px;
+  line-height: 15px;
+  text-align: center;
+}
+
+.meat::before {
+  color: rgba(255, 255, 255, 0.24);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
+}
+
+.meat::after {
+  color: #c4763f;
+  clip-path: inset(0 100% 0 0);
+}
+
+.meat.half::after {
+  clip-path: inset(0 50% 0 0);
+}
+
+.meat.full::after {
   clip-path: inset(0 0 0 0);
 }
 

@@ -862,7 +862,16 @@ export function run(): void {
     const world = arena.asWorld();
     for (let f = 0; f < seconds * 60; f++) {
       pack.update(1 / 60, world, c);
-      vitals.update(1 / 60, { y: 11, onGround: true, inWater: false, headInWater: false, flying: false, invulnerable });
+      vitals.update(1 / 60, {
+        y: 11,
+        onGround: true,
+        inWater: false,
+        headInWater: false,
+        flying: false,
+        invulnerable,
+        moved: 0,
+        sprinting: false,
+      });
     }
     return { lost: MAX_HEALTH - vitals.health, cause: vitals.cause, velocity, dead: vitals.dead };
   }

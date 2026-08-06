@@ -1,19 +1,40 @@
 import {
   AIR_SECONDS,
   DROWN_DAMAGE,
+  EXHAUST_ATTACK,
+  EXHAUST_LIMIT,
+  EXHAUST_MINE,
+  EXHAUST_REGEN,
+  EXHAUST_SPRINT,
+  EXHAUST_WALK,
   MAX_HEALTH,
+  MAX_HUNGER,
   MOB_HURT_COOLDOWN,
+  POISON_FLOOR,
+  POISON_INTERVAL,
+  POISON_SECONDS,
+  POISON_TICKS,
   REGEN_DELAY,
+  REGEN_HUNGER,
   REGEN_INTERVAL,
+  SPRINT_HUNGER,
+  START_SATURATION,
+  STARVE_FLOOR,
+  STARVE_INTERVAL,
   VOID_Y,
   Vitals,
   fallDamage,
   type VitalsContext,
 } from "../src/vitals";
+import { COOKED_PORK, ROTTEN_FLESH, allFoodIds, foodOf, itemName } from "../src/items";
 import { heartStates } from "../src/ui";
 import { check, describe } from "./harness";
 
 const STEP = 1 / 60;
+
+/** `player.ts` の WALK_SPEED / SPRINT_SPEED。消耗の実感を出すために合わせておく。 */
+const WALK_SPEED = 5.2;
+const SPRINT_SPEED = 8.4;
 
 function ctx(over: Partial<VitalsContext> = {}): VitalsContext {
   return {
@@ -23,8 +44,26 @@ function ctx(over: Partial<VitalsContext> = {}): VitalsContext {
     headInWater: false,
     flying: false,
     invulnerable: false,
+    moved: 0,
+    sprinting: false,
     ...over,
   };
+}
+
+/**
+ * 実際に歩かせる。**進んだ距離を返すので、まず「動いた証拠」を出してから見ること**
+ * （動いていないのに「減っていない」で通る偽陽性を避ける）。
+ */
+function travel(vitals: Vitals, seconds: number, sprinting: boolean, over: Partial<VitalsContext> = {}): number {
+  const speed = sprinting ? SPRINT_SPEED : WALK_SPEED;
+  const steps = Math.round(seconds / STEP);
+  let distance = 0;
+  for (let i = 0; i < steps; i++) {
+    const moved = speed * STEP;
+    distance += moved;
+    vitals.update(STEP, ctx({ moved, sprinting, ...over }));
+  }
+  return distance;
 }
 
 /** 高さ from から落として着地させる。 */
@@ -118,7 +157,9 @@ export function run(): void {
   advance(falling, 5, { y: VOID_Y - 10, onGround: false });
   check("奈落で死ぬ", falling.dead && falling.cause === "奈落");
 
-  // --- 自然回復 ---
+  // --- 自然回復（**空腹が要る**） ---
+  // 空腹が入る前は無条件に回復していた（ピースフルの代用）。**その形に戻っていないこと**を
+  // 下の「腹が減っていると回復しない」で押さえている。戻すと空腹が飾りになる。
   const healing = new Vitals();
   healing.damage(6, "落下");
   check("ダメージが入る", healing.health === MAX_HEALTH - 6);
@@ -127,7 +168,26 @@ export function run(): void {
   advance(healing, 2 + REGEN_INTERVAL * 3);
   check("しばらくすると少しずつ回復する", healing.health > MAX_HEALTH - 6, `hp ${healing.health}`);
   advance(healing, REGEN_INTERVAL * 20);
-  check("放っておけば満タンに戻る", healing.health === MAX_HEALTH, `hp ${healing.health}`);
+  check("満腹なら放っておけば満タンに戻る", healing.health === MAX_HEALTH, `hp ${healing.health}`);
+  check(
+    "回復したぶん腹が減っている",
+    healing.hunger < MAX_HUNGER,
+    `空腹 ${healing.hunger}/${MAX_HUNGER}（体力 6 回復に ${(6 * EXHAUST_REGEN) / EXHAUST_LIMIT} 個ぶん）`,
+  );
+
+  const starving = new Vitals();
+  starving.hunger = REGEN_HUNGER - 1;
+  starving.saturation = 0;
+  starving.damage(6, "落下");
+  advance(starving, REGEN_DELAY + REGEN_INTERVAL * 10);
+  check(
+    "腹が減っていると回復しない",
+    starving.health === MAX_HEALTH - 6,
+    `hp ${starving.health} / 空腹 ${starving.hunger}`,
+  );
+  starving.eat({ hunger: 6, saturation: 6, poison: false });
+  advance(starving, REGEN_INTERVAL * 4);
+  check("食べれば回復が再開する", starving.health > MAX_HEALTH - 6, `hp ${starving.health}`);
 
   // --- 死亡と復活 ---
   const dying = new Vitals();
@@ -261,4 +321,191 @@ export function run(): void {
   check("被弾で赤くなる", flash.hurtFlash === 1);
   advance(flash, 1);
   check("赤みは消える", flash.hurtFlash === 0);
+
+  describe("空腹");
+
+  // まず消耗の表。数値を触ったときに「どれだけ持つか」が一目で分かるようにしておく。
+  const perPoint = (rate: number) => EXHAUST_LIMIT / rate;
+  const minutes = (rate: number, speed: number) => (MAX_HUNGER * perPoint(rate)) / speed / 60;
+  console.log(
+    `      1 個減るまで: 歩き ${perPoint(EXHAUST_WALK).toFixed(0)}m / 走り ${perPoint(EXHAUST_SPRINT).toFixed(0)}m` +
+      ` / 採掘 ${perPoint(EXHAUST_MINE).toFixed(0)} 個 / 殴る ${perPoint(EXHAUST_ATTACK).toFixed(0)} 回`,
+  );
+  console.log(`      体力を 1 回復すると ${(EXHAUST_REGEN / EXHAUST_LIMIT).toFixed(1)} 個減る`);
+  console.log(
+    `      満腹から空まで（満腹度を除く）: 歩き ${minutes(EXHAUST_WALK, WALK_SPEED).toFixed(0)} 分` +
+      ` / 走り ${minutes(EXHAUST_SPRINT, SPRINT_SPEED).toFixed(1)} 分`,
+  );
+  for (const id of allFoodIds()) {
+    const food = foodOf(id);
+    if (!food) continue;
+    console.log(
+      `      ${itemName(id).padEnd(5, "　")} 空腹 +${food.hunger}  満腹度 +${food.saturation}${food.poison ? "  毒つき" : ""}`,
+    );
+  }
+
+  // --- 消耗（**動いた証拠を先に出す**） ---
+  const runner = new Vitals();
+  const ran = travel(runner, 60, true);
+  check(
+    "走ると空腹が減る",
+    ran > 400 && runner.hunger < MAX_HUNGER,
+    `${ran.toFixed(0)}m 走って 空腹 ${runner.hunger}/${MAX_HUNGER}`,
+  );
+
+  const walker = new Vitals();
+  const walked = travel(walker, 60, false);
+  check(
+    "同じ時間なら歩きのほうが減らない",
+    walked > 200 && walker.hunger > runner.hunger,
+    `歩き ${walked.toFixed(0)}m → 空腹 ${walker.hunger} / 走り ${ran.toFixed(0)}m → 空腹 ${runner.hunger}`,
+  );
+
+  const stuffed = new Vitals();
+  travel(stuffed, 15, true);
+  check(
+    "消耗は満腹度から先に減る（食べた直後にゲージが減らない）",
+    stuffed.hunger === MAX_HUNGER && stuffed.saturation < START_SATURATION,
+    `空腹 ${stuffed.hunger} / 満腹度 ${stuffed.saturation}`,
+  );
+
+  const swimmer = new Vitals();
+  travel(swimmer, 60, true, { inWater: true });
+  check(
+    "水中では走っても歩きぶんしか減らない",
+    swimmer.hunger === MAX_HUNGER,
+    `空腹 ${swimmer.hunger} / 満腹度 ${swimmer.saturation}`,
+  );
+
+  const flier = new Vitals();
+  travel(flier, 60, true, { flying: true, onGround: false });
+  check(
+    "飛行中は減らない",
+    flier.hunger === MAX_HUNGER && flier.saturation === START_SATURATION,
+    `空腹 ${flier.hunger} / 満腹度 ${flier.saturation}`,
+  );
+
+  // ちょうど 1 個ぶんだと、0.005 を 800 回足した端数（3.999…）が境目に乗って減らない。
+  // 実際の遊びでは 1 個の差でしかないので、テスト側を 1 回多くする。
+  const digger = new Vitals();
+  const digs = Math.round(perPoint(EXHAUST_MINE)) + 1;
+  for (let i = 0; i < digs; i++) digger.exhaust("mine");
+  advance(digger, STEP);
+  check(
+    "掘っても減る",
+    digger.saturation < START_SATURATION,
+    `${digs} 個掘って 満腹度 ${digger.saturation}`,
+  );
+
+  const fighter = new Vitals();
+  const swings = Math.round(perPoint(EXHAUST_ATTACK)) + 1;
+  for (let i = 0; i < swings; i++) fighter.exhaust("attack");
+  advance(fighter, STEP);
+  check(
+    "殴っても減る",
+    fighter.saturation < START_SATURATION,
+    `${swings} 回殴って 満腹度 ${fighter.saturation}`,
+  );
+
+  const godbelly = new Vitals();
+  travel(godbelly, 120, true, { invulnerable: true });
+  check(
+    "クリエイティブでは減らない",
+    godbelly.hunger === MAX_HUNGER && godbelly.saturation === START_SATURATION,
+    `空腹 ${godbelly.hunger} / 満腹度 ${godbelly.saturation}`,
+  );
+
+  // --- 餓死しない ---
+  const famished = new Vitals();
+  famished.hunger = 0;
+  famished.saturation = 0;
+  advance(famished, STARVE_INTERVAL * 3 + 0.2);
+  check(
+    "空腹 0 では減り続ける",
+    famished.health === MAX_HEALTH - 3 && famished.cause === "空腹",
+    `hp ${famished.health}（${STARVE_INTERVAL} 秒に 1）`,
+  );
+  advance(famished, STARVE_INTERVAL * 40);
+  check(
+    "**餓死はしない**（体力 1 で止まる）",
+    famished.health === STARVE_FLOOR && !famished.dead,
+    `hp ${famished.health}`,
+  );
+  famished.eat({ hunger: 8, saturation: 8, poison: false });
+  advance(famished, STARVE_INTERVAL * 2);
+  check("食べれば止まる", famished.health >= STARVE_FLOOR && !famished.dead, `hp ${famished.health}`);
+
+  // --- 食べる ---
+  const eater = new Vitals();
+  eater.hunger = 4;
+  eater.saturation = 0;
+  const cooked = foodOf(COOKED_PORK);
+  if (!cooked) throw new Error("焼き豚が食べ物の表に無い");
+  eater.eat(cooked);
+  check("食べると空腹が戻る", eater.hunger === 4 + cooked.hunger, `空腹 ${eater.hunger}`);
+  check(
+    "満腹度は空腹の値を超えない",
+    eater.saturation === eater.hunger,
+    `満腹度 ${eater.saturation} / 空腹 ${eater.hunger}（食べ物は +${cooked.saturation}）`,
+  );
+
+  const fed = new Vitals();
+  check("満腹では食べられない", !fed.canEat && fed.hunger === MAX_HUNGER);
+  fed.eat(cooked);
+  check("上限は超えない", fed.hunger === MAX_HUNGER, `空腹 ${fed.hunger}`);
+  fed.hunger = MAX_HUNGER - 1;
+  check("1 でも減っていれば食べられる", fed.canEat);
+
+  // --- 毒（腐った肉） ---
+  const rotten = foodOf(ROTTEN_FLESH);
+  if (!rotten) throw new Error("腐った肉が食べ物の表に無い");
+  check("腐った肉には毒がある", rotten.poison && !cooked.poison);
+
+  const sick = new Vitals();
+  sick.hunger = 10;
+  sick.saturation = 0;
+  sick.eat(rotten);
+  check(
+    "腐った肉でも空腹は戻る",
+    sick.hunger === 10 + rotten.hunger && sick.poisoned,
+    `空腹 ${sick.hunger} / 毒 ${sick.poisoned}`,
+  );
+  advance(sick, POISON_INTERVAL + 0.1);
+  check("毒は少しずつ入る", sick.health === MAX_HEALTH - 1, `hp ${sick.health}`);
+  advance(sick, POISON_SECONDS);
+  check(
+    `毒は ${POISON_TICKS} 回で切れる`,
+    sick.health === MAX_HEALTH - POISON_TICKS && !sick.poisoned,
+    `hp ${sick.health}`,
+  );
+
+  const dying2 = new Vitals();
+  dying2.damage(MAX_HEALTH - POISON_FLOOR - 1, "モンスター");
+  dying2.eat(rotten);
+  advance(dying2, POISON_SECONDS + 1);
+  check(
+    "**毒では死なない**（体力 1 で止まる）",
+    dying2.health === POISON_FLOOR && !dying2.dead && !dying2.poisoned,
+    `hp ${dying2.health}`,
+  );
+
+  // --- 走れなくなる ---
+  const legs = new Vitals();
+  legs.hunger = SPRINT_HUNGER + 1;
+  check("空腹が残っていれば走れる", legs.canSprint, `空腹 ${legs.hunger}`);
+  legs.hunger = SPRINT_HUNGER;
+  check("減ると走れなくなる", !legs.canSprint, `空腹 ${legs.hunger}`);
+
+  // --- リスポーン ---
+  const reborn = new Vitals();
+  reborn.hunger = 2;
+  reborn.saturation = 0;
+  reborn.eat(rotten);
+  reborn.damage(MAX_HEALTH, "空腹");
+  reborn.respawn();
+  check(
+    "リスポーンで空腹も毒も戻る",
+    reborn.hunger === MAX_HUNGER && reborn.saturation === START_SATURATION && !reborn.poisoned,
+    `空腹 ${reborn.hunger} / 満腹度 ${reborn.saturation}`,
+  );
 }

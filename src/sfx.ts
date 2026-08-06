@@ -24,6 +24,11 @@ export type Sfx =
   | "craft"
   /** 落ちたアイテムを拾った音（`drops.ts` が鳴らす）。 */
   | "pickup"
+  /**
+   * 食べているときの咀嚼音。**この環境では食べる動きを描けないので、
+   * 押しっぱなしの 1.6 秒が進んでいる手ごたえはこの音だけ。**
+   */
+  | "eat"
   /** モブの鳴き声・悲鳴・断末魔。**種類ごとの声色は音程の倍率で付ける**（`MOB_VOICE`）。 */
   | "mobsay"
   | "mobhurt"
@@ -101,6 +106,8 @@ const EVENTS: Record<Sfx, EventDef> = {
   // 拾った瞬間の「ポッ」。**歩いているだけで何度も鳴るので、いちばん短く小さく。**
   // クラフトと同じ「上がる」向きにして、失う音（hurt）と取り違えないようにする。
   pickup: { material: false, duration: 0.1, gain: 0.24, spread: 0.18, sweep: 1.7, freq: 820, cutoff: 5200, noise: 0.08 },
+  // 咀嚼。**いちばんこもらせる**（口の中の音）。1 口ごとに高さを散らして機械的にしない。
+  eat: { material: false, duration: 0.12, gain: 0.3, spread: 0.22, sweep: 0.75, freq: 220, cutoff: 700, noise: 0.85 },
 
   // モブの声。トーン寄り（noise 低め）にしないと「声」に聞こえない。
   // 高さは種類ごとの倍率で散らすので、ここは真ん中の 1 種類だけ持つ。
@@ -184,6 +191,30 @@ export class DigCadence {
   /** 狙いを変えた・掘るのをやめたとき。次に掘り始めたらすぐ 1 回鳴る。 */
   reset(): void {
     this.since = DIG_STEP;
+  }
+}
+
+/** 咀嚼音 1 回ぶんの間隔 (秒)。1.6 秒のあいだに 4 回鳴る。 */
+export const EAT_INTERVAL = 0.4;
+
+/**
+ * 食べているあいだの咀嚼音の間隔。**採掘と違って時間で刻む**
+ * （食べる速さは持ち物にも道具にもよらないため）。
+ */
+export class EatCadence {
+  private since = 0;
+
+  /** 経過時間を渡す。鳴らすべきなら true。 */
+  advance(dt: number): boolean {
+    this.since += dt;
+    if (this.since < EAT_INTERVAL) return false;
+    this.since = 0;
+    return true;
+  }
+
+  /** 食べ始め・中断したとき。次の 1 口までは間が空く（噛む前に音がしない）。 */
+  reset(): void {
+    this.since = 0;
   }
 }
 

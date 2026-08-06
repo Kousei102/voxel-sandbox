@@ -46,17 +46,17 @@ import { DropRenderer } from "./droprender";
 import { Furnaces } from "./furnaces";
 import { Inventory } from "./inventory";
 import { InventoryScreen } from "./inventoryui";
-import { NO_ITEM, dropOf, itemName, placedBlock } from "./items";
+import { NO_ITEM, dropOf, foodOf, itemName, placedBlock } from "./items";
 import { Mining, breakTime, canHarvest } from "./mining";
 import { MobRenderer } from "./mobrender";
 import { MOB_KINDS, Mobs, type MobContext } from "./mobs";
 import { Player } from "./player";
 import { raycastVoxels, type RaycastHit } from "./raycast";
-import { DigCadence, StepCadence, clampVolume } from "./sfx";
+import { DigCadence, EatCadence, StepCadence, clampVolume } from "./sfx";
 import { Sky } from "./sky";
 import { clearSave, countEdits, deserializeEdits, load, save, serializeEdits } from "./storage";
 import { Hud } from "./ui";
-import { MAX_HEALTH, VOID_Y, Vitals } from "./vitals";
+import { EAT_SECONDS, MAX_HEALTH, MAX_HUNGER, VOID_Y, Vitals } from "./vitals";
 import { World } from "./world";
 import { hashSeed } from "./noise";
 
@@ -110,7 +110,12 @@ const player = new Player(camera);
 const audio = new AudioEngine();
 const stepCadence = new StepCadence();
 const digCadence = new DigCadence();
-/** 足音・着水の判定に使う、前のフレームの状態。 */
+const eatCadence = new EatCadence();
+/**
+ * 足音・着水・空腹の消耗に使う、前のフレームの状態。
+ * **飛ばしたら（リスポーン・ワールド作り直し）必ず `resetFootprint()` を呼ぶこと** ——
+ * 呼ばないと数百 m 歩いたことになって、着いた瞬間に腹が減る。
+ */
 let lastFootX = 0;
 let lastFootZ = 0;
 let wasOnGround = false;
@@ -144,6 +149,13 @@ let autosaveTimer = 0;
 let hit: RaycastHit | null = null;
 let underwater = false;
 let breaking = false;
+/**
+ * 食べている最中。**掘る（`breaking`）とまったく同じ形**で、押している間だけ続く。
+ * `eatItem` は食べ始めたアイテムで、手が変わったら中断するために控える。
+ */
+let eating = false;
+let eatTimer = 0;
+let eatItem = NO_ITEM;
 let furnaceUiTimer = 0;
 /** クリエイティブでは即掘れて、置いてもアイテムが減らない。 */
 let creative = false;
@@ -238,6 +250,7 @@ function startWorld(
   player.flying = spawn?.flying ?? false;
   player.clearKeys();
   player.syncCamera();
+  resetFootprint();
   world.update(player.position.x, player.position.z);
   // モブは保存しないので、読み込み直後は必ず 0 体。まとめて湧かせて、
   // 最初の 1 分が空っぽにならないようにする（届く範囲だけなので数は控えめ）。
@@ -309,6 +322,13 @@ function refreshFurnaceUi(dt: number): void {
   screen.refresh();
 }
 
+/** 飛んだ距離を歩いたことにしないための控え直し。**位置を飛ばしたら必ず呼ぶ。** */
+function resetFootprint(): void {
+  lastFootX = player.position.x;
+  lastFootZ = player.position.z;
+  stepCadence.reset();
+}
+
 /** 初期位置へ戻す。ベッドがまだ無いので、リスポーン地点はワールドの初期位置ひとつだけ。 */
 function moveToSpawn(): void {
   world.primeAround(SPAWN_X, SPAWN_Z, 1);
@@ -316,6 +336,7 @@ function moveToSpawn(): void {
   player.velocity.set(0, 0, 0);
   player.clearKeys();
   player.syncCamera();
+  resetFootprint();
 }
 
 function currentSave() {
@@ -333,6 +354,7 @@ function currentSave() {
     time: dayNight.time,
     creative,
     health: vitals.health,
+    hunger: vitals.hunger,
     inventory: inventory.serialize(),
     craft: craft.serialize(),
     volume: audio.getVolume(),
@@ -368,6 +390,11 @@ setCreative(saved?.creative ?? false);
 // 死んだまま保存された場合は満タンで再開する（読み込み直後に死亡画面を出さない）
 if (typeof saved?.health === "number" && saved.health > 0) {
   vitals.health = Math.min(MAX_HEALTH, saved.health);
+}
+// 空腹が無かった頃のセーブには入っていないので、そのときは満腹で再開する。
+// **0 も受け取る**（体力と違って、空腹 0 では死んでいない）。
+if (typeof saved?.hunger === "number" && Number.isFinite(saved.hunger)) {
+  vitals.hunger = Math.max(0, Math.min(MAX_HUNGER, saved.hunger));
 }
 startWorld(
   saved?.seed ?? (Math.random() * 0xffffffff) >>> 0,
@@ -472,6 +499,7 @@ document.addEventListener("pointerlockchange", () => {
     player.clearKeys();
     breaking = false;
     mining.reset();
+    stopEating();
     syncTimeInput();
     if (saveDirty) saveNow();
   }
@@ -482,6 +510,7 @@ function openInventory(size: 2 | 3): void {
   if (screen.isOpen) return;
   breaking = false;
   mining.reset();
+  stopEating();
   screen.show(size);
   hud.setPlaying(false, false);
   document.exitPointerLock();
@@ -495,6 +524,7 @@ function openFurnace(x: number, y: number, z: number): void {
   if (screen.isOpen) return;
   breaking = false;
   mining.reset();
+  stopEating();
   screen.showFurnace(furnaces.at(x, y, z));
   hud.setPlaying(false, false);
   document.exitPointerLock();
@@ -528,9 +558,12 @@ document.addEventListener("mousedown", (event) => {
     const blockDistance = hit ? hit.point.distanceTo(camera.position) : Infinity;
     if (target && target.distance < blockDistance) {
       mobs.attack(target.mob, inventory.selectedItem, mobContext());
+      // 殴ると腹が減る。**どれだけ減るかは `vitals.ts`** が持っている。
+      if (!creative) vitals.exhaust("attack");
       // 殴っている間は掘らない（ひび割れが出ると、何を壊しているのか分からない）
       breaking = false;
       mining.reset();
+      stopEating();
     } else if (hit) {
       // クリエイティブは 1 クリック 1 個。サバイバルは押しっぱなしで掘り進める。
       if (creative) breakBlock(hit.block.x, hit.block.y, hit.block.z, hit.id, NO_ITEM);
@@ -553,6 +586,9 @@ document.addEventListener("mouseup", (event) => {
   if (event.button === 0) {
     breaking = false;
     mining.reset();
+  } else if (event.button === 2) {
+    // 離したら食べかけは無かったことに（アイテムは減らさない）
+    stopEating();
   }
 });
 
@@ -573,20 +609,45 @@ function fitHighlight(target: RaycastHit): void {
 /** 形を囲む箱の控え。毎フレーム使うので配列は使い回す。 */
 const bounds = [0, 0, 0, 1, 1, 1];
 
-/** 右クリック: 作業台なら開く、それ以外は持っているブロックを置く。 */
+/** 食べるのをやめる。**押している間だけ続く**ので、手を離す・画面が変わるたびに呼ぶ。 */
+function stopEating(): void {
+  eating = false;
+  eatTimer = 0;
+  eatItem = NO_ITEM;
+  eatCadence.reset();
+}
+
+/** 右クリック: 作業台なら開く、食べ物なら食べ始める、それ以外は持っているブロックを置く。 */
 function useOrPlace(): void {
-  if (!hit) return;
-  if (hit.id === CRAFTING_TABLE) {
+  // **`hit` が無くても食べられること。** 空を向いたまま食べられないのはおかしい。
+  if (hit?.id === CRAFTING_TABLE) {
     openInventory(3);
     return;
   }
 
   // かまど。点火中も同じ 1 台なので、大元の ID で見る。
-  if (baseBlock(hit.id) === FURNACE) {
+  if (hit && baseBlock(hit.id) === FURNACE) {
     openFurnace(hit.block.x, hit.block.y, hit.block.z);
     return;
   }
 
+  // 食べ物。**何がどれだけ戻るかは `items.ts`、食べられるかは `vitals.ts`**。
+  // ここは「押しっぱなしが始まった」ことだけを持つ。
+  const food = foodOf(inventory.selectedItem);
+  if (food) {
+    if (creative) return;
+    if (!vitals.canEat) {
+      hud.flash("お腹は空いていません");
+      return;
+    }
+    eating = true;
+    eatTimer = 0;
+    eatItem = inventory.selectedItem;
+    eatCadence.reset();
+    return;
+  }
+
+  if (!hit) return;
   const item = inventory.selectedItem;
   const base = placedBlock(item);
   if (base === AIR) return;
@@ -631,6 +692,8 @@ function breakBlock(x: number, y: number, z: number, blockId: number, tool: numb
   }
 
   if (creative) return;
+  // 掘ると腹が減る。**どれだけ減るかは `vitals.ts`**（ここは種類を渡すだけ）。
+  vitals.exhaust("mine");
   if (!canHarvest(blockId, tool)) return;
   const drop = dropOf(blockId);
   if (drop.item === NO_ITEM || drop.count <= 0) return;
@@ -751,6 +814,9 @@ function frame(now: number): void {
 
   fps += (1 / Math.max(dt, 1e-4) - fps) * 0.08;
 
+  // 走れるかどうかの判断は vitals.ts。player.ts は結果を受け取るだけ。
+  player.canSprint = creative || vitals.canSprint;
+
   if (playing) {
     player.update(dt, world);
   } else {
@@ -758,6 +824,11 @@ function frame(now: number): void {
     player.yaw += dt * 0.05;
     player.syncCamera();
   }
+  // 水平に動いた距離。**足音（`sfx.ts`）と空腹の消耗（`vitals.ts`）が同じ値を見る。**
+  // 別々に持つと、片方だけ「壁に押し付けて足踏み」を数えるような食い違いが起きる。
+  const moved = Math.hypot(player.position.x - lastFootX, player.position.z - lastFootZ);
+  lastFootX = player.position.x;
+  lastFootZ = player.position.z;
   world.update(player.position.x, player.position.z);
 
   camera.getWorldDirection(lookDirection);
@@ -766,6 +837,7 @@ function frame(now: number): void {
   if (hit) fitHighlight(hit);
 
   updateMining(dt);
+  updateEating(dt);
 
   dayNight.advance(dt);
   updateEnvironment();
@@ -786,9 +858,9 @@ function frame(now: number): void {
   syncFurnaceBlocks();
   refreshFurnaceUi(dt);
   // 水中のこもりに underwater を使うので、updateEnvironment のあとに回す
-  updateSounds();
+  updateSounds(moved);
   // 息の判定に水中かどうかを使うので、updateEnvironment のあとに回す
-  updateVitals(dt);
+  updateVitals(dt, moved);
   sky.object.position.copy(camera.position);
 
   hud.tick(dt);
@@ -809,7 +881,8 @@ function frame(now: number): void {
       `time ${dayNight.clock()}  light ${(dayNight.brightness * 100).toFixed(0)}%  ${creative ? "creative" : "survival"}\n` +
       `biome ${biomeName(world.gen.biomeAt(Math.floor(player.position.x), Math.floor(player.position.z)))}` +
       `  mobs ${mobs.count}  drops ${drops.count}  furnaces ${furnaces.count}\n` +
-      `hp ${vitals.health}/${MAX_HEALTH}  air ${(vitals.airFraction * 100).toFixed(0)}%\n` +
+      `hp ${vitals.health}/${MAX_HEALTH}  food ${vitals.hunger}/${MAX_HUNGER}` +
+      `${vitals.poisoned ? " (毒)" : ""}  air ${(vitals.airFraction * 100).toFixed(0)}%\n` +
       `${player.flying ? "fly" : player.onGround ? "ground" : "air"}${player.inWater ? " / water" : ""}\n` +
       `hand ${inventory.selectedItem === NO_ITEM ? "-" : itemName(inventory.selectedItem)}\n` +
       `target ${hit ? `${blockName(hit.id)} (${hit.block.x}, ${hit.block.y}, ${hit.block.z})` : "-"}` +
@@ -824,7 +897,7 @@ function frame(now: number): void {
  * 体力の更新。判定は vitals.ts に置いてあるので、ここは状況を渡して結果を貼るだけ。
  * クリエイティブでは何も受けず、奈落に落ちたら初期位置へ戻す（死なせない）。
  */
-function updateVitals(dt: number): void {
+function updateVitals(dt: number, moved: number): void {
   if (playing) {
     vitals.update(dt, {
       y: player.position.y,
@@ -833,11 +906,14 @@ function updateVitals(dt: number): void {
       headInWater: underwater,
       flying: player.flying,
       invulnerable: creative,
+      // 空腹の消耗は歩いた距離から。**どれだけ減るかは vitals.ts が決める。**
+      moved,
+      sprinting: player.sprinting,
     });
     if (creative && player.position.y < VOID_Y) moveToSpawn();
   }
 
-  hud.setVitals(vitals.health, vitals.airFraction, vitals.hurtFlash, playing && !creative);
+  hud.setVitals(vitals.health, vitals.hunger, vitals.airFraction, vitals.hurtFlash, playing && !creative);
 
   // **`takeDamage()` で拾うこと。前後の体力を比べないこと。**
   // モブは `updateVitals()` より前に走るので、ここで控えを取る形にすると
@@ -849,11 +925,44 @@ function updateVitals(dt: number): void {
   if (hurt && vitals.dead) {
     breaking = false;
     mining.reset();
+    stopEating();
     deathCause.textContent = vitals.cause ? `死因: ${vitals.cause}` : "";
     deathScreen.classList.remove("hidden");
     saveDirty = true;
     document.exitPointerLock();
   }
+}
+
+/**
+ * 食べ進める。**掘るのとまったく同じ形**（押している間だけ進み、離すと消える）。
+ *
+ * この環境では食べる動きを描けないので、進んでいる手ごたえは咀嚼音だけ。
+ * **鳴らす間隔は `sfx.ts` の `EatCadence`**、戻る量は `items.ts`、
+ * 食べられるかは `vitals.ts` が持っていて、ここには数値を書かない。
+ */
+function updateEating(dt: number): void {
+  if (!eating) return;
+  // 手が変わった・持ち物が尽きた・満腹になったら中断（食べかけは消費しない）
+  if (!playing || inventory.selectedItem !== eatItem || !vitals.canEat) {
+    stopEating();
+    return;
+  }
+  const food = foodOf(eatItem);
+  if (!food) {
+    stopEating();
+    return;
+  }
+
+  eatTimer += dt;
+  if (eatCadence.advance(dt)) audio.play("eat");
+  if (eatTimer < EAT_SECONDS) return;
+
+  vitals.eat(food);
+  inventory.consumeSelected(1);
+  hud.flash(`${itemName(eatItem)} を食べました`);
+  hud.refresh();
+  saveDirty = true;
+  stopEating();
 }
 
 /** デバッグ表示用: いま持っている道具で何秒かかるか。 */
@@ -896,13 +1005,10 @@ function updateMining(dt: number): void {
  * 「地面に着いたか」を渡すだけにして、条件をここに書かないこと
  * （書くと DOM 込みでしか確かめられなくなる）。
  */
-function updateSounds(): void {
+function updateSounds(moved: number): void {
   audio.setUnderwater(underwater);
 
   const { x, y, z } = player.position;
-  const moved = Math.hypot(x - lastFootX, z - lastFootZ);
-  lastFootX = x;
-  lastFootZ = z;
 
   if (!playing) {
     stepCadence.reset();

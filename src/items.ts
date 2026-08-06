@@ -46,25 +46,13 @@ export const DIAMOND_PICKAXE = 78;
 export const DIAMOND_AXE = 79;
 export const DIAMOND_SHOVEL = 80;
 
-/**
- * 生豚肉。**まだ食べられない**（空腹がまだ無く、食べられるようにすると
- * 残してある自然回復と正面から衝突する）。ID をいま置いておけば、
- * 空腹の区切りは「挙動を足すだけ」になり、今日のセーブがそのまま生きる。
- * 何も落とさない豚は不具合に見えるので、落とすものだけ先に決めておく。
- */
+/** 生豚肉。豚が落とす。焼くと焼き豚になる。 */
 export const RAW_PORK = 81;
 
-/**
- * 腐った肉。ゾンビが落とす。生豚肉と同じ理由で**まだ食べられない**
- * （Minecraft でも空腹を減らす危ない食べ物なので、空腹が入るまで意味を持てない）。
- */
+/** 腐った肉。ゾンビが落とす。**食べると毒**（下の `FOODS`）。 */
 export const ROTTEN_FLESH = 82;
 
-/**
- * 焼き豚。かまどで生豚肉を焼くと出る。生豚肉と同じで**まだ食べられない**が、
- * 「焼く」という手順そのものが精錬の見せ場なので、鉱石と一緒にここで置いておく。
- * 空腹を入れるときは、これがいちばん強い食べ物になる。
- */
+/** 焼き豚。かまどで生豚肉を焼くと出る。いちばん強い食べ物。 */
 export const COOKED_PORK = 83;
 
 export const MAX_ITEM_ID = COOKED_PORK;
@@ -177,6 +165,43 @@ export function toolOf(id: number): ToolDef | null {
 /** UI 用の CSS カラー。 */
 export function itemCssColor(id: number): string {
   return "#" + itemColor(id).toString(16).padStart(6, "0");
+}
+
+/**
+ * 食べ物 1 個ぶんの値。**`vitals.ts` の `FoodValue` と構造で合わせてある**
+ * （あちらは持ち物の表を import しない）。
+ */
+export interface FoodDef {
+  /** 戻る空腹。 */
+  readonly hunger: number;
+  /** 戻る満腹度（減りにくさ）。空腹の値を超えたぶんは `Vitals.eat()` が捨てる。 */
+  readonly saturation: number;
+  /** 食べると毒。 */
+  readonly poison: boolean;
+}
+
+/**
+ * 食べられるアイテム。**ここに無いものは食べられない。**
+ *
+ * 数値は Minecraft と同じ。焼き豚が飛び抜けて強いので、
+ * 「かまどで焼く」に見返りがある。腐った肉は空腹だけなら悪くないが毒付き
+ * （**回復量を下げるのではなく毒にしてある** —— 弱いだけの食べ物は
+ * ただの劣化版で、拾うかどうかの判断が生まれない）。
+ */
+const FOODS = new Map<number, FoodDef>([
+  [RAW_PORK, { hunger: 3, saturation: 1.8, poison: false }],
+  [COOKED_PORK, { hunger: 8, saturation: 12.8, poison: false }],
+  [ROTTEN_FLESH, { hunger: 4, saturation: 0.8, poison: true }],
+]);
+
+/** そのアイテムを食べたときの値。食べられないなら null。 */
+export function foodOf(id: number): FoodDef | null {
+  return FOODS.get(id) ?? null;
+}
+
+/** 食べられるアイテムの一覧（テストと表示用）。 */
+export function allFoodIds(): number[] {
+  return [...FOODS.keys()];
 }
 
 export interface Drop {

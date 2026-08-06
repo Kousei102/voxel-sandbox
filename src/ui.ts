@@ -20,15 +20,19 @@ export function slotMarkup(extra = ""): string {
   );
 }
 
-/** ハートと気泡の数。体力 20 = ハート 10 個なので、1 個で 2 ぶん。 */
+/**
+ * ハート・肉・気泡の数。体力 20 = ハート 10 個なので、1 個で 2 ぶん。
+ * **空腹も同じ 0..20 なので、同じ数・同じ関数で描ける。**
+ */
 export const HEART_COUNT = 10;
 const BUBBLE_COUNT = 10;
 
 export type HeartState = "full" | "half" | "empty";
 
 /**
- * 体力からハート 10 個の状態を出す。CSS は見た目しか検証できないので、
- * 「半分のハートがいつ出るか」だけはここに切り出してテストで押さえる。
+ * 体力（または空腹）から 10 個ぶんの状態を出す。CSS は見た目しか検証できないので、
+ * 「半分がいつ出るか」だけはここに切り出してテストで押さえる。
+ * **空腹のために別の関数を作らないこと** —— 刻みが同じなので、増やすと片方だけ壊れる。
  */
 export function heartStates(health: number, count = HEART_COUNT): HeartState[] {
   return Array.from({ length: count }, (_, i) => {
@@ -55,6 +59,7 @@ function createStatusBar(): HTMLElement {
 export class Hud {
   private readonly slots: HTMLElement[] = [];
   private readonly hearts: HTMLElement[] = [];
+  private readonly meats: HTMLElement[] = [];
   private readonly bubbles: HTMLElement[] = [];
   private readonly debug = document.getElementById("debug") as HTMLElement;
   private readonly hud = document.getElementById("hud") as HTMLElement;
@@ -63,6 +68,7 @@ export class Hud {
   private readonly status = createStatusBar();
   private readonly menu = document.getElementById("menu") as HTMLElement;
   private readonly vitals = document.getElementById("vitals") as HTMLElement;
+  private readonly hungerRow = document.getElementById("hunger") as HTMLElement;
   private readonly bubbleRow = document.getElementById("bubbles") as HTMLElement;
   private readonly hurt = document.getElementById("hurt") as HTMLElement;
   private statusTimer = 0;
@@ -84,6 +90,12 @@ export class Hud {
       heartRow.appendChild(heart);
       this.hearts.push(heart);
     }
+    for (let i = 0; i < HEART_COUNT; i++) {
+      const meat = document.createElement("span");
+      meat.className = "meat";
+      this.hungerRow.appendChild(meat);
+      this.meats.push(meat);
+    }
     for (let i = 0; i < BUBBLE_COUNT; i++) {
       const bubble = document.createElement("span");
       bubble.className = "bubble";
@@ -94,14 +106,20 @@ export class Hud {
   }
 
   /**
-   * 体力・息・被弾の表示。
-   * health は 0..20、air は 0..1、flash は 0..1（被弾直後ほど赤い）。
+   * 体力・空腹・息・被弾の表示。
+   * health と hunger は 0..20、air は 0..1、flash は 0..1（被弾直後ほど赤い）。
+   * **クリエイティブでは `#vitals` ごと消える**ので、ここに分岐は要らない。
    */
-  setVitals(health: number, air: number, flash: number, show: boolean): void {
+  setVitals(health: number, hunger: number, air: number, flash: number, show: boolean): void {
     this.vitals.classList.toggle("hidden", !show);
     const states = heartStates(health);
     for (let i = 0; i < HEART_COUNT; i++) {
       this.hearts[i].className = states[i] === "empty" ? "heart" : `heart ${states[i]}`;
+    }
+    // 空腹も 0..20 の同じ刻みなので、ハートと同じ関数で描ける
+    const meats = heartStates(hunger);
+    for (let i = 0; i < HEART_COUNT; i++) {
+      this.meats[i].className = meats[i] === "empty" ? "meat" : `meat ${meats[i]}`;
     }
     // 気泡は水中でだけ出す（Minecraft と同じ）
     const drowning = air < 1;

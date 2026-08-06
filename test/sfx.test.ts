@@ -21,6 +21,8 @@ import {
   DEFAULT_VOLUME,
   DIG_STEP,
   DigCadence,
+  EAT_INTERVAL,
+  EatCadence,
   STEP_DISTANCE,
   StepCadence,
   clampVolume,
@@ -28,6 +30,7 @@ import {
   recipeFor,
   type Sfx,
 } from "../src/sfx";
+import { EAT_SECONDS } from "../src/vitals";
 import { check, describe } from "./harness";
 
 const EVENTS: Sfx[] = [
@@ -41,6 +44,7 @@ const EVENTS: Sfx[] = [
   "splash",
   "craft",
   "pickup",
+  "eat",
   "mobsay",
   "mobhurt",
   "mobdeath",
@@ -240,6 +244,33 @@ export function run(): void {
   restart.advance(0.1);
   restart.reset();
   check("狙いを変えたら次の 1 回はすぐ鳴る", restart.advance(0));
+
+  describe("食べている間の咀嚼音");
+
+  // **この環境では食べる動きを描けないので、押しっぱなしが進んでいる手ごたえは音だけ。**
+  // 1 口も鳴らないまま 1.6 秒待たされると、操作が効いていないように見える。
+  const eat = new EatCadence();
+  let bites = 0;
+  for (let i = 0; i < Math.round(EAT_SECONDS * 60); i++) if (eat.advance(1 / 60)) bites++;
+  check(
+    "1 個食べるあいだに数回鳴る",
+    bites >= 3 && bites <= 5,
+    `${bites} 口（${EAT_SECONDS} 秒 / 間隔 ${EAT_INTERVAL} 秒）`,
+  );
+  check("食べ始めた瞬間には鳴らない（噛む前に音がしない）", !new EatCadence().advance(0));
+
+  const bitten = new EatCadence();
+  bitten.advance(EAT_INTERVAL * 0.9);
+  bitten.reset();
+  check("中断すると溜めも消える", !bitten.advance(EAT_INTERVAL * 0.5));
+
+  // 口の中の音なので、硬いものの音（石の足音）よりずっとこもっていること。
+  // ノイズ寄りでもある（トーンが立つと「食べている」に聞こえない）。
+  check(
+    "咀嚼はこもったノイズ",
+    recipeFor("eat").cutoff < recipeFor("step", "stone").cutoff && recipeFor("eat").noise > 0.7,
+    `${recipeFor("eat").cutoff}Hz < 石の足音 ${recipeFor("step", "stone").cutoff}Hz / ノイズ ${recipeFor("eat").noise}`,
+  );
 
   describe("音量");
 
