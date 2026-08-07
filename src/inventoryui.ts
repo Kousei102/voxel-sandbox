@@ -189,9 +189,12 @@ export class InventoryScreen {
     if (result.changed) this.refresh();
   }
 
-  /** 掴んでいる山を 1 個捨てる（Q キー）。入口は main.ts。 */
-  discardOne(): void {
-    this.apply(this.craft.discardHeld(false));
+  /**
+   * 掴んでいる山を捨てる（Q キー）。`all` なら山ごと。入口は main.ts。
+   * **どちらになるかを決めるのは `CraftScreen.discardHeld()`** で、ここは素通し。
+   */
+  discardHeld(all: boolean): void {
+    this.apply(this.craft.discardHeld(all));
   }
 
   /** カーソルの下のスロットとホットバーの枠を入れ替える（数字キー）。入口は main.ts。 */

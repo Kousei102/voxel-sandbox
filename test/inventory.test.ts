@@ -112,19 +112,44 @@ export function run(): void {
   );
   check("持てないものは 0", room.roomFor(NO_ITEM) === 0);
 
-  // --- 選択中から捨てる（プレイ中の Q） ---
+  // --- 選択中から捨てる（プレイ中の Q / Ctrl+Q） ---
   const toss = new Inventory();
   toss.add(COBBLE, 3);
   toss.select(0);
-  const thrown = toss.discardSelected(1);
+  const thrown = toss.discardSelected();
   check(
     "選択中から 1 個捨てられる",
     thrown?.item === COBBLE && thrown.count === 1 && toss.count(COBBLE) === 2,
     `${thrown?.item} x${thrown?.count} / 残り ${toss.count(COBBLE)}`,
   );
-  toss.discardSelected(5);
-  check("持っている数より多くは捨てられない", isEmpty(toss.selectedSlot) && toss.count(COBBLE) === 0);
+  // まとめ捨て。**山ごと**なので、残りは 0 になる。
+  const dumped = toss.discardSelected(true);
+  check(
+    "Ctrl+Q は山ごと捨てる",
+    dumped?.count === 2 && isEmpty(toss.selectedSlot) && toss.count(COBBLE) === 0,
+    `${dumped?.count} 個まとめて / 残り ${toss.count(COBBLE)}`,
+  );
   check("空のスロットからは捨てられない", toss.discardSelected() === null);
+  check("空のスロットはまとめ捨てもできない", toss.discardSelected(true) === null);
+
+  // --- 死んだときに落とすもの ---
+  // **不変条件: 返した合計 = 取り出す前の総数。** ここが崩れると持ち物が黙って増減する。
+  const corpse = new Inventory();
+  corpse.add(DIRT, 100);
+  corpse.add(COBBLE, 5);
+  corpse.add(WOOD_PICKAXE, 1);
+  const heldBefore = corpse.slots.reduce((sum, slot) => sum + (isEmpty(slot) ? 0 : slot.count), 0);
+  const lost = corpse.takeAll();
+  const dropped = lost.reduce((sum, stack) => sum + stack.count, 0);
+  console.log(`      死亡時: ${lost.length} 山 / 計 ${dropped} 個`);
+  check("落とした合計が元の総数と合う", dropped === heldBefore, `${dropped} 個 / 元 ${heldBefore} 個`);
+  check(
+    "取り出したあとは空になる",
+    corpse.slots.every(isEmpty) && corpse.count(DIRT) === 0,
+    `土 ${corpse.count(DIRT)} 個`,
+  );
+  check("空の山は返さない", lost.every((stack) => stack.count > 0) && lost.length === 4, `${lost.length} 山`);
+  check("空のインベントリからは何も出ない", corpse.takeAll().length === 0);
 
   // --- 保存 ---
   const src = new Inventory();

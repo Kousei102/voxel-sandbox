@@ -748,6 +748,18 @@ window.addEventListener("wheel", (event) => {
   hud.refresh();
 });
 
+/**
+ * まとめ捨てか（Q に修飾キーが付いているか）。
+ *
+ * **Shift も受けるのは意図的です。** Minecraft と同じ Ctrl+Q を本命にしていますが、
+ * ブラウザによっては Ctrl+Q がブラウザ自身の終了に割り当てられていて、
+ * `preventDefault()` では止められません。押した人が窓ごと閉じるより、
+ * 逃げ道を 1 つ持たせるほうが安全側です。
+ */
+function bulkDiscard(event: KeyboardEvent): boolean {
+  return event.ctrlKey || event.metaKey || event.shiftKey;
+}
+
 window.addEventListener("keydown", (event) => {
   // インベントリを開いているときは、閉じる・捨てる・ホットバーへ入れ替えるだけ
   if (screen.isOpen) {
@@ -756,7 +768,7 @@ window.addEventListener("keydown", (event) => {
       closeInventory();
     } else if (event.code === "KeyQ") {
       event.preventDefault();
-      screen.discardOne();
+      screen.discardHeld(bulkDiscard(event));
     } else if (event.code.startsWith("Digit")) {
       const n = Number(event.code.slice(5));
       // 行き先はカーソルの下のスロット。それを覚えているのは craftscreen.ts 側。
@@ -782,9 +794,10 @@ window.addEventListener("keydown", (event) => {
       openInventory(2);
       return;
     case "KeyQ": {
-      // 落としたものは地面に残るので拾い直せる。**まとめ捨てはまだ足さない**
-      // （`CLAUDE.md`「インベントリ画面」。落ちたアイテムを実地で確かめてから）。
-      const thrown = inventory.discardSelected(1);
+      // 落としたものは地面に残るので拾い直せる（`drops.ts`）。
+      // Ctrl（または Shift）を押していれば山ごと。
+      event.preventDefault();
+      const thrown = inventory.discardSelected(bulkDiscard(event));
       if (thrown) {
         // 目線の高さから投げる。猶予（拾い直さない時間）は `drops.ts` が決める。
         drops.throwOut(
@@ -967,7 +980,12 @@ function updateVitals(dt: number, moved: number): void {
     breaking = false;
     mining.reset();
     stopEating();
-    deathCause.textContent = vitals.cause ? `死因: ${vitals.cause}` : "";
+    // **リスポーンより前に落とすこと**（`moveToSpawn()` が位置を変えるので、
+    // あとに回すと初期位置に湧く）。
+    const lost = dropOnDeath();
+    deathCause.textContent =
+      (vitals.cause ? `死因: ${vitals.cause}` : "") +
+      (lost > 0 ? `　持ち物 ${lost} 山を落としました（5 分以内に取りに戻る）` : "");
     deathScreen.classList.remove("hidden");
     saveDirty = true;
     document.exitPointerLock();
@@ -1004,6 +1022,26 @@ function updateEating(dt: number): void {
   hud.refresh();
   saveDirty = true;
   stopEating();
+}
+
+/**
+ * 死んだら持ち物を全部その場に落とす。落とした山の数を返す。
+ *
+ * **どれを落とすかは `inventory.takeAll()`**（不変条件は「落とした合計 = 元の総数」）で、
+ * ここは落とす場所を決めるだけ。**リスポーンより前に呼ぶこと。**
+ *
+ * **奈落で死んだぶんは消えます**（Minecraft と同じ。ユーザーと決めた線）——
+ * `drops.ts` が `y < VOID_Y` の山を寿命を待たずに捨てるので、ここに例外は書きません。
+ * かまど・チェストの中身と違い、**5 分（`DESPAWN_AGE`）で消えます。**
+ */
+function dropOnDeath(): number {
+  const lost = inventory.takeAll();
+  for (const stack of lost) {
+    // 死体の位置から少し上に散らす（足元に埋まると拾いにくい）
+    drops.burst(stack.item, stack.count, player.position.x, player.position.y + 0.6, player.position.z);
+  }
+  if (lost.length > 0) hud.refresh();
+  return lost.length;
 }
 
 /** デバッグ表示用: いま持っている道具で何秒かかるか。 */

@@ -151,19 +151,38 @@ export class Inventory {
 
   /**
    * 選択中のスロットから捨てる（プレイ中の Q）。捨てたものを返す。空なら null。
+   * `all` なら山ごと（まとめ捨て）、既定は 1 個だけ。
    *
    * 捨てたぶんは呼ぶ側が地面に落とすので拾い直せます（`drops.ts`）。
-   * それでも 1 個ずつにしてあり、呼ぶ側は必ず何を落としたか画面に出すこと
-   * （画面外へ飛ぶことがあるため）。
+   * **呼ぶ側は必ず何を落としたか画面に出すこと**（画面外へ飛ぶことがあるため）。
+   * 引数を `all: boolean` にしてあるのは `CraftScreen.discardHeld()` と揃えるためで、
+   * **個数を渡す形に戻さないこと**（「1 個」と「山ごと」以外の中間は要りません）。
    */
-  discardSelected(count = 1): { item: number; count: number } | null {
+  discardSelected(all = false): { item: number; count: number } | null {
     const slot = this.selectedSlot;
     if (isEmpty(slot)) return null;
     const item = slot.item;
-    const taken = Math.min(count, slot.count);
+    const taken = all ? slot.count : 1;
     slot.count -= taken;
     if (slot.count <= 0) clearSlot(slot);
     return { item, count: taken };
+  }
+
+  /**
+   * 中身を全部取り出して空にする（**死んだときに落とすもの**）。
+   *
+   * **不変条件: 返した合計 = 取り出す前の総数。** 呼ぶ側はこれを 1 山ずつ地面に落とすので、
+   * ここで数を丸めると持ち物が黙って増減します。
+   * 空のスロットは返しません（`drops.burst()` に空の山を渡さないため）。
+   */
+  takeAll(): { item: number; count: number }[] {
+    const out: { item: number; count: number }[] = [];
+    for (const slot of this.slots) {
+      if (isEmpty(slot)) continue;
+      out.push({ item: slot.item, count: slot.count });
+      clearSlot(slot);
+    }
+    return out;
   }
 
   /** そのアイテムが入っているホットバーのスロットを選ぶ（スポイト）。 */
