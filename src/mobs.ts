@@ -102,10 +102,13 @@ const PIG_EYE = 0x2b1e1c;
 /**
  * 豚。当たり判定はマイクラと同じ 0.9 x 0.9。
  *
- * **モデルは当たり判定の中に収める。** マイクラは体がはみ出しているが、
- * はみ出すと壁の向こうへ鼻が突き抜けて見える（当たり判定は止まっているのに
- * 顔だけ壁に埋まる）。そのぶん胴を詰めてあるので、本家より少しずんぐりしている。
- * `test/mobs.test.ts` が外形と当たり判定を突き合わせている。
+ * **胴は当たり判定より長く、後ろ（+Z）へはみ出します**（マイクラも同じで、
+ * 胴 1 ブロックに対して判定は 0.9）。**前（-Z）は必ず判定の中に収めること** ——
+ * 歩いていく方向なので、鼻が壁に埋まると必ず目に入ります（後ろは尻だけなので
+ * 気になりません）。`test/mobs.test.ts` が前後を別々に突き合わせています。
+ *
+ * 胴を伸ばすときは**後ろ脚の pivot も一緒に動かすこと**（胴の後端に合わせないと、
+ * 尻だけが宙に伸びた形になります）。
  *
  * グループの並び: 0 = 体（固定）、1 = 頭、2..5 = 脚 4 本。
  * 脚の位相は対角の 2 本が同じ向きに出るようにずらす（4 本そろうと跳ねて見える）。
@@ -124,12 +127,13 @@ const PIG: MobDef = {
     { motion: "head", pivot: [0, px(10), px(-3)], phase: 0 },
     { motion: "swing", pivot: [px(-3), px(6), px(-1)], phase: 0 },
     { motion: "swing", pivot: [px(3), px(6), px(-1)], phase: Math.PI },
-    { motion: "swing", pivot: [px(-3), px(6), px(4)], phase: Math.PI },
-    { motion: "swing", pivot: [px(3), px(6), px(4)], phase: 0 },
+    // 後ろ脚は**胴の後端に合わせる**（箱は pivot ±2px なので 13 で 11..15）。
+    { motion: "swing", pivot: [px(-3), px(6), px(13)], phase: Math.PI },
+    { motion: "swing", pivot: [px(3), px(6), px(13)], phase: 0 },
   ],
   boxes: [
-    // 体
-    { group: 0, box: [px(-5), px(6), px(-3), px(5), px(14), px(6)], color: PIG_SKIN },
+    // 体（前後 18px。当たり判定 14.4px より長いので、後ろへはみ出す）
+    { group: 0, box: [px(-5), px(6), px(-3), px(5), px(14), px(15)], color: PIG_SKIN },
     // 頭（軸は首の付け根。箱は軸からの相対）
     { group: 1, box: [px(-4), px(-4), px(-3), px(4), px(4), px(0)], color: PIG_SKIN },
     { group: 1, box: [px(-2), px(-3), px(-4), px(2), px(0), px(-3)], color: PIG_SNOUT },
@@ -150,6 +154,7 @@ const SHEEP_EYE = 0x2b1e1c;
 /**
  * 羊。豚より背が高く（1.2）、頭が体から前に出ている。
  * 豚と同じ骨組み（体・頭・脚 4 本）なので、違うのは寸法と色だけ。
+ * **胴が後ろへはみ出すのも、後ろ脚を後端に合わせるのも豚と同じ**（`PIG` の説明）。
  */
 const SHEEP: MobDef = {
   kind: "sheep",
@@ -165,12 +170,13 @@ const SHEEP: MobDef = {
     { motion: "head", pivot: [0, px(15), px(-2)], phase: 0 },
     { motion: "swing", pivot: [px(-3), px(9), px(-2)], phase: 0 },
     { motion: "swing", pivot: [px(3), px(9), px(-2)], phase: Math.PI },
-    { motion: "swing", pivot: [px(-3), px(9), px(4)], phase: Math.PI },
-    { motion: "swing", pivot: [px(3), px(9), px(4)], phase: 0 },
+    // 後ろ脚は胴の後端に合わせる（箱は pivot ±2px なので 14 で 12..16）。
+    { motion: "swing", pivot: [px(-3), px(9), px(14)], phase: Math.PI },
+    { motion: "swing", pivot: [px(3), px(9), px(14)], phase: 0 },
   ],
   boxes: [
-    // もこもこした体
-    { group: 0, box: [px(-5), px(9), px(-4), px(5), px(18), px(6)], color: SHEEP_WOOL },
+    // もこもこした体（前後 20px。豚と同じで後ろへはみ出す）
+    { group: 0, box: [px(-5), px(9), px(-4), px(5), px(18), px(16)], color: SHEEP_WOOL },
     // 頭（軸は首の付け根。箱は軸からの相対）
     { group: 1, box: [px(-3), px(-3), px(-4), px(3), px(3), px(0)], color: SHEEP_WOOL },
     { group: 1, box: [px(-2.5), px(-3), px(-5), px(2.5), px(1.5), px(-4)], color: SHEEP_FACE },

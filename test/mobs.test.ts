@@ -152,11 +152,21 @@ export function run(): void {
     check(`${def.name}: 振る部位は軸からぶら下がる`, badPivot.length === 0, `${badPivot.length} 個が y1 ≠ 0`);
 
     // モデルが当たり判定からはみ出すと、壁にめり込んで見える。
-    const fits = Math.max(-minX, maxX, -minZ, maxZ) <= def.size.half + 1e-9 && maxY <= def.size.height + 1e-9;
+    // **後ろ（+Z）だけは四足の胴がはみ出してよい**（マイクラも同じで、豚の胴は
+    // 当たり判定 0.9 に対して 1 ブロックある）。**前（-Z）と横（X）は必ず収めること** ——
+    // 前は歩いていく方向なので鼻が壁に埋まると必ず目に入るし、横は擦り抜けざまに見える。
+    // 後ろは尻だけなので、伸ばしても気になりません。
+    const longBody = def.kind === "pig" || def.kind === "sheep";
+    const front = Math.max(-minX, maxX, -minZ);
+    const fits =
+      front <= def.size.half + 1e-9 &&
+      (longBody || maxZ <= def.size.half + 1e-9) &&
+      maxY <= def.size.height + 1e-9;
     check(
-      `${def.name}: モデルが当たり判定に収まる`,
+      `${def.name}: モデルが当たり判定に収まる${longBody ? "（後ろを除く）" : ""}`,
       fits,
-      `x±${Math.max(-minX, maxX).toFixed(3)} z±${Math.max(-minZ, maxZ).toFixed(3)} 高さ ${maxY.toFixed(3)} / 判定 ±${def.size.half} x ${def.size.height}`,
+      `前と横 ${front.toFixed(3)} / 後ろ ${maxZ.toFixed(3)}` +
+        ` / 高さ ${maxY.toFixed(3)} / 判定 ±${def.size.half} x ${def.size.height}`,
     );
 
     let badColor = 0;
