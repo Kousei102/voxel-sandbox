@@ -12,6 +12,7 @@ import {
 } from "three";
 import {
   AIR,
+  CHEST,
   CRAFTING_TABLE,
   FURNACE,
   FURNACE_LIT,
@@ -38,6 +39,7 @@ import {
   RENDER_DISTANCE,
   columnOf,
 } from "./constants";
+import { Chests } from "./chests";
 import { CrackOverlay } from "./crack";
 import { CraftScreen } from "./craftscreen";
 import { DayNight } from "./daynight";
@@ -143,6 +145,11 @@ let dropRender!: DropRenderer;
  * 明示的に空にすること（`startWorld`）。
  */
 const furnaces = new Furnaces();
+/**
+ * 置いてあるチェスト。かまどと同じ器だが、**毎フレーム進めるものが無い**ので
+ * `update(dt)` は持たない（`furnaces.update()` に相当する呼び出しが要らない）。
+ */
+const chests = new Chests();
 let playing = false;
 let saveDirty = false;
 let autosaveTimer = 0;
@@ -194,6 +201,10 @@ furnaces.onChange = () => {
   saveDirty = true;
 };
 
+chests.onChange = () => {
+  saveDirty = true;
+};
+
 drops.onChange = () => {
   hud.refresh();
   saveDirty = true;
@@ -223,9 +234,10 @@ function startWorld(
   mobRender?.dispose();
   mobRender = new MobRenderer(scene, world.daylightUniform());
 
-  // かまどと落ちたアイテムは保存する。ここでは空にしておき、
+  // かまど・チェスト・落ちたアイテムは保存する。ここでは空にしておき、
   // セーブがあれば読み込み側が戻す。
   furnaces.clear();
+  chests.clear();
   drops.clear();
   dropRender?.dispose();
   dropRender = new DropRenderer(scene, world.daylightUniform());
@@ -360,6 +372,7 @@ function currentSave() {
     volume: audio.getVolume(),
     drops: drops.serialize(),
     furnaces: furnaces.serialize(),
+    chests: chests.serialize(),
     edits: serializeEdits(world.editsForSave()),
   };
 }
@@ -404,6 +417,7 @@ startWorld(
 // **`startWorld()` のあとで。** あちらが `clear()` を呼ぶので、先に入れると消える。
 drops.deserialize(saved?.drops);
 furnaces.deserialize(saved?.furnaces);
+chests.deserialize(saved?.chests);
 
 // --- 入力 ---------------------------------------------------------------
 
@@ -426,6 +440,7 @@ document.getElementById("wipe")?.addEventListener("click", () => {
   // （残すと、消したはずの持ち物が拾い直せてしまう）。
   drops.clear();
   furnaces.clear();
+  chests.clear();
   hud.refresh();
   saveDirty = false;
   hud.flash("保存データを削除しました");
@@ -526,6 +541,20 @@ function openFurnace(x: number, y: number, z: number): void {
   mining.reset();
   stopEating();
   screen.showFurnace(furnaces.at(x, y, z));
+  hud.setPlaying(false, false);
+  document.exitPointerLock();
+}
+
+/**
+ * チェストを開く。かまどと同じで、中身は `chests.ts` が位置ごとに持っていて、
+ * 画面はそれを借りるだけ。**閉じても中身は返さない**（ワールドの持ち物）。
+ */
+function openChest(x: number, y: number, z: number): void {
+  if (screen.isOpen) return;
+  breaking = false;
+  mining.reset();
+  stopEating();
+  screen.showChest(chests.at(x, y, z));
   hud.setPlaying(false, false);
   document.exitPointerLock();
 }
@@ -631,6 +660,11 @@ function useOrPlace(): void {
     return;
   }
 
+  if (hit && hit.id === CHEST) {
+    openChest(hit.block.x, hit.block.y, hit.block.z);
+    return;
+  }
+
   // 食べ物。**何がどれだけ戻るかは `items.ts`、食べられるかは `vitals.ts`**。
   // ここは「押しっぱなしが始まった」ことだけを持つ。
   const food = foodOf(inventory.selectedItem);
@@ -687,6 +721,13 @@ function breakBlock(x: number, y: number, z: number, blockId: number, tool: numb
   // 中身は集めたアイテムで、壊し方によって消えてよいものではない。
   if (baseBlock(blockId) === FURNACE) {
     for (const held of furnaces.remove(x, y, z)) {
+      drops.burst(held.item, held.count, x + 0.5, y + 0.5, z + 0.5);
+    }
+  }
+
+  // チェストも同じ。**クリエイティブでも中身は落とす**（下の early return より前）。
+  if (blockId === CHEST) {
+    for (const held of chests.remove(x, y, z)) {
       drops.burst(held.item, held.count, x + 0.5, y + 0.5, z + 0.5);
     }
   }
@@ -880,7 +921,7 @@ function frame(now: number): void {
       `tris ${stats.triangles.toLocaleString()}  edits ${countEdits(world.editsForSave())}\n` +
       `time ${dayNight.clock()}  light ${(dayNight.brightness * 100).toFixed(0)}%  ${creative ? "creative" : "survival"}\n` +
       `biome ${biomeName(world.gen.biomeAt(Math.floor(player.position.x), Math.floor(player.position.z)))}` +
-      `  mobs ${mobs.count}  drops ${drops.count}  furnaces ${furnaces.count}\n` +
+      `  mobs ${mobs.count}  drops ${drops.count}  furnaces ${furnaces.count}  chests ${chests.count}\n` +
       `hp ${vitals.health}/${MAX_HEALTH}  food ${vitals.hunger}/${MAX_HUNGER}` +
       `${vitals.poisoned ? " (毒)" : ""}  air ${(vitals.airFraction * 100).toFixed(0)}%\n` +
       `${player.flying ? "fly" : player.onGround ? "ground" : "air"}${player.inWater ? " / water" : ""}\n` +

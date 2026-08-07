@@ -45,6 +45,11 @@ export interface SaveData {
    * 足すときも、ここと同じ「位置をキーにした省略可のキー」に並べること。
    */
   furnaces?: Record<string, number[]>;
+  /**
+   * 置いてあるチェスト。`"x,y,z"` -> 中身 27 枠 x 2 の 54 要素。空なら省略。
+   * **かまどとまったく同じ形**（「位置ごとに状態を持つブロック」を足すときはここに並べる）。
+   */
+  chests?: Record<string, number[]>;
   /** チャンクキー -> [localIndex, blockId, ...] の平坦な配列。 */
   edits: Record<string, number[]>;
 }

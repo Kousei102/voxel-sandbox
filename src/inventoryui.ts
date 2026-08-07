@@ -1,4 +1,6 @@
 import {
+  CHEST_SIZE,
+  type ChestState,
   type CraftScreen,
   type CraftSize,
   FURNACE_AREAS,
@@ -27,6 +29,8 @@ export class InventoryScreen {
   private readonly furnaceArrow = document.getElementById("furnacearrow") as HTMLElement;
   private readonly furnaceHint = document.getElementById("furnacehint") as HTMLElement;
   private readonly outEl = document.getElementById("craftout") as HTMLElement;
+  private readonly chestRow = document.getElementById("chestrow") as HTMLElement;
+  private readonly chestEl = document.getElementById("chest") as HTMLElement;
   private readonly storageEl = document.getElementById("storage") as HTMLElement;
   private readonly hotbarEl = document.getElementById("invhotbar") as HTMLElement;
   private readonly heldEl = document.getElementById("held") as HTMLElement;
@@ -36,6 +40,8 @@ export class InventoryScreen {
   private readonly gridSlots: HTMLElement[] = [];
   /** かまどの 3 枠。並びは `FURNACE_AREAS`（材料・燃料・焼き上がり）。 */
   private readonly furnaceSlots: HTMLElement[] = [];
+  /** チェストの 27 枠。**収納と同じ `build()` で作る**（枠ごとの意味が無いので）。 */
+  private readonly chestSlots: HTMLElement[] = [];
   private readonly storageSlots: HTMLElement[] = [];
   private readonly hotbarSlots: HTMLElement[] = [];
 
@@ -61,6 +67,10 @@ export class InventoryScreen {
       el.innerHTML = slotMarkup();
       this.wire(el, FURNACE_AREAS[i], 0);
     });
+
+    // チェストは 27 枠あって枠ごとの意味も無いので、かまどの 3 枠と違って
+    // index.html に直書きせず、収納とまったく同じ `build()` で作る。
+    this.build(this.chestEl, this.chestSlots, CHEST_SIZE, "chest", 0);
 
     this.build(this.storageEl, this.storageSlots, STORAGE_SIZE, "inv", HOTBAR_SIZE);
     this.build(this.hotbarEl, this.hotbarSlots, HOTBAR_SIZE, "inv", 0);
@@ -110,6 +120,14 @@ export class InventoryScreen {
     this.craft.openFurnace(state);
     this.root.classList.remove("hidden");
     this.titleEl.textContent = "かまど";
+    this.refresh();
+  }
+
+  /** チェストを開く。かまどと同じで、中身は `chests.ts` のものを借りて描くだけ。 */
+  showChest(state: ChestState): void {
+    this.craft.openChest(state);
+    this.root.classList.remove("hidden");
+    this.titleEl.textContent = "チェスト";
     this.refresh();
   }
 
@@ -197,11 +215,14 @@ export class InventoryScreen {
   }
 
   refresh(): void {
-    // 作業台の列とかまどの列は片方だけ出す。**どちらを出すかは craft 側の mode**
+    // 作業台・かまど・チェストの列は 1 つだけ出す。**どれを出すかは craft 側の mode**
     // （UI が「かまどか」を判断すると、そこだけテストが届かなくなる）。
+    const mode = this.craft.mode;
     const furnace = this.craft.furnace;
-    this.craftRow.classList.toggle("hidden", furnace !== null);
-    this.furnaceRow.classList.toggle("hidden", furnace === null);
+    const chest = this.craft.chest;
+    this.craftRow.classList.toggle("hidden", mode !== "craft");
+    this.furnaceRow.classList.toggle("hidden", mode !== "furnace");
+    this.chestRow.classList.toggle("hidden", mode !== "chest");
 
     for (let i = 0; i < GRID_SLOTS; i++) {
       const usable = this.craft.usable(i);
@@ -216,6 +237,9 @@ export class InventoryScreen {
       const status = this.craft.furnaceStatus();
       this.furnaceArrow.classList.toggle("lit", status?.lit === true);
       this.furnaceHint.textContent = status?.text ?? "";
+    }
+    for (let i = 0; i < this.chestSlots.length; i++) {
+      this.paint(this.chestSlots[i], chest ? this.craft.slotFor("chest", i) : null, "chest", i);
     }
     for (let i = 0; i < this.storageSlots.length; i++) {
       this.paint(this.storageSlots[i], this.craft.inventory.slots[i + HOTBAR_SIZE], "inv", i + HOTBAR_SIZE);

@@ -375,6 +375,13 @@ body {
 }
 
 /* かまどの材料と燃料。上下に積んで、右の焼き上がりへ矢印で繋ぐ。 */
+/* チェストの 27 枠。プレイヤーの収納と同じ 9 列なので、下の並びと桁が揃う。 */
+.chestrow {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+}
+
 .furnacecol {
   display: grid;
   gap: 8px;

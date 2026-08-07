@@ -1,4 +1,5 @@
 import { run as blocks } from "./blocks.test";
+import { run as chests } from "./chests.test";
 import { run as crafting } from "./crafting.test";
 import { run as craftscreen } from "./craftscreen.test";
 import { run as daynight } from "./daynight.test";
@@ -32,6 +33,7 @@ vitals();
 mobs();
 drops();
 smelting();
+chests();
 sfx();
 ui();
 summary();

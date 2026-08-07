@@ -1,4 +1,5 @@
 import {
+  CHEST,
   COBBLE,
   COBBLE_SLAB,
   COBBLE_STAIRS,
@@ -73,6 +74,9 @@ export const RECIPES: readonly Recipe[] = [
 
   // かまどは丸石 8 個の輪（Minecraft と同じ）。3x3 なので作業台が要る。
   { name: "かまど", out: FURNACE, count: 1, shape: ["CCC", "C.C", "CCC"], key: { C: COBBLE } },
+
+  // チェストは板 8 個の輪（Minecraft と同じ）。かまどと同じ形で、材料だけが違う。
+  { name: "チェスト", out: CHEST, count: 1, shape: ["PPP", "P.P", "PPP"], key: { P: PLANK } },
 
   // ハーフブロックは横 3 列から 6 個（Minecraft と同じ）。3 列なので作業台が要る。
   slabRecipe("石", STONE, STONE_SLAB),

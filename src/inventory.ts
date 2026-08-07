@@ -23,6 +23,48 @@ export function clearSlot(slot: Slot): void {
 }
 
 /**
+ * スロットの並びへ `[start, end)` の範囲で入れられるだけ入れ、**入らなかった数を返す。**
+ *
+ * **まず同じアイテムの山に足してから空き枠へ置く**（Minecraft と同じ）。逆にすると、
+ * 半端な山が残ったまま空き枠が埋まって、持てる総数が減る。
+ *
+ * `Inventory` の外に出してあるのは、**チェスト（`chests.ts`）が同じ規則で入るため。**
+ * 写すと、片方だけ直したときに「プレイヤーの収納とチェストで入り方が違う」形で
+ * 静かに食い違う。
+ */
+export function addToSlots(
+  slots: Slot[],
+  item: number,
+  count: number,
+  start: number,
+  end: number,
+): number {
+  if (item === NO_ITEM || count <= 0) return 0;
+  const limit = itemStackLimit(item);
+  let left = count;
+
+  // まず同じアイテムの山に足す
+  for (let i = start; i < end && left > 0; i++) {
+    const slot = slots[i];
+    if (slot.item !== item || slot.count >= limit) continue;
+    const room = limit - slot.count;
+    const put = Math.min(room, left);
+    slot.count += put;
+    left -= put;
+  }
+  // 空きスロットへ
+  for (let i = start; i < end && left > 0; i++) {
+    const slot = slots[i];
+    if (!isEmpty(slot)) continue;
+    const put = Math.min(limit, left);
+    slot.item = item;
+    slot.count = put;
+    left -= put;
+  }
+  return left;
+}
+
+/**
  * 36 スロット。**先頭 9 個がホットバー**で、残り 27 が収納。
  * 拾ったものはホットバーから先に埋める（Minecraft と同じ並び）。
  */
@@ -57,29 +99,7 @@ export class Inventory {
    * シフトクリックの「ホットバー ↔ 収納」がこれを使う（行き先を絞るため）。
    */
   addRange(item: number, count: number, start: number, end: number): number {
-    if (item === NO_ITEM || count <= 0) return 0;
-    const limit = itemStackLimit(item);
-    let left = count;
-
-    // まず同じアイテムの山に足す
-    for (let i = start; i < end && left > 0; i++) {
-      const slot = this.slots[i];
-      if (slot.item !== item || slot.count >= limit) continue;
-      const room = limit - slot.count;
-      const put = Math.min(room, left);
-      slot.count += put;
-      left -= put;
-    }
-    // 空きスロットへ
-    for (let i = start; i < end && left > 0; i++) {
-      const slot = this.slots[i];
-      if (!isEmpty(slot)) continue;
-      const put = Math.min(limit, left);
-      slot.item = item;
-      slot.count = put;
-      left -= put;
-    }
-    return left;
+    return addToSlots(this.slots, item, count, start, end);
   }
 
   /** そのアイテムをあと何個入れられるか（一括クラフトが回せるかの判定に使う）。 */

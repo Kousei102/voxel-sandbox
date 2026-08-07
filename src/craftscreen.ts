@@ -1,3 +1,4 @@
+import { addToChest, type ChestState } from "./chests";
 import { consumeGrid, findRecipe } from "./crafting";
 import {
   HOTBAR_SIZE,
@@ -18,12 +19,14 @@ import {
 } from "./smelting";
 
 /**
- * かまどの中身の型は、UI からもここ経由で引けるようにしておく。
- * **`inventoryui.ts` に `smelting.ts` を import させないため** ——
- * import できてしまうと、精錬の判断を UI 側に書く道ができる
+ * かまどとチェストの中身の型は、UI からもここ経由で引けるようにしておく。
+ * **`inventoryui.ts` に `smelting.ts` / `chests.ts` を import させないため** ——
+ * import できてしまうと、精錬や入れ物の判断を UI 側に書く道ができる
  * （`crafting.ts` を import させないのと同じ理由。`test/craftscreen.test.ts` が見張っている）。
  */
 export type { FurnaceState } from "./smelting";
+export type { ChestState } from "./chests";
+export { CHEST_SIZE } from "./chests";
 
 /** 作業台なら 3x3、手持ちなら 2x2。 */
 export type CraftSize = 2 | 3;
@@ -36,11 +39,18 @@ export const GRID_SLOTS = 9;
  *
  * `input` / `fuel` / `output` はかまどの 3 枠。**`output` は取り出し専用**で、
  * ここに物を入れる経路をどこにも作らないこと（材料でないものが焼き上がりに化ける）。
+ *
+ * `chest` は 27 枠あるので、**`grid` / `inv` と同じ「`index` で引く」側**。
+ * かまどの 3 枠が名前で引く形なのは、枠ごとに意味が違う（材料・燃料・出来上がり）ため。
  */
-export type SlotArea = "grid" | "inv" | "input" | "fuel" | "output";
+export type SlotArea = "grid" | "inv" | "input" | "fuel" | "output" | "chest";
 
-/** 画面の種類。作業台／手持ちなら "craft"、かまどを開いていれば "furnace"。 */
-export type ScreenMode = "craft" | "furnace";
+/**
+ * 画面の種類。作業台／手持ちなら "craft"、かまどなら "furnace"、チェストなら "chest"。
+ * **開いている器はいつも 1 つだけ**（`openScreen` / `openFurnace` / `openChest` が
+ * 互いを null にする）。
+ */
+export type ScreenMode = "craft" | "furnace" | "chest";
 
 /** かまどの 3 枠。UI とテストが並べて回すのに使う。 */
 export const FURNACE_AREAS: readonly SlotArea[] = ["input", "fuel", "output"];
@@ -114,6 +124,13 @@ export class CraftScreen {
    */
   private furnaceState: FurnaceState | null = null;
 
+  /**
+   * 開いているチェストの中身。**かまどとまったく同じ扱い** —— ワールドの持ち物なので、
+   * 画面を閉じてもインベントリへ返さない（`chests.ts` が持っていて、参照を借りるだけ）。
+   * **`returnAll()` で触らないこと。**
+   */
+  private chestState: ChestState | null = null;
+
   private dragButton: MouseButton | null = null;
   /** 撫でたスロット。撫でた順のまま、重複なし。 */
   private dragSlots: SlotRef[] = [];
@@ -146,7 +163,9 @@ export class CraftScreen {
   }
 
   get mode(): ScreenMode {
-    return this.furnaceState ? "furnace" : "craft";
+    if (this.furnaceState) return "furnace";
+    if (this.chestState) return "chest";
+    return "craft";
   }
 
   /** 開いているかまど。開いていなければ null（UI が中身を描くのに使う）。 */
@@ -154,27 +173,42 @@ export class CraftScreen {
     return this.furnaceState;
   }
 
+  /** 開いているチェスト。開いていなければ null（UI が中身を描くのに使う）。 */
+  get chest(): ChestState | null {
+    return this.chestState;
+  }
+
   openScreen(size: CraftSize): void {
     this.furnaceState = null;
+    this.chestState = null;
     this.craftSize = size;
     this.open = true;
   }
 
   /** かまどを開く。**中身は借り物**なので、閉じてもインベントリへ返さない。 */
   openFurnace(state: FurnaceState): void {
+    this.chestState = null;
     this.furnaceState = state;
+    this.open = true;
+  }
+
+  /** チェストを開く。かまどと同じで、**中身は借り物**（閉じても返さない）。 */
+  openChest(state: ChestState): void {
+    this.furnaceState = null;
+    this.chestState = state;
     this.open = true;
   }
 
   /**
    * 盤面と掴んでいる山を戻してから閉じる。
-   * **かまどの中身は返さない**（ワールドに置いてあるものなので、そのまま残る）。
+   * **かまど・チェストの中身は返さない**（ワールドに置いてあるものなので、そのまま残る）。
    */
   close(): void {
     if (!this.open) return;
     this.cancelDrag();
     this.returnAll();
     this.furnaceState = null;
+    this.chestState = null;
     this.open = false;
   }
 
@@ -196,11 +230,11 @@ export class CraftScreen {
 
   /**
    * 盤面のうち、いま使えるスロットか（2x2 のときは左上 4 つだけ）。
-   * **かまどを開いている間は 1 枠も使えない**（盤面そのものを出さないので、
+   * **かまど・チェストを開いている間は 1 枠も使えない**（盤面そのものを出さないので、
    * 触れる経路が残っていると画面に無いスロットに物を入れられてしまう）。
    */
   usable(index: number): boolean {
-    if (this.furnaceState) return false;
+    if (this.furnaceState || this.chestState) return false;
     if (this.craftSize === 3) return true;
     const x = index % 3;
     const y = Math.floor(index / 3);
@@ -333,11 +367,14 @@ export class CraftScreen {
   /**
    * インベントリの枠をシフトクリックしたときの行き先。
    *
-   * **かまどを開いている間は、まずかまどへ入れる** —— 焼けるものは材料の枠、
-   * 燃料は燃料の枠。どちらでもなければ今までどおりホットバー ↔ 収納で動かす。
-   * これが無いと、かまどに入れるのに毎回つまんで運ぶことになる。
+   * **かまど・チェストを開いている間は、まずそちらへ入れる** —— かまどなら
+   * 焼けるものは材料の枠、燃料は燃料の枠。チェストは中身を問わず 27 枠へ。
+   * どちらでもなければ今までどおりホットバー ↔ 収納で動かす。
+   * これが無いと、器に入れるのに毎回つまんで運ぶことになる。
    */
   private quickMoveFromInventory(slot: Slot, index: number): number {
+    // チェストは**入れ物なので中身を選ばない**（かまどのような枠ごとの意味が無い）。
+    if (this.chestState) return addToChest(this.chestState, slot.item, slot.count);
     const furnace = this.furnaceState;
     if (furnace) {
       // 焼けるものと燃料の両方であるアイテム（板など）は**材料を優先**する。
@@ -368,11 +405,13 @@ export class CraftScreen {
 
     // かまどを開いている間は材料と燃料の枠からも集める。**焼き上がりからは集めない**
     // （取り出し専用の枠なので、集める側にだけ通り道を作ると規則が食い違う）。
+    // チェストは**全枠が対等**なので、そのまま全部プールに入る。
     const furnace = this.furnaceState;
     const pool = [
       ...this.inventory.slots,
       ...this.grid.filter((_, i) => this.usable(i)),
       ...(furnace ? [furnace.input, furnace.fuel] : []),
+      ...(this.chestState ? this.chestState.slots : []),
     ];
     let moved = 0;
     for (const partial of [true, false]) {
@@ -518,8 +557,9 @@ export class CraftScreen {
    * 「シフトを押したのに 1 回ぶんしか作れない」形になるため）。
    */
   takeResult(all = false): ScreenResult {
-    // かまどには「作る」ボタンが無い（焼き上がりは本物のスロットで、つまんで取る）。
-    if (this.furnaceState) return NOTHING;
+    // かまど・チェストを開いている間は盤面そのものが出ていない。
+    // （かまどの焼き上がりは本物のスロットで、つまんで取る）
+    if (this.furnaceState || this.chestState) return NOTHING;
     if (all) return this.quickCraft();
     const recipe = findRecipe(this.activeGrid(), this.craftSize);
     if (!recipe) return NOTHING;
@@ -594,7 +634,7 @@ export class CraftScreen {
 
   /** 出来上がりの見本。無ければ null。文字の組み立ては UI 側でやる。 */
   result(): { item: number; count: number; name: string } | null {
-    if (this.furnaceState) return null;
+    if (this.furnaceState || this.chestState) return null;
     const recipe = findRecipe(this.activeGrid(), this.craftSize);
     return recipe ? { item: recipe.out, count: recipe.count, name: recipe.name } : null;
   }
@@ -635,10 +675,15 @@ export class CraftScreen {
     }
   }
 
-  /** 触ったスロット。使えない枠（2x2 のときの外周・かまどを開いていないとき）なら null。 */
+  /**
+   * 触ったスロット。使えない枠（2x2 のときの外周・その器を開いていないとき）なら null。
+   * **開いていない器の枠を返さないこと** —— 画面に出ていないスロットへ
+   * 物を入れられる経路になる。
+   */
   private slotAt(area: SlotArea, index: number): Slot | null {
     if (area === "grid") return this.usable(index) ? this.grid[index] : null;
     if (area === "inv") return this.inventory.slots[index] ?? null;
+    if (area === "chest") return this.chestState?.slots[index] ?? null;
     const furnace = this.furnaceState;
     if (!furnace) return null;
     if (area === "input") return furnace.input;
