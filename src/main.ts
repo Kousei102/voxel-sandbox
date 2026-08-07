@@ -151,6 +151,11 @@ const furnaces = new Furnaces();
  */
 const chests = new Chests();
 let playing = false;
+/**
+ * 一度でもプレイに入ったか。**タイトル画面の見回し（`frame()`）を止める合図**で、
+ * これだけのために持っている（セーブしない。読み込み直しでタイトルに戻るのは正しい）。
+ */
+let everPlayed = false;
 let saveDirty = false;
 let autosaveTimer = 0;
 let hit: RaycastHit | null = null;
@@ -508,6 +513,8 @@ document.getElementById("respawn")?.addEventListener("click", () => {
 
 document.addEventListener("pointerlockchange", () => {
   playing = document.pointerLockElement === canvas;
+  // ここから先はタイトル画面ではない（見回しを二度と始めない）。
+  if (playing) everPlayed = true;
   // インベントリや死亡画面でロックが外れたときは、メインメニューを出さない
   hud.setPlaying(playing, !playing && !screen.isOpen && !vitals.dead);
   if (!playing) {
@@ -874,8 +881,13 @@ function frame(now: number): void {
   if (playing) {
     player.update(dt, world);
   } else {
-    // メニュー中はゆっくり見回して背景にする
-    player.yaw += dt * 0.05;
+    // **最初のタイトル画面だけ**ゆっくり見回して背景にする（ホーム画面に寄せた演出）。
+    // **条件を `!playing` に戻さないこと** —— インベントリ・かまど・チェスト・
+    // Esc メニュー・死亡画面でも回り始め、開くたびに視点がずれていきます
+    // （0.05 rad/s なので、20 秒開けていると 1 ラジアン近く回ります）。
+    if (!everPlayed) player.yaw += dt * 0.05;
+    // 見回しを止めても**カメラ合わせは毎フレーム要ります** —— メニューで
+    // 「この種で作り直す」やリスポーンをすると、プレイヤーの位置だけ動くので。
     player.syncCamera();
   }
   // 水平に動いた距離。**足音（`sfx.ts`）と空腹の消耗（`vitals.ts`）が同じ値を見る。**
