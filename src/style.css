@@ -369,9 +369,11 @@ body {
 }
 
 .slotwrap {
+  --hint-gap: 4px;
+  position: relative;
   display: grid;
   justify-items: center;
-  gap: 4px;
+  gap: var(--hint-gap);
 }
 
 /* かまどの材料と燃料。上下に積んで、右の焼き上がりへ矢印で繋ぐ。 */
@@ -419,6 +421,26 @@ body {
   font-size: 11px;
   color: var(--muted);
   min-height: 14px;
+}
+
+/*
+ * 中身で長さが変わる注記だけは流れから外す。**消さないこと。**
+ * 流れに残すと .slotwrap の幅が文字の長さで変わり、列は中央寄せなので
+ * 2x2 の盤面とかまどのスロットが文字が変わるたび左右に動く。
+ * top はスロットの下端 + 元の gap なので、見える位置はこれまでと同じ。
+ * white-space: nowrap も必須（絶対配置の幅は包む箱 46px まで縮むので、
+ * 外すと 1 文字ずつ縦に折り返す）。
+ *
+ * かまどの「材料」「燃料」はここに足さないこと —— あの 2 つは文字が変わらず、
+ * .furnacecol の縦の間隔をあれが作っている（外すと下のスロットに重なる）。
+ */
+#recipehint,
+#furnacehint {
+  position: absolute;
+  top: calc(100% + var(--hint-gap));
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
 }
 
 #held {

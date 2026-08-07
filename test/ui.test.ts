@@ -34,4 +34,18 @@ export function run(): void {
   for (const panel of ["hud", "menu", "inventory", "death"]) {
     check(`${panel} が存在する`, ids.has(panel));
   }
+
+  // 中身で長さが変わる注記（レシピ名・かまどの進み具合）は、流れから外して浮かせてある。
+  // 流れに残すと .slotwrap の幅が文字の長さで変わり、列は中央寄せなので
+  // **文字が変わるたびに 2x2 の盤面とかまどのスロットが左右に動く**。
+  // 「要らない absolute」として消されると画面を開くまで気付けないので、ここで押さえる。
+  const css = readFileSync("src/style.css", "utf8");
+  const rule = css.match(/#recipehint,\s*#furnacehint\s*\{([^}]*)\}/)?.[1] ?? "";
+  check("中身で変わる注記は流れから外してある", /position:\s*absolute/.test(rule), rule.trim());
+  // 絶対配置の幅は包む箱（スロット 46px）まで縮むので、折り返しを止めないと縦 1 列になる。
+  check("その注記は折り返さない", /white-space:\s*nowrap/.test(rule), rule.trim());
+  // かまどの「材料」「燃料」は文字が変わらず、.furnacecol の縦の間隔をあれが作っている。
+  // .hint そのものを浮かせると、あの 2 つが下のスロットに重なる。
+  const hintRule = css.match(/\n\.hint\s*\{([^}]*)\}/)?.[1] ?? "";
+  check("注記の既定は流れに残してある", !/position:\s*absolute/.test(hintRule), hintRule.trim());
 }

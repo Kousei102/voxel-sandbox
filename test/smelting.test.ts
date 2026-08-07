@@ -408,29 +408,62 @@ export function run(): void {
     const screen = new CraftScreen(new Inventory());
     check("かまどを開いていなければ様子は無い", screen.furnaceStatus() === null);
 
+    // 出た文言は全部ここに溜めて、最後に幅をまとめて見る。
+    const seen: string[] = [];
+    const status = () => {
+      const text = screen.furnaceStatus()?.text ?? "";
+      seen.push(text);
+      return text;
+    };
+
     const state = createFurnace();
     screen.openFurnace(state);
-    check("空なら入れるよう促す", screen.furnaceStatus()?.text === "材料と燃料を入れる");
+    check("空なら入れるよう促す", status() === "材料と燃料を入れる");
 
     state.input.item = COOKED_PORK;
     state.input.count = 1;
-    check("焼けないものだと分かる", screen.furnaceStatus()?.text === "これは焼けません");
+    check("焼けないものだと分かる", status() === "これは焼けません");
 
     state.input.item = IRON_ORE;
-    check("燃料が無いと分かる", screen.furnaceStatus()?.text === "燃料がありません");
+    check("燃料が無いと分かる", status() === "燃料がありません");
 
     state.fuel.item = COAL;
     state.fuel.count = 1;
     tickFurnace(state, 0.05);
     const lit = screen.furnaceStatus();
     console.log(`      点火中の表示: ${lit?.text}`);
-    check("点いたら燃料の残りが出る", lit?.lit === true && lit.text.includes("燃料 あと"));
+    check("点いたら燃料の残りが出る", lit?.lit === true && lit.text.includes("燃料"));
 
     state.output.item = IRON_INGOT;
     state.output.count = MAX_STACK;
     state.burnLeft = 0;
     state.burnTotal = 0;
-    check("満杯だと分かる", screen.furnaceStatus()?.text === "焼き上がりの枠がいっぱいです");
+    check("満杯だと分かる", status() === "焼き上がりが満杯です");
+
+    // 焼き上がりを空けてから燃料を替える（満杯の判定が先に出るので、順番を入れ替えないこと）。
+    state.output.count = 0;
+    state.fuel.item = IRON_INGOT;
+    state.fuel.count = 1;
+    check("燃えない燃料だと分かる", status() === "この燃料は燃えません");
+
+    // 点火中は数字がいちばん伸びた形（焼き 100% / 燃料 300 秒）で測る。
+    state.fuel.item = COAL;
+    state.burnLeft = 300;
+    state.burnTotal = 300;
+    state.cookLeft = 0;
+    status();
+
+    // この文字はスロットの真下に浮かせてあるので（`style.css` の `#furnacehint`）、
+    // 長くすると**左へ伸びて燃料の枠に重なります**。目で見るまで気付けない壊れ方なので、
+    // 幅を数に落として押さえる。上限は CSS から出した値:
+    // 燃料の枠の右端から焼き上がりの枠の中心まで 69px（gap 14 + 矢印 18 + gap 14 + 46/2）、
+    // 中央揃えなので使えるのは左右あわせて 138px。字は 11px なので全角 12.5 文字ぶん。
+    const LIMIT = 12.5;
+    const width = (text: string) =>
+      [...text].reduce((sum, ch) => sum + (ch.charCodeAt(0) < 0x100 ? 0.5 : 1), 0);
+    const widest = seen.reduce((a, b) => (width(a) >= width(b) ? a : b), "");
+    console.log(`      文言 ${seen.length} 通り / いちばん長いのは「${widest}」= 全角 ${width(widest)} 文字ぶん（上限 ${LIMIT}）`);
+    check("どの文言も燃料の枠には届かない", width(widest) <= LIMIT, widest);
   }
 
   {

@@ -148,4 +148,19 @@ export function run(): void {
     duplicated.add(sig);
   }
   check("同じ形のレシピが重複していない", collisions === 0, `${collisions} 件`);
+
+  // レシピ名は出来上がりの枠の**真下に浮かせて**出す（`style.css` の `#recipehint`）。
+  // 長い名前は左へ伸びて盤面のスロットに重なるが、**目で見るまで気付けない**。
+  // 上限は CSS から: 盤面の右端から出来上がりの枠の中心まで 69px
+  // （gap 14 + 矢印 18 + gap 14 + 46/2）、中央揃えなので左右あわせて 138px。
+  // 字は 11px なので全角 12.5 文字ぶん。表示は `${name} x${count}` の形（`inventoryui.ts`）。
+  const HINT_LIMIT = 12.5;
+  const hintWidth = (text: string) =>
+    [...text].reduce((sum, ch) => sum + (ch.charCodeAt(0) < 0x100 ? 0.5 : 1), 0);
+  const longest = RECIPES.map((r) => `${r.name} x${r.count}`).reduce(
+    (a, b) => (hintWidth(a) >= hintWidth(b) ? a : b),
+    "",
+  );
+  console.log(`      いちばん長いレシピ名は「${longest}」= 全角 ${hintWidth(longest)} 文字ぶん（上限 ${HINT_LIMIT}）`);
+  check("レシピ名は盤面のスロットに届かない", hintWidth(longest) <= HINT_LIMIT, longest);
 }

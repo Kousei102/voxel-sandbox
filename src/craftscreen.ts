@@ -615,6 +615,10 @@ export class CraftScreen {
    * かまどの様子。**何を出すかはここで決める** —— UI に「燃料が無い」「焼けない」の
    * 判定を書くと、その分岐だけブラウザを開くまで確かめられなくなる。
    * かまどを開いていなければ null。
+   *
+   * **文言は短いままにすること。** この文字はスロットの真下に浮かせてあり
+   * （`style.css` の `#furnacehint`）、長くすると左へ伸びて燃料の枠に重なります。
+   * 目安は全角 10 文字ぶんまで（`焼き上がり 100% / 燃料 あと 300 秒` で重なりました）。
    */
   furnaceStatus(): { lit: boolean; text: string } | null {
     const furnace = this.furnaceState;
@@ -623,13 +627,13 @@ export class CraftScreen {
 
     if (lit) {
       const cook = Math.round(cookFraction(furnace) * 100);
-      return { lit, text: `焼き上がり ${cook}% / 燃料 あと ${Math.ceil(furnace.burnLeft)} 秒` };
+      return { lit, text: `焼き ${cook}% / 燃料 ${Math.ceil(furnace.burnLeft)} 秒` };
     }
     if (isEmpty(furnace.input)) return { lit, text: "材料と燃料を入れる" };
     if (!isSmeltable(furnace.input.item)) return { lit, text: "これは焼けません" };
-    if (!pendingResult(furnace)) return { lit, text: "焼き上がりの枠がいっぱいです" };
+    if (!pendingResult(furnace)) return { lit, text: "焼き上がりが満杯です" };
     if (isEmpty(furnace.fuel)) return { lit, text: "燃料がありません" };
-    return { lit, text: "この燃料では燃えません" };
+    return { lit, text: "この燃料は燃えません" };
   }
 
   /** 出来上がりの見本。無ければ null。文字の組み立ては UI 側でやる。 */

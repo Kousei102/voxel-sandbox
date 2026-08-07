@@ -254,11 +254,10 @@ export class InventoryScreen {
 
     const result = this.craft.result();
     paintSlot(this.outEl, result);
-    this.recipeHint.textContent = result
-      ? `${result.name} x${result.count}`
-      : this.craft.size === 2
-        ? "2x2 まで。道具は作業台が要ります"
-        : "";
+    // 出来上がるものの名前だけ。**説明文をここに戻さないこと** —— この文字は
+    // スロットの真下に浮かせてあるので（`style.css` の `#recipehint`）、
+    // 長い文は左へ伸びて盤面のスロットに重なります（レシピ名なら重なりません）。
+    this.recipeHint.textContent = result ? `${result.name} x${result.count}` : "";
 
     // 画面を閉じている間は出さない。インベントリが満杯で戻しきれなかったぶんは
     // held に残るので、`held === null` だけを見ているとプレイ中も表示が残る。
