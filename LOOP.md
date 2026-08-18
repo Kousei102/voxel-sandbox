@@ -51,6 +51,10 @@ npm test                       # 始める前に緑であることを確かめ�
       `test/ui.test.ts` が「見張りのないレンダラ」を検出するので、忘れると赤くなる）
 - [ ] **進行テストの項目を達成したなら、`test/progression.test.ts` の
       `ACHIEVED_BASELINE` を上げ、その項目の probe を `仮` から `本物` に差し替えた**
+- [ ] **熱い場所を触ったなら `npm run bench` を 3 回まわして中央値を見た。**
+      対象は `worldgen.ts` の `generateChunk` / `heightAt`、`mesher.ts`、
+      `World.update()` の中。**1 回では当てになりません**（同じコードで
+      `generateChunk` が 0.93〜1.46ms に振れます）。**測った値をコミットメッセージに残すこと**
 - [ ] コミットメッセージは日本語 1 行で「何をしたか」
 
 ## 4. 見た目・音に触れたとき
