@@ -48,4 +48,70 @@ export function run(): void {
   // .hint そのものを浮かせると、あの 2 つが下のスロットに重なる。
   const hintRule = css.match(/\n\.hint\s*\{([^}]*)\}/)?.[1] ?? "";
   check("注記の既定は流れに残してある", !/position:\s*absolute/.test(hintRule), hintRule.trim());
+
+  mainStaysWiring();
+}
+
+/**
+ * `main.ts` を配線のままに保つ。
+ *
+ * **ここだけはテストの効かない場所**（トップレベルで `new WebGLRenderer` を作るので
+ * ヘッドレスで import すらできない）。それでも次元・ポータル・ドラゴンの追加は
+ * 必ずここを通る。だから中身は見られなくても、**大きさと形は数で押さえる。**
+ *
+ * 上限に当たったら「上限を上げる」のではなく、**判断を別ファイルへ出すこと。**
+ * このプロジェクトの背骨（`CLAUDE.md` の「確かめられないものは、確かめられるものから
+ * 切り離す」）がそのまま効いて、出した先はヘッドレスで検証できるようになる。
+ */
+function mainStaysWiring(): void {
+  const raw = readFileSync("src/main.ts", "utf8");
+  const lines = raw.split("\n").length;
+
+  // 現在 1264 行。次元・ポータル・ドラゴンの配線ぶんの余地は残しつつ、
+  // 判断を書き始めたら必ず当たる高さにしてある。
+  const LIMIT = 1500;
+  console.log(`      main.ts ${lines} 行 / 上限 ${LIMIT}`);
+  check(
+    "main.ts が配線の大きさに収まっている",
+    lines <= LIMIT,
+    lines > LIMIT ? "判断を別ファイルへ出すこと（上限を上げないこと）" : "",
+  );
+
+  // 次元ごとの分岐を散らさない。切り替えは `dimensions.ts` の 1 か所に集め、
+  // `main.ts` は「どの次元か」を渡すだけにする。**散らすと、次元を足すたびに
+  // 見落とした分岐が 1 つずつ残る**（かまどの `syncLit` と同じ罠が全機能に掛かる）。
+  // 語は `===` の**どちら側にも**来る（`dim === "nether"` と `NETHER === dim`）ので
+  // 両向きを見る。片側だけにすると、いちばんありそうな書き方をまるごと見逃す。
+  const source = stripComments(raw);
+  const branches = [
+    ...source.matchAll(
+      /\b(?:nether|end|overworld)\b\s*(?:===|!==)|(?:===|!==)\s*["'`]?(?:nether|end|overworld)\b/gi,
+    ),
+  ].length;
+  const BRANCH_LIMIT = 2;
+  check(
+    "main.ts に次元の分岐を散らしていない",
+    branches <= BRANCH_LIMIT,
+    `${branches} 件 / 上限 ${BRANCH_LIMIT}`,
+  );
+
+  // 新しい `*render.ts` には、必ず対のガードを同時に足すこと
+  // （判断が漏れていないかを見張る側。`test/mobs.test.ts` / `test/drops.test.ts` が手本）。
+  const renderers = readdirSync("src").filter((n) => n.endsWith("render.ts"));
+  const guarded = renderers.filter((name) =>
+    readdirSync("test")
+      .filter((t) => t.endsWith(".test.ts"))
+      .some((t) => readFileSync(`test/${t}`, "utf8").includes(`src/${name}`)),
+  );
+  console.log(`      描画側のファイル ${renderers.length} 件 / 見張られている ${guarded.length} 件`);
+  check(
+    "すべての *render.ts に見張りのテストがある",
+    guarded.length === renderers.length,
+    renderers.filter((n) => !guarded.includes(n)).join(" "),
+  );
+}
+
+/** コメントを落としてから語を探す（`test/mobs.test.ts` と同じ作法）。 */
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 }
