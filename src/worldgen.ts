@@ -6,6 +6,7 @@ import {
   DIAMOND_ORE,
   GOLD_ORE,
   IRON_ORE,
+  LAVA,
   LEAVES,
   SPRUCE_LEAVES,
   SPRUCE_WOOD,
@@ -74,6 +75,16 @@ interface OreDef {
   readonly fill: number;
   readonly salt: number;
 }
+
+/**
+ * この高さ以下の洞窟には溶岩が溜まる。**海面（`SEA_LEVEL`）の水とまったく同じ扱い**で、
+ * 「掘り抜いた空間のうち、この高さ以下」を液体で埋める。
+ *
+ * ダイヤ鉱石の上限（`maxY` 14）より少し下にしてあるので、**ダイヤを掘りに行くと
+ * 溶岩に出会う**。これがゲームの進み方（黒曜石 → ネザー）にそのまま繋がる。
+ * 上げすぎると地表近くの洞窟まで溶岩だらけになり、下げすぎると出会えない。
+ */
+export const LAVA_LEVEL = 10;
 
 const ORES: readonly OreDef[] = [
   { id: COAL_ORE, maxY: 62, veinChance: 0.02, fill: 0.75, salt: 0x51ed },
@@ -256,9 +267,11 @@ export class WorldGen {
             data[index] = BEDROCK;
             continue;
           }
-          // 地表から 3 ブロックは残して洞窟を掘る
+          // 地表から 3 ブロックは残して洞窟を掘る。
+          // **掘り抜いた空間の底には溶岩が溜まる** —— 上の海面と同じ形
+          // （`wy <= SEA_LEVEL ? WATER : ...`）で、高さで液体を決めるだけ。
           if (wy < h - 2 && this.isCave(wx, wy, wz)) {
-            data[index] = AIR;
+            data[index] = wy <= LAVA_LEVEL ? LAVA : AIR;
             continue;
           }
 

@@ -6,6 +6,8 @@ import {
   FACE_YP,
   FACE_ZN,
   GLASS,
+  LAVA,
+  LAVA_LIGHT,
   STONE,
   TORCH,
   TORCH_LIGHT,
@@ -19,10 +21,11 @@ import {
 } from "../src/blocks";
 import { AMBIENT_LIGHT, MAX_LIGHT, WORLD_HEIGHT } from "../src/constants";
 import { allItemIds, dropOf, itemName } from "../src/items";
-import { BLOCK_LIGHT, OFFSETS } from "../src/lighting";
+import { BLOCK_LIGHT, OFFSETS, SKY_LIGHT } from "../src/lighting";
 import { PAD_VOLUME, buildChunkMesh, padIndex } from "../src/mesher";
 import { deserializeEdits, serializeEdits } from "../src/storage";
 import { LIGHT_ATTRIBUTE, patchTerrainShader } from "../src/terrainshader";
+import { LAVA_LEVEL } from "../src/worldgen";
 import { World } from "../src/world";
 import { check, describe } from "./harness";
 
@@ -455,4 +458,50 @@ export function run(): void {
     }
   }
   check("深い洞窟はほぼ真っ暗", cave > 100 && caveLit / cave < 0.05, `${cave} マス中 ${caveLit} マスに光`);
+
+  // --- 地形として湧いた光源（溶岩） ---
+  // **松明とは別の経路。** 松明は `setVoxel` → 差分更新（`relightBlockEdit`）を通るが、
+  // 地形の光源は列を作るときの走査（`world.ts` の `EMISSION[id] > 0` を拾うところ）でしか
+  // 光らない。ここが抜けると**溶岩の池が真っ暗な洞窟の底に沈む**という、
+  // ブラウザで潜ってみるまで気付けない壊れ方になる。
+  let lavaFound = 0;
+  let lavaFull = 0;
+  let above = 0;
+  let aboveLit = 0;
+  for (let x = -60; x <= 60; x += 3) {
+    for (let z = -60; z <= 60; z += 3) {
+      for (let y = 2; y <= LAVA_LEVEL; y++) {
+        if (streaming.getVoxel(x, y, z) !== LAVA) continue;
+        lavaFound++;
+        if (streaming.getLight(x, y, z, BLOCK_LIGHT) === LAVA_LIGHT) lavaFull++;
+        // 真上が空いているなら、そこにも光が漏れているはず（広がっている証拠）
+        if (streaming.getVoxel(x, y + 1, z) !== AIR) continue;
+        above++;
+        if (streaming.getLight(x, y + 1, z, BLOCK_LIGHT) > 0) aboveLit++;
+      }
+    }
+  }
+  check("読み込んだ地形に溶岩がある", lavaFound > 0, `${lavaFound} マス`);
+  check(
+    "溶岩そのものが最大の明るさ",
+    lavaFound > 0 && lavaFull === lavaFound,
+    `${lavaFull}/${lavaFound} マス`,
+  );
+  check(
+    "溶岩の上の空きマスにも光が漏れる",
+    above > 0 && aboveLit === above,
+    `${aboveLit}/${above} マス`,
+  );
+  // スカイライトのほうは動かない（溶岩はブロックライトの系統）。
+  // ここが 0 でないと、上の「深い洞窟はほぼ真っ暗」が溶岩のせいで崩れる。
+  let lavaSky = 0;
+  for (let x = -60; x <= 60; x += 3) {
+    for (let z = -60; z <= 60; z += 3) {
+      for (let y = 2; y <= LAVA_LEVEL; y++) {
+        if (streaming.getVoxel(x, y, z) !== LAVA) continue;
+        if (streaming.getLight(x, y, z, SKY_LIGHT) > 0) lavaSky++;
+      }
+    }
+  }
+  check("溶岩はスカイライトを増やさない", lavaSky === 0, `${lavaSky} マス`);
 }

@@ -25,16 +25,18 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { BLOCKS, TIER_DIAMOND } from "../src/blocks";
+import { BLOCKS, LAVA, TIER_DIAMOND } from "../src/blocks";
+import { CHUNK_VOLUME } from "../src/constants";
 import { RECIPES } from "../src/crafting";
 import { check, describe } from "./harness";
 import { NO_ITEM, dropOf, itemName } from "../src/items";
+import { WorldGen } from "../src/worldgen";
 
 /**
  * **達成済みの件数。項目を達成したときだけ 1 つ上げること。**
  * これより減ったら `npm test` が赤くなる（達成の後戻りを退行として捕まえる）。
  */
-const ACHIEVED_BASELINE = 0;
+const ACHIEVED_BASELINE = 1;
 
 type Probe = () => { done: boolean; detail?: string };
 
@@ -72,10 +74,27 @@ function sourceHas(path: string, ...words: string[]): { done: boolean; detail?: 
 const MILESTONES: readonly Milestone[] = [
   {
     name: "溶岩がある（黒曜石とネザーの海の材料）",
-    kind: "仮",
+    kind: "本物",
+    // 深い検証は `test/worldgen.test.ts`（高さの上限・散らばり）と
+    // `test/lighting.test.ts`（生成された溶岩が光るか）にある。
+    // ここは「実際に生成すると出てくるか」だけを 1 回まわして見る。
     probe: () => {
       const lava = block("溶岩");
-      return { done: !!lava, detail: lava ? `ID ${lava.id}` : "ブロックが無い" };
+      if (!lava) return { done: false, detail: "ブロックが無い" };
+      if (lava.solid || !lava.replaceable || lava.emission === 0) {
+        return { done: false, detail: "液体として置かれていない" };
+      }
+      const gen = new WorldGen(12345);
+      const data = new Uint8Array(CHUNK_VOLUME);
+      let found = 0;
+      // 溶岩は y <= LAVA_LEVEL(10) なので、一番下の段（cy=0）だけで足りる。
+      for (let cx = 0; cx < 4 && found === 0; cx++) {
+        for (let cz = 0; cz < 4 && found === 0; cz++) {
+          gen.generateChunk(cx * 3, 0, cz * 3, data);
+          for (const id of data) if (id === LAVA) found++;
+        }
+      }
+      return { done: found > 0, detail: `生成で ${found} マス見つかる` };
     },
   },
   {

@@ -7,6 +7,7 @@ import {
   GOLD_ORE,
   GRASS,
   IRON_ORE,
+  LAVA,
   LEAVES,
   SAND,
   SANDSTONE,
@@ -34,7 +35,7 @@ import {
   resolve,
 } from "../src/biomes";
 import { CHUNK_VOLUME, SEA_LEVEL } from "../src/constants";
-import { WorldGen } from "../src/worldgen";
+import { LAVA_LEVEL, WorldGen } from "../src/worldgen";
 import { check, describe } from "./harness";
 
 /** 名前・ID・出てよい高さの上限（worldgen.ts の ORES と合わせる）。 */
@@ -107,6 +108,52 @@ export function run(): void {
     }
   }
   check("鉱石が決められた高さより上に出ない", aboveLimit === 0, `${aboveLimit} 個`);
+
+  // --- 溶岩 ---
+  // 掘り抜いた空間のうち LAVA_LEVEL 以下を埋めるので、**海面の水とまったく同じ形**。
+  // ここが崩れると「地表に溶岩の池がある」か「深く掘っても一度も出会わない」になり、
+  // どちらも黒曜石 → ネザーの道のりがそのまま壊れる。
+  const lavaCount = mix.get(LAVA) ?? 0;
+  check("溶岩が生成される", lavaCount > 0, `${lavaCount.toLocaleString()} 個`);
+
+  // 高さの上限。**溶岩が地表に出ると、歩いているだけで死ぬ世界になる。**
+  let lavaAbove = 0;
+  let lavaTop = -1;
+  const lavaByLayer = new Map<number, number>();
+  for (let cx = 0; cx < 6; cx++) {
+    for (let cz = 0; cz < 6; cz++) {
+      for (let cy = 0; cy < 8; cy++) {
+        gen.generateChunk(cx * 3, cy, cz * 3, data);
+        for (let i = 0; i < data.length; i++) {
+          if (data[i] !== LAVA) continue;
+          const y = cy * 16 + Math.floor(i / 256);
+          lavaByLayer.set(y, (lavaByLayer.get(y) ?? 0) + 1);
+          if (y > lavaTop) lavaTop = y;
+          if (y > LAVA_LEVEL) lavaAbove++;
+        }
+      }
+    }
+  }
+  check("溶岩が決められた高さより上に出ない", lavaAbove === 0, `一番上 y=${lavaTop} / 上限 ${LAVA_LEVEL}`);
+
+  // 高さごとの散らばりを出しておく（洞窟の形を触ったときに、溜まり方の変化が一目で分かる）。
+  console.log(
+    `      溶岩の高さ別: ` +
+      [...lavaByLayer.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([y, n]) => `y${y}:${n}`)
+        .join(" "),
+  );
+
+  // 岩盤（y=0）は溶岩に化けない。化けると世界の底が抜ける。
+  check("岩盤の段には溶岩が無い", (lavaByLayer.get(0) ?? 0) === 0, `${lavaByLayer.get(0) ?? 0} 個`);
+
+  // **ダイヤを掘りに行くと溶岩に出会う**（LAVA_LEVEL がダイヤの上限より下にある意味）。
+  // ここが 0 だと、溶岩はあるのに誰も見つけられない高さに沈んでいる。
+  const nearDiamond = [...lavaByLayer.entries()]
+    .filter(([y]) => y <= 14)
+    .reduce((sum, [, n]) => sum + n, 0);
+  check("ダイヤの高さ帯に溶岩がある", nearDiamond > 0, `y<=14 に ${nearDiamond.toLocaleString()} 個`);
 
   const heights: number[] = [];
   for (let x = -4000; x < 4000; x += 137) {

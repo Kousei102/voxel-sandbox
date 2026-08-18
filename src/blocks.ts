@@ -99,6 +99,20 @@ export const CHEST = 40;
 export const BED = 41;
 
 /**
+ * 溶岩。**水（`WATER`）とほとんど同じ作り**で、違うのは自分で光ることだけ。
+ *
+ * 半透明レイヤーに置いてある（`translucent: true`）のは、**中に入ったときに
+ * 分かるようにするため。** 不透明にすると、溶岩の中からは裏面カリングで面が消えて
+ * 世界がそのまま見えてしまい、浸かっていることが画面から分からない。
+ *
+ * `replaceable: true` なのも水と同じ。ここにブロックを置けないと、
+ * 溶岩を埋めて渡ることも、黒曜石を作ることもできない。
+ *
+ * **ダメージはここには無い**（`vitals.ts` の仕事）。
+ */
+export const LAVA = 42;
+
+/**
  * ブロック ID の枠は 2 段に分けてある。
  *
  * - **1..63**: 立方体と、**アイテムとして持てる**ブロック（ハーフや階段の「大元」も含む）。
@@ -293,6 +307,12 @@ const UNBREAKABLE = Number.POSITIVE_INFINITY;
 
 /** 松明の明るさ。Minecraft と同じ 14（自分のマスが 14 で、そこから 1 ずつ減る）。 */
 export const TORCH_LIGHT = 14;
+
+/**
+ * 溶岩の明るさ。Minecraft と同じ 15（`MAX_LIGHT` と同じで、これ以上は無い）。
+ * **松明より明るい**ので、溶岩の見える洞窟は松明を持たずに歩ける。
+ */
+export const LAVA_LIGHT = 15;
 
 /** 床置きと壁掛けで共通の見た目と性質。違うのは supportFace と variantOf だけ。 */
 const TORCH_COLORS = { top: 0xffd267, side: 0x6f4d2a, bottom: 0x6f4d2a };
@@ -669,6 +689,25 @@ export const BLOCKS: readonly BlockDef[] = [
     "砂岩の階段",
     { top: 0xd3c193, side: 0xc9b487, bottom: 0xbca877 },
     { hardness: 0.8, tool: "pickaxe", minTier: TIER_WOOD },
+  ),
+
+  // 溶岩。水と同じ半透明の液体で、違うのは自分で光ること（`emission`）だけ。
+  // 光は昼夜に影響されない系統なので、洞窟の底でも夜でも同じ明るさで照らす。
+  def(
+    LAVA,
+    "溶岩",
+    { top: 0xe0601a, side: 0xc24d0f, bottom: 0xa63f0b },
+    {
+      opaque: false,
+      blocksSky: true,
+      translucent: true,
+      solid: false,
+      replaceable: true,
+      sound: "none",
+      alpha: 0.94,
+      hardness: UNBREAKABLE,
+      emission: LAVA_LIGHT,
+    },
   ),
 ];
 
