@@ -1,4 +1,4 @@
-import { DayNight } from "../src/daynight";
+import { DayNight, WAKE_TIME, canSleep, sunElevation } from "../src/daynight";
 import { DAY_LENGTH_SECONDS, NIGHT_BRIGHTNESS } from "../src/constants";
 import { check, describe } from "./harness";
 
@@ -161,4 +161,39 @@ export function run(): void {
     sunrise === "06:00" && noonClock === "12:00" && midnightClock === "00:00",
     `${sunrise} / ${noonClock} / ${midnightClock}`,
   );
+
+  // --- 寝られる時刻（ベッド） ---
+  describe("寝られる時刻");
+
+  // **`sample()` と同じ式を使っていること**を先に固定する。ここがずれると、
+  // 「見た目は夜なのに寝られない」という形でしか気付けなくなる。
+  let sameElevation = true;
+  for (let i = 0; i < STEPS; i++) {
+    const t = i / STEPS;
+    dn.setTime(t);
+    if (Math.abs(sunElevation(t) - dn.elevation) > 1e-12) sameElevation = false;
+  }
+  check("sunElevation() は sample() の高度と一致する", sameElevation);
+
+  check("真夜中は寝られる", canSleep(0.75));
+  check("南中は寝られない", !canSleep(0.25));
+  check("日の出は寝られない", !canSleep(0));
+  check("日没直後は寝られる", canSleep(0.52));
+  check("日の出直前は寝られる", canSleep(0.98));
+  check("負の時刻でも [0,1) に丸めて判定する", canSleep(-0.25) === canSleep(0.75));
+
+  // 寝られる時間の長さ。半日よりわずかに短い（地平線の少し下から数えるため）。
+  let sleepable = 0;
+  for (let i = 0; i < STEPS; i++) if (canSleep(i / STEPS)) sleepable++;
+  check(
+    "寝られるのは 1 日のおよそ半分",
+    sleepable > STEPS * 0.44 && sleepable < STEPS * 0.5,
+    `${((sleepable / STEPS) * 100).toFixed(1)}%（${sleepable} 分）`,
+  );
+
+  // 起きる時刻は日の出。**そこで寝られなくなること**が肝心（でないと連続で寝られる）。
+  check("起きる時刻は日の出", WAKE_TIME === 0);
+  check("起きた瞬間はもう寝られない", !canSleep(WAKE_TIME));
+  dn.setTime(WAKE_TIME);
+  check("起きる時刻は 06:00", dn.clock() === "06:00", dn.clock());
 }

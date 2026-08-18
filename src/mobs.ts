@@ -899,6 +899,25 @@ export class Mobs {
   }
 
   /**
+   * その点から `radius` 以内に敵対モブが居るか（ベッドで寝られるかの材料）。
+   *
+   * **半径は引数で受ける。** どれだけ近ければ寝られないかは寝る側の規則なので、
+   * `beds.ts` の `SLEEP_MONSTER_RADIUS` が持っている。ここは「居るか」を答えるだけ。
+   * 距離は 3 次元で見る（真上のゾンビも数える）。
+   */
+  hostileNear(x: number, y: number, z: number, radius: number): boolean {
+    const r2 = radius * radius;
+    for (const mob of this.list) {
+      if (!MOBS[mob.kind].hostile) continue;
+      const dx = mob.position.x - x;
+      const dy = mob.position.y - y;
+      const dz = mob.position.z - z;
+      if (dx * dx + dy * dy + dz * dz <= r2) return true;
+    }
+    return false;
+  }
+
+  /**
    * 遠くなったモブを消す。数が増え続けないのはここと湧きの上限の 2 つで保つ。
    * 上限を超えているぶんも遠いものから消す。
    */

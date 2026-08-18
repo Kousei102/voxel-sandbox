@@ -27,6 +27,31 @@ const DUSK_TINT = new Color(0xffb888);
 /** 夕焼けを地形に乗せる強さ。空ほど強くすると地面が真っ赤になる。 */
 const DUSK_TINT_STRENGTH = 0.45;
 
+/**
+ * 寝られる太陽の高さ。これより低ければ夜（夕暮れから夜明けまで）。
+ * 0 ぴったりにすると日没・日の出のフレームで判定がばたつくので、少し下げてある。
+ */
+const SLEEP_ELEVATION = -0.05;
+
+/** 寝て起きる時刻。0 = 日の出（Minecraft と同じ）。 */
+export const WAKE_TIME = 0;
+
+/** 太陽の高さ -1..+1。時刻だけで決まるので、`DayNight` を立てずに引ける。 */
+export function sunElevation(t: number): number {
+  return Math.sin(wrap01(t) * Math.PI * 2);
+}
+
+/**
+ * その時刻に寝られるか（= 太陽が地平線より下か）。
+ *
+ * **時刻に関する判断はこのファイルに置くこと**（`CLAUDE.md` の決まり）。
+ * `main.ts` に `time > 0.5` のような式を書くと、`sample()` の夜の定義と
+ * 二重管理になって静かにずれる。
+ */
+export function canSleep(t: number): boolean {
+  return sunElevation(t) < SLEEP_ELEVATION;
+}
+
 function smoothstep(edge0: number, edge1: number, x: number): number {
   const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);

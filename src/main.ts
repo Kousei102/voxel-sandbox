@@ -22,7 +22,10 @@ import {
   baseBlock,
   blockName,
   blockSound,
+  bedPartner,
   faceFromYaw,
+  isBed,
+  isBedHead,
   isReplaceable,
   placeSpot,
   placedVariant,
@@ -39,10 +42,17 @@ import {
   RENDER_DISTANCE,
   columnOf,
 } from "./constants";
+import {
+  Beds,
+  SLEEP_MONSTER_RADIUS,
+  clearBedPartner,
+  placeBed,
+  sleepDecision,
+} from "./beds";
 import { Chests } from "./chests";
 import { CrackOverlay } from "./crack";
 import { CraftScreen } from "./craftscreen";
-import { DayNight } from "./daynight";
+import { DayNight, WAKE_TIME, canSleep } from "./daynight";
 import { Drops, type DropContext } from "./drops";
 import { DropRenderer } from "./droprender";
 import { Furnaces } from "./furnaces";
@@ -150,6 +160,12 @@ const furnaces = new Furnaces();
  * `update(dt)` は持たない（`furnaces.update()` に相当する呼び出しが要らない）。
  */
 const chests = new Chests();
+/**
+ * リスポーン地点。**「位置ごとに状態を持つブロック」ではなく、地点 1 つだけ**を持つ
+ * （ベッドそのものは `edits` に入っている）。かまど・チェストと同じで `world` の外なので、
+ * ワールドを作り直したら明示的に空にすること（`startWorld`）。
+ */
+const beds = new Beds();
 let playing = false;
 /**
  * 一度でもプレイに入ったか。**タイトル画面の見回し（`frame()`）を止める合図**で、
@@ -210,6 +226,10 @@ chests.onChange = () => {
   saveDirty = true;
 };
 
+beds.onChange = () => {
+  saveDirty = true;
+};
+
 drops.onChange = () => {
   hud.refresh();
   saveDirty = true;
@@ -243,6 +263,9 @@ function startWorld(
   // セーブがあれば読み込み側が戻す。
   furnaces.clear();
   chests.clear();
+  // リスポーン地点も消す。**ベッドは `edits` に入っている**ので、別のワールドでは
+  // そのマスにベッドが無い（残すと初期位置に落ちるだけだが、印は消しておく）。
+  beds.clear();
   drops.clear();
   dropRender?.dispose();
   dropRender = new DropRenderer(scene, world.daylightUniform());
@@ -250,6 +273,10 @@ function startWorld(
   // 支えを失って勝手に壊れたぶんを地面へ。**壊した本人が居なくても落ちる**ので、
   // クリエイティブかどうかはここで見る（判断を `world.ts` に持ち込まない）。
   world.onAutoBreak = (x, y, z, id) => {
+    // **ベッドの相方はクリエイティブでも消すこと**（下の early return より前）。
+    // 床を掘られた半分だけが消えると、相方の居ないベッドが残る。
+    // 相方のぶんは落とさない —— 出るベッドは 1 台につき 1 個。
+    clearBedPartner(world, x, y, z, id);
     if (creative) return;
     const drop = dropOf(id);
     if (drop.item === NO_ITEM || drop.count <= 0) return;
@@ -346,10 +373,38 @@ function resetFootprint(): void {
   stepCadence.reset();
 }
 
-/** 初期位置へ戻す。ベッドがまだ無いので、リスポーン地点はワールドの初期位置ひとつだけ。 */
+/**
+ * リスポーン地点へ戻す。**寝たベッドがあればそこ、無ければワールドの初期位置。**
+ *
+ * **列を読み込んでから `spawnPosition()` を呼ぶこと。** 未読み込みの列では
+ * `getVoxel` が AIR を返すので、生きているベッドを「壊されている」と誤読して
+ * 遠くの初期位置に飛ばしてしまう（`syncFurnaceBlocks()` と同じ罠）。
+ *
+ * 使えるかどうかの判断（ベッドがまだあるか・頭上が空いているか）は `beds.ts`。
+ * ここは列を用意して、返ってきた位置を貼るだけ。
+ */
 function moveToSpawn(): void {
+  const bed = beds.spawnPoint;
+  if (bed) {
+    world.primeAround(bed.x, bed.z, 1);
+    const at = beds.spawnPosition(world);
+    if (at) {
+      placeAtSpawn(at.x, at.y, at.z);
+      return;
+    }
+    hud.flash("ベッドが見つかりません。初期位置に戻ります");
+  }
   world.primeAround(SPAWN_X, SPAWN_Z, 1);
-  player.position.set(SPAWN_X, world.surfaceY(Math.floor(SPAWN_X), Math.floor(SPAWN_Z)) + 0.2, SPAWN_Z);
+  placeAtSpawn(
+    SPAWN_X,
+    world.surfaceY(Math.floor(SPAWN_X), Math.floor(SPAWN_Z)) + 0.2,
+    SPAWN_Z,
+  );
+}
+
+/** 位置を飛ばす。**`resetFootprint()` を必ず通す**（飛んだ距離を歩いたことにしない）。 */
+function placeAtSpawn(x: number, y: number, z: number): void {
+  player.position.set(x, y, z);
   player.velocity.set(0, 0, 0);
   player.clearKeys();
   player.syncCamera();
@@ -378,6 +433,7 @@ function currentSave() {
     drops: drops.serialize(),
     furnaces: furnaces.serialize(),
     chests: chests.serialize(),
+    bed: beds.serialize(),
     edits: serializeEdits(world.editsForSave()),
   };
 }
@@ -423,6 +479,7 @@ startWorld(
 drops.deserialize(saved?.drops);
 furnaces.deserialize(saved?.furnaces);
 chests.deserialize(saved?.chests);
+beds.deserialize(saved?.bed);
 
 // --- 入力 ---------------------------------------------------------------
 
@@ -446,6 +503,7 @@ document.getElementById("wipe")?.addEventListener("click", () => {
   drops.clear();
   furnaces.clear();
   chests.clear();
+  beds.clear();
   hud.refresh();
   saveDirty = false;
   hud.flash("保存データを削除しました");
@@ -672,6 +730,12 @@ function useOrPlace(): void {
     return;
   }
 
+  // ベッド。足側でも枕側でも同じ 1 台なので、どちらを叩いても同じ扱い。
+  if (hit && isBed(hit.id)) {
+    sleepOrSetSpawn(hit.block.x, hit.block.y, hit.block.z, hit.id);
+    return;
+  }
+
   // 食べ物。**何がどれだけ戻るかは `items.ts`、食べられるかは `vitals.ts`**。
   // ここは「押しっぱなしが始まった」ことだけを持つ。
   const food = foodOf(inventory.selectedItem);
@@ -709,12 +773,58 @@ function useOrPlace(): void {
       return;
     }
   }
-  if (!world.setVoxel(x, y, z, id)) return;
+
+  // ベッドは 2 マスにまたがるので、書き込みも `beds.ts` に任せる
+  // （**半分だけ置かれた状態を作らない**のが `placeBed()` の役目）。
+  if (isBed(id)) {
+    const partner = bedPartner(id);
+    // 枕側にプレイヤーが立っていたら置かせない（立方体と同じ扱い）
+    if (partner && player.overlapsBlock(x + partner.dx, y, z + partner.dz, partner.id)) return;
+    if (!placeBed(world, spot, id)) {
+      hud.flash("ベッドを置くには 2 マスの床が要ります");
+      return;
+    }
+  } else if (!world.setVoxel(x, y, z, id)) {
+    return;
+  }
   audio.play("place", blockSound(id));
 
   if (!creative) inventory.consumeSelected(1);
   hud.refresh();
   saveDirty = true;
+}
+
+/**
+ * ベッドを右クリックしたとき。**判断は `beds.ts` の `sleepDecision()` と
+ * `daynight.ts` の `canSleep()`** にあるので、ここは事実を集めて結果を貼るだけ。
+ *
+ * リスポーン地点は**どの結果でも記録する**（寝られなかったからといって、
+ * 地点だけ取り損なう理由が無い）。覚えるのは必ず**足側**のマス —— 枕側を覚えると、
+ * 相方を辿らずに「ベッドがまだあるか」を見られなくなる。
+ */
+function sleepOrSetSpawn(x: number, y: number, z: number, id: number): void {
+  // 枕側を叩いたなら、相方（足側）のマスを覚える
+  const partner = isBedHead(id) ? bedPartner(id) : null;
+  const fx = x + (partner?.dx ?? 0);
+  const fz = z + (partner?.dz ?? 0);
+  beds.set(fx, y, fz);
+  saveDirty = true;
+
+  const result = sleepDecision(
+    canSleep(dayNight.time),
+    mobs.hostileNear(x + 0.5, y, z + 0.5, SLEEP_MONSTER_RADIUS),
+  );
+  if (result === "slept") {
+    dayNight.setTime(WAKE_TIME);
+    syncTimeInput();
+    hud.flash("おはようございます");
+    return;
+  }
+  hud.flash(
+    result === "monsters"
+      ? "近くにモンスターがいます。リスポーン地点にしました"
+      : "ここをリスポーン地点にしました",
+  );
 }
 
 /** 掘り切ったときの処理。ドロップはマスの中心に落ちる（拾うのは `drops.ts`）。 */
@@ -738,6 +848,10 @@ function breakBlock(x: number, y: number, z: number, blockId: number, tool: numb
       drops.burst(held.item, held.count, x + 0.5, y + 0.5, z + 0.5);
     }
   }
+
+  // ベッドは 2 マスで 1 台。**どちらを壊しても相方も消す**（クリエイティブでも）。
+  // ドロップは下の 1 本の経路だけを通るので、**出るベッドは 1 個**。
+  clearBedPartner(world, x, y, z, blockId);
 
   if (creative) return;
   // 掘ると腹が減る。**どれだけ減るかは `vitals.ts`**（ここは種類を渡すだけ）。

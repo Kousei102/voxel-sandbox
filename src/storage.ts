@@ -50,6 +50,14 @@ export interface SaveData {
    * **かまどとまったく同じ形**（「位置ごとに状態を持つブロック」を足すときはここに並べる）。
    */
   chests?: Record<string, number[]>;
+  /**
+   * リスポーン地点にしたベッドの**足側**のマス `[x, y, z]`。無ければ省略。
+   *
+   * **ベッドそのものは `edits` に入っている**ので、ここが持つのは「どこで寝たか」だけ。
+   * 戻るときにそのマスにまだベッドがあるかを確かめるので、壊されていても矛盾しない
+   * （`beds.ts` の `spawnPosition()`）。
+   */
+  bed?: number[];
   /** チャンクキー -> [localIndex, blockId, ...] の平坦な配列。 */
   edits: Record<string, number[]>;
 }

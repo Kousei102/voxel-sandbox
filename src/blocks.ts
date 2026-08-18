@@ -86,6 +86,19 @@ export const FURNACE_LIT = 39;
 export const CHEST = 40;
 
 /**
+ * ベッド。**1 個のブロックが 2 マスにまたがる初めての例**で、
+ * 足側（赤い布）と枕側（白）の 2 ブロックで 1 台になる。
+ *
+ * 分けてあるのは `BlockDef` が面ごとに 3 色（上面・側面・下面）しか持てないからで、
+ * **枕を白くできるのは 2 マスに分けたときだけ。** 状態の詰め方は階段とまったく同じで、
+ * 大元（足側・+X 向き）だけが 1..63 に居て、残り 7 つは 64 以降。
+ *
+ * 2 マスが必ず揃っていることを保つのは `beds.ts`（置く・壊す・支えを失う の 3 経路）。
+ * ここが持つのは**相方がどこに・どの ID で居るべきか**という形の話だけ。
+ */
+export const BED = 41;
+
+/**
  * ブロック ID の枠は 2 段に分けてある。
  *
  * - **1..63**: 立方体と、**アイテムとして持てる**ブロック（ハーフや階段の「大元」も含む）。
@@ -118,6 +131,13 @@ export const SANDSTONE_SLAB_TOP = 67;
  */
 const FIRST_STAIR_VARIANT = 68;
 const STAIR_VARIANTS_PER_MATERIAL = 7;
+
+/**
+ * ベッドの向き違い。**足側 4 向き + 枕側 4 向きで 8 通り**あり、大元（足側・+X）だけが
+ * 1..63 に居るので、ここから 7 個を連番で取る。個別に名前は付けない
+ * （引くのは `placedVariant()` と `bedPartner()`）。
+ */
+const FIRST_BED_VARIANT = 96;
 
 /** 採掘に向いた道具の種類。 */
 export type ToolKind = "pickaxe" | "axe" | "shovel";
@@ -196,6 +216,13 @@ export const CACTUS_BOX: BoxList = [[0.0625, 0, 0.0625, 0.9375, 1, 0.9375]];
  * 見た目の大きさもここで決まる（狙う判定・選択枠と同じ形になる）。
  */
 export const CROSS_BOX: BoxList = [[0.1, 0, 0.1, 0.9, 0.8, 0.9]];
+/**
+ * ベッドの高さ。本家と同じ 9/16。**`PLAYER_SIZE.step`（0.6）より低いこと** ——
+ * 超えると歩いて乗れなくなり、寝床の縁で跳ばされる。
+ * リスポーン位置（ベッドの上に立たせる）でも使うので export してある。
+ */
+export const BED_HEIGHT = 0.5625;
+export const BED_BOX: BoxList = [[0, 0, 0, 1, BED_HEIGHT, 1]];
 
 /** 道具の階層。0 = 素手、1 = 木、2 = 石、3 = 鉄、4 = ダイヤ。 */
 export const TIER_HAND = 0;
@@ -332,13 +359,25 @@ function slabPair(
 }
 
 /**
- * 階段の向き。**水平の 4 面だけ**をこの順に 0..3 へ詰める。
- * 状態の番号は `向き * 2 + (上下反転 ? 1 : 0)` で、**0 が大元**（+X 向き・下付き）。
+ * 置く向きになれる**水平の 4 面だけ**をこの順に 0..3 へ詰めたもの。
+ * **階段とベッドで共有する**（同じ表を 2 か所に書くと、片方だけ並べ替えたときに
+ * 「階段は合っているのにベッドだけ向きが逆」という形で静かに壊れる）。
+ *
+ * 状態の番号はどちらも `向きの添字 * 2 + (もう 1 ビット)` で、**0 が大元**。
+ * もう 1 ビットの意味は階段が「上下反転」、ベッドが「枕側」。
  */
-const STAIR_FACINGS: readonly number[] = [FACE_XP, FACE_XN, FACE_ZP, FACE_ZN];
-const STAIR_STATES = STAIR_FACINGS.length * 2;
-/** 面番号 -> 上の並びでの添字。上下の面は階段の向きにならないので -1。 */
-const STAIR_FACING_INDEX = new Int8Array([0, 1, -1, -1, 2, 3]);
+const HORIZONTAL_FACINGS: readonly number[] = [FACE_XP, FACE_XN, FACE_ZP, FACE_ZN];
+/** 面番号 -> 上の並びでの添字。上下の面は置く向きにならないので -1。 */
+const HORIZONTAL_FACING_INDEX = new Int8Array([0, 1, -1, -1, 2, 3]);
+/** 水平の向きから、その向きへ 1 マス進むずれ。添字は上の並びと同じ。 */
+const HORIZONTAL_STEP: readonly (readonly number[])[] = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+];
+
+const STAIR_STATES = HORIZONTAL_FACINGS.length * 2;
 /** `[大元の ID * 8 + 状態]` -> 実際に置くブロック。0 なら階段の大元ではない。 */
 const STAIRS_BY_STATE = new Uint8Array(ID_LIMIT * STAIR_STATES);
 
@@ -378,8 +417,59 @@ function stairSet(
         opaque: false,
         blocksSky: true,
         model: "boxes",
-        boxes: stairBoxes(STAIR_FACINGS[state >> 1], (state & 1) === 1),
+        boxes: stairBoxes(HORIZONTAL_FACINGS[state >> 1], (state & 1) === 1),
         variantOf: state === 0 ? AIR : base,
+      }),
+    );
+  }
+  return defs;
+}
+
+/**
+ * ベッドの状態の数（足側 4 向き + 枕側 4 向き）。
+ * 状態の番号は `向きの添字 * 2 + (枕側 ? 1 : 0)` で、**0 が大元**（足側・+X 向き）。
+ */
+const BED_STATES = HORIZONTAL_FACINGS.length * 2;
+/** `[状態]` -> 実際のブロック ID。大元が 1 個で、残り 7 個は 64 以降。 */
+const BEDS_BY_STATE = new Uint8Array(BED_STATES);
+/** ブロック ID -> ベッドの状態。ベッドでなければ -1。 */
+const BED_STATE_OF = new Int8Array(ID_LIMIT).fill(-1);
+
+/**
+ * ベッド 1 台ぶん（8 個）の定義。**足側と枕側で色だけが違う。**
+ *
+ * 枕側は全部 `variantOf: BED` なので、アイテム・ドロップ・名前は「ベッド」1 つに揃う
+ * （壁掛け松明・点火中のかまどとまったく同じ仕掛け）。
+ *
+ * `supportFace: FACE_YN` にしてあるので、**床が要ることと、床が消えたら壊れることは
+ * `world.canPlaceAt` / `breakUnsupported` がそのまま面倒を見る。** 2 マスが揃っている
+ * ことだけを `beds.ts` が保つ。
+ */
+function bedSet(
+  foot: { top: number; side?: number; bottom?: number },
+  head: { top: number; side?: number; bottom?: number },
+): BlockDef[] {
+  const shared = {
+    hardness: 0.2,
+    // 柔らかいので "wool"。書き忘れると石の音がする
+    sound: "wool" as const,
+    // 立方体でないので opaque は false。**屋根材ではないので blocksSky は既定の false**
+    // （止めても見えるところは変わらず、崖の縁で下のマスが暗くなるだけ損をする）
+    opaque: false,
+    solid: true,
+    model: "boxes" as const,
+    boxes: BED_BOX,
+    supportFace: FACE_YN,
+  };
+  const defs: BlockDef[] = [];
+  for (let state = 0; state < BED_STATES; state++) {
+    const id = state === 0 ? BED : FIRST_BED_VARIANT + state - 1;
+    BEDS_BY_STATE[state] = id;
+    BED_STATE_OF[id] = state;
+    defs.push(
+      def(id, "ベッド", (state & 1) === 1 ? head : foot, {
+        ...shared,
+        variantOf: state === 0 ? AIR : BED,
       }),
     );
   }
@@ -521,6 +611,13 @@ export const BLOCKS: readonly BlockDef[] = [
     tool: "axe",
     sound: "wood",
   }),
+
+  // ベッド。足側は赤い布に木の縁、枕側は白。**上面の色で足と枕を見分ける**ので、
+  // 側面もそれぞれに寄せてある（上から見ても横から見ても向きが分かる）。
+  ...bedSet(
+    { top: 0xa8322c, side: 0x8c2a25, bottom: 0x8a6a3f },
+    { top: 0xecebe4, side: 0xd8d5cb, bottom: 0x8a6a3f },
+  ),
 
   // ハーフブロック。硬さと道具は元の材質に合わせる。
   ...slabPair(STONE_SLAB, STONE_SLAB_TOP, "石ハーフ", { top: 0x8a8f96 }, {
@@ -900,16 +997,50 @@ export function placeSpot(aim: PlaceAim, facing: number): PlaceSpot {
  */
 export function placedVariant(base: number, ctx: PlaceContext): number {
   if (base === TORCH) return torchVariant(ctx.support);
+  // ベッドは置く人が向いている先が枕になるので、**クリックしたマスは必ず足側**。
+  // 上下の反転は無いので `placedUpper()` は通さない。
+  if (base === BED) {
+    const index = HORIZONTAL_FACING_INDEX[ctx.facing];
+    return BEDS_BY_STATE[(index < 0 ? 0 : index) * 2];
+  }
   const upper = SLAB_TOP_BY_BOTTOM[base];
   if (upper !== AIR) return placedUpper(ctx) ? upper : base;
   // 状態 0 には大元自身が入っているので、これで「階段の大元か」が分かる
   if (STAIRS_BY_STATE[base * STAIR_STATES] === base) {
-    const index = STAIR_FACING_INDEX[ctx.facing];
+    const index = HORIZONTAL_FACING_INDEX[ctx.facing];
     // 置く人が向いている側が高くなる（歩いてきてそのまま登れる向き）
     const state = (index < 0 ? 0 : index) * 2 + (placedUpper(ctx) ? 1 : 0);
     return STAIRS_BY_STATE[base * STAIR_STATES + state];
   }
   return base;
+}
+
+/** ベッドの半分（足側でも枕側でも）か。 */
+export function isBed(id: number): boolean {
+  return BED_STATE_OF[id] >= 0;
+}
+
+/** ベッドの枕側か。足側と AIR は false。 */
+export function isBedHead(id: number): boolean {
+  const state = BED_STATE_OF[id];
+  return state >= 0 && (state & 1) === 1;
+}
+
+/**
+ * ベッドのもう半分が**どこに・どの ID で**居るべきか。ベッドでなければ null。
+ *
+ * 足側なら向いている先に枕、枕側ならその逆に足。**不変条件は「相方の相方は自分」**
+ * （テストで固定してある）。2 マスを揃えて置く・壊すのは `beds.ts` の仕事で、
+ * ここが持つのは形の話だけ。
+ */
+export function bedPartner(id: number): { dx: number; dz: number; id: number } | null {
+  const state = BED_STATE_OF[id];
+  if (state < 0) return null;
+  const head = (state & 1) === 1;
+  const [sx, sz] = HORIZONTAL_STEP[state >> 1];
+  // 足側から見て向いている先が枕。枕側から見れば逆向きに足がある。
+  const sign = head ? -1 : 1;
+  return { dx: sx * sign, dz: sz * sign, id: BEDS_BY_STATE[state ^ 1] };
 }
 
 export function isTranslucent(id: number): boolean {

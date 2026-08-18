@@ -1,4 +1,5 @@
 import {
+  BED,
   CHEST,
   COBBLE,
   COBBLE_SLAB,
@@ -17,6 +18,7 @@ import {
   STONE_STAIRS,
   TORCH,
   WOOD,
+  WOOL,
 } from "./blocks";
 import { isEmpty, type Slot } from "./inventory";
 import {
@@ -77,6 +79,10 @@ export const RECIPES: readonly Recipe[] = [
 
   // チェストは板 8 個の輪（Minecraft と同じ）。かまどと同じ形で、材料だけが違う。
   { name: "チェスト", out: CHEST, count: 1, shape: ["PPP", "P.P", "PPP"], key: { P: PLANK } },
+
+  // ベッドは羊毛 3 + 板 3（Minecraft と同じ）。**羊毛は羊を倒すしか手が無い**ので、
+  // 「羊を 3 匹ぶん探す」がそのままリスポーン地点への道のりになる。
+  { name: "ベッド", out: BED, count: 1, shape: ["WWW", "PPP"], key: { W: WOOL, P: PLANK } },
 
   // ハーフブロックは横 3 列から 6 個（Minecraft と同じ）。3 列なので作業台が要る。
   slabRecipe("石", STONE, STONE_SLAB),

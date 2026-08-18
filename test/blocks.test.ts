@@ -1,6 +1,7 @@
 import { PerspectiveCamera, Scene, Vector3 } from "three";
 import {
   AIR,
+  BED,
   BLOCKS,
   CACTUS,
   COBBLE_SLAB,
@@ -131,6 +132,10 @@ export function run(): void {
   check("ハーフの側面は半分しかないので支えにならない", !canSupport(STONE_SLAB, FACE_XP));
   check("松明は何も支えられない", [0, 1, 2, 3, 4, 5].every((f) => !canSupport(TORCH, f)));
   check("サボテンは細いので支えにならない", !canSupport(CACTUS, FACE_YP));
+  // ベッドは 9/16 しか高さが無いので、上に松明が付かない（下付きハーフと同じ理由）。
+  // ベッドの下面は床いっぱいなので、そちらは支えになる。
+  check("ベッドの上面は支えにならない", !canSupport(BED, FACE_YP));
+  check("ベッドの下面は支えになる", canSupport(BED, FACE_YN));
 
   describe("置き方で決まる向き");
 

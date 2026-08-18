@@ -1,3 +1,4 @@
+import { run as beds } from "./beds.test";
 import { run as blocks } from "./blocks.test";
 import { run as chests } from "./chests.test";
 import { run as crafting } from "./crafting.test";
@@ -34,6 +35,7 @@ mobs();
 drops();
 smelting();
 chests();
+beds();
 sfx();
 ui();
 summary();

@@ -963,4 +963,30 @@ export function run(): void {
 
   crowd.clear();
   check("clear で全部消える", crowd.count === 0);
+
+  describe("近くのモンスター（ベッドで寝られるか）");
+
+  {
+    const near = new Mobs();
+    // **先に「そこに居るのに false」でないこと**を確かめる。数えていないだけで
+    // 通ってしまう形の偽陽性を避ける（`CLAUDE.md` の「テストの書き方」）。
+    near.spawn("zombie", 3, 10, 0, 0, seeded(7));
+    check("敵対モブが半径の内に居れば true", near.hostileNear(0, 10, 0, 8));
+    check("半径の外なら false", !near.hostileNear(0, 10, 0, 2));
+    check("半径ぴったりは内側に数える", near.hostileNear(0, 10, 0, 3));
+
+    // 受動モブは数えない（羊に囲まれて寝られないのはおかしい）
+    const passive = new Mobs();
+    passive.spawn("sheep", 1, 10, 0, 0, seeded(8));
+    passive.spawn("pig", 0, 10, 1, 0, seeded(9));
+    check("受動モブは数えない", !passive.hostileNear(0, 10, 0, 8), `${passive.count} 体居る`);
+
+    // 距離は 3 次元で見る（真上の穴に居るゾンビも数える）
+    const above = new Mobs();
+    above.spawn("zombie", 0, 15, 0, 0, seeded(10));
+    check("真上のゾンビも数える", above.hostileNear(0, 10, 0, 8));
+    check("縦に離れていれば数えない", !above.hostileNear(0, 10, 0, 4));
+
+    check("1 体も居なければ false", !new Mobs().hostileNear(0, 10, 0, 8));
+  }
 }
