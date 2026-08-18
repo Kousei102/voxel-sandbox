@@ -1,6 +1,5 @@
 import {
   BoxGeometry,
-  Color,
   EdgesGeometry,
   Fog,
   LineBasicMaterial,
@@ -26,7 +25,9 @@ import {
   faceFromYaw,
   isBed,
   isBedHead,
+  isLiquid,
   isReplaceable,
+  liquidFog,
   placeSpot,
   placedVariant,
   shapeBounds,
@@ -73,7 +74,6 @@ import { World } from "./world";
 import { hashSeed } from "./noise";
 
 const FOG_COLOR = 0x9ec8e8;
-const WATER_FOG = 0x1b4f8c;
 /** 新しいワールドを始める時刻（朝）。 */
 const NEW_WORLD_TIME = 0.05;
 const SPAWN_X = 0.5;
@@ -95,7 +95,6 @@ const camera = new PerspectiveCamera(75, window.innerWidth / window.innerHeight,
 const sky = new Sky(FOG_COLOR);
 scene.add(sky.object);
 const dayNight = new DayNight();
-const waterColor = new Color(WATER_FOG);
 
 const highlight = new LineSegments(
   new EdgesGeometry(new BoxGeometry(1.002, 1.002, 1.002)),
@@ -768,7 +767,7 @@ function useOrPlace(): void {
 
   if (player.overlapsBlock(x, y, z, id)) return;
   if (supportFace(base) !== NO_SUPPORT) {
-    if (id === AIR || target === WATER || !world.canPlaceAt(x, y, z, id)) {
+    if (id === AIR || isLiquid(target) || !world.canPlaceAt(x, y, z, id)) {
       hud.flash(`${blockName(base)} は床か壁にしか付けられません`);
       return;
     }
@@ -1238,25 +1237,31 @@ function updateSounds(moved: number): void {
  * フォグの色は地平線と揃えておかないと、チャンクの出現が見えてしまう。
  */
 function updateEnvironment(): void {
-  underwater =
-    world.getVoxel(
-      Math.floor(camera.position.x),
-      Math.floor(camera.position.y),
-      Math.floor(camera.position.z),
-    ) === WATER;
+  const head = world.getVoxel(
+    Math.floor(camera.position.x),
+    Math.floor(camera.position.y),
+    Math.floor(camera.position.z),
+  );
+  // **息と音のこもりは水だけ。** 液体すべてに広げると、溶岩の中で溺れ始める。
+  underwater = head === WATER;
 
-  if (underwater) {
-    // 水中でも夜は暗くなるように、水の色に明るさを掛ける
-    fog.color.copy(waterColor).multiplyScalar(dayNight.brightness);
-    fog.near = 0.1;
-    fog.far = 22;
+  // フォグは液体すべてに掛ける。**どの色でどれだけ濃いかは `blocks.ts` の `fog`**
+  // （ここは引いて貼るだけ。数値を持つと main.ts が判断を持ち始める）。
+  const liquid = liquidFog(head);
+  if (liquid) {
+    fog.color.setHex(liquid.color);
+    // 水は夜に暗くなるが、溶岩は自分で光るので掛けない
+    if (liquid.daylit) fog.color.multiplyScalar(dayNight.brightness);
+    fog.near = liquid.near;
+    fog.far = liquid.far;
   } else {
     fog.color.copy(dayNight.horizon);
     fog.near = RENDER_DISTANCE * CHUNK_SIZE * 0.55;
     fog.far = RENDER_DISTANCE * CHUNK_SIZE * 0.98;
   }
 
-  sky.setUnderwater(underwater, fog.color);
+  // 天球も液体の色で塗りつぶす（水面から上を見上げたときと同じ扱い）
+  sky.setUnderwater(liquid !== null, fog.color);
   sky.update(dayNight);
   world.setDaylight(dayNight.tint);
 }

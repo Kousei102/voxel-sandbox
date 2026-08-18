@@ -1,5 +1,5 @@
 import { Vector3 } from "three";
-import { AIR, FULL_BOX, WATER, shapeBoxes } from "./blocks";
+import { AIR, FULL_BOX, isLiquid, shapeBoxes } from "./blocks";
 import type { World } from "./world";
 
 export interface RaycastHit {
@@ -79,7 +79,9 @@ export function raycastVoxels(
 
   for (let i = 0; i < 512; i++) {
     const id = world.getVoxel(x, y, z);
-    if (id !== AIR && id !== WATER) {
+    // 液体は素通りする。**`id !== WATER` と書かないこと** —— 溶岩を足したときに
+    // ここだけ直し忘れて、溶岩湖の向こうを狙うと手前の溶岩が置き場になった。
+    if (id !== AIR && !isLiquid(id)) {
       const boxes = shapeBoxes(id);
       if (boxes === FULL_BOX) {
         // 立方体はセルの境界がそのまま面なので、改めて交差を見る必要はない

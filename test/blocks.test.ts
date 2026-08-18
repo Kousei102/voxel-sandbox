@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { PerspectiveCamera, Scene, Vector3 } from "three";
 import {
   AIR,
@@ -12,6 +13,7 @@ import {
   FACE_ZN,
   FACE_ZP,
   GRASS,
+  LAVA,
   MAX_BLOCK_ID,
   MAX_VARIANT_ID,
   PLANK_SLAB,
@@ -25,12 +27,15 @@ import {
   TALL_GRASS,
   TORCH,
   WALL_TORCH_ZN,
+  WATER,
   baseBlock,
   blockName,
   canSupport,
   collisionBoxes,
   isProp,
+  isLiquid,
   isReplaceable,
+  liquidFog,
   placeSpot,
   placedVariant,
   shapeBoxes,
@@ -531,6 +536,67 @@ export function run(): void {
     above === null || above.id !== TALL_GRASS,
     above ? `${blockName(above.id)} @ ${above.block.x},${above.block.y},${above.block.z}` : "外れ",
   );
+
+  describe("液体（水・溶岩）");
+
+  // **液体は 1 つの判定に寄せてある。** `id === WATER` を散らすと、液体を足したときに
+  // 必ずどれかを忘れる（実際、溶岩を足したときに狙う判定・設置・フォグの 3 つとも
+  // 忘れていて、溶岩湖の向こうを狙うと手前の溶岩が置き場になっていた）。
+  // 狙う判定に液体の名前を書き戻さないための見張り。ここに `id !== WATER` が
+  // 戻ると、次の液体（ネザーの溶岩海も同じ ID）でまた同じ壊れ方をする。
+  const raySource = readFileSync("src/raycast.ts", "utf8");
+  check(
+    "raycast.ts は個別の液体を名指ししない",
+    !/\bWATER\b|\bLAVA\b/.test(raySource.replace(/\/\/.*$/gm, "")),
+    "液体かどうかは isLiquid() に聞くこと",
+  );
+
+  const liquids = BLOCKS.filter((b) => b.liquid).map((b) => b.name);
+  check("液体は水と溶岩の 2 つ", liquids.length === 2, liquids.join(" / "));
+  check("水が液体", isLiquid(WATER));
+  check("溶岩が液体", isLiquid(LAVA));
+  check("石は液体でない", !isLiquid(STONE) && !isLiquid(TALL_GRASS) && !isLiquid(AIR));
+
+  // 液体は必ずフォグを持つ（持たないと、頭まで浸かっても画面が変わらない）。
+  const noFog = BLOCKS.filter((b) => b.liquid && !b.fog).map((b) => b.name);
+  check("液体はフォグを持つ", noFog.length === 0, noFog.join(" "));
+  check("液体でないものはフォグを持たない", BLOCKS.every((b) => b.liquid || !b.fog));
+
+  const waterFog = liquidFog(WATER)!;
+  const lavaFog = liquidFog(LAVA)!;
+  check("溶岩のフォグは水よりずっと濃い", lavaFog.far < waterFog.far / 5, `${lavaFog.far} < ${waterFog.far}`);
+  // 溶岩は自分で光っているので、夜に暗くならない。掛けると真っ黒になる。
+  check("水は昼夜で暗くなる / 溶岩は暗くならない", waterFog.daylit && !lavaFog.daylit);
+
+  // --- 狙う光線は液体を素通りする ---
+  // ここが効いていないと、溶岩湖に向けてブロックを置いたときに
+  // **底の石の上ではなく、手前の溶岩そのもの**がそのブロックになる。
+  for (const [name, id] of [["水", WATER], ["溶岩", LAVA]] as const) {
+    const lx = 6;
+    world.setVoxel(lx, ground, 1, id);
+    world.setVoxel(lx + 1, ground, 1, STONE);
+    const shot = raycastVoxels(
+      world,
+      new Vector3(lx - 1, ground + 0.5, 1.5),
+      new Vector3(1, 0, 0),
+      8,
+    );
+    check(
+      `${name}を通る光線は素通りして、奥の石に当たる`,
+      shot !== null && shot.id === STONE && shot.block.x === lx + 1,
+      shot ? `${blockName(shot.id)} @ x=${shot.block.x}` : "外れ",
+    );
+    // 当たった面の隣（= 置くマス）が液体のマスそのもの。液体は replaceable なので
+    // **埋め立てはできる** —— 素通りさせても「液体にブロックを置けない」にはならない。
+    const spot = shot ? placeSpot(shot, FACE_XP) : null;
+    check(
+      `${name}のマスが置き場になる（埋め立てはできる）`,
+      spot !== null && spot.x === lx && isReplaceable(world.getVoxel(spot.x, spot.y, spot.z)),
+      spot ? `x=${spot.x}` : "外れ",
+    );
+    world.setVoxel(lx, ground, 1, AIR);
+    world.setVoxel(lx + 1, ground, 1, AIR);
+  }
 
   world.dispose();
 }

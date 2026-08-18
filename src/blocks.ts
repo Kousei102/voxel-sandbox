@@ -280,6 +280,20 @@ export interface BlockDef {
   readonly minTier: number;
   /** 自分で出す光の量 0..15。0 なら光らない。スカイライトとは別の系統。 */
   readonly emission: number;
+  /**
+   * 液体（水・溶岩）。**この 1 つで 3 か所の振る舞いが決まる。**
+   *
+   * - 狙う光線が素通りする（`raycast.ts`）—— だから溶岩湖の向こうを狙うと
+   *   **底の石の上に置かれる**。素通りしないと、手前の溶岩そのものが置き場になる
+   * - 支えが要るブロック（松明）を差し込めない（`main.ts`）
+   * - 頭が浸かるとフォグが掛かる（下の `fog`）
+   *
+   * **`id === WATER` と書かないこと。** 3 か所に散らすと、液体を足したときに
+   * 必ずどれか 1 つを忘れる（実際、溶岩を足したときに 3 つとも忘れていた）。
+   */
+  readonly liquid: boolean;
+  /** 頭が浸かったときのフォグ。液体だけが持つ。 */
+  readonly fog: LiquidFog | null;
   /** 足音・破壊・設置の音の材質。既定は "stone"。 */
   readonly sound: SoundGroup;
   readonly model: BlockModel;
@@ -300,6 +314,21 @@ export interface BlockDef {
    * アイテム欄が増えない。
    */
   readonly variantOf: number;
+}
+
+/**
+ * 液体に頭まで浸かったときのフォグ。**数値をここに置くのは、`main.ts` を配線のままに
+ * 保つため**（`main.ts` は「頭がどのブロックの中か」を引いて、この値を貼るだけ）。
+ */
+export interface LiquidFog {
+  readonly color: number;
+  readonly near: number;
+  readonly far: number;
+  /**
+   * 昼夜の明るさを掛けるか。**水は掛ける**（夜の水中は暗い）が、
+   * **溶岩は掛けない** —— 自分で光っているので、夜に暗くなるとおかしい。
+   */
+  readonly daylit: boolean;
 }
 
 /** 壊せないブロックの硬さ。 */
@@ -348,6 +377,8 @@ function def(
     hardness: opts.hardness ?? 0,
     tool: opts.tool ?? null,
     minTier: opts.minTier ?? TIER_HAND,
+    liquid: opts.liquid ?? false,
+    fog: opts.fog ?? null,
     emission: opts.emission ?? 0,
     sound: opts.sound ?? "stone",
     model: opts.model ?? "cube",
@@ -517,6 +548,9 @@ export const BLOCKS: readonly BlockDef[] = [
       sound: "none",
       alpha: 0.72,
       hardness: UNBREAKABLE,
+      liquid: true,
+      // 22 マス先まで見える。夜は暗くなる（daylit）。
+      fog: { color: 0x1b4f8c, near: 0.1, far: 22, daylit: true },
     },
   ),
   def(WOOD, "原木", { top: 0x8a6a3f, side: 0x5f4526 }, { hardness: 2, tool: "axe", sound: "wood" }),
@@ -707,6 +741,10 @@ export const BLOCKS: readonly BlockDef[] = [
       alpha: 0.94,
       hardness: UNBREAKABLE,
       emission: LAVA_LIGHT,
+      liquid: true,
+      // **水よりずっと濃く、昼夜で暗くならない。** 溶岩に浸かったことが
+      // 画面から分からないと、ダメージだけ食らって理由が分からない。
+      fog: { color: 0xd4551a, near: 0.05, far: 2.2, daylit: false },
     },
   ),
 ];
@@ -775,6 +813,8 @@ const PROP = new Uint8Array(ID_LIMIT);
 const SUPPORT_FACE = new Int8Array(ID_LIMIT);
 /** 1 = ここに置くと上書きされる（空気・水・草むら）。 */
 const REPLACEABLE = new Uint8Array(ID_LIMIT);
+/** 1 = 液体。狙う光線が 1 ボクセルごとに引くので表にしておく。 */
+const LIQUID = new Uint8Array(ID_LIMIT);
 const VARIANT_OF = new Uint8Array(ID_LIMIT);
 /** ID から定義を引く表。ID が飛び飛びなので、BLOCKS の並びとは別に持つ。 */
 const BY_ID: BlockDef[] = [];
@@ -787,6 +827,7 @@ for (const block of BLOCKS) {
   PROP[block.id] = block.model === "cube" ? 0 : 1;
   SUPPORT_FACE[block.id] = block.supportFace;
   REPLACEABLE[block.id] = block.replaceable ? 1 : 0;
+  LIQUID[block.id] = block.liquid ? 1 : 0;
   VARIANT_OF[block.id] = block.variantOf;
 }
 // 定義の無い ID を引くと undefined が伝播して原因が遠くに出るので、ここで落とす
@@ -891,6 +932,22 @@ export function isProp(id: number): boolean {
  */
 export function isReplaceable(id: number): boolean {
   return REPLACEABLE[id] === 1;
+}
+
+/**
+ * 液体か（水・溶岩）。**狙う側（`raycast.ts`）と置く側（`main.ts`）と
+ * フォグ（`main.ts`）が同じこれを見ること。**
+ *
+ * 素通りさせるのが肝心で、これが効いていないと**液体の向こうを狙ったときに
+ * 手前の液体そのものが置き場になる**（底の地面の上に置かれない）。
+ */
+export function isLiquid(id: number): boolean {
+  return LIQUID[id] === 1;
+}
+
+/** 頭がそのブロックの中にあるときのフォグ。液体でなければ null。 */
+export function liquidFog(id: number): LiquidFog | null {
+  return blockDef(id).fog;
 }
 
 export function blockModel(id: number): BlockModel {
