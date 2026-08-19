@@ -12,9 +12,31 @@ import { clampVolume, jitter, recipeFor, type Sfx, type SoundRecipe } from "./sf
  * 音は 1 発ごとに「ノイズ + トーン → ローパス → 包絡線 → マスター」の短い経路を作って捨てる。
  * 使い回すのはノイズの波形（1 秒ぶん）だけで、これは実行時に乱数で作る
  * （外部アセットを使わない規約。`crack.ts` がテクスチャで同じことをしている）。
+ *
+ * **`AudioContext` を外から差し替えられるようにしてある。** テストは
+ * `OfflineAudioContext`（音声デバイスが要らない）を渡して、出てきた波形を数値で見る
+ * （`test/audio.test.ts`）。**差し替え口を増やさないこと** —— ここが 1 つだからこそ、
+ * 「耳でしか確かめられない部分」がこのファイルの中だけに収まっている。
  */
+
+/**
+ * `AudioContext` を作る係。作れなければ null（音無しで動き続ける）。
+ * 既定はブラウザのもので、テストだけが差し替える。
+ */
+export type AudioContextFactory = () => BaseAudioContext | null;
+
+/** ブラウザの `AudioContext`。**判断は無い**（あるかどうかを見るだけ）。 */
+function browserContext(): BaseAudioContext | null {
+  const Ctor: typeof AudioContext | undefined =
+    typeof window === "undefined"
+      ? undefined
+      : window.AudioContext ??
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  return Ctor ? new Ctor() : null;
+}
+
 export class AudioEngine {
-  private ctx: AudioContext | null = null;
+  private ctx: BaseAudioContext | null = null;
   private master: GainNode | null = null;
   /** 水中でこもらせるためのフィルタ。地上では素通し。 */
   private muffle: BiquadFilterNode | null = null;
@@ -22,21 +44,22 @@ export class AudioEngine {
   private volume = clampVolume(undefined);
   private underwater = false;
 
+  constructor(private readonly makeContext: AudioContextFactory = browserContext) {}
+
   /**
    * 最初のユーザー操作で呼ぶ。ブラウザの自動再生制限があるので、
    * **クリックより前に `AudioContext` を作っても音は出ない。**
    */
   resume(): void {
     if (!this.ctx) this.create();
-    void this.ctx?.resume();
+    // `OfflineAudioContext` には走らせる前の `resume()` が無いので、あるときだけ呼ぶ
+    void (this.ctx as { resume?: () => Promise<void> } | null)?.resume?.();
   }
 
   private create(): void {
-    const Ctor: typeof AudioContext | undefined =
-      window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!Ctor) return;
+    const ctx = this.makeContext();
+    if (!ctx) return;
 
-    const ctx = new Ctor();
     const master = ctx.createGain();
     master.gain.value = this.volume;
     const muffle = ctx.createBiquadFilter();

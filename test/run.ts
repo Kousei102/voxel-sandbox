@@ -1,3 +1,4 @@
+import { run as audio } from "./audio.test";
 import { run as beds } from "./beds.test";
 import { run as blocks } from "./blocks.test";
 import { run as chests } from "./chests.test";
@@ -42,4 +43,7 @@ storage();
 progression();
 sfx();
 ui();
+// **音だけは非同期。** `OfflineAudioContext` の書き出しを待つ必要があるので、
+// ここで await する（`summary()` より前に終わらせること）。
+await audio();
 summary();

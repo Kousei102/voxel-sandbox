@@ -27,28 +27,11 @@ import {
   StepCadence,
   clampVolume,
   jitter,
+  SFX_EVENTS as EVENTS,
   recipeFor,
-  type Sfx,
 } from "../src/sfx";
 import { EAT_SECONDS } from "../src/vitals";
 import { check, describe } from "./harness";
-
-const EVENTS: Sfx[] = [
-  "step",
-  "dig",
-  "break",
-  "place",
-  "land",
-  "hurt",
-  "death",
-  "splash",
-  "craft",
-  "pickup",
-  "eat",
-  "mobsay",
-  "mobhurt",
-  "mobdeath",
-];
 
 /**
  * 値域を確かめる声色の幅。**両端で回すこと** ——

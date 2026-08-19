@@ -74,7 +74,7 @@ GLSL のコンパイルエラーは画面が真っ黒になる形でしか現れ
 | 確かめられないもの | 閉じ込めてあるファイル | 判断を持つ相方（`npm test` で見る） |
 | --- | --- | --- |
 | GLSL | `sky.ts` / `terrainshader.ts` | `daynight.ts` |
-| WebAudio | `audio.ts` | `sfx.ts` |
+| WebAudio | `audio.ts` | `sfx.ts`（**波形は `test/audio.test.ts` が実際に鳴らして見ます**） |
 | DOM | `ui.ts` / `inventoryui.ts` | `craftscreen.ts` / `inventory.ts` / `crafting.ts` / `smelting.ts` |
 | three（描画） | `mobrender.ts` / `droprender.ts` | `mobs.ts` / `mobmesh.ts` / `drops.ts` |
 
@@ -745,13 +745,31 @@ greedy 側で消えて、地面が透けて見えます。
 
 **外部アセットは使いません。波形も実行時に作ります**（`crack.ts` がテクスチャで同じことをしています）。
 
-**この環境では音を鳴らして確かめられません。** だから GLSL と同じ切り分けにしてあります
-（見張りは `test/sfx.test.ts`）。
+**スピーカーはありませんが、波形は確かめられます。** `OfflineAudioContext`
+（音声デバイスを使わず配列に書き出すだけの `AudioContext`）に鳴らして数値で見ています
+（`test/audio.test.ts`。実装は devDependency の `node-web-audio-api`）。
+**ブラウザと同じ仕様の実装なので、`exponentialRampToValueAtTime(0)` のような
+仕様違反もちゃんと例外になります** —— 自前の偽物を書くとその手の間違いを素通しします。
 
 | ファイル | 中身 | 確かめ方 |
 | --- | --- | --- |
 | `sfx.ts` | 何を・いつ・どんな数値で鳴らすか（表と間隔の判断） | `npm test` |
-| `audio.ts` | `AudioContext` とノードグラフ | 耳（ユーザーに聞いてもらう） |
+| `audio.ts` | `AudioContext` とノードグラフ | `npm test`（波形）+ 耳（**最後は人**） |
+
+- **`AudioContext` の差し替え口は `AudioEngine` のコンストラクタ 1 つだけです。**
+  テストが `OfflineAudioContext` を渡すためのもので、**増やさないこと**
+  （増やすと「耳でしか確かめられない部分」がファイルの外へ漏れます）。
+- **テストの中でノードを組まないこと。** 必ず `AudioEngine` に鳴らさせます
+  （組むと、テストが自分の書いたものに合格するだけになります）。
+- 波形で見ているのは **「鳴るか」「長さぶんで止まるか」「音量が掛かるか」
+  「水中でこもるか」「材質の `cutoff` が効いているか」**。
+  **「気持ちいいか」は測れません** —— そこは今までどおり人に聞いてもらいます。
+- 明るさの目安（隣り合うサンプルの差）は**ノイズの割合も一緒に拾います。**
+  `cutoff` だけを比べるなら、**ノイズの割合が同じ材質どうし**にしてください
+  （ガラスは cutoff 6000 なのに、トーン寄りなので石より数字が小さく出ます）。
+- 乱数は **1 発ごとに撒き直します。** 続きの乱数で鳴らすと、音量だけを変えた 2 発が
+  別の音になって比べられません。**定数にはしないこと** —— ノイズの波形も
+  `Math.random()` で作っているので、定数にすると白色ノイズが直流（無音）になります。
 
 - **`sfx.ts` に WebAudio を持ち込まないこと。** 逆に、**判断を `audio.ts` や `main.ts` に
   書かないこと**も同じ理由で禁止です。

@@ -124,6 +124,12 @@ const EVENTS: Record<Sfx, EventDef> = {
  * 「ブロックの材質」という意味が壊れる）。倍率は `cutoff` にも掛ける ——
  * 低い声だけ明るくこもらない、という不自然さが出ないように。
  */
+/**
+ * 全部の音の名前。**表から作ること**（写した一覧を持つと、音を足したときに
+ * テストだけが古いままになり、足した音が 1 件も見られない）。
+ */
+export const SFX_EVENTS = Object.keys(EVENTS) as Sfx[];
+
 export function recipeFor(sfx: Sfx, group: SoundGroup = "none", pitch = 1): SoundRecipe {
   const event = EVENTS[sfx];
   const base = MATERIAL[group] ?? MATERIAL.none;

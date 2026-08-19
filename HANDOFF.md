@@ -20,7 +20,7 @@ git fetch && git log --oneline origin/master..master   # master の未 push
 git log --oneline master..loop/endgame                  # master に入れていないぶん
 ```
 
-- `npm test` **1144 件成功** / `npm run typecheck` / `npm run build` 通過
+- `npm test` **1155 件成功** / `npm run typecheck` / `npm run build` 通過
 - **進行（クリア導線）: 達成 1 / 13**（`npm test` が毎回出します）
 - **ブロック ID 1..63 の空きは 21 個。** アイテム ID は 83 まで使用済み
 - **`master` は push 済み**（ベッドまで公開サイトに出ています）
@@ -62,6 +62,35 @@ ID 42。水とほとんど同じ作りで、違うのは自分で光ること（
 
 **どれも 1-1 の時点でテストが素通りしていました。** 液体を足したら、
 `grep -n "WATER" src/*.ts` を 1 回やること（いまは `test/blocks.test.ts` が見張ります）。
+
+### 音が `npm test` で見られるようになりました（2026-08-19）
+
+**`audio.ts` はこれまで唯一まったく検証されていないファイルでした。** ユーザーに
+「Playwright で見た目と音を確かめられないか」と聞かれて調べたところ、
+**音だけは確かめられる**と分かったので入れました。
+
+- `OfflineAudioContext`（音声デバイスが要らない `AudioContext`）に鳴らして波形を数値で見ます。
+  実装は devDependency の **`node-web-audio-api`**。prebuilt のバイナリが同梱なので
+  `npm ci` はそのまま通ります（`postinstall` でのビルドはありません）
+- `AudioEngine` の**コンストラクタに `AudioContext` を作る係を渡せる**ようにしただけで、
+  既定はブラウザのままです。**差し替え口をこれ以上増やさないこと**
+- 見ているもの: 14 種類が例外を出さずに鳴るか / 無音でないか / 長さぶんで止まるか /
+  音量が掛かるか（0 で完全な無音か）/ 水中でこもるか / 材質の `cutoff` が効いているか /
+  声色が波形に出るか / `AudioContext` を作れなくても落ちないか
+- **効くことを試しました**（`LOOP.md` の「ガードは書いた時点では効いていないほうに倒れる」）:
+  - `envelope.connect(destination)` を外す → **NG 5 件**（`sfx.test.ts` は全部 ok のまま）
+  - `exponentialRampToValueAtTime(0)`（仕様違反）→ **NG 1 件**（例外を 1 件ずつ捕まえて出す）
+  - `osc.stop(end)` を外す → **検出できず**。包絡線が先に落ちるので音としては止まっている。
+    この検査は「包絡線の長さ」であって「ノードの止め忘れ」ではありません（コメントに残しました）
+
+**残りの 2 つ（3D の絵・DOM のスクリーンショット）はやっていません。**
+
+- **3D の絵は撮れません。** 改めて 4 通り試しました（swiftshader / ANGLE+swiftshader /
+  Vulkan / in-process-gpu）。全部 `getContext("webgl") === null` です
+- **DOM のスクリーンショットは撮れます**（メニュー画面を実際に撮れました）。ただし
+  `WebGLRenderer` の生成で JS が死ぬので、**撮れるのは静的な HTML + CSS だけ**です。
+  インベントリまで撮るには `inventoryui.ts` だけを読み込む確認用ページが要ります。
+  **`REVIEW.md` が実際に詰まってから**、とユーザーと決めました
 
 ---
 
@@ -161,5 +190,5 @@ push すると `npm ci` → `npm test` → `npm run build` を通ってから Gi
 world.update    中央 3.4ms / 最悪 10〜17ms（GC 込み）
 モブ 40 体      中央 0.048ms / p99 0.20ms
 落とし物 128 個 中央 0.10ms / p99 1.3〜3.7ms（GC 込み）
-npm test        13 秒前後（1144 項目）
+npm test        14 秒前後（1155 項目）
 ```
