@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { Vector3 } from "three";
-import { GRASS, LAVA, SAND, STONE, STONE_SLAB, WATER, WOOL } from "../src/blocks";
+import { AIR, GRASS, LAVA, SAND, STONE, STONE_SLAB, WATER, WOOL } from "../src/blocks";
 import { MAX_LIGHT } from "../src/constants";
 import { DayNight } from "../src/daynight";
 import { NO_ITEM, RAW_PORK, ROTTEN_FLESH, STONE_AXE, WOOD_PICKAXE, itemName } from "../src/items";
@@ -36,7 +36,7 @@ import {
 import { boxBlocked } from "../src/physics";
 import { raycastVoxels } from "../src/raycast";
 import type { Sfx } from "../src/sfx";
-import { MAX_HEALTH, MOB_HURT_COOLDOWN, Vitals } from "../src/vitals";
+import { BURN_SECONDS, MAX_HEALTH, MOB_HURT_COOLDOWN, Vitals } from "../src/vitals";
 import { Arena, seeded } from "./arena";
 import { signedVolume, verifyWinding } from "./geometry";
 import { check, describe } from "./harness";
@@ -909,6 +909,42 @@ export function run(): void {
   const wet = swim("zombie", WATER);
   check("水に浸かっている（試験場が効いている）", wet.soaked);
   check("水では焼けない", wet.alive);
+
+  // --- 溶岩から上がったあと ---
+  // **プレイヤーと同じ長さ燃え続けること。** 日陰の 2 秒（`BURN_LINGER`）を
+  // 溶岩に使い回していたせいで、**同じ溶岩から上がってもモブだけ 2 秒で消えていた**
+  // （ブラウザで見ていたユーザーが気付いた）。日陰の 2 秒は「木の下でちらつかせない」
+  // ための値で、溶岩とは別の話。
+  {
+    const arena = quiet(new Arena());
+    arena.fill(-20, 20, 0, 9, -20, 20, STONE);
+    arena.fill(-6, 6, 10, 12, -6, 6, LAVA);
+    const pack = new Mobs();
+    const mob = pack.spawn("zombie", 0.5, 11, 0.5, 0, seeded(91))!;
+    const world = arena.asWorld();
+    pack.update(1 / 60, world, ctx({ random: seeded(93) }));
+    console.log(
+      `      溶岩から上がった直後の燃え残り: モブ ${mob.burnTimer.toFixed(2)} 秒 /` +
+        ` プレイヤー ${BURN_SECONDS} 秒`,
+    );
+    check("溶岩に浸かった直後の燃え残りがプレイヤーと同じ", Math.abs(mob.burnTimer - BURN_SECONDS) < 0.05, `${mob.burnTimer.toFixed(2)} / ${BURN_SECONDS} 秒`);
+
+    // **日向へ出しても縮まないこと。** 日光の側が代入だったので、溶岩から上がって
+    // 日なたに出た瞬間に残り 15 秒が 2 秒へ縮んでいた（長いほうが勝つのが正しい）。
+    mob.position.set(15.5, 10, 15.5);
+    arena.sky = MAX_LIGHT;
+    const healthBefore = mob.health;
+    for (let i = 0; i < 180; i++) pack.update(1 / 60, world, ctx({ random: seeded(95), brightness: 1 }));
+    // 先に「溶岩から出て、燃え続けている」ことの証拠を出す
+    check("溶岩から出ている（試験場が効いている）", pack.count === 1 && mob.liquid === AIR, `liquid ${mob.liquid} / ${pack.count} 体`);
+    check("出たあとも焼かれ続けている", mob.health < healthBefore, `体力 ${healthBefore} → ${mob.health}`);
+    console.log(`      3 秒 日向を歩かせたあとの燃え残り: ${mob.burnTimer.toFixed(2)} 秒（縮んでいなければ 12 前後）`);
+    check(
+      "日向に出ても溶岩の燃え残りが縮まない",
+      mob.burnTimer > BURN_SECONDS - 4,
+      `${mob.burnTimer.toFixed(2)} 秒（日陰ぶんの 2 秒に上書きされていない）`,
+    );
+  }
 
   // 日光より速いこと。同じ 2 でよいなら、ゾンビが溶岩を泳いで渡ってくる。
   console.log(`      焼ける速さ: 溶岩 ${boiled.seconds.toFixed(1)} 秒 / 朝日 ${burned.seconds.toFixed(1)} 秒`);

@@ -17,7 +17,7 @@ import { BLOCK_LIGHT, SKY_LIGHT } from "./lighting";
 import { type BodySize, boxBlocked, groundBelow, moveBody } from "./physics";
 import { rayBox } from "./raycast";
 import type { Sfx } from "./sfx";
-import { MOB_HURT_COOLDOWN, type DamageCause } from "./vitals";
+import { BURN_SECONDS, MOB_HURT_COOLDOWN, type DamageCause } from "./vitals";
 import type { World } from "./world";
 
 // --- 種類の表 -----------------------------------------------------------
@@ -409,6 +409,13 @@ const ATTACK_STOP = 1.3;
 export const BURN_BRIGHTNESS = 0.8;
 /** 日陰に入っても燃え続ける長さ (秒)。0 にすると木の下を通るたび点いたり消えたりする。 */
 const BURN_LINGER = 2;
+/**
+ * 溶岩から出たあとも燃え続ける長さ (秒)。**プレイヤーと同じものを見ること。**
+ * `BURN_LINGER`(2) を使い回していたせいで、**同じ溶岩から上がってもモブだけ
+ * 2 秒で火が消えていた**（ブラウザで見ていたユーザーが気付いた）。
+ * 日陰の 2 秒は「木の下でちらつかせない」ための値で、溶岩とは別の話。
+ */
+const LAVA_LINGER = BURN_SECONDS;
 /** 燃えているあいだのダメージ（毎秒）。 */
 const BURN_DAMAGE = 2;
 /**
@@ -650,7 +657,7 @@ export class Mobs {
 
       // **溶岩は敵味方の区別なく焼く**（日光は敵対だけ）。豚が溶岩の上を
       // 平気で歩いていると、プレイヤーだけが焼ける理由が無くなる。
-      if (isHotLiquid(mob.liquid)) mob.burnTimer = BURN_LINGER;
+      if (isHotLiquid(mob.liquid)) mob.burnTimer = Math.max(mob.burnTimer, LAVA_LINGER);
       // 焼け死んだらここで list から消えているので、続きに触らない
       if (this.burn(mob, def, dt, ctx)) continue;
       if (!def.hostile) continue;
@@ -710,7 +717,9 @@ export class Mobs {
         Math.floor(mob.position.z),
         SKY_LIGHT,
       );
-      if (sunlightBurns(sky, ctx.brightness)) mob.burnTimer = BURN_LINGER;
+      // **`Math.max` で伸ばすこと。** 代入にすると、溶岩から上がったモブが
+      // 日向へ出た瞬間に残り 15 秒が 2 秒へ**縮む**（長いほうが勝つのが正しい）。
+      if (sunlightBurns(sky, ctx.brightness)) mob.burnTimer = Math.max(mob.burnTimer, BURN_LINGER);
     }
 
     const distance = distanceTo(mob, ctx);
