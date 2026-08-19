@@ -33,6 +33,7 @@ import {
   canSupport,
   collisionBoxes,
   isProp,
+  isHotLiquid,
   isLiquid,
   isReplaceable,
   liquidFog,
@@ -544,18 +545,36 @@ export function run(): void {
   // 忘れていて、溶岩湖の向こうを狙うと手前の溶岩が置き場になっていた）。
   // 狙う判定に液体の名前を書き戻さないための見張り。ここに `id !== WATER` が
   // 戻ると、次の液体（ネザーの溶岩海も同じ ID）でまた同じ壊れ方をする。
-  const raySource = readFileSync("src/raycast.ts", "utf8");
-  check(
-    "raycast.ts は個別の液体を名指ししない",
-    !/\bWATER\b|\bLAVA\b/.test(raySource.replace(/\/\/.*$/gm, "")),
-    "液体かどうかは isLiquid() に聞くこと",
-  );
+  //
+  // **液体の名前を書いてよいのは「水そのもの」を見る所だけ**（息・音のこもり・
+  // 水しぶき = `main.ts` と `player.ts`）。物理・浮力・湧き・設置は
+  // 「液体か」「焼ける液体か」で決まるので、下のファイルには名前が要らない。
+  for (const file of ["src/raycast.ts", "src/mobs.ts", "src/drops.ts", "src/beds.ts"]) {
+    const source = readFileSync(file, "utf8").replace(/\/\/.*$/gm, "");
+    check(
+      `${file.slice(4)} は個別の液体を名指ししない`,
+      !/\bWATER\b|\bLAVA\b/.test(source),
+      "液体かどうかは isLiquid() / isHotLiquid() に聞くこと",
+    );
+  }
 
   const liquids = BLOCKS.filter((b) => b.liquid).map((b) => b.name);
   check("液体は水と溶岩の 2 つ", liquids.length === 2, liquids.join(" / "));
   check("水が液体", isLiquid(WATER));
   check("溶岩が液体", isLiquid(LAVA));
   check("石は液体でない", !isLiquid(STONE) && !isLiquid(TALL_GRASS) && !isLiquid(AIR));
+
+  // 焼ける液体。**プレイヤーもモブもこの 1 本を見る**ので、`id === LAVA` を
+  // 散らさずに済む（ネザーの溶岩海が同じ ID を使う）。
+  const hot = BLOCKS.filter((b) => b.hot).map((b) => b.name);
+  check("焼ける液体は溶岩だけ", hot.length === 1 && isHotLiquid(LAVA), hot.join(" / "));
+  check("水では焼けない", !isHotLiquid(WATER) && !isHotLiquid(STONE));
+  check("焼けるものは必ず液体", BLOCKS.every((b) => !b.hot || b.liquid));
+
+  // 液体はバケツが無いと持てない（バケツはまだ無い）。**溶岩を足したとき、
+  // 水だけを弾いていたせいで「溶岩」というアイテムが黙って 1 個増えていた。**
+  const liquidItems = BLOCKS.filter((b) => b.liquid && allItemIds().includes(b.id)).map((b) => b.name);
+  check("液体はアイテムにならない", liquidItems.length === 0, liquidItems.join(" / ") || "水も溶岩も無し");
 
   // 液体は必ずフォグを持つ（持たないと、頭まで浸かっても画面が変わらない）。
   const noFog = BLOCKS.filter((b) => b.liquid && !b.fog).map((b) => b.name);

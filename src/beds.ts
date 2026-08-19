@@ -16,9 +16,9 @@ import {
   BED_HEIGHT,
   bedPartner,
   isBed,
+  isLiquid,
   isReplaceable,
   isSolid,
-  WATER,
   type PlaceSpot,
 } from "./blocks";
 
@@ -46,12 +46,12 @@ const SPAWN_HEADROOM = 2;
 
 /**
  * そのマスにベッドの半分を書けるか。押しのけてよいブロック（空気・草むら）だけを許し、
- * **水は弾く** —— `main.ts` が支えの要るブロック全部に掛けているのと同じ規則で、
+ * **液体（水・溶岩）は弾く** —— `main.ts` が支えの要るブロック全部に掛けているのと同じ規則で、
  * ここでは 2 マスの両方に掛ける。
  */
 function freeForBed(world: Pick<BedWorld, "getVoxel">, x: number, y: number, z: number): boolean {
   const at = world.getVoxel(x, y, z);
-  return at !== WATER && isReplaceable(at);
+  return !isLiquid(at) && isReplaceable(at);
 }
 
 /**

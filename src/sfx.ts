@@ -155,9 +155,9 @@ export class StepCadence {
   private travelled = 0;
 
   /** 水平に動いた距離を渡す。足音を鳴らすべきなら true。 */
-  advance(distance: number, ctx: { onGround: boolean; inWater: boolean; flying: boolean }): boolean {
+  advance(distance: number, ctx: { onGround: boolean; inLiquid: boolean; flying: boolean }): boolean {
     // 空中・水中・飛行中は鳴らさない。溜めもしない（着地した瞬間に鳴ってしまう）
-    if (!ctx.onGround || ctx.inWater || ctx.flying) {
+    if (!ctx.onGround || ctx.inLiquid || ctx.flying) {
       this.travelled = 0;
       return false;
     }

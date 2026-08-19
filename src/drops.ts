@@ -15,7 +15,7 @@
  */
 
 import { Vector3 } from "three";
-import { WATER } from "./blocks";
+import { isLiquid } from "./blocks";
 import { columnOf } from "./constants";
 import type { Inventory } from "./inventory";
 import { NO_ITEM, itemStackLimit } from "./items";
@@ -54,9 +54,9 @@ const TERMINAL = 55;
 /**
  * 水中で浮き上がる速さ。**沈む向きにしないこと** ——
  * 沈むと水底に溜まって取りに行けなくなる（Minecraft でもアイテムは水に浮く）。
- * `mobs.ts` の `WATER_RISE` と同じ仕掛けで、水面まで来ると頭が出て `inWater` が落ちる。
+ * `mobs.ts` の `LIQUID_RISE` と同じ仕掛けで、液面まで来ると頭が出て浮力が落ちる。
  */
-const WATER_RISE = 1.0;
+const LIQUID_RISE = 1.0;
 
 /** 接地しているときの横方向の減衰。投げたものが永久に滑らないように。 */
 const GROUND_DAMP = 6;
@@ -136,7 +136,8 @@ export interface Drop {
   readonly position: Vector3;
   readonly velocity: Vector3;
   onGround: boolean;
-  inWater: boolean;
+  /** 液体（水・溶岩）に浮いている。**沈めないこと** —— 底に溜まると取りに行けない。 */
+  inLiquid: boolean;
   /** これが 0 になるまで拾えない。 */
   pickupDelay: number;
   /** 生まれてからの秒数。`DESPAWN_AGE` で消える。 */
@@ -204,7 +205,7 @@ export class Drops {
       position: new Vector3(x, y, z),
       velocity: new Vector3(options.vx ?? 0, options.vy ?? 0, options.vz ?? 0),
       onGround: false,
-      inWater: false,
+      inLiquid: false,
       pickupDelay: options.delay ?? PICKUP_DELAY,
       age: 0,
       // 位相を個体ごとに散らす。そろえると、並んだアイテムが軍隊のように同時に揺れる。
@@ -308,17 +309,20 @@ export class Drops {
     if (picked) this.onSound?.("pickup");
   }
 
-  /** 重力・水・当たり判定。 */
+  /** 重力・液体・当たり判定。 */
   private step(drop: Drop, world: World, dt: number): void {
-    drop.inWater =
+    // **液体はどれでも浮かせる。** 溶岩に沈めると、掘って出た物が湖の底に
+    // 溜まって取りに行けない（燃やすかどうかは別の話で、まだ入れていない）。
+    drop.inLiquid = isLiquid(
       world.getVoxel(
         Math.floor(drop.position.x),
         Math.floor(drop.position.y + DROP_SIZE.height * 0.5),
         Math.floor(drop.position.z),
-      ) === WATER;
+      ),
+    );
 
-    if (drop.inWater) {
-      drop.velocity.y += (WATER_RISE - drop.velocity.y) * Math.min(1, dt * 6);
+    if (drop.inLiquid) {
+      drop.velocity.y += (LIQUID_RISE - drop.velocity.y) * Math.min(1, dt * 6);
     } else {
       drop.velocity.y -= GRAVITY * dt;
       if (drop.velocity.y < -TERMINAL) drop.velocity.y = -TERMINAL;

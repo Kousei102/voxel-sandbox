@@ -1,5 +1,7 @@
 import {
   AIR_SECONDS,
+  BURN_DAMAGE,
+  BURN_SECONDS,
   DROWN_DAMAGE,
   EXHAUST_ATTACK,
   EXHAUST_LIMIT,
@@ -7,6 +9,8 @@ import {
   EXHAUST_REGEN,
   EXHAUST_SPRINT,
   EXHAUST_WALK,
+  LAVA_DAMAGE,
+  LAVA_INTERVAL,
   MAX_HEALTH,
   MAX_HUNGER,
   MOB_HURT_COOLDOWN,
@@ -40,7 +44,8 @@ function ctx(over: Partial<VitalsContext> = {}): VitalsContext {
   return {
     y: 64,
     onGround: true,
-    inWater: false,
+    inLiquid: false,
+    inLava: false,
     headInWater: false,
     flying: false,
     invulnerable: false,
@@ -108,7 +113,7 @@ export function run(): void {
   );
 
   const splash = new Vitals();
-  drop(splash, 20, { inWater: true });
+  drop(splash, 20, { inLiquid: true });
   check("水に落ちればダメージ無し", splash.health === MAX_HEALTH, `hp ${splash.health}`);
 
   const flyer = new Vitals();
@@ -322,6 +327,94 @@ export function run(): void {
   advance(flash, 1);
   check("赤みは消える", flash.hurtFlash === 0);
 
+
+  describe("溶岩と炎上");
+
+  // 溶岩は**触れた瞬間に 1 回**入って、そのあと LAVA_INTERVAL ごと。
+  // 待ってから入る形にすると、浅い溶岩をぴょんと跨いだときに無傷で通れる。
+  const dipped = new Vitals();
+  dipped.update(STEP, ctx({ inLiquid: true, inLava: true }));
+  check(
+    "溶岩に触れた最初のフレームで 1 回入る",
+    dipped.health === MAX_HEALTH - LAVA_DAMAGE,
+    `hp ${dipped.health}（-${LAVA_DAMAGE}）`,
+  );
+
+  const soaked = new Vitals();
+  advance(soaked, 1, { inLiquid: true, inLava: true });
+  const lavaHits = (MAX_HEALTH - soaked.health) / LAVA_DAMAGE;
+  console.log(
+    `      溶岩に 1 秒: ${MAX_HEALTH - soaked.health} 減る（${LAVA_DAMAGE} x ${lavaHits} 回` +
+      ` / 間隔 ${LAVA_INTERVAL} 秒）`,
+  );
+  // **回数をぴったりで見ないこと。** 間隔 0.5 秒を 1/60 で刻むので、ちょうど境目の
+  // 1 回が浮動小数の誤差でどちらにも転ぶ（実測 2 回）。速さは下の「死ぬまで」で見る。
+  check("溶岩は 1 秒に 2 回以上入る", lavaHits >= 2, `${lavaHits} 回 = ${lavaHits * LAVA_DAMAGE} ダメージ`);
+  check("溶岩に浸かると燃える", soaked.burning, `残り ${BURN_SECONDS} 秒`);
+  check("死因は「溶岩」", soaked.cause === "溶岩", `${soaked.cause}`);
+
+  // 素の体力で溶岩に落ちたら何秒もつか。**防具がまだ無いので、ここは短い。**
+  const sunk = new Vitals();
+  let lavaLife = 0;
+  while (!sunk.dead && lavaLife < 10) {
+    sunk.update(STEP, ctx({ inLiquid: true, inLava: true }));
+    lavaLife += STEP;
+  }
+  console.log(`      溶岩に落ちてから死ぬまで: ${lavaLife.toFixed(2)} 秒（体力 ${MAX_HEALTH}・防具なし）`);
+  check("溶岩に浸かり続ければ死ぬ", sunk.dead && lavaLife < 3, `${lavaLife.toFixed(2)} 秒`);
+
+  // --- 出たあとの炎上 ---
+  // 1 フレームだけ触って上がる。**溶岩ぶんと炎上ぶんが二重に入らないこと。**
+  const scorched = new Vitals();
+  scorched.update(STEP, ctx({ inLiquid: true, inLava: true }));
+  const afterLava = scorched.health;
+  advance(scorched, BURN_SECONDS + 3);
+  const burned = afterLava - scorched.health;
+  console.log(
+    `      溶岩を 1 フレームかすっただけ: 溶岩 ${MAX_HEALTH - afterLava} + 炎上 ${burned}` +
+      ` = 合計 ${MAX_HEALTH - scorched.health}（体力 ${MAX_HEALTH}）`,
+  );
+  check(
+    `炎上は ${BURN_SECONDS} 秒ぶん入る（1 秒に ${BURN_DAMAGE}）`,
+    burned === BURN_SECONDS * BURN_DAMAGE,
+    `${burned}`,
+  );
+  check("燃え尽きたら止まる", !scorched.burning && !scorched.dead, `hp ${scorched.health}`);
+  check("死因は「炎上」", scorched.cause === "炎上", `${scorched.cause}`);
+
+  // 浸かっているあいだは炎上ぶんを足さない（足すと理由の分からない速さで死ぬ）
+  const dunked = new Vitals();
+  advance(dunked, 2, { inLiquid: true, inLava: true });
+  check(
+    "溶岩の中では炎上ぶんを二重に入れない",
+    (MAX_HEALTH - Math.max(0, dunked.health)) % LAVA_DAMAGE === 0,
+    `減った量 ${MAX_HEALTH - dunked.health}`,
+  );
+
+  // --- 水で消える ---
+  const doused = new Vitals();
+  doused.update(STEP, ctx({ inLiquid: true, inLava: true }));
+  advance(doused, 2);
+  const beforeWater = doused.health;
+  check("溶岩から出ても燃えている", doused.burning, `hp ${beforeWater}`);
+  advance(doused, 0.5, { inLiquid: true, inLava: false });
+  check("水に入ると火が消える", !doused.burning);
+  advance(doused, BURN_SECONDS);
+  // **`===` で見ないこと** —— 火が消えれば 5 秒後から自然回復が始まるので、増える側に動く
+  check("消えたあとは減らない", doused.health >= beforeWater, `hp ${beforeWater} → ${doused.health}`);
+
+  // --- 落下と、クリエイティブ ---
+  const lavaFall = new Vitals();
+  drop(lavaFall, 20, { inLiquid: true, inLava: false });
+  check("液体に落ちれば落下ダメージは無い（水も溶岩も）", lavaFall.health === MAX_HEALTH, `hp ${lavaFall.health}`);
+
+  const ghost = new Vitals();
+  advance(ghost, 3, { inLiquid: true, inLava: true, invulnerable: true });
+  check("クリエイティブでは溶岩で焼けない", ghost.health === MAX_HEALTH && !ghost.burning, `hp ${ghost.health}`);
+  // **戻したときに燃え残りを持ち越さないこと**（切り替えた瞬間に減り始める）
+  advance(ghost, 3);
+  check("クリエイティブを抜けても燃え残らない", ghost.health === MAX_HEALTH, `hp ${ghost.health}`);
+
   describe("空腹");
 
   // まず消耗の表。数値を触ったときに「どれだけ持つか」が一目で分かるようにしておく。
@@ -370,7 +463,7 @@ export function run(): void {
   );
 
   const swimmer = new Vitals();
-  travel(swimmer, 60, true, { inWater: true });
+  travel(swimmer, 60, true, { inLiquid: true });
   check(
     "水中では走っても歩きぶんしか減らない",
     swimmer.hunger === MAX_HUNGER,

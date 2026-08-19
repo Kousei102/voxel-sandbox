@@ -166,7 +166,7 @@ export function run(): void {
   describe("足音の間隔");
 
   // 時間ではなく歩いた距離で刻む。だからスプリントすれば自然に足音も速くなる。
-  const ground = { onGround: true, inWater: false, flying: false };
+  const ground = { onGround: true, inLiquid: false, flying: false };
   const cadence = new StepCadence();
   let steps = 0;
   // 歩き（5.2 m/s）で 10 秒ぶん
@@ -190,26 +190,26 @@ export function run(): void {
   const air = new StepCadence();
   let airSteps = 0;
   for (let i = 0; i < 600; i++) {
-    if (air.advance(0.1, { onGround: false, inWater: false, flying: false })) airSteps++;
+    if (air.advance(0.1, { onGround: false, inLiquid: false, flying: false })) airSteps++;
   }
   check("空中では鳴らない", airSteps === 0, `${airSteps} 歩`);
 
   // 空中で溜めてしまうと、着地した瞬間に 1 歩ぶん鳴る（足音が着地音と重なる）
   const landing = new StepCadence();
-  for (let i = 0; i < 100; i++) landing.advance(0.1, { onGround: false, inWater: false, flying: false });
+  for (let i = 0; i < 100; i++) landing.advance(0.1, { onGround: false, inLiquid: false, flying: false });
   check("空中の移動を溜め込まない", !landing.advance(0.1, ground));
 
   const water = new StepCadence();
   let waterSteps = 0;
   for (let i = 0; i < 600; i++) {
-    if (water.advance(0.1, { onGround: true, inWater: true, flying: false })) waterSteps++;
+    if (water.advance(0.1, { onGround: true, inLiquid: true, flying: false })) waterSteps++;
   }
   check("水中では鳴らない", waterSteps === 0, `${waterSteps} 歩`);
 
   const flight = new StepCadence();
   let flySteps = 0;
   for (let i = 0; i < 600; i++) {
-    if (flight.advance(0.2, { onGround: true, inWater: false, flying: true })) flySteps++;
+    if (flight.advance(0.2, { onGround: true, inLiquid: false, flying: true })) flySteps++;
   }
   check("飛行中は鳴らない", flySteps === 0, `${flySteps} 歩`);
 

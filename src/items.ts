@@ -13,8 +13,8 @@ import {
   STONE,
   TIER_DIAMOND,
   TIER_WOOD,
-  WATER,
   baseBlock,
+  isLiquid,
   type ToolKind,
 } from "./blocks";
 
@@ -95,10 +95,10 @@ function item(def: ItemDef): void {
 
 item({ id: NO_ITEM, name: "", block: AIR, stack: 0, color: 0x000000, tool: null });
 
-// ブロックのアイテム。水と空気は手に入らない。
+// ブロックのアイテム。空気と液体（水・溶岩）は手に入らない。
 // 置き方だけが違う版（壁掛けの松明など）は大元のアイテムに寄せるので、ここでは作らない。
 for (const block of BLOCKS) {
-  if (block.id === AIR || block.id === WATER) continue;
+  if (block.id === AIR || isLiquid(block.id)) continue;
   if (block.variantOf !== AIR) continue;
   item({
     id: block.id,

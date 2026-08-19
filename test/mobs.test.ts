@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { Vector3 } from "three";
-import { GRASS, SAND, STONE, STONE_SLAB, WATER, WOOL } from "../src/blocks";
+import { GRASS, LAVA, SAND, STONE, STONE_SLAB, WATER, WOOL } from "../src/blocks";
 import { MAX_LIGHT } from "../src/constants";
 import { DayNight } from "../src/daynight";
 import { NO_ITEM, RAW_PORK, ROTTEN_FLESH, STONE_AXE, WOOD_PICKAXE, itemName } from "../src/items";
@@ -343,7 +343,11 @@ export function run(): void {
       mob.yaw = mob.targetYaw = -Math.PI / 2; // +X 向き
       pack.update(1 / 60, arena.asWorld(), away);
     }
-    check(`水中の判定が効いている（${wet ? "水路" : "平地"}）`, mob.inWater === wet, `inWater ${mob.inWater}`);
+    check(
+      `水中の判定が効いている（${wet ? "水路" : "平地"}）`,
+      (mob.liquid === WATER) === wet,
+      `liquid ${mob.liquid}`,
+    );
     return mob.position.x - 0.5;
   }
   const onLand = swimDistance(false);
@@ -447,6 +451,17 @@ export function run(): void {
   const nowhere = new Mobs();
   for (let frame = 0; frame < 600; frame++) nowhere.update(1 / 60, ungenerated.asWorld(), ctx());
   check("ボクセルの無い列には湧かない", nowhere.count === 0, `${nowhere.count} 体`);
+
+  // **液体の中には湧かない。** 水なら溺れ、溶岩なら焼けるだけで、どちらも
+  // 「湧いた瞬間に死ぬモブ」を作り続ける。地面の 1 段上を液体で満たす
+  // （`findGround` は液体を立てる場所と見なすので、ここで弾かないと湧く）。
+  for (const [name, id] of [["水", WATER], ["溶岩", LAVA]] as const) {
+    const flooded = flatGrass();
+    flooded.fill(-80, 80, 11, 11, -80, 80, id);
+    const drowned = new Mobs();
+    for (let frame = 0; frame < 1800; frame++) drowned.update(1 / 60, flooded.asWorld(), ctx());
+    check(`${name}の中には湧かない`, drowned.count === 0, `${drowned.count} 体`);
+  }
 
   // 離れると消える。**DESPAWN_DISTANCE は UNLOAD_DISTANCE * CHUNK_SIZE より小さいこと。**
   // 大きいと、ボクセルの無い列にモブが立って世界を突き抜けて落ちる。
@@ -850,6 +865,59 @@ export function run(): void {
     sunlightBurns(MAX_LIGHT, noon) && !sunlightBurns(MAX_LIGHT - 1, noon) && !sunlightBurns(MAX_LIGHT, midnight),
   );
 
+  describe("モブと溶岩");
+
+  /**
+   * 蓋をした溶岩の池に沈める。**浮き上がって出てしまわないよう蓋をすること**
+   * （水と同じで、モブは液面へ浮く）。日光と切り分けるため試験場は暗くする。
+   */
+  function swim(kind: MobKind, id: number): { alive: boolean; drops: number; seconds: number; soaked: boolean } {
+    const arena = quiet(new Arena());
+    arena.fill(-20, 20, 0, 9, -20, 20, STONE);
+    arena.fill(-6, 6, 10, 20, -6, 6, id);
+    arena.fill(-6, 6, 21, 21, -6, 6, STONE);
+    const pack = new Mobs();
+    let drops = 0;
+    pack.onDrop = () => drops++;
+    // **プレイヤーを遠くへ置かないこと。** `DESPAWN_DISTANCE` を超えると、
+    // 焼ける前に消えて「焼け死んだ」と読み違える（実際にそれで通っていた）。
+    const mob = pack.spawn(kind, 0.5, 11, 3.5, 0, seeded(81))!;
+    const c = ctx({ random: seeded(83) });
+    const world = arena.asWorld();
+    let frames = 0;
+    // **浸かった証拠を先に取ること**（浸かっていなければ、何を見ても意味がない）
+    let soaked = false;
+    for (; frames < 900 && pack.count > 0; frames++) {
+      pack.update(1 / 60, world, c);
+      soaked ||= mob.liquid === id;
+    }
+    return { alive: pack.count > 0, drops, seconds: frames / 60, soaked };
+  }
+
+  const boiled = swim("zombie", LAVA);
+  console.log(`      溶岩に沈めたゾンビ: ${boiled.seconds.toFixed(1)} 秒で消えた / ドロップ ${boiled.drops} 件`);
+  check("ゾンビが溶岩に浸かっている（試験場が効いている）", boiled.soaked);
+  check("ゾンビは溶岩で焼け死ぬ（夜でも洞窟でも）", !boiled.alive, `${boiled.seconds.toFixed(1)} 秒`);
+  check("溶岩の焼死でもドロップしない", boiled.drops === 0, `${boiled.drops} 件`);
+
+  // **受動モブも焼けること。** 敵対だけにすると、豚が溶岩の上を平気で泳ぐ。
+  const roast = swim("pig", LAVA);
+  console.log(`      溶岩に沈めた豚: ${roast.seconds.toFixed(1)} 秒で消えた`);
+  check("受動モブも溶岩で焼け死ぬ", !roast.alive, `${roast.seconds.toFixed(1)} 秒`);
+
+  // 水では焼けない。**液体をひとまとめにすると、水中のゾンビまで焼ける。**
+  const wet = swim("zombie", WATER);
+  check("水に浸かっている（試験場が効いている）", wet.soaked);
+  check("水では焼けない", wet.alive);
+
+  // 日光より速いこと。同じ 2 でよいなら、ゾンビが溶岩を泳いで渡ってくる。
+  console.log(`      焼ける速さ: 溶岩 ${boiled.seconds.toFixed(1)} 秒 / 朝日 ${burned.seconds.toFixed(1)} 秒`);
+  check(
+    "溶岩は日光よりずっと速く焼く",
+    boiled.seconds * 2 < burned.seconds,
+    `${boiled.seconds.toFixed(1)} 秒 < ${burned.seconds.toFixed(1)} 秒`,
+  );
+
   describe("敵対モブの攻撃（プレイヤーへのダメージ）");
 
   /**
@@ -875,7 +943,8 @@ export function run(): void {
       vitals.update(1 / 60, {
         y: 11,
         onGround: true,
-        inWater: false,
+        inLiquid: false,
+        inLava: false,
         headInWater: false,
         flying: false,
         invulnerable,

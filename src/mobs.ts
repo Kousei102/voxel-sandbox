@@ -10,7 +10,7 @@
  */
 
 import { Color, Vector3 } from "three";
-import { GRASS, WATER, WOOL, isSolid } from "./blocks";
+import { AIR, GRASS, WOOL, isHotLiquid, isLiquid, isSolid } from "./blocks";
 import { MAX_LIGHT, WORLD_HEIGHT, columnOf } from "./constants";
 import { RAW_PORK, ROTTEN_FLESH, toolOf } from "./items";
 import { BLOCK_LIGHT, SKY_LIGHT } from "./lighting";
@@ -278,18 +278,18 @@ export function walkSwing(phase: number, amplitude = WALK_SWING): number {
 const GRAVITY = 30;
 const TERMINAL = 55;
 /**
- * 水に入ると、この速さで浮き上がる。**沈む向きにしないこと。**
+ * 液体に入ると、この速さで浮き上がる。**沈む向きにしないこと。**
  * 沈むと水底を歩き続け、あとで空腹や溺れを入れたときに黙って死んでいく
  * （プレイヤーからは「モブが居ない」という形でしか見えない）。
- * 水面まで来ると頭が出て `inWater` が落ち、重力で少し沈む — その繰り返しで水面に浮く。
+ * 水面まで来ると頭が出て液体から抜け、重力で少し沈む — その繰り返しで水面に浮く。
  */
-const WATER_RISE = 1.4;
+const LIQUID_RISE = 1.4;
 /**
- * 水中での速さの倍率。**`player.ts` の 0.6 と同じにすること。**
+ * 液体の中での速さの倍率。**`player.ts` の 0.6 と同じにすること。**
  * ずれると、水に入った瞬間にプレイヤーとゾンビの追いかけっこの勝敗が変わる
  * （速いほうへ逃げ込めば必ず振り切れる／絶対に振り切れない、のどちらかになる）。
  */
-const WATER_SPEED = 0.6;
+const LIQUID_SPEED = 0.6;
 
 /** 横方向の加速。接地しているときのほうがよく効く（空中で方向転換しない）。 */
 const ACCEL_GROUND = 26;
@@ -315,7 +315,11 @@ export interface Mob {
   readonly position: Vector3;
   readonly velocity: Vector3;
   onGround: boolean;
-  inWater: boolean;
+  /**
+   * 浸かっている液体の ID（浸かっていなければ `AIR`）。
+   * **物理はどの液体でも同じ**で、焼けるかどうかだけ `isHotLiquid()` に聞く。
+   */
+  liquid: number;
   /** 体の向き。0 のとき前は -Z（`player.ts` の forward と同じ規約）。 */
   yaw: number;
   health: number;
@@ -407,6 +411,11 @@ export const BURN_BRIGHTNESS = 0.8;
 const BURN_LINGER = 2;
 /** 燃えているあいだのダメージ（毎秒）。 */
 const BURN_DAMAGE = 2;
+/**
+ * 溶岩に浸かっているあいだのダメージ（毎秒）。**日光よりずっと速いこと** ——
+ * 同じ 2 だと、ゾンビが溶岩を泳いで渡ってくる（体力 20 で 10 秒かかる）。
+ */
+const LAVA_DAMAGE = 8;
 /** 湧きを試す間隔と、1 回に試す回数。 */
 export const SPAWN_INTERVAL = 0.5;
 export const SPAWN_ATTEMPTS = 6;
@@ -574,7 +583,7 @@ export class Mobs {
       position: new Vector3(x, y, z),
       velocity: new Vector3(0, 0, 0),
       onGround: false,
-      inWater: false,
+      liquid: AIR,
       yaw,
       health: MOBS[kind].maxHealth,
       walkPhase: 0,
@@ -639,9 +648,12 @@ export class Mobs {
 
       this.step(mob, def, world, dt, ctx);
 
-      if (!def.hostile) continue;
+      // **溶岩は敵味方の区別なく焼く**（日光は敵対だけ）。豚が溶岩の上を
+      // 平気で歩いていると、プレイヤーだけが焼ける理由が無くなる。
+      if (isHotLiquid(mob.liquid)) mob.burnTimer = BURN_LINGER;
       // 焼け死んだらここで list から消えているので、続きに触らない
       if (this.burn(mob, def, dt, ctx)) continue;
+      if (!def.hostile) continue;
       this.strike(mob, dt, ctx);
     }
   }
@@ -689,8 +701,9 @@ export class Mobs {
     random: () => number,
   ): void {
     // 日光。**スカイライトが最大の所だけ**なので、屋根の下・木の下・洞窟では燃えない。
-    // 水に浸かっているあいだも燃えない（Minecraft と同じ）。
-    if (!mob.inWater) {
+    // 液体に浸かっているあいだも燃えない（Minecraft と同じ）。溶岩はこの下の
+    // `update()` が別に点けるので、ここで見なくてよい。
+    if (mob.liquid === AIR) {
       const sky = world.getLight(
         Math.floor(mob.position.x),
         Math.floor(mob.position.y + def.size.height * 0.8),
@@ -773,12 +786,12 @@ export class Mobs {
     // 0.9 ブロック進む。ティックだけで止めるとプレイヤーに重なるまで踏み込んでしまう。
     if (mob.walking && def.hostile && distanceTo(mob, ctx) <= ATTACK_STOP) mob.walking = false;
 
-    mob.inWater =
-      world.getVoxel(
-        Math.floor(mob.position.x),
-        Math.floor(mob.position.y + def.size.height * 0.5),
-        Math.floor(mob.position.z),
-      ) === WATER;
+    const at = world.getVoxel(
+      Math.floor(mob.position.x),
+      Math.floor(mob.position.y + def.size.height * 0.5),
+      Math.floor(mob.position.z),
+    );
+    mob.liquid = isLiquid(at) ? at : AIR;
 
     // 向きは少しずつ追いつかせる（瞬間的に向くとカクついて見える）
     mob.yaw += clamp(wrapAngle(mob.targetYaw - mob.yaw), -TURN_SPEED * dt, TURN_SPEED * dt);
@@ -787,7 +800,7 @@ export class Mobs {
     // 崖の手前で向きを変えても、古い向きのまま滑っていって落ちる。
     const aligned = Math.max(0, Math.cos(wrapAngle(mob.targetYaw - mob.yaw)));
     const speed = mob.walking
-      ? def.speed * (mob.fleeTimer > 0 ? FLEE_SPEED : 1) * aligned * (mob.inWater ? WATER_SPEED : 1)
+      ? def.speed * (mob.fleeTimer > 0 ? FLEE_SPEED : 1) * aligned * (mob.liquid === AIR ? 1 : LIQUID_SPEED)
       : 0;
     const forward = forwardOf(mob.yaw);
     const accel = (mob.onGround ? ACCEL_GROUND : ACCEL_AIR) * dt;
@@ -805,9 +818,9 @@ export class Mobs {
       mob.velocity.z += clamp(targetZ - mob.velocity.z, -accel, accel);
     }
 
-    if (mob.inWater) {
-      // 落ちてきた勢いを殺しつつ、水面へ向かって浮く
-      mob.velocity.y += (WATER_RISE - mob.velocity.y) * Math.min(1, dt * 6);
+    if (mob.liquid !== AIR) {
+      // 落ちてきた勢いを殺しつつ、液面へ向かって浮く
+      mob.velocity.y += (LIQUID_RISE - mob.velocity.y) * Math.min(1, dt * 6);
     } else {
       mob.velocity.y -= GRAVITY * dt;
       if (mob.velocity.y < -TERMINAL) mob.velocity.y = -TERMINAL;
@@ -819,7 +832,7 @@ export class Mobs {
     // 立方体 1 個ぶんの段差はマイクラでも跳ぶところで、これが無いと
     // 地形のちょっとした起伏でモブが止まり、ゾンビは 1 段の壁で撒ける。
     // 跳べるのは接地しているあいだだけ（空中でも跳べると壁を登っていける）。
-    if (blocked && mob.onGround && mob.walking && !mob.inWater) {
+    if (blocked && mob.onGround && mob.walking && mob.liquid === AIR) {
       mob.velocity.y = JUMP_SPEED;
       mob.hopTimer = HOP_TIME;
       mob.onGround = false;
@@ -843,7 +856,9 @@ export class Mobs {
     mob.burnTick += dt;
     while (mob.burnTick >= 1) {
       mob.burnTick -= 1;
-      if (!this.wound(mob, BURN_DAMAGE)) continue;
+      // 溶岩のほうがずっと速い。**同じ表の 1 か所で切り替えること**
+      // （別の入口を作ると、片方だけ直したときに静かに食い違う）。
+      if (!this.wound(mob, isHotLiquid(mob.liquid) ? LAVA_DAMAGE : BURN_DAMAGE)) continue;
       // 断末魔だけ鳴らす（毎秒の悲鳴は、夜明けに何十体ぶんも重なってうるさい）
       if (distanceTo(mob, ctx) < SAY_DISTANCE) this.onSound?.("mobdeath", def.voice);
       return true;
@@ -968,7 +983,9 @@ export class Mobs {
     if (y < 0) return;
 
     const ground = world.getVoxel(x, y - 1, z);
-    if (world.getVoxel(x, y, z) === WATER) return;
+    // **液体の中に湧かせないこと。** 水なら溺れ、溶岩なら焼けるだけで、
+    // どちらも「湧いた瞬間に死ぬモブ」を作り続けることになる。
+    if (isLiquid(world.getVoxel(x, y, z))) return;
 
     // **暗さの判定を先に見ること。** 夜の草地は「敵対が湧ける明るさ」でもあり
     // 「受動が湧ける地面」でもあるので、順番がそのまま優先順位になる。

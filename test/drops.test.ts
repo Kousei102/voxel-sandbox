@@ -151,7 +151,7 @@ export function run(): void {
   {
     // 水に浮くこと。**沈むと水底に溜まって取りに行けなくなる。**
     // 水面では「浮く → 頭が出て重力 → また浸かる」を繰り返すので、
-    // **最後の 1 フレームの `inWater` だけを見ないこと**（たまたま出ている側で通る）。
+    // **最後の 1 フレームの `inLiquid` だけを見ないこと**（たまたま出ている側で通る）。
     const arena = flatGrass();
     arena.fill(-4, 4, 11, 20, -4, 4, WATER);
     const drops = new Drops();
@@ -160,7 +160,7 @@ export function run(): void {
     let lowest = Infinity;
     for (let i = 0; i < 8 * 60; i++) {
       drops.update(1 / 60, arena.asWorld(), nobody());
-      everWet ||= drop.inWater;
+      everWet ||= drop.inLiquid;
       lowest = Math.min(lowest, drop.position.y);
     }
     console.log(

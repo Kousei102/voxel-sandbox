@@ -1062,7 +1062,7 @@ function frame(now: number): void {
       `  mobs ${mobs.count}  drops ${drops.count}  furnaces ${furnaces.count}  chests ${chests.count}\n` +
       `hp ${vitals.health}/${MAX_HEALTH}  food ${vitals.hunger}/${MAX_HUNGER}` +
       `${vitals.poisoned ? " (毒)" : ""}  air ${(vitals.airFraction * 100).toFixed(0)}%\n` +
-      `${player.flying ? "fly" : player.onGround ? "ground" : "air"}${player.inWater ? " / water" : ""}\n` +
+      `${player.flying ? "fly" : player.onGround ? "ground" : "air"}${player.inLiquid ? ` / ${blockName(player.liquid)}` : ""}${vitals.burning ? " / 炎上" : ""}\n` +
       `hand ${inventory.selectedItem === NO_ITEM ? "-" : itemName(inventory.selectedItem)}\n` +
       `target ${hit ? `${blockName(hit.id)} (${hit.block.x}, ${hit.block.y}, ${hit.block.z})` : "-"}` +
       (hit ? `  ${formatBreakTime(hit.id, inventory.selectedItem)}` : ""),
@@ -1081,7 +1081,8 @@ function updateVitals(dt: number, moved: number): void {
     vitals.update(dt, {
       y: player.position.y,
       onGround: player.onGround,
-      inWater: player.inWater,
+      inLiquid: player.inLiquid,
+      inLava: player.inLava,
       headInWater: underwater,
       flying: player.flying,
       invulnerable: creative,

@@ -1,5 +1,5 @@
 import { Euler, Vector3, type PerspectiveCamera } from "three";
-import { WATER } from "./blocks";
+import { AIR, WATER, isHotLiquid, isLiquid } from "./blocks";
 import { PLAYER_SIZE, blockOverlapsBody, moveBody } from "./physics";
 import type { World } from "./world";
 
@@ -24,7 +24,12 @@ export class Player {
   pitch = 0;
   flying = false;
   onGround = false;
-  inWater = false;
+  /**
+   * 体が浸かっている液体の ID（浸かっていなければ `AIR`）。
+   * **物理はどの液体でも同じ**ので、速さも浮力も `inLiquid` を見る。
+   * 水そのものを見るのは息・音のこもり・水しぶきだけ（`CLAUDE.md` の液体の項）。
+   */
+  liquid = AIR;
   /**
    * 走れるか。**毎フレーム外から入れる**（判断は `vitals.ts` の `canSprint`）。
    * ここで空腹を見に行かないこと —— 移動が体力の都合を知り始めると、
@@ -39,6 +44,21 @@ export class Player {
   private readonly forward = new Vector3();
   private readonly right = new Vector3();
   private readonly wish = new Vector3();
+
+  /** 液体に浸かっているか。**泳ぎ・浮力・速さはこちら。** */
+  get inLiquid(): boolean {
+    return this.liquid !== AIR;
+  }
+
+  /** 水に浸かっているか。**水しぶきの音と息はこちら**（溶岩で溺れさせないため）。 */
+  get inWater(): boolean {
+    return this.liquid === WATER;
+  }
+
+  /** 溶岩に浸かっているか。ダメージの判断は `vitals.ts`（ここは事実を渡すだけ）。 */
+  get inLava(): boolean {
+    return isHotLiquid(this.liquid);
+  }
 
   constructor(private readonly camera: PerspectiveCamera) {}
 
@@ -64,11 +84,12 @@ export class Player {
   }
 
   update(dt: number, world: World): void {
-    this.inWater = world.getVoxel(
+    const at = world.getVoxel(
       Math.floor(this.position.x),
       Math.floor(this.position.y + 0.4),
       Math.floor(this.position.z),
-    ) === WATER;
+    );
+    this.liquid = isLiquid(at) ? at : AIR;
 
     this.forward.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     this.right.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
@@ -114,14 +135,14 @@ export class Player {
   }
 
   private updateWalk(dt: number, sprinting: boolean): void {
-    const speed = (sprinting ? SPRINT_SPEED : WALK_SPEED) * (this.inWater ? 0.6 : 1);
+    const speed = (sprinting ? SPRINT_SPEED : WALK_SPEED) * (this.inLiquid ? 0.6 : 1);
     const accel = (this.onGround ? ACCEL_GROUND : ACCEL_AIR) * dt;
     const targetX = this.wish.x * speed;
     const targetZ = this.wish.z * speed;
     this.velocity.x += Math.max(-accel, Math.min(accel, targetX - this.velocity.x));
     this.velocity.z += Math.max(-accel, Math.min(accel, targetZ - this.velocity.z));
 
-    if (this.inWater) {
+    if (this.inLiquid) {
       this.velocity.y -= GRAVITY * 0.22 * dt;
       if (this.keys.has("Space")) this.velocity.y = SWIM_SPEED;
       this.velocity.y = Math.max(-8, Math.min(SWIM_SPEED, this.velocity.y));

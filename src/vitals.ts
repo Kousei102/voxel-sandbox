@@ -85,7 +85,23 @@ export const HURT_FLASH = 0.4;
  */
 export const MOB_HURT_COOLDOWN = 0.5;
 
-export type DamageCause = "落下" | "溺れ" | "奈落" | "モンスター" | "空腹" | "毒";
+/**
+ * 溶岩に浸かっているあいだのダメージ間隔 (秒) と 1 回ぶんの量。
+ * **Minecraft と同じ**（0.5 秒ごとに 4 = 秒 8）。防具がまだ無いので、
+ * 素の体力 20 だと 2.5 秒で死ぬ。**手触りを変えるならユーザーと決めること。**
+ */
+export const LAVA_INTERVAL = 0.5;
+export const LAVA_DAMAGE = 4;
+/**
+ * 溶岩から出たあとも燃えている時間 (秒)。**Minecraft と同じ 15。**
+ * 1 秒に 1 ずつ入るので、出た時点の体力が 15 以下なら水に飛び込むしかない。
+ */
+export const BURN_SECONDS = 15;
+/** 炎上のダメージ間隔 (秒) と 1 回ぶんの量。 */
+export const BURN_INTERVAL = 1;
+export const BURN_DAMAGE = 1;
+
+export type DamageCause = "落下" | "溺れ" | "奈落" | "モンスター" | "空腹" | "毒" | "溶岩" | "炎上";
 
 /**
  * 消耗が増える出来事。**数値は下の表に持つ**ので、呼ぶ側は種類を渡すだけ。
@@ -111,9 +127,17 @@ export interface FoodValue {
 export interface VitalsContext {
   y: number;
   onGround: boolean;
-  /** 体が水に浸かっている（落下を打ち消す）。 */
-  inWater: boolean;
-  /** 頭まで水中（息が減る）。 */
+  /**
+   * 体が液体に浸かっている（落下を打ち消す・走っても消耗が増えない）。
+   * **水でも溶岩でも立つ** —— 沈むものの物理はどの液体でも同じ。
+   */
+  inLiquid: boolean;
+  /** 体が溶岩に浸かっている（ダメージを受け、出てからも燃える）。 */
+  inLava: boolean;
+  /**
+   * 頭まで水中（息が減る）。**液体すべてに広げないこと** ——
+   * 溶岩で溺れ始める（`CLAUDE.md` の液体の項）。
+   */
   headInWater: boolean;
   flying: boolean;
   /** クリエイティブ。何も受けない。 */
@@ -160,6 +184,11 @@ export class Vitals {
   /** 毒の残り回数。 */
   private poisonLeft = 0;
   private poisonTick = 0;
+  /** 溶岩の次の 1 回まで。**外に居るあいだは間隔ぶん進めた状態で待つ**（触れた瞬間に 1 回入る）。 */
+  private lavaTimer = LAVA_INTERVAL;
+  /** 燃えている残り (秒)。溶岩に浸かるたび `BURN_SECONDS` に戻る。 */
+  private burnLeft = 0;
+  private burnTick = 0;
 
   get hearts(): number {
     return this.health / 2;
@@ -183,6 +212,11 @@ export class Vitals {
   /** 毒が回っているか（表示とテスト用）。 */
   get poisoned(): boolean {
     return this.poisonLeft > 0;
+  }
+
+  /** 燃えているか（表示とテスト用）。溶岩から出てもしばらく true のまま。 */
+  get burning(): boolean {
+    return this.burnLeft > 0;
   }
 
   /**
@@ -273,6 +307,9 @@ export class Vitals {
     this.starveTimer = 0;
     this.poisonLeft = 0;
     this.poisonTick = 0;
+    this.lavaTimer = LAVA_INTERVAL;
+    this.burnLeft = 0;
+    this.burnTick = 0;
   }
 
   update(dt: number, ctx: VitalsContext): void {
@@ -294,12 +331,16 @@ export class Vitals {
       this.starveTimer = 0;
       this.poisonLeft = 0;
       this.poisonTick = 0;
+      this.lavaTimer = LAVA_INTERVAL;
+      this.burnLeft = 0;
+      this.burnTick = 0;
       return;
     }
 
     this.updateFall(ctx);
     this.updateAir(dt, ctx);
     this.updateVoid(dt, ctx);
+    this.updateFire(dt, ctx);
     this.updateHunger(dt, ctx);
     this.updatePoison(dt);
     this.updateRegen(dt);
@@ -307,12 +348,12 @@ export class Vitals {
 
   /** 空中に居るあいだの最高到達点を覚えておき、着地したときの落差でダメージを出す。 */
   private updateFall(ctx: VitalsContext): void {
-    const grounded = ctx.onGround || ctx.flying || ctx.inWater;
+    const grounded = ctx.onGround || ctx.flying || ctx.inLiquid;
     if (grounded) {
       if (this.airborne) {
         this.lastFall = Math.max(0, this.peakY - ctx.y);
         // 水に落ちた場合と飛行に切り替えた場合はダメージ無し
-        if (ctx.onGround && !ctx.inWater && !ctx.flying) {
+        if (ctx.onGround && !ctx.inLiquid && !ctx.flying) {
           this.damage(fallDamage(this.lastFall), "落下");
         }
         this.airborne = false;
@@ -355,6 +396,45 @@ export class Vitals {
   }
 
   /**
+   * 溶岩と炎上。
+   *
+   * **浸かっているあいだの溶岩ぶんと、出てからの炎上ぶんを二重に入れないこと。**
+   * どちらも「体力が減る」だけなので、重ねると理由が分からないまま倍の速さで死ぬ。
+   * 火が消えるのは**水に入ったときだけ** —— `inLiquid` だけで見ると、
+   * 溶岩も液体なので浸かった瞬間に消える。
+   */
+  private updateFire(dt: number, ctx: VitalsContext): void {
+    if (ctx.inLava) {
+      this.lavaTimer += dt;
+      while (this.lavaTimer >= LAVA_INTERVAL && !this.dead) {
+        this.lavaTimer -= LAVA_INTERVAL;
+        this.damage(LAVA_DAMAGE, "溶岩");
+      }
+      // 出たあとも燃え続ける。浸かっているあいだは炎上ぶんを入れない
+      this.burnLeft = BURN_SECONDS;
+      this.burnTick = 0;
+      return;
+    }
+    // 次に触れた瞬間に 1 回入るよう、間隔ぶん進めた状態で待つ
+    this.lavaTimer = LAVA_INTERVAL;
+    if (ctx.inLiquid) {
+      // 溶岩でない液体 = 水。飛び込めば消える
+      this.burnLeft = 0;
+      this.burnTick = 0;
+      return;
+    }
+    if (this.burnLeft <= 0) return;
+    // **減らすのはダメージのあと。** 先に減らすと、ちょうど尽きるフレームの
+    // 最後の 1 回が落ちて 15 秒ぶんが 14 回になる。
+    this.burnTick += dt;
+    while (this.burnTick >= BURN_INTERVAL && !this.dead) {
+      this.burnTick -= BURN_INTERVAL;
+      this.damage(BURN_DAMAGE, "炎上");
+    }
+    this.burnLeft = Math.max(0, this.burnLeft - dt);
+  }
+
+  /**
    * 空腹。**歩いた距離から消耗を作るのはここ**（呼ぶ側は距離を渡すだけ）。
    * 飛行中は減らさない（クリエイティブ以外で飛ぶのはデバッグ用なので、
    * ここで減ると「何もしていないのに減る」ように見える）。
@@ -362,7 +442,7 @@ export class Vitals {
   private updateHunger(dt: number, ctx: VitalsContext): void {
     if (ctx.moved > 0 && !ctx.flying) {
       // 水中は走っても速くならないので、消耗も歩きと同じにする
-      const rate = ctx.sprinting && !ctx.inWater ? EXHAUST_SPRINT : EXHAUST_WALK;
+      const rate = ctx.sprinting && !ctx.inLiquid ? EXHAUST_SPRINT : EXHAUST_WALK;
       this.exhaustion += ctx.moved * rate;
     }
     this.drainExhaustion();

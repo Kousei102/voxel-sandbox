@@ -292,6 +292,13 @@ export interface BlockDef {
    * 必ずどれか 1 つを忘れる（実際、溶岩を足したときに 3 つとも忘れていた）。
    */
   readonly liquid: boolean;
+  /**
+   * 浸かると焼ける液体（溶岩）。**`id === LAVA` と書かないこと** ——
+   * 焼けるかどうかを見る場所はプレイヤー・モブ・（この先の）ネザーの生き物と
+   * 増えていくので、`liquid` と同じく表 1 本に聞く。
+   * どれだけ焼けるかは持たない（数値は `vitals.ts` / `mobs.ts` のもの）。
+   */
+  readonly hot: boolean;
   /** 頭が浸かったときのフォグ。液体だけが持つ。 */
   readonly fog: LiquidFog | null;
   /** 足音・破壊・設置の音の材質。既定は "stone"。 */
@@ -378,6 +385,7 @@ function def(
     tool: opts.tool ?? null,
     minTier: opts.minTier ?? TIER_HAND,
     liquid: opts.liquid ?? false,
+    hot: opts.hot ?? false,
     fog: opts.fog ?? null,
     emission: opts.emission ?? 0,
     sound: opts.sound ?? "stone",
@@ -742,6 +750,7 @@ export const BLOCKS: readonly BlockDef[] = [
       hardness: UNBREAKABLE,
       emission: LAVA_LIGHT,
       liquid: true,
+      hot: true,
       // **水よりずっと濃く、昼夜で暗くならない。** 溶岩に浸かったことが
       // 画面から分からないと、ダメージだけ食らって理由が分からない。
       fog: { color: 0xd4551a, near: 0.05, far: 2.2, daylit: false },
@@ -815,6 +824,8 @@ const SUPPORT_FACE = new Int8Array(ID_LIMIT);
 const REPLACEABLE = new Uint8Array(ID_LIMIT);
 /** 1 = 液体。狙う光線が 1 ボクセルごとに引くので表にしておく。 */
 const LIQUID = new Uint8Array(ID_LIMIT);
+/** 1 = 浸かると焼ける液体。プレイヤーもモブも毎フレーム引く。 */
+const HOT = new Uint8Array(ID_LIMIT);
 const VARIANT_OF = new Uint8Array(ID_LIMIT);
 /** ID から定義を引く表。ID が飛び飛びなので、BLOCKS の並びとは別に持つ。 */
 const BY_ID: BlockDef[] = [];
@@ -828,6 +839,7 @@ for (const block of BLOCKS) {
   SUPPORT_FACE[block.id] = block.supportFace;
   REPLACEABLE[block.id] = block.replaceable ? 1 : 0;
   LIQUID[block.id] = block.liquid ? 1 : 0;
+  HOT[block.id] = block.hot ? 1 : 0;
   VARIANT_OF[block.id] = block.variantOf;
 }
 // 定義の無い ID を引くと undefined が伝播して原因が遠くに出るので、ここで落とす
@@ -943,6 +955,15 @@ export function isReplaceable(id: number): boolean {
  */
 export function isLiquid(id: number): boolean {
   return LIQUID[id] === 1;
+}
+
+/**
+ * 浸かると焼ける液体か（溶岩）。**プレイヤーもモブも同じこれを見ること。**
+ * どれだけ焼けるかは持たない —— 数値は `vitals.ts`（プレイヤー）と
+ * `mobs.ts`（モブ）がそれぞれ持つ。
+ */
+export function isHotLiquid(id: number): boolean {
+  return HOT[id] === 1;
 }
 
 /** 頭がそのブロックの中にあるときのフォグ。液体でなければ null。 */
