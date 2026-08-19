@@ -14,8 +14,10 @@ import {
 import { RECIPES, consumeGrid, findRecipe } from "../src/crafting";
 import { isEmpty, type Slot } from "../src/inventory";
 import {
+  BUCKET,
   COAL,
   DIAMOND,
+  IRON_INGOT,
   DIAMOND_PICKAXE,
   NO_ITEM,
   STICK,
@@ -41,7 +43,7 @@ function grid(size: number, rows: string[], key: Record<string, number>): Slot[]
 export function run(): void {
   describe("クラフト");
 
-  const P = { P: PLANK, S: STICK, W: WOOD, C: COBBLE, D: DIAMOND, A: SAND, O: COAL, T: STONE };
+  const P = { P: PLANK, S: STICK, W: WOOD, C: COBBLE, D: DIAMOND, A: SAND, O: COAL, T: STONE, I: IRON_INGOT };
 
   // --- 形なし ---
   const planks = findRecipe(grid(2, ["W."], P), 2);
@@ -68,6 +70,16 @@ export function run(): void {
   check("石炭 + 棒 → 松明 4 本", torch?.out === TORCH && torch.count === 4, torch?.name ?? "無し");
   const torchUpsideDown = findRecipe(grid(2, ["S.", "O."], P), 2);
   check("上下を逆にすると松明にならない", torchUpsideDown === null, torchUpsideDown?.name ?? "無し");
+
+  // --- バケツ ---
+  // **黒曜石への入口。** 水と溶岩が触れる場所は生成では作られないので、
+  // これが無いと黒曜石が 1 個も手に入らない（＝ネザーへ行けない）。
+  const bucket = findRecipe(grid(3, ["I.I", ".I."], P), 3);
+  check("鉄 3 個の V 字 → バケツ", bucket?.out === BUCKET && bucket.count === 1, bucket?.name ?? "無し");
+  const bucketUpsideDown = findRecipe(grid(3, [".I.", "I.I"], P), 3);
+  check("上下を逆にするとバケツにならない", bucketUpsideDown === null, bucketUpsideDown?.name ?? "無し");
+  const bucketIn2 = findRecipe(grid(2, ["I.", ".I"], P), 2);
+  check("2x2 ではバケツは作れない（作業台が要る）", bucketIn2 === null, bucketIn2?.name ?? "無し");
 
   // --- 盤面の広さ ---
   const pickIn3 = findRecipe(grid(3, ["PPP", ".S.", ".S."], P), 3);

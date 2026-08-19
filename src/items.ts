@@ -13,6 +13,8 @@ import {
   STONE,
   TIER_DIAMOND,
   TIER_WOOD,
+  LAVA,
+  WATER,
   baseBlock,
   isLiquid,
   type ToolKind,
@@ -55,7 +57,16 @@ export const ROTTEN_FLESH = 82;
 /** 焼き豚。かまどで生豚肉を焼くと出る。いちばん強い食べ物。 */
 export const COOKED_PORK = 83;
 
-export const MAX_ITEM_ID = COOKED_PORK;
+/**
+ * バケツ。**空・水・溶岩の 3 つで 1 組**（中身をアイテム ID で表すのは Minecraft と同じ）。
+ * **黒曜石の入手導線**でもある —— 水と溶岩が触れる場所は生成では作られないので、
+ * バケツが無いと黒曜石は 1 個も手に入らない（＝ネザーへ行けない）。
+ */
+export const BUCKET = 84;
+export const WATER_BUCKET = 85;
+export const LAVA_BUCKET = 86;
+
+export const MAX_ITEM_ID = LAVA_BUCKET;
 
 export const MAX_STACK = 64;
 
@@ -118,6 +129,12 @@ item({ id: DIAMOND, name: "ダイヤモンド", block: AIR, stack: MAX_STACK, co
 item({ id: RAW_PORK, name: "生豚肉", block: AIR, stack: MAX_STACK, color: 0xe08f8f, tool: null });
 item({ id: ROTTEN_FLESH, name: "腐った肉", block: AIR, stack: MAX_STACK, color: 0x8a6b4f, tool: null });
 item({ id: COOKED_PORK, name: "焼き豚", block: AIR, stack: MAX_STACK, color: 0xc4763f, tool: null });
+
+// バケツ。**積めるのは 1 個まで**（Minecraft と同じ）。16 個の水を 1 枠に持てると、
+// 水路作りが別のゲームになる。
+item({ id: BUCKET, name: "バケツ", block: AIR, stack: 1, color: 0xb0b4bb, tool: null });
+item({ id: WATER_BUCKET, name: "水入りバケツ", block: AIR, stack: 1, color: 0x3f7ad0, tool: null });
+item({ id: LAVA_BUCKET, name: "溶岩入りバケツ", block: AIR, stack: 1, color: 0xe0601a, tool: null });
 
 /** 道具は 4 階層 x 3 種類。ID は tier ごとに pickaxe / axe / shovel の順。 */
 const TOOL_KINDS: ToolKind[] = ["pickaxe", "axe", "shovel"];
@@ -238,6 +255,59 @@ export function dropOf(blockId: number): Drop {
   const special = DROPS.get(blockId);
   if (special) return special;
   return { item: baseBlock(blockId), count: 1, chance: 1 };
+}
+
+// --- バケツ -------------------------------------------------------------
+
+/**
+ * 中身の入ったバケツと、その液体の対応。**バケツを増やすときはここ 1 行。**
+ * 分岐（`item === WATER_BUCKET ? ... : ...`）で書くと、液体を足すたびに
+ * 汲む側と流す側の 2 か所を直すことになり、必ず片方を忘れる
+ * （液体の判定を 3 か所に写して溶岩で全部忘れた、あれと同じ形）。
+ */
+const FILLED_BUCKETS: readonly (readonly [item: number, liquid: number])[] = [
+  [WATER_BUCKET, WATER],
+  [LAVA_BUCKET, LAVA],
+];
+
+/** その液体を汲んだバケツ。汲めない液体なら `NO_ITEM`。 */
+export function bucketOf(liquid: number): number {
+  return FILLED_BUCKETS.find(([, held]) => held === liquid)?.[0] ?? NO_ITEM;
+}
+
+/** そのバケツの中身の液体。空バケツやバケツでないものは `AIR`。 */
+export function liquidOf(item: number): number {
+  return FILLED_BUCKETS.find(([held]) => held === item)?.[1] ?? AIR;
+}
+
+/** バケツを持っているか（空でも中身入りでも）。狙う光線の当たり方が変わる。 */
+export function isBucket(item: number): boolean {
+  return item === BUCKET || liquidOf(item) !== AIR;
+}
+
+/** バケツを使ったら何が起きるか。何も起きないなら null。 */
+export type BucketUse =
+  /** 汲む: 狙ったマスを空にして、手は `item`（中身入りバケツ）になる。 */
+  | { readonly kind: "fill"; readonly item: number; readonly liquid: number }
+  /** 流す: 置くマスを `liquid` にして、手は `item`（空バケツ）になる。 */
+  | { readonly kind: "empty"; readonly item: number; readonly liquid: number }
+  | null;
+
+/**
+ * バケツの使い道を決める。**`main.ts` に分岐を書かないこと** ——
+ * 汲む／流すはどちらも「液体 1 マスと手の中身を入れ替える」1 つの規則で、
+ * 散らすと液体を足したときに片側だけ直すことになる。
+ *
+ * **どのマスに効くかは呼ぶ側が決める**（汲むなら狙ったマス、流すなら置くマス）。
+ * ここは座標を知らないので、丸ごとヘッドレスで確かめられる。
+ */
+export function bucketUse(held: number, targetId: number): BucketUse {
+  if (held === BUCKET) {
+    const filled = bucketOf(targetId);
+    return filled === NO_ITEM ? null : { kind: "fill", item: filled, liquid: targetId };
+  }
+  const liquid = liquidOf(held);
+  return liquid === AIR ? null : { kind: "empty", item: BUCKET, liquid };
 }
 
 /** 全アイテム ID（テストと UI の列挙用）。 */

@@ -23,12 +23,19 @@ export interface RaycastHit {
  * そのブロックの形（`shapeBoxes`）と交差するか改めて見て、外れていれば素通りする。
  * ここを省くと、ハーフブロックの上の空間を狙っているのにハーフに当たり、
  * 見えていない所にブロックが生えたり、狙っていないものが壊れたりする。
+ *
+ * `hitLiquid` を立てると**液体も立方体として当たりにする。** バケツを持っている
+ * ときだけ使う。**既定では素通りさせること** —— 素通りさせないと、溶岩湖の
+ * 向こうを狙ったときに手前の溶岩そのものが置き場になる。
+ * **ここで液体を名指ししないこと**（当てるかどうかは呼ぶ側の都合で、
+ * どれが液体かは `isLiquid()` に聞く）。
  */
 export function raycastVoxels(
   world: World,
   origin: Vector3,
   direction: Vector3,
   maxDistance: number,
+  hitLiquid = false,
 ): RaycastHit | null {
   let x = Math.floor(origin.x);
   let y = Math.floor(origin.y);
@@ -81,7 +88,7 @@ export function raycastVoxels(
     const id = world.getVoxel(x, y, z);
     // 液体は素通りする。**`id !== WATER` と書かないこと** —— 溶岩を足したときに
     // ここだけ直し忘れて、溶岩湖の向こうを狙うと手前の溶岩が置き場になった。
-    if (id !== AIR && !isLiquid(id)) {
+    if (id !== AIR && (hitLiquid || !isLiquid(id))) {
       const boxes = shapeBoxes(id);
       if (boxes === FULL_BOX) {
         // 立方体はセルの境界がそのまま面なので、改めて交差を見る必要はない

@@ -42,7 +42,23 @@ import {
   shapeBoxes,
 } from "../src/blocks";
 import { MAX_LIGHT } from "../src/constants";
-import { STICK, allItemIds, dropOf, itemName, placedBlock } from "../src/items";
+import {
+  BUCKET,
+  IRON_INGOT,
+  LAVA_BUCKET,
+  NO_ITEM,
+  STICK,
+  WATER_BUCKET,
+  allItemIds,
+  bucketOf,
+  bucketUse,
+  dropOf,
+  isBucket,
+  itemName,
+  itemStackLimit,
+  liquidOf,
+  placedBlock,
+} from "../src/items";
 import { breakTime } from "../src/mining";
 import { Player } from "../src/player";
 import { raycastVoxels } from "../src/raycast";
@@ -615,7 +631,71 @@ export function run(): void {
     );
     world.setVoxel(lx, ground, 1, AIR);
     world.setVoxel(lx + 1, ground, 1, AIR);
+
+    // **バケツを持っているときだけ液体に当たる。** これが無いと水面を狙えず、
+    // 水を汲めない（既定を変えると、上の「素通りする」が壊れて溶岩バグが戻る）。
+    world.setVoxel(lx, ground, 1, id);
+    const scooped = raycastVoxels(
+      world,
+      new Vector3(lx - 1, ground + 0.5, 1.5),
+      new Vector3(1, 0, 0),
+      8,
+      true,
+    );
+    check(
+      `バケツを持つと${name}そのものに当たる`,
+      scooped !== null && scooped.id === id && scooped.block.x === lx,
+      scooped ? `${blockName(scooped.id)} @ x=${scooped.block.x}` : "外れ",
+    );
+    world.setVoxel(lx, ground, 1, AIR);
   }
+
+  describe("バケツ");
+
+  // **液体を足したらバケツも足すこと。** 汲めない液体があると、そこだけ
+  // 「見えるのに触れないもの」になる（ネザーの溶岩海も同じ LAVA なので、
+  // ここが揃っていればそのまま汲める）。
+  const noBucket = BLOCKS.filter((b) => b.liquid && bucketOf(b.id) === NO_ITEM).map((b) => b.name);
+  check("すべての液体に対応するバケツがある", noBucket.length === 0, noBucket.join(" ") || "水も溶岩も汲める");
+
+  // 不変条件: 中身から引いたバケツの中身は、元の液体に戻る。
+  const roundTrip = [WATER, LAVA].every((liquid) => liquidOf(bucketOf(liquid)) === liquid);
+  check("バケツと中身が 1 対 1", roundTrip, `水 → ${itemName(bucketOf(WATER))} / 溶岩 → ${itemName(bucketOf(LAVA))}`);
+
+  check(
+    "バケツは 3 つとも「バケツ」と分かる",
+    isBucket(BUCKET) && isBucket(WATER_BUCKET) && isBucket(LAVA_BUCKET),
+  );
+  check("バケツでないものは false", !isBucket(IRON_INGOT) && !isBucket(NO_ITEM) && !isBucket(STONE));
+
+  // **積めるのは 1 個まで。** 16 個の水を 1 枠に持てると水路作りが別のゲームになる。
+  const stacks = [BUCKET, WATER_BUCKET, LAVA_BUCKET].map((id) => itemStackLimit(id));
+  check("バケツは 1 個までしか積めない", stacks.every((n) => n === 1), stacks.join(" / "));
+
+  // 汲む
+  for (const [name, liquid] of [["水", WATER], ["溶岩", LAVA]] as const) {
+    const use = bucketUse(BUCKET, liquid);
+    check(
+      `空バケツで${name}を汲める`,
+      use?.kind === "fill" && use.item === bucketOf(liquid) && use.liquid === liquid,
+      use ? `${use.kind} → ${itemName(use.item)}` : "使えない",
+    );
+  }
+  check("空バケツで石は汲めない", bucketUse(BUCKET, STONE) === null);
+  check("空バケツで空気は汲めない", bucketUse(BUCKET, AIR) === null);
+
+  // 流す。**狙った先が何であっても流せること**（置くマスを決めるのは呼ぶ側）。
+  for (const [name, held, liquid] of [["水", WATER_BUCKET, WATER], ["溶岩", LAVA_BUCKET, LAVA]] as const) {
+    const use = bucketUse(held, STONE);
+    check(
+      `${name}入りバケツは流せて、空バケツが手に残る`,
+      use?.kind === "empty" && use.liquid === liquid && use.item === BUCKET,
+      use ? `${use.kind} → ${blockName(use.liquid)} / 手は ${itemName(use.item)}` : "使えない",
+    );
+  }
+
+  // バケツでないものを渡しても何も起きない（`main.ts` が誤って呼んでも安全）
+  check("バケツ以外では何も起きない", bucketUse(IRON_INGOT, WATER) === null && bucketUse(NO_ITEM, LAVA) === null);
 
   world.dispose();
 }

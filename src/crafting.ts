@@ -22,6 +22,7 @@ import {
 } from "./blocks";
 import { isEmpty, type Slot } from "./inventory";
 import {
+  BUCKET,
   COAL,
   DIAMOND,
   DIAMOND_AXE,
@@ -95,6 +96,10 @@ export const RECIPES: readonly Recipe[] = [
   stairRecipe("丸石", COBBLE, COBBLE_STAIRS),
   stairRecipe("板", PLANK, PLANK_STAIRS),
   stairRecipe("砂岩", SANDSTONE, SANDSTONE_STAIRS),
+
+  // バケツは鉄 3 個の V 字（Minecraft と同じ）。**これが黒曜石への入口**で、
+  // 水を汲んで溶岩に流すところから始まる。左右対称なので反転しても同じ形。
+  { name: "バケツ", out: BUCKET, count: 1, shape: ["I.I", ".I."], key: { I: IRON_INGOT } },
 
   ...toolRecipes("木", PLANK, WOOD_PICKAXE, WOOD_AXE, WOOD_SHOVEL),
   ...toolRecipes("石", COBBLE, STONE_PICKAXE, STONE_AXE, STONE_SHOVEL),

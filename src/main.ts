@@ -59,7 +59,7 @@ import { DropRenderer } from "./droprender";
 import { Furnaces } from "./furnaces";
 import { Inventory } from "./inventory";
 import { InventoryScreen } from "./inventoryui";
-import { NO_ITEM, dropOf, foodOf, itemName, placedBlock } from "./items";
+import { NO_ITEM, bucketUse, dropOf, foodOf, isBucket, itemName, placedBlock } from "./items";
 import { Mining, breakTime, canHarvest } from "./mining";
 import { MobRenderer } from "./mobrender";
 import { MOB_KINDS, Mobs, type MobContext } from "./mobs";
@@ -735,6 +735,14 @@ function useOrPlace(): void {
     return;
   }
 
+  // バケツ。**汲めるか流せるかの判断は `items.ts` の `bucketUse()`**（ここは
+  // どのマスに効くかを決めるだけ）。食べ物より先に見る —— どちらも右クリックだが、
+  // バケツは押しっぱなしではなく 1 回で終わる。
+  if (isBucket(inventory.selectedItem)) {
+    useBucket(inventory.selectedItem);
+    return;
+  }
+
   // 食べ物。**何がどれだけ戻るかは `items.ts`、食べられるかは `vitals.ts`**。
   // ここは「押しっぱなしが始まった」ことだけを持つ。
   const food = foodOf(inventory.selectedItem);
@@ -789,6 +797,39 @@ function useOrPlace(): void {
   audio.play("place", blockSound(id));
 
   if (!creative) inventory.consumeSelected(1);
+  hud.refresh();
+  saveDirty = true;
+}
+
+/**
+ * バケツで汲む／流す。**判断は `items.ts` の `bucketUse()`** にあるので、
+ * ここは「どのマスに効くか」を決めて結果を貼るだけ。
+ *
+ * **ここだけ光線を引き直す。** 普段の光線は液体を素通りするので
+ * （溶岩湖の向こうを狙えるように）、そのままでは水面を狙えず汲めない。
+ */
+function useBucket(held: number): void {
+  const target = raycastVoxels(world, camera.position, lookDirection, REACH, true);
+  if (!target) return;
+
+  const use = bucketUse(held, target.id);
+  if (!use) {
+    hud.flash("汲めるのは水と溶岩だけです");
+    return;
+  }
+
+  // 汲むのは狙ったマス。流すのは置くマス（狙ったのが液体ならそのマス自身）。
+  const spot = use.kind === "fill" ? target.block : placeSpot(target, faceFromYaw(player.yaw));
+  const { x, y, z } = spot;
+  if (use.kind === "empty" && !isReplaceable(world.getVoxel(x, y, z))) return;
+  if (!world.setVoxel(x, y, z, use.kind === "fill" ? AIR : use.liquid)) return;
+
+  // **クリエイティブでも中身は入れ替える。** バケツは「減る道具」ではなく
+  // 中身そのものがアイテムなので、入れ替えないと永久に空のままで何も流せない。
+  inventory.setSelected(use.item, 1);
+  // 水の音を借りている（溶岩用の音はまだ無い）。
+  audio.play("splash");
+  hud.flash(`${blockName(use.liquid)}を${use.kind === "fill" ? "汲んだ" : "流した"}`);
   hud.refresh();
   saveDirty = true;
 }
