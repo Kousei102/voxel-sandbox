@@ -8,7 +8,7 @@ import {
   type Inventory,
   type Slot,
 } from "./inventory";
-import { NO_ITEM, itemStackLimit } from "./items";
+import { NO_ITEM, allItemIds, itemStackLimit } from "./items";
 import {
   cookFraction,
   isFuel,
@@ -42,18 +42,39 @@ export const GRID_SLOTS = 9;
  *
  * `chest` は 27 枠あるので、**`grid` / `inv` と同じ「`index` で引く」側**。
  * かまどの 3 枠が名前で引く形なのは、枠ごとに意味が違う（材料・燃料・出来上がり）ため。
+ *
+ * `creative` は**唯一「本物のスロットでない」枠**。無限の湧き口なので、押したときに
+ * 何が起きるかは `pressCreative()` だけが決め、掴む・配る・入れ替えの経路
+ * （`slotAt()`）には出さない（出すと、無限に出るものが山ごと動いてしまう）。
  */
-export type SlotArea = "grid" | "inv" | "input" | "fuel" | "output" | "chest";
+export type SlotArea = "grid" | "inv" | "input" | "fuel" | "output" | "chest" | "creative";
 
 /**
- * 画面の種類。作業台／手持ちなら "craft"、かまどなら "furnace"、チェストなら "chest"。
- * **開いている器はいつも 1 つだけ**（`openScreen` / `openFurnace` / `openChest` が
- * 互いを null にする）。
+ * 画面の種類。作業台／手持ちなら "craft"、かまどなら "furnace"、チェストなら "chest"、
+ * クリエイティブの一覧なら "creative"。
+ * **開いている器はいつも 1 つだけ**（`openScreen` / `openFurnace` / `openChest` /
+ * `openCreative` が互いを消す）。
  */
-export type ScreenMode = "craft" | "furnace" | "chest";
+export type ScreenMode = "craft" | "furnace" | "chest" | "creative";
 
 /** かまどの 3 枠。UI とテストが並べて回すのに使う。 */
 export const FURNACE_AREAS: readonly SlotArea[] = ["input", "fuel", "output"];
+
+/**
+ * クリエイティブの一覧に並ぶアイテム。**`allItemIds()` をそのまま使う。**
+ *
+ * **別表を作らないこと** —— 手で並べると、ブロックやアイテムを足すたびに
+ * 「作ったのにクリエイティブに出てこない」が起きます（ネザー・エンドで
+ * まとめて増えるので、必ず踏みます）。並びは ID 順なので、ブロック（1..63）が先、
+ * 棒・鉱物・道具・食べ物・バケツが後ろにまとまります。
+ *
+ * ここに無いのは**アイテムになれないもの**だけです（空気・液体そのもの・
+ * 向き違いのブロック。`items.ts` がそもそもアイテムを作りません）。
+ */
+export const CREATIVE_ITEMS: readonly number[] = allItemIds();
+
+/** 一覧の枠の数（UI が枠を作るのに使う）。 */
+export const CREATIVE_SIZE = CREATIVE_ITEMS.length;
 
 /** 左 = 0、右 = 2（`MouseEvent.button` と同じ番号）。中クリックは受けない。 */
 export type MouseButton = 0 | 2;
@@ -131,6 +152,12 @@ export class CraftScreen {
    */
   private chestState: ChestState | null = null;
 
+  /**
+   * クリエイティブの一覧を開いているか。**中身を持たない**のがかまど・チェストとの違い
+   * （湧き口なので器が要らない）。だから `FurnaceState` のような状態ではなく真偽 1 つ。
+   */
+  private creativeOpen = false;
+
   private dragButton: MouseButton | null = null;
   /** 撫でたスロット。撫でた順のまま、重複なし。 */
   private dragSlots: SlotRef[] = [];
@@ -165,7 +192,17 @@ export class CraftScreen {
   get mode(): ScreenMode {
     if (this.furnaceState) return "furnace";
     if (this.chestState) return "chest";
+    if (this.creativeOpen) return "creative";
     return "craft";
+  }
+
+  /**
+   * いま盤面（クラフト）が使える画面か。**器を足すときはここへ 1 つ足すこと** ——
+   * `usable()` / `result()` / `takeResult()` の 3 か所に条件を写すと、必ず 1 つ忘れて
+   * 「画面に出ていない盤面で作れてしまう」形になります。
+   */
+  private get crafting(): boolean {
+    return !this.furnaceState && !this.chestState && !this.creativeOpen;
   }
 
   /** 開いているかまど。開いていなければ null（UI が中身を描くのに使う）。 */
@@ -181,6 +218,7 @@ export class CraftScreen {
   openScreen(size: CraftSize): void {
     this.furnaceState = null;
     this.chestState = null;
+    this.creativeOpen = false;
     this.craftSize = size;
     this.open = true;
   }
@@ -188,6 +226,7 @@ export class CraftScreen {
   /** かまどを開く。**中身は借り物**なので、閉じてもインベントリへ返さない。 */
   openFurnace(state: FurnaceState): void {
     this.chestState = null;
+    this.creativeOpen = false;
     this.furnaceState = state;
     this.open = true;
   }
@@ -195,7 +234,20 @@ export class CraftScreen {
   /** チェストを開く。かまどと同じで、**中身は借り物**（閉じても返さない）。 */
   openChest(state: ChestState): void {
     this.furnaceState = null;
+    this.creativeOpen = false;
     this.chestState = state;
+    this.open = true;
+  }
+
+  /**
+   * クリエイティブの一覧を開く。**器を渡さない**のが他の 3 つとの違い ——
+   * 並ぶのは `CREATIVE_ITEMS`（湧き口）で、中身という状態がそもそも無い。
+   * だから閉じるときに返すものも無く、壊したときに落ちるものも無い。
+   */
+  openCreative(): void {
+    this.furnaceState = null;
+    this.chestState = null;
+    this.creativeOpen = true;
     this.open = true;
   }
 
@@ -209,6 +261,7 @@ export class CraftScreen {
     this.returnAll();
     this.furnaceState = null;
     this.chestState = null;
+    this.creativeOpen = false;
     this.open = false;
   }
 
@@ -234,7 +287,7 @@ export class CraftScreen {
    * 触れる経路が残っていると画面に無いスロットに物を入れられてしまう）。
    */
   usable(index: number): boolean {
-    if (this.furnaceState || this.chestState) return false;
+    if (!this.crafting) return false;
     if (this.craftSize === 3) return true;
     const x = index % 3;
     const y = Math.floor(index / 3);
@@ -248,6 +301,10 @@ export class CraftScreen {
    * 確定は `release()` まで遅らせるので、`cancelDrag()` に巻き戻しが要らない。
    */
   press(area: SlotArea, index: number, button: MouseButton, mods: PressMods = NO_MODS): ScreenResult {
+    // クリエイティブの一覧は本物のスロットでないので、**いちばん先に振り分ける**
+    // （シフト・ダブルクリックの意味も一覧の中だけ違う）。
+    if (area === "creative") return this.pressCreative(index, button, mods);
+
     // どの入力がどの操作かを決めるのはここ。UI は shiftKey / detail をそのまま渡すだけ。
     if (button === 0 && mods.shift) return this.quickMove(area, index);
     if (button === 0 && mods.double) return this.gather();
@@ -271,6 +328,43 @@ export class CraftScreen {
     this.dragSlots = [{ area, index }];
     this.dragItem = this.heldSlot.item;
     this.dragTotal = this.heldSlot.count;
+    return CHANGED;
+  }
+
+  /**
+   * クリエイティブの一覧を押した。**Minecraft と同じ規則**にしてある。
+   *
+   * - 手が空: 左で 1 山（そのアイテムの上限まで）、右で 1 個、シフトでインベントリへ直接
+   * - 手が塞がっている: **掴んでいるものを捨てる**（無限に出せる側なので、これが唯一のゴミ箱）
+   *
+   * **捨てたぶんを地面に落とさないこと**（`discarded` を返さない）。一覧をクリックする
+   * たびに山が落ちると、寿命 5 分のゴミが足元に溜まり続けます。**ダブルクリックでは
+   * 捨てません** —— 掴んだ直後の 2 回目が「掴んで即捨てる」に化けるためです。
+   *
+   * **1 山の数は `itemStackLimit()` に聞くこと。** 64 と書くと、バケツ（1 個まで）を
+   * 一覧から取ったときだけ持てない数の山ができます。
+   */
+  private pressCreative(index: number, button: MouseButton, mods: PressMods): ScreenResult {
+    // **開いていない一覧は効かないこと**（`slotAt()` が開いていない器の枠を返さないのと同じ）。
+    // 画面に出ていない枠から物が湧く経路を、CSS の `display: none` 頼みにしない。
+    if (!this.creativeOpen) return NOTHING;
+    const item = CREATIVE_ITEMS[index] ?? NO_ITEM;
+    if (item === NO_ITEM) return NOTHING;
+    this.cancelDrag();
+
+    if (!isEmpty(this.heldSlot)) {
+      if (mods.double) return NOTHING;
+      clearSlot(this.heldSlot);
+      return CHANGED;
+    }
+
+    const limit = itemStackLimit(item);
+    if (mods.shift) {
+      const left = this.inventory.add(item, limit);
+      return left < limit ? CHANGED : NOTHING;
+    }
+    this.heldSlot.item = item;
+    this.heldSlot.count = button === 0 ? limit : 1;
     return CHANGED;
   }
 
@@ -559,7 +653,7 @@ export class CraftScreen {
   takeResult(all = false): ScreenResult {
     // かまど・チェストを開いている間は盤面そのものが出ていない。
     // （かまどの焼き上がりは本物のスロットで、つまんで取る）
-    if (this.furnaceState || this.chestState) return NOTHING;
+    if (!this.crafting) return NOTHING;
     if (all) return this.quickCraft();
     const recipe = findRecipe(this.activeGrid(), this.craftSize);
     if (!recipe) return NOTHING;
@@ -606,8 +700,18 @@ export class CraftScreen {
     return [this.grid[0], this.grid[1], this.grid[3], this.grid[4]];
   }
 
-  /** 描くための 1 枠。使えない枠なら null（UI に `usable` の規則を持たせない）。 */
+  /**
+   * 描くための 1 枠。使えない枠なら null（UI に `usable` の規則を持たせない）。
+   *
+   * **クリエイティブの一覧だけは「見せるための姿」を作って返す。** 本物のスロットは
+   * 無いので、`slotAt()`（入力の側）には出しません。数は上限にしてあるので、
+   * 触れば何個来るかが表示と一致します。
+   */
   slotFor(area: SlotArea, index = 0): Slot | null {
+    if (area === "creative") {
+      const item = CREATIVE_ITEMS[index] ?? NO_ITEM;
+      return item === NO_ITEM ? null : { item, count: itemStackLimit(item) };
+    }
     return this.slotAt(area, index);
   }
 
@@ -638,7 +742,7 @@ export class CraftScreen {
 
   /** 出来上がりの見本。無ければ null。文字の組み立ては UI 側でやる。 */
   result(): { item: number; count: number; name: string } | null {
-    if (this.furnaceState || this.chestState) return null;
+    if (!this.crafting) return null;
     const recipe = findRecipe(this.activeGrid(), this.craftSize);
     return recipe ? { item: recipe.out, count: recipe.count, name: recipe.name } : null;
   }
@@ -686,6 +790,9 @@ export class CraftScreen {
    */
   private slotAt(area: SlotArea, index: number): Slot | null {
     if (area === "grid") return this.usable(index) ? this.grid[index] : null;
+    // クリエイティブの一覧は**入力の側には出さない**（湧き口であって、器ではない）。
+    // 本物として返すと、掴む・配る・入れ替えがそのまま効いて一覧の中身が動く。
+    if (area === "creative") return null;
     if (area === "inv") return this.inventory.slots[index] ?? null;
     if (area === "chest") return this.chestState?.slots[index] ?? null;
     const furnace = this.furnaceState;
@@ -701,7 +808,9 @@ export class CraftScreen {
    * 「焼いていないのに出てくる」形になる。
    */
   private canPlaceInto(area: SlotArea): boolean {
-    return area !== "output";
+    // クリエイティブの一覧も置けない側（押したときの捨てるは `pressCreative()` の仕事で、
+    // ドラッグの撫でた集合や数字キーの行き先にしてはいけない）。
+    return area !== "output" && area !== "creative";
   }
 
   private slotsOf(refs: readonly SlotRef[]): Slot[] {

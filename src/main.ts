@@ -557,7 +557,7 @@ syncVolumeInput();
 modeButton.addEventListener("click", () => {
   setCreative(!creative);
   saveDirty = true;
-  hud.flash(creative ? "クリエイティブ: 即掘り・アイテム無限" : "サバイバル: 掘って集めます");
+  hud.flash(creative ? "クリエイティブ: 即掘り・E で全アイテム" : "サバイバル: 掘って集めます");
 });
 
 document.getElementById("respawn")?.addEventListener("click", () => {
@@ -584,15 +584,32 @@ document.addEventListener("pointerlockchange", () => {
   }
 });
 
-/** インベントリ（または作業台）を開く。ポインタロックは外れる。 */
-function openInventory(size: 2 | 3): void {
+/**
+ * 画面を 1 つ開く。**開ける前に手を止めるのは 4 つとも同じ**なので、ここに集める
+ * （写すと、画面を足したときに掘りかけ・食べかけが残る形で 1 つだけ抜ける）。
+ */
+function openPanel(show: () => void): void {
   if (screen.isOpen) return;
   breaking = false;
   mining.reset();
   stopEating();
-  screen.show(size);
+  show();
   hud.setPlaying(false, false);
   document.exitPointerLock();
+}
+
+/** インベントリ（または作業台）を開く。ポインタロックは外れる。 */
+function openInventory(size: 2 | 3): void {
+  openPanel(() => screen.show(size));
+}
+
+/**
+ * クリエイティブの一覧を開く（`E`）。**器が要らない**のが他の 3 つとの違いで、
+ * 並ぶものも押したときの規則も `craftscreen.ts` が持っている。
+ * **作業台はクリエイティブでも今までどおり 3x3 のクラフト画面**（`openInventory(3)`）。
+ */
+function openCreativeInventory(): void {
+  openPanel(() => screen.showCreative());
 }
 
 /**
@@ -600,13 +617,7 @@ function openInventory(size: 2 | 3): void {
  * **閉じても中身は返さない**（ワールドに置いてあるもの。`craftscreen.ts` の `close()`）。
  */
 function openFurnace(x: number, y: number, z: number): void {
-  if (screen.isOpen) return;
-  breaking = false;
-  mining.reset();
-  stopEating();
-  screen.showFurnace(furnaces.at(x, y, z));
-  hud.setPlaying(false, false);
-  document.exitPointerLock();
+  openPanel(() => screen.showFurnace(furnaces.at(x, y, z)));
 }
 
 /**
@@ -614,13 +625,7 @@ function openFurnace(x: number, y: number, z: number): void {
  * 画面はそれを借りるだけ。**閉じても中身は返さない**（ワールドの持ち物）。
  */
 function openChest(x: number, y: number, z: number): void {
-  if (screen.isOpen) return;
-  breaking = false;
-  mining.reset();
-  stopEating();
-  screen.showChest(chests.at(x, y, z));
-  hud.setPlaying(false, false);
-  document.exitPointerLock();
+  openPanel(() => screen.showChest(chests.at(x, y, z)));
 }
 
 function closeInventory(): void {
@@ -952,7 +957,9 @@ window.addEventListener("keydown", (event) => {
   switch (event.code) {
     case "KeyE":
       event.preventDefault();
-      openInventory(2);
+      // クリエイティブでは全アイテムの一覧。ホットバーと収納は下にそのまま出る。
+      if (creative) openCreativeInventory();
+      else openInventory(2);
       return;
     case "KeyQ": {
       // 落としたものは地面に残るので拾い直せる（`drops.ts`）。

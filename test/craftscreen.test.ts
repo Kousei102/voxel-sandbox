@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
-import { DIRT, PLANK, STONE, WOOD } from "../src/blocks";
+import { DIRT, LAVA, PLANK, STONE, WATER, WOOD } from "../src/blocks";
 import {
+  CREATIVE_ITEMS,
+  CREATIVE_SIZE,
   CraftScreen,
   GRID_SLOTS,
   type MouseButton,
@@ -8,7 +10,16 @@ import {
   type SlotArea,
 } from "../src/craftscreen";
 import { HOTBAR_SIZE, Inventory, isEmpty, type Slot } from "../src/inventory";
-import { MAX_STACK, NO_ITEM, STICK, WOOD_PICKAXE } from "../src/items";
+import {
+  BUCKET,
+  DIAMOND_PICKAXE,
+  MAX_STACK,
+  NO_ITEM,
+  STICK,
+  WOOD_PICKAXE,
+  allItemIds,
+  itemName,
+} from "../src/items";
 import { check, describe } from "./harness";
 
 function stripComments(path: string): string {
@@ -845,5 +856,167 @@ export function run(): void {
     "離した状態で入ってきたら構えを確定する",
     !backInside.isDragging && backInside.inventory.slots[1].count === 8,
     `ドラッグ中 ${backInside.isDragging} / スロット1 ${backInside.inventory.slots[1].count} 個`,
+  );
+
+  // --- クリエイティブの一覧（無限の湧き口） ---
+  describe("インベントリ画面（クリエイティブの一覧）");
+
+  /** 一覧を開いた画面。**器を渡さない**のが他の 3 つとの違い。 */
+  function creative(): CraftScreen {
+    const craft = new CraftScreen(new Inventory());
+    craft.openCreative();
+    return craft;
+  }
+
+  /** 一覧の中でそのアイテムが並んでいる枠。無ければ -1。 */
+  const at = (item: number) => CREATIVE_ITEMS.indexOf(item);
+
+  console.log(
+    `      一覧 ${CREATIVE_SIZE} 種類 / 先頭 ${itemName(CREATIVE_ITEMS[0])}` +
+      ` … 末尾 ${itemName(CREATIVE_ITEMS[CREATIVE_SIZE - 1])}`,
+  );
+
+  // 別表を作らず `allItemIds()` をそのまま並べる。手で並べると、ブロックを足すたびに
+  // 「作ったのにクリエイティブに出てこない」が起きる（ネザーとエンドで必ず踏む）。
+  check(
+    "一覧はアイテムになれるもの全部",
+    CREATIVE_SIZE === allItemIds().length && CREATIVE_SIZE > 0,
+    `${CREATIVE_SIZE} 種類 / アイテム ${allItemIds().length} 種類`,
+  );
+  check(
+    "ブロックも道具もバケツも並ぶ",
+    at(STONE) >= 0 && at(DIAMOND_PICKAXE) >= 0 && at(BUCKET) >= 0,
+    `石 ${at(STONE)} / ダイヤのツルハシ ${at(DIAMOND_PICKAXE)} / バケツ ${at(BUCKET)}`,
+  );
+  // 液体そのものはアイテムになれない（汲むのはバケツの仕事）。
+  check(
+    "水と溶岩そのものは並ばない",
+    at(WATER) < 0 && at(LAVA) < 0,
+    `水 ${at(WATER)} / 溶岩 ${at(LAVA)}`,
+  );
+
+  const takeStack = creative();
+  click(takeStack, "creative", at(STONE), 0);
+  check(
+    "左クリックで 1 山（上限まで）掴む",
+    takeStack.held?.item === STONE && takeStack.held.count === MAX_STACK,
+    `手 ${takeStack.held?.count} 個`,
+  );
+
+  const takeOne = creative();
+  click(takeOne, "creative", at(STONE), 2);
+  check("右クリックで 1 個だけ掴む", takeOne.held?.count === 1, `手 ${takeOne.held?.count} 個`);
+
+  // 1 山の数は `itemStackLimit()` に聞くこと。64 と書くと、ここだけ持てない数の山ができる。
+  const takeBucket = creative();
+  click(takeBucket, "creative", at(BUCKET), 0);
+  check(
+    "積めない物（バケツ）は 1 個だけ来る",
+    takeBucket.held?.item === BUCKET && takeBucket.held.count === 1,
+    `手 ${takeBucket.held?.count} 個`,
+  );
+
+  const shiftTake = creative();
+  shiftTake.press("creative", at(DIRT), 0, SHIFT);
+  check(
+    "シフトクリックでインベントリへ直接入る",
+    shiftTake.inventory.count(DIRT) === MAX_STACK && shiftTake.held === null,
+    `インベントリ ${shiftTake.inventory.count(DIRT)} 個 / 手 ${shiftTake.held?.count ?? 0}`,
+  );
+
+  // 湧き口なので何度でも取れる（減る側が無い）。
+  const again = creative();
+  for (let i = 0; i < 3; i++) {
+    click(again, "creative", at(DIRT), 0);
+    again.press("inv", i, 0);
+    again.release();
+  }
+  check(
+    "何度取っても減らない（無限に出る）",
+    again.inventory.count(DIRT) === MAX_STACK * 3,
+    `土 ${again.inventory.count(DIRT)} 個`,
+  );
+
+  // 掴んだまま一覧をクリックすると捨てる（無限に出せる側なので、これが唯一のゴミ箱）。
+  // **地面には落とさない** —— 一覧を触るたびに山が落ちると、足元にゴミが溜まり続ける。
+  const trash = creative();
+  click(trash, "creative", at(STONE), 0);
+  const trashed = trash.press("creative", at(DIRT), 0);
+  check("掴んだまま一覧をクリックすると捨てる", trash.held === null, `手 ${trash.held?.count ?? 0} 個`);
+  check("捨てたぶんは地面に落ちない", trashed.discarded === null && trashed.changed);
+  check(
+    "捨てたぶんはインベントリにも残らない",
+    trash.inventory.count(STONE) === 0,
+    `石 ${trash.inventory.count(STONE)} 個`,
+  );
+
+  // 掴んだ直後の 2 回目が「掴んで即捨てる」に化けないこと。
+  const doubled = creative();
+  click(doubled, "creative", at(STONE), 0);
+  doubled.press("creative", at(STONE), 0, DOUBLE);
+  check(
+    "ダブルクリックでは捨てない",
+    doubled.held?.count === MAX_STACK,
+    `手 ${doubled.held?.count ?? 0} 個`,
+  );
+
+  // 一覧の枠は本物のスロットではない。置く経路（ドラッグ・数字キー）を残すと、
+  // 無限に出るものが山ごと動く。
+  const noDrop = creative();
+  click(noDrop, "creative", at(STONE), 0);
+  noDrop.hover("creative", at(DIRT), true);
+  check("一覧の枠はドラッグの対象にならない", !noDrop.isDragging);
+  check("一覧の枠に予定は出ない", noDrop.dragPlanFor("creative", at(DIRT)) === 0);
+
+  const noSwap = creative();
+  noSwap.inventory.slots[0].item = STONE;
+  noSwap.inventory.slots[0].count = 5;
+  noSwap.hover("creative", at(DIRT), false);
+  check(
+    "一覧の上では数字キーが効かない",
+    !noSwap.swapHotbar(0).changed && noSwap.inventory.slots[0].item === STONE,
+    `ホットバー0 ${noSwap.inventory.slots[0].item}`,
+  );
+
+  // 盤面はそもそも出ていない（かまど・チェストとまったく同じ扱い）。
+  const noCraft = creative();
+  put(noCraft, 0, WOOD, 1);
+  check("一覧を開いている間は盤面が使えない", !noCraft.usable(0) && noCraft.slotFor("grid", 0) === null);
+  check("出来上がりも出ない", noCraft.result() === null && !noCraft.takeResult().crafted);
+
+  // 開ける器はいつも 1 つだけ。
+  const single2 = creative();
+  single2.openScreen(2);
+  check("別の画面を開くと一覧は閉じる", single2.mode === "craft", single2.mode);
+  const backToList = screen();
+  backToList.openCreative();
+  check("一覧を開くと盤面の画面は閉じる", backToList.mode === "creative", backToList.mode);
+
+  // 掴んだまま閉じたぶんはインベントリへ（他の画面と同じ規則）。
+  const closeHeld = creative();
+  click(closeHeld, "creative", at(STONE), 0);
+  closeHeld.close();
+  check(
+    "掴んだまま閉じるとインベントリへ入る",
+    closeHeld.inventory.count(STONE) === MAX_STACK && closeHeld.held === null,
+    `石 ${closeHeld.inventory.count(STONE)} 個`,
+  );
+
+  // 表示は「何個来るか」と一致させる（UI は数字を伏せるが、吹き出しに出る）。
+  const shown = creative();
+  check(
+    "見せる姿の数は実際に来る数と同じ",
+    shown.slotFor("creative", at(STONE))?.count === MAX_STACK &&
+      shown.slotFor("creative", at(BUCKET))?.count === 1,
+    `石 ${shown.slotFor("creative", at(STONE))?.count} / バケツ ${shown.slotFor("creative", at(BUCKET))?.count}`,
+  );
+  check("一覧の外を指したら null", shown.slotFor("creative", CREATIVE_SIZE) === null);
+
+  // 画面に出ていない枠から物が湧かないこと（CSS の display:none 頼みにしない）。
+  const closedList = screen();
+  check(
+    "一覧を開いていなければ湧かない",
+    !closedList.press("creative", at(STONE), 0).changed && closedList.held === null,
+    `手 ${closedList.held?.count ?? 0} 個`,
   );
 }

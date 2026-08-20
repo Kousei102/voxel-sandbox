@@ -362,6 +362,17 @@ body {
   grid-template-columns: repeat(9, auto);
 }
 
+/*
+ * クリエイティブの一覧。**縦に伸ばさず、中をスクロールさせること** ——
+ * ネザーとエンドでブロックが増えると、伸ばす作りではパネルが画面からはみ出して
+ * 下のホットバーが押し出される（1024x768 でも収まる高さにしてある）。
+ */
+.creative {
+  max-height: 254px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
 .invhotbar {
   margin-top: 4px;
   padding-top: 10px;

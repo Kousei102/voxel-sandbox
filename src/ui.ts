@@ -1,15 +1,21 @@
 import { HOTBAR_SIZE, isEmpty, type Inventory, type Slot } from "./inventory";
 import { itemCssColor, itemName } from "./items";
 
-/** スロット 1 個分の中身を描く。インベントリ画面と共用。 */
-export function paintSlot(el: HTMLElement, slot: Slot | null): void {
+/**
+ * スロット 1 個分の中身を描く。インベントリ画面と共用。
+ *
+ * `showCount` を false にすると数字だけ出さない（**クリエイティブの一覧のため**。
+ * 全部の枠に「64」が並ぶと読みづらいので、Minecraft と同じで数字は伏せる。
+ * 何個来るかは `title`（ホバーの吹き出し）に出るので、情報は落ちない）。
+ */
+export function paintSlot(el: HTMLElement, slot: Slot | null, showCount = true): void {
   const filled = slot !== null && !isEmpty(slot);
   el.classList.toggle("filled", filled);
   const swatch = el.querySelector<HTMLElement>(".swatch");
   const count = el.querySelector<HTMLElement>(".count");
   const label = el.querySelector<HTMLElement>(".label");
   if (swatch) swatch.style.background = filled ? itemCssColor(slot.item) : "transparent";
-  if (count) count.textContent = filled && slot.count > 1 ? String(slot.count) : "";
+  if (count) count.textContent = filled && showCount && slot.count > 1 ? String(slot.count) : "";
   if (label) label.textContent = filled ? itemName(slot.item) : "";
   el.title = filled ? `${itemName(slot.item)} x${slot.count}` : "";
 }

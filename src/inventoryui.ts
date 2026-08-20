@@ -1,5 +1,6 @@
 import {
   CHEST_SIZE,
+  CREATIVE_SIZE,
   type ChestState,
   type CraftScreen,
   type CraftSize,
@@ -31,6 +32,8 @@ export class InventoryScreen {
   private readonly outEl = document.getElementById("craftout") as HTMLElement;
   private readonly chestRow = document.getElementById("chestrow") as HTMLElement;
   private readonly chestEl = document.getElementById("chest") as HTMLElement;
+  private readonly creativeRow = document.getElementById("creativerow") as HTMLElement;
+  private readonly creativeEl = document.getElementById("creative") as HTMLElement;
   private readonly storageEl = document.getElementById("storage") as HTMLElement;
   private readonly hotbarEl = document.getElementById("invhotbar") as HTMLElement;
   private readonly heldEl = document.getElementById("held") as HTMLElement;
@@ -42,6 +45,8 @@ export class InventoryScreen {
   private readonly furnaceSlots: HTMLElement[] = [];
   /** チェストの 27 枠。**収納と同じ `build()` で作る**（枠ごとの意味が無いので）。 */
   private readonly chestSlots: HTMLElement[] = [];
+  /** クリエイティブの一覧。**枠の数も並びも `craftscreen.ts` が決める**（`CREATIVE_SIZE`）。 */
+  private readonly creativeSlots: HTMLElement[] = [];
   private readonly storageSlots: HTMLElement[] = [];
   private readonly hotbarSlots: HTMLElement[] = [];
 
@@ -71,6 +76,10 @@ export class InventoryScreen {
     // チェストは 27 枠あって枠ごとの意味も無いので、かまどの 3 枠と違って
     // index.html に直書きせず、収納とまったく同じ `build()` で作る。
     this.build(this.chestEl, this.chestSlots, CHEST_SIZE, "chest", 0);
+
+    // クリエイティブの一覧。チェストと同じ作り方で、違うのは中身が湧き口だということ
+    // （中身の出どころも、押したときに何が起きるかも craftscreen.ts が持っている）。
+    this.build(this.creativeEl, this.creativeSlots, CREATIVE_SIZE, "creative", 0);
 
     this.build(this.storageEl, this.storageSlots, STORAGE_SIZE, "inv", HOTBAR_SIZE);
     this.build(this.hotbarEl, this.hotbarSlots, HOTBAR_SIZE, "inv", 0);
@@ -128,6 +137,14 @@ export class InventoryScreen {
     this.craft.openChest(state);
     this.root.classList.remove("hidden");
     this.titleEl.textContent = "チェスト";
+    this.refresh();
+  }
+
+  /** クリエイティブの一覧を開く。**渡す中身が無い**のが他の 3 つとの違い。 */
+  showCreative(): void {
+    this.craft.openCreative();
+    this.root.classList.remove("hidden");
+    this.titleEl.textContent = "クリエイティブ";
     this.refresh();
   }
 
@@ -226,6 +243,7 @@ export class InventoryScreen {
     this.craftRow.classList.toggle("hidden", mode !== "craft");
     this.furnaceRow.classList.toggle("hidden", mode !== "furnace");
     this.chestRow.classList.toggle("hidden", mode !== "chest");
+    this.creativeRow.classList.toggle("hidden", mode !== "creative");
 
     for (let i = 0; i < GRID_SLOTS; i++) {
       const usable = this.craft.usable(i);
@@ -243,6 +261,12 @@ export class InventoryScreen {
     }
     for (let i = 0; i < this.chestSlots.length; i++) {
       this.paint(this.chestSlots[i], chest ? this.craft.slotFor("chest", i) : null, "chest", i);
+    }
+    // 一覧の中身は変わらないが、**開いているときだけ描く**（他の器と同じ扱い）。
+    // 数字を伏せるのは表示の都合だけ（何個来るかは吹き出しに出る）。
+    for (let i = 0; i < this.creativeSlots.length; i++) {
+      const slot = mode === "creative" ? this.craft.slotFor("creative", i) : null;
+      paintSlot(this.creativeSlots[i], slot, false);
     }
     for (let i = 0; i < this.storageSlots.length; i++) {
       this.paint(this.storageSlots[i], this.craft.inventory.slots[i + HOTBAR_SIZE], "inv", i + HOTBAR_SIZE);

@@ -65,6 +65,13 @@
           <div id="chest" class="grid storage"></div>
           <span class="hint">チェストの中身（壊すと地面に落ちます）</span>
         </div>
+        <div id="creativerow" class="chestrow hidden">
+          <div id="creative" class="grid storage creative"></div>
+          <span class="hint">
+            左クリックで 1 山、右クリックで 1 個、<kbd>Shift</kbd>+クリックで直接インベントリへ。<br />
+            掴んだまま一覧をクリックすると捨てます（地面には落ちません）
+          </span>
+        </div>
         <div id="storage" class="grid storage"></div>
         <div id="invhotbar" class="grid storage invhotbar"></div>
         <p class="lead">
@@ -82,7 +89,7 @@
       <ul class="keys">
         <li><kbd>WASD</kbd> 移動 / <kbd>Space</kbd> ジャンプ / <kbd>Shift</kbd> ダッシュ</li>
         <li><kbd>左クリック</kbd> 破壊 / <kbd>右クリック</kbd> 設置 / <kbd>中クリック</kbd> スポイト</li>
-        <li><kbd>1</kbd>–<kbd>9</kbd> ホイール ブロック選択 / <kbd>Q</kbd> 1 個捨てる（<kbd>Ctrl</kbd> で山ごと） / <kbd>E</kbd> インベントリ</li>
+        <li><kbd>1</kbd>–<kbd>9</kbd> ホイール ブロック選択 / <kbd>Q</kbd> 1 個捨てる（<kbd>Ctrl</kbd> で山ごと） / <kbd>E</kbd> インベントリ（クリエイティブでは全アイテムの一覧）</li>
         <li><kbd>F</kbd> 飛行切替（飛行中は <kbd>Space</kbd> 上昇 / <kbd>Ctrl</kbd> 下降）</li>
         <li><kbd>F3</kbd> デバッグ表示 / <kbd>Esc</kbd> メニュー（自動保存されます）</li>
       </ul>
