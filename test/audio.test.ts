@@ -16,11 +16,11 @@
  * （ここで組むと、テストが自分の書いたものに合格するだけになる）。
  */
 
-import { OfflineAudioContext } from "node-web-audio-api";
+import type { OfflineAudioContext as OfflineCtor } from "node-web-audio-api";
 import { AudioEngine } from "../src/audio";
 import { DEFAULT_VOLUME, SFX_EVENTS, recipeFor } from "../src/sfx";
 import { seeded } from "./arena";
-import { check, describe } from "./harness";
+import { check, describe, skip } from "./harness";
 
 const RATE = 44100;
 /** 一番長い音（`death` の 0.9 秒）より十分に長く取る。 */
@@ -39,8 +39,17 @@ const SEED = 20260819;
  * `AudioContext` を作るときにその値でフィルタを組むので、あとから渡すと
  * 立ち上がりの 0.08 秒ぶんだけ違う音を測ることになる。
  */
+/**
+ * `node-web-audio-api` は**動的に読みます。** 中身はネイティブの `.node` で、
+ * 読み込む瞬間に `libasound.so.2`（ALSA）を dlopen します —— 入っていない箱では
+ * **例外ではなくプロセスごと落ちる**ので、静的 import のままだと
+ * **音とは関係のない 1100 件までまとめて道連れ**になります（実際そうなりました）。
+ * Routines は毎周まっさらな箱で走るので、ここは必ず動的のままにしてください。
+ */
+let Offline: typeof OfflineCtor | null = null;
+
 function bench(seconds = WINDOW) {
-  const ctx = new OfflineAudioContext(1, Math.round(RATE * seconds), RATE);
+  const ctx = new Offline!(1, Math.round(RATE * seconds), RATE);
   const engine = new AudioEngine(() => ctx as unknown as BaseAudioContext);
   return {
     engine,
@@ -123,6 +132,16 @@ export async function run(): Promise<void> {
   // `Math.random()` を使うので、そのままだと測るたびに数字が動く。
   // **定数にしないこと** —— ノイズの波形も `Math.random()` で作っているので、
   // 定数にすると白色ノイズが直流（= 無音）になり、全部の音が黙って痩せる。
+  try {
+    Offline = (await import("node-web-audio-api")).OfflineAudioContext;
+  } catch (e) {
+    skip(
+      "音（波形）",
+      `${(e as Error).message ?? e} —— ALSA が無い箱なら sudo apt-get install -y libasound2t64`,
+    );
+    return;
+  }
+
   const realRandom = Math.random;
   Math.random = seeded(20260819);
   try {
