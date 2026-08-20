@@ -1074,7 +1074,7 @@ export function run(): void {
   {
     const near = new Mobs();
     // **先に「そこに居るのに false」でないこと**を確かめる。数えていないだけで
-    // 通ってしまう形の偽陽性を避ける（`CLAUDE.md` の「テストの書き方」）。
+    // 通ってしまう形の偽陽性を避ける（`.claude/rules/testing.md`）。
     near.spawn("zombie", 3, 10, 0, 0, seeded(7));
     check("敵対モブが半径の内に居れば true", near.hostileNear(0, 10, 0, 8));
     check("半径の外なら false", !near.hostileNear(0, 10, 0, 2));
