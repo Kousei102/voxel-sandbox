@@ -118,8 +118,8 @@
 
 | ID | ブロック | 備考 |
 | --- | --- | --- |
-| 42 | `LAVA` | 静的でよい（流動は後）。水と同じ半透明レイヤー |
-| 43 | `OBSIDIAN` | `minTier: TIER_DIAMOND` |
+| 42 | `LAVA` | 静的でよい（流動は後）。水と同じ半透明レイヤー。**実装済み** |
+| 43 | `OBSIDIAN` | `minTier: TIER_DIAMOND`。**実装済み**（`blocks.ts` の `quenched()`） |
 | 44 | `GRAVEL` | 火打石の出どころ |
 | 45 | `NETHERRACK` | |
 | 46 | `SOUL_SAND` | |

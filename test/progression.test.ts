@@ -25,18 +25,22 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { BLOCKS, LAVA, TIER_DIAMOND } from "../src/blocks";
+import { AIR, BLOCKS, LAVA, WATER } from "../src/blocks";
 import { CHUNK_VOLUME } from "../src/constants";
 import { RECIPES } from "../src/crafting";
 import { check, describe } from "./harness";
 import { NO_ITEM, dropOf, itemName } from "../src/items";
+import { quenchAround } from "../src/liquids";
+import { canHarvest } from "../src/mining";
+import { World } from "../src/world";
 import { WorldGen } from "../src/worldgen";
+import { Scene } from "three";
 
 /**
  * **達成済みの件数。項目を達成したときだけ 1 つ上げること。**
  * これより減ったら `npm test` が赤くなる（達成の後戻りを退行として捕まえる）。
  */
-const ACHIEVED_BASELINE = 1;
+const ACHIEVED_BASELINE = 2;
 
 type Probe = () => { done: boolean; detail?: string };
 
@@ -99,15 +103,34 @@ const MILESTONES: readonly Milestone[] = [
   },
   {
     name: "黒曜石が手に入る（ダイヤのツルハシでだけ）",
-    kind: "仮",
+    kind: "本物",
+    // **実際に作って掘る。** 深い検証は `test/liquids.test.ts` にあるので、
+    // ここは「水と溶岩をぶつければ黒曜石になり、ダイヤでだけ持ち帰れる」という
+    // 導線そのものを 1 回通す。
     probe: () => {
       const obsidian = block("黒曜石");
       if (!obsidian) return { done: false, detail: "ブロックが無い" };
-      // 階層が足りない道具では何も落とさない（`mining.ts` の規則）ので、
-      // minTier がダイヤであることが「ダイヤのツルハシが要る」の実体。
-      const tier = obsidian.minTier === TIER_DIAMOND;
+
+      const world = new World(new Scene(), 424242);
+      world.primeAround(0.5, 0.5, 1);
+      const y = world.surfaceY(0, 0) + 3;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) world.setVoxel(dx, y + dy, 0, AIR);
+      }
+      world.setVoxel(1, y, 0, LAVA);
+      world.setVoxel(0, y, 0, WATER);
+      quenchAround(world, 0, y, 0);
+      const made = world.getVoxel(1, y, 0) === obsidian.id;
+
+      // 階層が足りない道具では何も落とさない（`mining.ts` の規則）。
+      const pick = item("ダイヤのツルハシ");
+      const iron = item("鉄のツルハシ");
+      const only = canHarvest(obsidian.id, pick) && !canHarvest(obsidian.id, iron);
       const drops = dropOf(obsidian.id).item !== NO_ITEM;
-      return { done: tier && drops, detail: `minTier ${obsidian.minTier} / ドロップ ${drops}` };
+      return {
+        done: made && only && drops,
+        detail: `溶岩+水 → ${made ? "黒曜石" : "変わらず"} / minTier ${obsidian.minTier}`,
+      };
     },
   },
   {

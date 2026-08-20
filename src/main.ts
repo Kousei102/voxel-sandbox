@@ -16,6 +16,7 @@ import {
   FURNACE,
   FURNACE_LIT,
   NO_SUPPORT,
+  OBSIDIAN,
   PALETTE,
   WATER,
   baseBlock,
@@ -58,6 +59,7 @@ import { Drops, type DropContext } from "./drops";
 import { DropRenderer } from "./droprender";
 import { Furnaces } from "./furnaces";
 import { Inventory } from "./inventory";
+import { quenchAround } from "./liquids";
 import { InventoryScreen } from "./inventoryui";
 import { NO_ITEM, bucketUse, dropOf, foodOf, isBucket, itemName, placedBlock } from "./items";
 import { Mining, breakTime, canHarvest } from "./mining";
@@ -829,12 +831,20 @@ function useBucket(held: number): void {
   if (use.kind === "empty" && !isReplaceable(world.getVoxel(x, y, z))) return;
   if (!world.setVoxel(x, y, z, use.kind === "fill" ? AIR : use.liquid)) return;
 
+  // 流した液体が周りとぶつかって固まるか。**どう固まるかは `liquids.ts`**（判断）で、
+  // ここは「流した直後に効かせる」ことだけを持つ。
+  const hardened = use.kind === "empty" ? quenchAround(world, x, y, z) : 0;
+
   // **クリエイティブでも中身は入れ替える。** バケツは「減る道具」ではなく
   // 中身そのものがアイテムなので、入れ替えないと永久に空のままで何も流せない。
   inventory.setSelected(use.item, 1);
   // 水の音を借りている（溶岩用の音はまだ無い）。
   audio.play("splash");
-  hud.flash(`${blockName(use.liquid)}を${use.kind === "fill" ? "汲んだ" : "流した"}`);
+  hud.flash(
+    hardened > 0
+      ? `${blockName(OBSIDIAN)}ができた（${hardened} 個）`
+      : `${blockName(use.liquid)}を${use.kind === "fill" ? "汲んだ" : "流した"}`,
+  );
   hud.refresh();
   saveDirty = true;
 }

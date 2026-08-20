@@ -113,6 +113,18 @@ export const BED = 41;
 export const LAVA = 42;
 
 /**
+ * 黒曜石。**ネザーへの入口**で、水に触れた溶岩が固まってできる（規則は下の `quenched()`）。
+ *
+ * `minTier: TIER_DIAMOND` なので、**ダイヤのツルハシでしか持ち帰れない。**
+ * 鉄のツルハシでも掘れて（速くなって）しまうが、何も落ちずに消える ——
+ * これは `mining.ts` の既存の規則そのままで、ここに特例は書かない。
+ *
+ * 硬さは Minecraft と同じ 50。ダイヤのツルハシ（速さ 8）で
+ * `50 * 1.5 / 8 ≒ 9.4 秒`かかる。**この遅さが「準備してから行く場所」の手触りを作る。**
+ */
+export const OBSIDIAN = 43;
+
+/**
  * ブロック ID の枠は 2 段に分けてある。
  *
  * - **1..63**: 立方体と、**アイテムとして持てる**ブロック（ハーフや階段の「大元」も含む）。
@@ -756,6 +768,13 @@ export const BLOCKS: readonly BlockDef[] = [
       fog: { color: 0xd4551a, near: 0.05, far: 2.2, daylit: false },
     },
   ),
+  // 黒曜石。**普通の立方体で、特別なのは硬さと階層だけ。**
+  def(
+    OBSIDIAN,
+    "黒曜石",
+    { top: 0x231a33, side: 0x1b1428, bottom: 0x140f1e },
+    { hardness: 50, tool: "pickaxe", minTier: TIER_DIAMOND },
+  ),
 ];
 
 /**
@@ -964,6 +983,22 @@ export function isLiquid(id: number): boolean {
  */
 export function isHotLiquid(id: number): boolean {
   return HOT[id] === 1;
+}
+
+/**
+ * 冷たい液体に触れた熱い液体は固まるか。**触れた側（`id`）が何になるかを返し、
+ * 何も起きないなら `id` をそのまま返す。**
+ *
+ * **表に聞くだけで、どちらが水でどちらが溶岩かは書かない**（`id === LAVA` と
+ * 書き始めると、液体を足したときに必ず片方を忘れる）。「熱い液体 + 熱くない液体」で
+ * 決めているので、あとから冷たい液体が増えてもこの 1 行のままでよい。
+ *
+ * **この関数は座標を知らない。** どのマスに効くか（置いたマス自身と隣の 6 マス）は
+ * `liquids.ts` の仕事で、`main.ts` は呼ぶだけ。
+ */
+export function quenched(id: number, neighbour: number): number {
+  const cools = isLiquid(neighbour) && !isHotLiquid(neighbour);
+  return isHotLiquid(id) && cools ? OBSIDIAN : id;
 }
 
 /** 頭がそのブロックの中にあるときのフォグ。液体でなければ null。 */

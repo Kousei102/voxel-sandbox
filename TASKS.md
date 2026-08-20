@@ -49,12 +49,13 @@
 汲む／流すの判断は `items.ts` の `bucketUse()`（純粋）で、対応の表は `FILLED_BUCKETS` 1 か所。
 バケツを持っているときだけ光線が液体に当たる（`raycastVoxels` の `hitLiquid`）。
 
-### [ ] 1-2b-2. 黒曜石 **要 1-2b-1 の確認**
+### [x] 1-2b-2. 黒曜石 **見** — ブラウザ確認待ち（`REVIEW.md`）
 
-- ID 43 (`OBSIDIAN`)。`hardness` は高く、`minTier: TIER_DIAMOND`
-- **水と隣り合った溶岩が黒曜石になる規則は `blocks.ts` の純粋関数**に置くこと
-  （`main.ts` にも `world.ts` にも書かない）。**バケツで流した直後に効くこと**
-- テスト: 階層の足りないツルハシでは落ちないこと（`mining.ts` の既存の規則に乗る）
+ID 43 (`OBSIDIAN`)。硬さ 50 / `minTier: TIER_DIAMOND`（ダイヤで 9.4 秒）。
+規則は `blocks.ts` の `quenched()`（純粋。**熱い液体 + 熱くない液体**で決めるので
+液体を足しても 1 行のまま）、どのマスに効くかは新しい `liquids.ts` の `quenchAround()`。
+`main.ts` は流した直後に 1 行呼ぶだけ。**進行テストが「達成 2 / 13」になった**
+（probe も本物に差し替え済み）。
 
 ### [ ] 1-3. 砂利 → 火打石 → 火打石と打ち金
 
