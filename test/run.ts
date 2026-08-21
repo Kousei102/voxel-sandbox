@@ -15,6 +15,7 @@ import { run as portals } from "./portals.test";
 import { run as projectiles } from "./projectiles.test";
 import { run as structures } from "./structures.test";
 import { run as mesher } from "./mesher.test";
+import { run as nethergen } from "./nethergen.test";
 import { run as mining } from "./mining.test";
 import { run as mobs } from "./mobs.test";
 import { run as physics } from "./physics.test";
@@ -28,6 +29,7 @@ import { run as world } from "./world.test";
 import { run as worldgen } from "./worldgen.test";
 
 worldgen();
+nethergen();
 mesher();
 blocks();
 liquids();

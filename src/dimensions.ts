@@ -1,3 +1,4 @@
+import { NetherGen } from "./nethergen";
 import type { ChunkSource } from "./world";
 import { WorldGen } from "./worldgen";
 
@@ -25,9 +26,8 @@ import { WorldGen } from "./worldgen";
 export type DimensionId = string;
 
 export const OVERWORLD: DimensionId = "overworld";
-/** **まだ生成器がありません**（`DIMENSIONS` に載るのは地形ができてから）。 */
 export const NETHER: DimensionId = "nether";
-/** 同上。 */
+/** **まだ生成器がありません**（`DIMENSIONS` に載るのは地形ができてから）。 */
 export const END: DimensionId = "end";
 
 /**
@@ -79,8 +79,8 @@ export interface DimensionDef {
 /**
  * 遊べる次元の表。**ここに載っていない次元へは移れません**（`switchTo` が null を返す）。
  *
- * いまはオーバーワールドだけです。ネザーとエンドは、**地形の生成器ができた周に
- * ここへ 1 行ずつ足します**（`salt` は 0 以外の適当な値。同じ種で違う地形になるように）。
+ * エンドは、**地形の生成器ができた周にここへ 1 行足します**
+ * （`salt` は 0 以外の適当な値。同じ種で違う地形になるように）。
  */
 export const DIMENSIONS: readonly DimensionDef[] = [
   {
@@ -88,6 +88,13 @@ export const DIMENSIONS: readonly DimensionDef[] = [
     name: "オーバーワールド",
     salt: 0,
     create: (seed) => new WorldGen(seed),
+  },
+  {
+    id: NETHER,
+    name: "ネザー",
+    // **0 以外なら何でもよい。** 同じ種でオーバーワールドと同じ形にならなければ足りる。
+    salt: 0x4e455448,
+    create: (seed) => new NetherGen(seed),
   },
 ];
 

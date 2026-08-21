@@ -137,6 +137,19 @@ export const OBSIDIAN = 43;
 export const GRAVEL = 44;
 
 /**
+ * ネザーの地面。**石より柔らかく、ツルハシなら素手の階層でも掘れる**（Minecraft と同じ）。
+ * ネザーは足場を作りながら進む所なので、ここを石の硬さにすると往復が苦行になる。
+ */
+export const NETHERRACK = 45;
+/**
+ * ソウルサンド。**溶岩の海のほとりに出る。** 上を歩くと遅くなる仕掛けは
+ * まだありません（速さの手触りはユーザーの判断なので、入れるときは相談すること）。
+ */
+export const SOUL_SAND = 46;
+/** グロウストーン。**天井からぶら下がる光源**（松明より明るい）。 */
+export const GLOWSTONE = 47;
+
+/**
  * ネザーポータルの面。**黒曜石の枠の内側を埋める薄い板**で、通り抜けられる。
  *
  * 向きは 2 種類しかない（縦にしか立たないので、水平 4 向きは要らない）。
@@ -850,6 +863,30 @@ export const BLOCKS: readonly BlockDef[] = [
     "砂利",
     { top: 0x8d8580, side: 0x847c77, bottom: 0x7b736e },
     { hardness: 0.6, tool: "shovel", sound: "sand" },
+  ),
+
+  // ネザーの 3 つ。**どれも普通の立方体**で、特別なのはグロウストーンが光ることだけ。
+  // 地形の作り方は `nethergen.ts`（`rules/worldgen.md` の「ネザー」）。
+  def(
+    NETHERRACK,
+    "ネザーラック",
+    { top: 0x7a3230, side: 0x6e2c2a, bottom: 0x5f2523 },
+    // **石（1.5）より柔らかい 0.4。** 掘り進んで足場を作る所なので、
+    // ここを石と同じにすると往復が苦行になる。
+    { hardness: 0.4, tool: "pickaxe" },
+  ),
+  def(
+    SOUL_SAND,
+    "ソウルサンド",
+    { top: 0x51392c, side: 0x4a3428, bottom: 0x422e24 },
+    { hardness: 0.5, tool: "shovel", sound: "sand" },
+  ),
+  def(
+    GLOWSTONE,
+    "グロウストーン",
+    { top: 0xf6d888, side: 0xe7c46d, bottom: 0xd9b45c },
+    // **溶岩と同じ最大の明るさ**（Minecraft も 15）。ネザーの天井がこれで照らされる。
+    { hardness: 0.3, tool: "pickaxe", emission: LAVA_LIGHT, sound: "glass" },
   ),
 
   // ネザーポータルの面（X 向き / Z 向き）。**違うのは箱の向きと `variantOf` だけ。**

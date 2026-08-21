@@ -1,6 +1,7 @@
 import {
   DIMENSIONS,
   Dimensions,
+  END,
   NETHER,
   OVERWORLD,
   emptyState,
@@ -82,9 +83,17 @@ export function run(): void {
     );
 
     check("表に無い次元の生成器は null", dims.sourceFor("どちら", 1) === null);
-    check("いま遊べるのはオーバーワールドだけ", dims.ids.length === 1, dims.ids.join(" "));
-    check("ネザーはまだ表に無い", !dims.known(NETHER));
-    check("名前が引ける", dims.nameOf(OVERWORLD) === "オーバーワールド");
+    check("いま遊べるのは 2 つ（オーバーワールドとネザー）", dims.ids.length === 2, dims.ids.join(" "));
+    check("ネザーが表にある", dims.known(NETHER));
+    check("エンドはまだ表に無い", !dims.known(END));
+    // **オーバーワールドの `salt` は 0 のまま。** 変えると既存のワールドが別物になる。
+    const netherSource = dims.sourceFor(NETHER, 12345);
+    check(
+      "ネザーの種はオーバーワールドと違う（同じ地形にならない）",
+      netherSource !== null && netherSource.seed !== 12345,
+      `${netherSource?.seed}`,
+    );
+    check("名前が引ける", dims.nameOf(OVERWORLD) === "オーバーワールド" && dims.nameOf(NETHER) === "ネザー");
     check("知らない次元の名前は id そのまま", dims.nameOf("どちら") === "どちら");
   }
 
@@ -204,18 +213,19 @@ export function run(): void {
   {
     // **まだ実装していない次元に居るセーブ**（別のブランチで作ったもの）。
     // 立たせると生成器が無くて世界が空になるので、オーバーワールドに落とす。
+    // **エンドで試すこと**（ネザーは表に載ったので、もう「知らない次元」ではない）。
     const dims = new Dimensions();
     const here = dims.fromSave({
-      dim: NETHER,
+      dim: END,
       top: state(1),
-      others: { [NETHER]: state(2) },
+      others: { [END]: state(2) },
     });
     check("知らない次元に居るセーブはオーバーワールドに落とす", dims.current === OVERWORLD);
     check("落とした先の持ち物は上の階層のぶん", here.edits["0,2,0"]?.[0] === 1);
     // **捨てないこと。** 次元が実装された周に、そのまま続きが遊べる。
-    check("行けない次元の預かりは捨てない", dims.stateOf(NETHER).edits["0,2,0"]?.[0] === 2);
+    check("行けない次元の預かりは捨てない", dims.stateOf(END).edits["0,2,0"]?.[0] === 2);
     const shape = dims.forSave(here);
-    check("書き出すと預かりもそのまま出る", shape.others?.[NETHER]?.edits["0,2,0"]?.[0] === 2);
+    check("書き出すと預かりもそのまま出る", shape.others?.[END]?.edits["0,2,0"]?.[0] === 2);
   }
 
   {
