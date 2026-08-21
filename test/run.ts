@@ -7,6 +7,7 @@ import { run as craftscreen } from "./craftscreen.test";
 import { run as daynight } from "./daynight.test";
 import { run as dimensions } from "./dimensions.test";
 import { run as drops } from "./drops.test";
+import { run as fortress } from "./fortress.test";
 import { summary } from "./harness";
 import { run as inventory } from "./inventory.test";
 import { run as lighting } from "./lighting.test";
@@ -32,6 +33,7 @@ import { run as worldgen } from "./worldgen.test";
 
 worldgen();
 nethergen();
+fortress();
 mesher();
 blocks();
 liquids();

@@ -17,7 +17,9 @@
 
 import { AIR, BEDROCK, GLOWSTONE, LAVA, NETHERRACK, SOUL_SAND } from "./blocks";
 import { CHUNK_SIZE, WORLD_HEIGHT } from "./constants";
+import { FORTRESS } from "./fortress";
 import { Noise } from "./noise";
+import { placementsFor, stampPlacements, type Placement, type StructureDef } from "./structures";
 import type { ChunkSource } from "./world";
 
 /**
@@ -54,6 +56,9 @@ const SHORE_HEIGHT = 4;
 
 const COLUMN_CACHE_LIMIT = 2048;
 
+/** この次元が建てるもの。**いまはネザー要塞 1 つ**（`fortress.ts`）。 */
+const STRUCTURES: readonly StructureDef[] = [FORTRESS];
+
 /** 座標から決まる 0..1 の擬似乱数（`worldgen.ts` の `hash2` と同じ式）。 */
 function hash2(x: number, z: number, seed: number): number {
   let h = Math.imul(x, 374761393) ^ Math.imul(z, 668265263) ^ Math.imul(seed, 2246822519);
@@ -70,6 +75,11 @@ interface NetherColumn {
   readonly soul: Uint8Array;
   /** 天井の下面からぶら下がるグロウストーンの厚み（0 なら無し）。 */
   readonly glow: Uint8Array;
+  /**
+   * この列に掛かりうる構造物。**列につき 1 回だけ数える**（`rules/worldgen.md`）——
+   * 1 つの列は 8 段ぶん `generateChunk` されるので、毎回数えると地面を測る回数が 8 倍になる。
+   */
+  readonly structures: readonly Placement[];
 }
 
 export class NetherGen implements ChunkSource {
@@ -93,6 +103,17 @@ export class NetherGen implements ChunkSource {
     const t = Math.min(1, Math.max(0, n / 1.2 + 0.5));
     return Math.round(FLOOR_MIN + t * (FLOOR_MAX - FLOOR_MIN));
   }
+
+  /**
+   * 構造物に渡す「地面の高さ」。**溶岩の海より下を返さないこと** ——
+   * 床の高さをそのまま渡すと、海の底に要塞が沈んで溶岩に埋まる。
+   * 海の上では海面と同じ高さになるので、通路が海に架かる橋になる。
+   *
+   * **ここで 1 度だけ作る**（チャンクごとに閉包を作ると、その GC がフレームの最悪値に出る。
+   * `worldgen.ts` の `groundAt` と同じ）。
+   */
+  private readonly groundAt = (x: number, z: number): number =>
+    Math.max(this.floorAt(x, z), NETHER_LAVA_LEVEL);
 
   /** その 1 マスの天井の下面（この高さから上が地面）。 */
   ceilingAt(wx: number, wz: number): number {
@@ -134,7 +155,8 @@ export class NetherGen implements ChunkSource {
       }
     }
 
-    const data: NetherColumn = { floor, ceiling, soul, glow };
+    const structures = placementsFor(STRUCTURES, this.seed, cx, cz, this.groundAt);
+    const data: NetherColumn = { floor, ceiling, soul, glow, structures };
     if (this.columns.size >= COLUMN_CACHE_LIMIT) {
       const oldest = this.columns.keys().next().value;
       if (oldest !== undefined) this.columns.delete(oldest);
@@ -145,7 +167,7 @@ export class NetherGen implements ChunkSource {
 
   /** チャンク 1 個分のボクセルを `data` に書き込む。 */
   generateChunk(cx: number, cy: number, cz: number, data: Uint8Array): void {
-    const { floor, ceiling, soul, glow } = this.column(cx, cz);
+    const { floor, ceiling, soul, glow, structures } = this.column(cx, cz);
     const baseY = cy * CHUNK_SIZE;
 
     for (let lz = 0; lz < CHUNK_SIZE; lz++) {
@@ -162,6 +184,9 @@ export class NetherGen implements ChunkSource {
         }
       }
     }
+
+    // **地形を埋めてから建てること。** 先に建てると、通路が岩で埋め戻される。
+    stampPlacements(structures, cx, cy, cz, data);
   }
 
   /**

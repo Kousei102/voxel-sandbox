@@ -125,7 +125,7 @@
 | 45 | `NETHERRACK` | 硬さ 0.4（石より柔らかい）。**実装済み** |
 | 46 | `SOUL_SAND` | 溶岩の海のほとり。遅くなる仕掛けは無し。**実装済み** |
 | 47 | `GLOWSTONE` | `emission` 15（溶岩と同じ）。天井にぶら下がる。**実装済み** |
-| 48 | `NETHER_BRICK` | ネザー要塞の材料 |
+| 48 | `NETHER_BRICK` | ネザー要塞の材料。**実装済み** |
 | 49 | `NETHER_PORTAL` | 非立方体（`isProp`）。X 向きが 49 / Z 向きが **103**。**実装済み** |
 | 50 | `END_STONE` | |
 | 51 | `END_PORTAL_FRAME` | 非立方体。向き 4 種 x 目の有無は 64 以降 |
@@ -158,7 +158,7 @@
 | 溶岩 | 黒曜石が作れない。ネザーの溶岩海も | **済み**（`LAVA` 42 / `quenched()`） |
 | `portals.ts` | 枠の検出・点火の可否 | **済み**（配線は 2-2） |
 | `dimensions.ts` + `World` の生成器注入 | ネザー / エンド | **済み**（`ChunkSource`。次元の器は `rules/dimensions.md`） |
-| `structures.ts` | ネザー要塞・要塞・エンドの柱 | **済み**（器だけ。建つものはまだ無い） |
+| `structures.ts` | ネザー要塞・要塞・エンドの柱 | **済み**（ネザー要塞が乗った。`fortress.ts`） |
 | `projectiles.ts` + `projectilerender.ts` | 火球・矢・投げたエンダーアイ・ブレス | **済み**（当たった効果はまだ無い） |
 | `nethergen.ts` | ネザーの地形 | **済み**（`DIMENSIONS` に登録済み。行く手段は 2-2） |
 

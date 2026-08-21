@@ -150,6 +150,14 @@ export const SOUL_SAND = 46;
 export const GLOWSTONE = 47;
 
 /**
+ * ネザーレンガ。**ネザー要塞の材料**（`fortress.ts`）で、地形には出てこない。
+ *
+ * **ネザーラック（0.4）よりずっと硬い 2.0 にしてある。** 要塞を通り抜けるのに
+ * 掘るより歩いたほうが速い、という差が「建物である」ことを手で分からせる。
+ */
+export const NETHER_BRICK = 48;
+
+/**
  * ネザーポータルの面。**黒曜石の枠の内側を埋める薄い板**で、通り抜けられる。
  *
  * 向きは 2 種類しかない（縦にしか立たないので、水平 4 向きは要らない）。
@@ -887,6 +895,13 @@ export const BLOCKS: readonly BlockDef[] = [
     { top: 0xf6d888, side: 0xe7c46d, bottom: 0xd9b45c },
     // **溶岩と同じ最大の明るさ**（Minecraft も 15）。ネザーの天井がこれで照らされる。
     { hardness: 0.3, tool: "pickaxe", emission: LAVA_LIGHT, sound: "glass" },
+  ),
+  // ネザー要塞の材料。**地形には湧かない**（`fortress.ts` が建てるときだけ出る）。
+  def(
+    NETHER_BRICK,
+    "ネザーレンガ",
+    { top: 0x392229, side: 0x2f1c22, bottom: 0x27171d },
+    { hardness: 2, tool: "pickaxe", minTier: TIER_WOOD },
   ),
 
   // ネザーポータルの面（X 向き / Z 向き）。**違うのは箱の向きと `variantOf` だけ。**

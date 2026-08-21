@@ -25,7 +25,7 @@
  */
 
 import { existsSync, readdirSync } from "node:fs";
-import { AIR, BLOCKS, LAVA, NETHERRACK, OBSIDIAN, STONE, WATER } from "../src/blocks";
+import { AIR, BLOCKS, LAVA, NETHERRACK, NETHER_BRICK, OBSIDIAN, STONE, WATER } from "../src/blocks";
 import { CHUNK_LAYERS, CHUNK_SIZE, CHUNK_VOLUME } from "../src/constants";
 import { RECIPES, findRecipe } from "../src/crafting";
 import { Dimensions, NETHER, OVERWORLD, type DimensionState } from "../src/dimensions";
@@ -45,7 +45,10 @@ import { Scene } from "three";
  * **達成済みの件数。項目を達成したときだけ 1 つ上げること。**
  * これより減ったら `npm test` が赤くなる（達成の後戻りを退行として捕まえる）。
  */
-const ACHIEVED_BASELINE = 5;
+const ACHIEVED_BASELINE = 6;
+
+/** ネザー要塞を探す範囲（列）。**広げると `npm test` がそのぶん遅くなります。** */
+const RADIUS = 4;
 
 type Probe = () => { done: boolean; detail?: string };
 
@@ -275,10 +278,39 @@ const MILESTONES: readonly Milestone[] = [
   },
   {
     name: "ネザー要塞が原点から近くに生成される",
-    kind: "仮",
+    kind: "本物",
     // **器（`structures.ts`）があるかを見ないこと。** 器を作った周に、要塞が
-    // 1 個も建っていないのに達成へ変わりました。**建つものの名前**で見ます。
-    probe: () => anySourceHas("ネザー要塞"),
+    // 1 個も建っていないのに達成へ変わりました。**実際に生成して探します。**
+    //
+    // 深い検証は `test/fortress.test.ts`（形・順序に依らないこと・費用）にあるので、
+    // ここは「種を変えても、ポータルを出てすぐの所に建っているか」だけを見ます。
+    // **要塞の床は必ず段 2（y 32..47）にある**ので、その段だけ舐めれば足ります。
+    probe: () => {
+      const chunk = new Uint8Array(CHUNK_VOLUME);
+      const worst: string[] = [];
+      for (const seed of [12345, 4242, 999]) {
+        // **種ごとに器を作り直すこと。** `Dimensions` は次元 1 つにつき生成器を
+        // 1 個だけ作って使い回す（列のキャッシュを捨てないため）ので、
+        // 同じ器に別の種を渡しても**最初の種の地形が返ってきます**
+        // （3 種類とも「最寄り 34 マス」と出て気付きました）。
+        const gen = new Dimensions().sourceFor(NETHER, seed);
+        if (!gen) return { done: false, detail: "ネザーの生成器が無い" };
+        let best = Infinity;
+        for (let cx = -RADIUS; cx <= RADIUS; cx++) {
+          for (let cz = -RADIUS; cz <= RADIUS; cz++) {
+            chunk.fill(0);
+            gen.generateChunk(cx, 2, cz, chunk);
+            if (!chunk.includes(NETHER_BRICK)) continue;
+            const d = Math.hypot((cx + 0.5) * CHUNK_SIZE, (cz + 0.5) * CHUNK_SIZE);
+            best = Math.min(best, d);
+          }
+        }
+        if (!Number.isFinite(best)) return { done: false, detail: `種 ${seed} の近くに要塞が無い` };
+        worst.push(`${seed}:${best.toFixed(0)}`);
+      }
+      // ネザーは 1:8 なので、100 マス歩けばオーバーワールドの 800 マス分。
+      return { done: true, detail: `最寄りまで ${worst.join(" / ")} マス` };
+    },
   },
   {
     name: "ブレイズがブレイズロッドを落とす",
