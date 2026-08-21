@@ -137,6 +137,20 @@ export const OBSIDIAN = 43;
 export const GRAVEL = 44;
 
 /**
+ * ネザーポータルの面。**黒曜石の枠の内側を埋める薄い板**で、通り抜けられる。
+ *
+ * 向きは 2 種類しかない（縦にしか立たないので、水平 4 向きは要らない）。
+ * こちらが **X 向き**（面が X 方向に伸び、薄いのは Z）で、
+ * もう一方は `NETHER_PORTAL_Z`（64 以降）。**どちらの向きになるかは
+ * `portals.ts` が枠から決める**ので、ここは形と見た目だけを持つ。
+ *
+ * **半透明にしていません。** 立方体でないブロック（`isProp`）は
+ * `mesher.ts` の `buildProps()` が**必ず不透明側のジオメトリに積む**ので、
+ * `translucent: true` を書いても黙って無視されます（`rules/meshing-render.md`）。
+ */
+export const NETHER_PORTAL = 49;
+
+/**
  * ブロック ID の枠は 2 段に分けてある。
  *
  * - **1..63**: 立方体と、**アイテムとして持てる**ブロック（ハーフや階段の「大元」も含む）。
@@ -176,6 +190,12 @@ const STAIR_VARIANTS_PER_MATERIAL = 7;
  * （引くのは `placedVariant()` と `bedPartner()`）。
  */
 const FIRST_BED_VARIANT = 96;
+
+/**
+ * ネザーポータルの **Z 向き**（面が Z 方向に伸び、薄いのは X）。
+ * 大元は `NETHER_PORTAL`（X 向き）なので、アイテムもドロップも名前も増えない。
+ */
+export const NETHER_PORTAL_Z = 103;
 
 /** 採掘に向いた道具の種類。 */
 export type ToolKind = "pickaxe" | "axe" | "shovel";
@@ -369,6 +389,19 @@ const UNBREAKABLE = Number.POSITIVE_INFINITY;
 export const TORCH_LIGHT = 14;
 
 /**
+ * ネザーポータルの明るさ。Minecraft と同じ 11。**松明（14）より暗い**ので、
+ * 洞窟の奥に組んだポータルだけでは足元まで照らせない。
+ */
+export const PORTAL_LIGHT = 11;
+
+/**
+ * ポータルの面の厚み。**枠の中心に立てる**ので、前後に 3/8 ずつ空く。
+ * 当たり判定は持たない（`solid: false`）が、狙う判定はこの箱で行う。
+ */
+export const PORTAL_BOX_X: BoxList = [[0, 0, 0.375, 1, 1, 0.625]];
+export const PORTAL_BOX_Z: BoxList = [[0.375, 0, 0, 0.625, 1, 1]];
+
+/**
  * 溶岩の明るさ。Minecraft と同じ 15（`MAX_LIGHT` と同じで、これ以上は無い）。
  * **松明より明るい**ので、溶岩の見える洞窟は松明を持たずに歩ける。
  */
@@ -557,6 +590,29 @@ function bedSet(
     );
   }
   return defs;
+}
+
+/** ポータルの 2 向き。形以外はまったく同じなので、1 か所で作る。 */
+function portalPair(): BlockDef[] {
+  const shared = {
+    opaque: false,
+    solid: false,
+    // 薄い板なので空の光も止めない（草むらと同じ）。
+    blocksSky: false,
+    hardness: 0,
+    emission: PORTAL_LIGHT,
+    sound: "glass" as const,
+    model: "boxes" as const,
+  };
+  const colors = { top: 0x8a4fd8, side: 0x6f2fbe, bottom: 0x8a4fd8 };
+  return [
+    def(NETHER_PORTAL, "ネザーポータル", colors, { ...shared, boxes: PORTAL_BOX_X }),
+    def(NETHER_PORTAL_Z, "ネザーポータル", colors, {
+      ...shared,
+      boxes: PORTAL_BOX_Z,
+      variantOf: NETHER_PORTAL,
+    }),
+  ];
 }
 
 export const BLOCKS: readonly BlockDef[] = [
@@ -795,7 +851,14 @@ export const BLOCKS: readonly BlockDef[] = [
     { top: 0x8d8580, side: 0x847c77, bottom: 0x7b736e },
     { hardness: 0.6, tool: "shovel", sound: "sand" },
   ),
+
+  // ネザーポータルの面（X 向き / Z 向き）。**違うのは箱の向きと `variantOf` だけ。**
+  // 通り抜けられる（`solid: false`）ので、当たり判定には出てこない。
+  // **すぐ壊せる（hardness 0）が、何も落ちない**（`items.ts` の `DROPS`）——
+  // 枠を壊したら消える仕組みはまだ無いので、消す手段をひとつ残しておく。
+  ...portalPair(),
 ];
+
 
 /**
  * クリエイティブでホットバーに並ぶブロック。

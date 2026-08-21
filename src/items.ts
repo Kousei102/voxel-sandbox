@@ -10,6 +10,7 @@ import {
   GRAVEL,
   LEAVES,
   MAX_BLOCK_ID,
+  NETHER_PORTAL,
   SPRUCE_LEAVES,
   STONE,
   TIER_DIAMOND,
@@ -273,6 +274,8 @@ const DROPS = new Map<number, Drop>([
   // 砂利は 10% で火打石、外したら砂利そのもの（Minecraft と同じ）。
   // **`otherwise` が無いと 90% で消えるブロックになる。**
   [GRAVEL, { item: FLINT, count: 1, chance: 0.1, otherwise: GRAVEL }],
+  // ポータルの面は壊せる（硬さ 0）が、何も落ちない。**持ち帰れると枠が要らなくなる。**
+  [NETHER_PORTAL, { item: NO_ITEM, count: 0, chance: 0 }],
 ]);
 
 /**
@@ -351,6 +354,19 @@ export function bucketUse(held: number, targetId: number): BucketUse {
   }
   const liquid = liquidOf(held);
   return liquid === AIR ? null : { kind: "empty", item: BUCKET, liquid };
+}
+
+/**
+ * 火種か（ポータルに火を点けられるか）。**表 1 本に聞くこと** ——
+ * `item === FLINT_AND_STEEL` と書き始めると、火種が増えたときに
+ * 点ける側と持てる側で片方だけ直すことになります（バケツと同じ罠）。
+ *
+ * **枠が成立しているかは見ません**（それは `portals.ts` の仕事）。
+ */
+const FIRE_STARTERS: readonly number[] = [FLINT_AND_STEEL];
+
+export function isFireStarter(item: number): boolean {
+  return FIRE_STARTERS.includes(item);
 }
 
 /** 全アイテム ID（テストと UI の列挙用）。 */

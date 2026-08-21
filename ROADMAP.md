@@ -126,7 +126,7 @@
 | 46 | `SOUL_SAND` | |
 | 47 | `GLOWSTONE` | `emission` を持つ（松明と同じ枠） |
 | 48 | `NETHER_BRICK` | ネザー要塞の材料 |
-| 49 | `NETHER_PORTAL` | 非立方体（`isProp`）。向き 2 種は 64 以降 |
+| 49 | `NETHER_PORTAL` | 非立方体（`isProp`）。X 向きが 49 / Z 向きが **103**。**実装済み** |
 | 50 | `END_STONE` | |
 | 51 | `END_PORTAL_FRAME` | 非立方体。向き 4 種 x 目の有無は 64 以降 |
 | 52 | `END_PORTAL` | 非立方体 |

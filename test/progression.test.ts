@@ -25,14 +25,15 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { AIR, BLOCKS, LAVA, WATER } from "../src/blocks";
+import { AIR, BLOCKS, LAVA, OBSIDIAN, WATER } from "../src/blocks";
 import { CHUNK_VOLUME } from "../src/constants";
 import { RECIPES, findRecipe } from "../src/crafting";
 import { check, describe } from "./harness";
 import { type Slot } from "../src/inventory";
-import { NO_ITEM, dropOf, itemName, rollDrop } from "../src/items";
+import { NO_ITEM, dropOf, isFireStarter, itemName, rollDrop } from "../src/items";
 import { quenchAround } from "../src/liquids";
 import { canHarvest } from "../src/mining";
+import { ignite } from "../src/portals";
 import { World } from "../src/world";
 import { WorldGen } from "../src/worldgen";
 import { Scene } from "three";
@@ -41,7 +42,7 @@ import { Scene } from "three";
  * **達成済みの件数。項目を達成したときだけ 1 つ上げること。**
  * これより減ったら `npm test` が赤くなる（達成の後戻りを退行として捕まえる）。
  */
-const ACHIEVED_BASELINE = 3;
+const ACHIEVED_BASELINE = 4;
 
 type Probe = () => { done: boolean; detail?: string };
 
@@ -174,8 +175,31 @@ const MILESTONES: readonly Milestone[] = [
   },
   {
     name: "ポータルの枠を検出して点火できる",
-    kind: "仮",
-    probe: () => sourceHas("src/portals.ts", "export function"),
+    kind: "本物",
+    // **実際に枠を組んで火を点ける。** 枠の形の細かい検証は `test/portals.test.ts`
+    // （欠けた枠・大きすぎる枠・角の扱い）にあるので、ここは導線を 1 本通すだけ。
+    probe: () => {
+      const portal = block("ネザーポータル");
+      if (!portal) return { done: false, detail: "ブロックが無い" };
+      if (!isFireStarter(item("火打石と打ち金"))) return { done: false, detail: "火種が無い" };
+
+      const world = new World(new Scene(), 424242);
+      world.primeAround(0.5, 0.5, 1);
+      const base = world.surfaceY(0, 0) + 2;
+      // 内側 2x3 の枠。四隅も置く（角は無くてもよいが、あって困らない）。
+      for (let y = base - 1; y <= base + 3; y++) {
+        for (let x = -1; x <= 2; x++) {
+          const inside = x >= 0 && x <= 1 && y >= base && y <= base + 2;
+          world.setVoxel(x, y, 0, inside ? AIR : OBSIDIAN);
+        }
+      }
+      const lit = ignite(world, 0, base, 0);
+      const filled = world.getVoxel(1, base + 2, 0) === portal.id;
+      return {
+        done: lit === 6 && filled,
+        detail: `内側 2x3 に ${lit} マス点いた`,
+      };
+    },
   },
   {
     name: "ネザーへ行って戻れる（セーブを往復しても壊れない）",
