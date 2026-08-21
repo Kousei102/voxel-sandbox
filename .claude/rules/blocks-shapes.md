@@ -3,11 +3,13 @@ paths:
   - "src/blocks.ts"
   - "src/raycast.ts"
   - "src/liquids.ts"
+  - "src/placing.ts"
   - "src/player.ts"
   - "src/physics.ts"
   - "src/main.ts"
   - "test/blocks.test.ts"
   - "test/liquids.test.ts"
+  - "test/placing.test.ts"
 ---
 
 ## 立方体でないブロックの形
@@ -47,6 +49,14 @@ paths:
   隣（法線の側）に置くと、草むらが残ったまま横にブロックが生えます。
   そのとき支えは必ず真下です（狙った面をそのまま支えにすると、横から狙ったときに
   何も無い側を支えにしてしまいます）。
+  **手に持ったものを実際に置く／火を点ける判断は `placing.ts`**（`tryPlace` / `tryIgnite`）で、
+  `main.ts` は結果（`"none"` / `"blocked"` / `"placed"`）を貼るだけです。
+  受け取るのは `World` ではなく `getVoxel` / `setVoxel` / `canPlaceAt` の 3 つと、
+  **体（`overlapsBlock`）1 つ**だけ —— だから「自分の居る所に置けない」も
+  「支えが無ければ置けない」もヘッドレスで確かめられます
+  （`test/placing.test.ts` が `main.ts` に `canPlaceAt` が戻っていないことを見張っています）。
+  **置けない理由は文字列で返すこと**（黙って何も起きないと、何が悪いのか分かりません）。
+  ベッドのような 2 マスのものは**片方だけ書かない**（`beds.ts` に任せる。`rules/beds.md`）。
 - ハーフ・階段は `opaque: false` にしたうえで **`blocksSky: true`** にします。
   でないとハーフで葺いた屋根の下が昼のまま明るくなります。草は逆に `blocksSky: false`
   （止めると、草の生えた地面だけが一段暗くなります）。

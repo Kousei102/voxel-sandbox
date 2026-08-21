@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
-import { AIR, BEDROCK } from "../src/blocks";
+import { AIR, BEDROCK, NO_SUPPORT, canSupport, oppositeFace, supportFace } from "../src/blocks";
 import { WORLD_HEIGHT } from "../src/constants";
-import { SKY_LIGHT } from "../src/lighting";
+import { OFFSETS, SKY_LIGHT } from "../src/lighting";
 import type { World } from "../src/world";
 
 /**
@@ -58,6 +58,59 @@ export class Arena {
 
   asWorld(): World {
     return this as unknown as World;
+  }
+}
+
+/**
+ * 書き込める試験場。**`PortalWorld` の 2 つ（`getVoxel` / `setVoxel`）だけ**を持つので、
+ * 本物の `World` と取り違えようがない（`portals.ts` / `portaltravel.ts` / `beds.ts` は
+ * どれも `World` を丸ごと受け取らない）。
+ *
+ * **`test/portals.test.ts` と `test/portaltravel.test.ts` で共有すること。**
+ * 写して 2 か所にすると、片方だけ直したときに「点火は通るのに移動だけ落ちる」形の
+ * 差が入り込む（`Arena` を共有しているのと同じ理由）。
+ */
+export class Slab {
+  private readonly voxels = new Map<string, number>();
+  /** 書き込みを断る列（未読み込みの列の代わり）。キーは `"cx,cz"`。 */
+  readonly frozenColumns = new Set<string>();
+
+  getVoxel(x: number, y: number, z: number): number {
+    return this.voxels.get(`${x},${y},${z}`) ?? AIR;
+  }
+
+  setVoxel(x: number, y: number, z: number, id: number): boolean {
+    if (this.frozenColumns.has(`${x >> 4},${z >> 4}`)) return false;
+    this.voxels.set(`${x},${y},${z}`, id);
+    return true;
+  }
+
+  /** 直方体を埋める（両端を含む）。 */
+  fill(x0: number, x1: number, y0: number, y1: number, z0: number, z1: number, id: number): void {
+    for (let x = x0; x <= x1; x++) {
+      for (let y = y0; y <= y1; y++) {
+        for (let z = z0; z <= z1; z++) this.voxels.set(`${x},${y},${z}`, id);
+      }
+    }
+  }
+
+  /**
+   * 支えのある所か。**`World.canPlaceAt()` と同じ式**（`supportFace` → 反対の面が
+   * 埋まっているか）。写しているのはここ 1 か所だけで、見ている表は本物と同じ
+   * （`blocks.ts` の `canSupport`）。
+   */
+  canPlaceAt(x: number, y: number, z: number, id: number): boolean {
+    const face = supportFace(id);
+    if (face === NO_SUPPORT) return true;
+    const [dx, dy, dz] = OFFSETS[face];
+    return canSupport(this.getVoxel(x + dx, y + dy, z + dz), oppositeFace(face));
+  }
+
+  /** 置いてあるマスの数（足場や枠が本当に書かれたかを数える）。 */
+  get filled(): number {
+    let n = 0;
+    for (const id of this.voxels.values()) if (id !== AIR) n++;
+    return n;
   }
 }
 

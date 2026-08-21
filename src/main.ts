@@ -15,7 +15,6 @@ import {
   CRAFTING_TABLE,
   FURNACE,
   FURNACE_LIT,
-  NO_SUPPORT,
   OBSIDIAN,
   PALETTE,
   WATER,
@@ -26,13 +25,10 @@ import {
   faceFromYaw,
   isBed,
   isBedHead,
-  isLiquid,
   isReplaceable,
   liquidFog,
   placeSpot,
-  placedVariant,
   shapeBounds,
-  supportFace,
 } from "./blocks";
 import { AudioEngine } from "./audio";
 import { biomeName } from "./biomes";
@@ -48,25 +44,42 @@ import {
   Beds,
   SLEEP_MONSTER_RADIUS,
   clearBedPartner,
-  placeBed,
   sleepDecision,
 } from "./beds";
 import { Chests } from "./chests";
 import { CrackOverlay } from "./crack";
 import { CraftScreen } from "./craftscreen";
 import { DayNight, WAKE_TIME, canSleep } from "./daynight";
-import { Dimensions, type DimensionState } from "./dimensions";
+import { Dimensions, emptyState, type DimensionState } from "./dimensions";
 import { Drops, type DropContext } from "./drops";
 import { DropRenderer } from "./droprender";
 import { Furnaces } from "./furnaces";
 import { Inventory } from "./inventory";
 import { quenchAround } from "./liquids";
 import { InventoryScreen } from "./inventoryui";
-import { NO_ITEM, bucketUse, foodOf, isBucket, itemName, placedBlock, rollDrop } from "./items";
+import {
+  NO_ITEM,
+  bucketUse,
+  foodOf,
+  isBucket,
+  isFireStarter,
+  itemName,
+  placedBlock,
+  rollDrop,
+} from "./items";
 import { Mining, breakTime, canHarvest } from "./mining";
 import { MobRenderer } from "./mobrender";
 import { MOB_KINDS, Mobs, type MobContext } from "./mobs";
 import { Player } from "./player";
+import { tryIgnite, tryPlace } from "./placing";
+import { portalAxis, type PortalAxis } from "./portals";
+import {
+  PortalGate,
+  arrive,
+  linkScale,
+  linkedSpot,
+  portalTarget,
+} from "./portaltravel";
 import { PROJECTILE_KINDS, Projectiles } from "./projectiles";
 import { ProjectileRenderer } from "./projectilerender";
 import { raycastVoxels, type RaycastHit } from "./raycast";
@@ -151,6 +164,12 @@ let world!: World;
  * 意味の無い実装を書くことになる。
  */
 let overworld!: WorldGen;
+/**
+ * ワールドの種。**`world.seed` を使わないこと** —— あちらは生成器の種なので、
+ * ネザーに居るあいだは混ぜたあとの値になっていて、そのまま保存すると
+ * **次に開いたとき別の世界になる。**
+ */
+let worldSeed = 0;
 /**
  * モブ。**`mobRender` は `world` と一緒に作り直す**（昼夜の uniform は `World` が
  * 持っていて、ワールドを作り直すと別のオブジェクトになるため）。
@@ -276,14 +295,28 @@ function setCreative(on: boolean): void {
   hud.refresh();
 }
 
+/**
+ * 世界を作り直す。**次元を移るときもここを通る**（`travelThrough`）ので、
+ * 受け取るのは `DimensionState` 丸ごと —— 改変・落とし物・かまど・チェストを
+ * **1 か所で入れ替える**（写すと、片方だけ直したときに「戻ったらかまどの中身だけ
+ * 消えている」形で静かに壊れる。`rules/dimensions.md`）。
+ *
+ * **リスポーン地点はここで消さない。** 次元ごとに持たないものなので、
+ * 消すのは「別のワールドを始める」2 か所（作り直し・保存データの削除）の仕事。
+ */
 function startWorld(
   seed: number,
-  edits = new Map<string, Map<number, number>>(),
+  state: DimensionState = emptyState(),
   spawn?: { x: number; y: number; z: number; yaw: number; pitch: number; flying: boolean },
+  dimension = dims.current,
 ): void {
   world?.dispose();
-  overworld = new WorldGen(seed);
-  world = new World(scene, overworld, edits);
+  worldSeed = seed;
+  // **バイオーム表示用のオーバーワールドの生成器**（F3）。ネザーに居るあいだも
+  // 持っておく（`ChunkSource` はバイオームを知らない）。オーバーワールドに居るときは
+  // `sourceFor` のキャッシュ越しに世界の生成器と同じものになる。
+  overworld = dims.overworldGen(seed);
+  world = new World(scene, dims.sourceFor(dimension, seed) ?? overworld, deserializeEdits(state.edits));
   seedInput.value = String(seed);
 
   // モブは保存しない（地形と同じで、シードから作り直せるものは持たない）。
@@ -291,14 +324,10 @@ function startWorld(
   mobRender?.dispose();
   mobRender = new MobRenderer(scene, world.daylightUniform());
 
-  // かまど・チェスト・落ちたアイテムは保存する。ここでは空にしておき、
-  // セーブがあれば読み込み側が戻す。
-  furnaces.clear();
-  chests.clear();
-  // リスポーン地点も消す。**ベッドは `edits` に入っている**ので、別のワールドでは
-  // そのマスにベッドが無い（残すと初期位置に落ちるだけだが、印は消しておく）。
-  beds.clear();
-  drops.clear();
+  // かまど・チェスト・落ちたアイテムは次元ごとに持つ。**入れ替えはここだけ。**
+  furnaces.deserialize(state.furnaces);
+  chests.deserialize(state.chests);
+  drops.deserialize(state.drops);
   dropRender?.dispose();
   dropRender = new DropRenderer(scene, world.daylightUniform());
   // 飛んでいるものは保存しないので、ここで空にするだけでよい。
@@ -403,6 +432,63 @@ function refreshFurnaceUi(dt: number): void {
 }
 
 /** 飛んだ距離を歩いたことにしないための控え直し。**位置を飛ばしたら必ず呼ぶ。** */
+/**
+ * ポータルに立っていたら向こうへ。**待つ時間も掛け金も `portaltravel.ts` の
+ * `PortalGate`** で、ここは「いま面の中に居るか」を渡すだけ。
+ */
+const portalGate = new PortalGate();
+
+function updatePortal(dt: number): void {
+  const axis = portalAxis(
+    world.getVoxel(
+      Math.floor(player.position.x),
+      Math.floor(player.position.y + 0.5),
+      Math.floor(player.position.z),
+    ),
+  );
+  // **`step()` は 1 フレームに 1 回だけ**（2 回呼ぶと dt を二重に数える）。
+  // true が返るのは面の中に居るときだけなので、`axis` は必ずある。
+  if (portalGate.step(dt, axis) && axis) travelThrough(axis);
+}
+
+/**
+ * 次元を移る。**位置を飛ばすので、`portaltravel.ts` が決めた「立てる場所」以外へ
+ * 出さないこと。** ここは値を集めて貼るだけ。
+ *
+ * **`switchTo()` に `liveState()` を渡すのが肝心**（渡し忘れると、戻ったときに
+ * こちら側の改変・落とし物・かまど・チェストが消える。`rules/dimensions.md`）。
+ */
+function travelThrough(axis: PortalAxis): void {
+  const from = dims.current;
+  const to = portalTarget(from);
+  const spot = linkedSpot(player.position.x, player.position.z, linkScale(from, to));
+  const state = dims.switchTo(to, liveState());
+  if (!state) return;
+
+  // 世界ごと入れ替える（改変・落とし物・かまど・チェストは `startWorld()` が
+  // 次元のぶんに差し替える）。**リスポーン地点はそのまま**（次元ごとに持たない）。
+  const yHint = Math.floor(player.position.y);
+  const { yaw, pitch, flying } = player;
+  const spawn = { x: spot.x + 0.5, y: yHint, z: spot.z + 0.5, yaw, pitch, flying };
+  startWorld(worldSeed, state, spawn, to);
+
+  // **枠を探す前にボクセルを用意すること。** 未読み込みの列では `getVoxel` が
+  // AIR を返すので、行きに作った枠を見落として毎回建て直すことになる
+  // （`moveToSpawn()` が `primeAround()` を先に呼ぶのと同じ罠）。
+  world.primeAround(spot.x, spot.z, 1);
+  const landing = arrive(world, spot.x, spot.z, yHint, axis);
+  player.position.set(landing.x, landing.y, landing.z);
+  player.velocity.set(0, 0, 0);
+  player.syncCamera();
+  // 飛んだ距離を歩いたことにしない（`rules/vitals.md`）。
+  resetFootprint();
+  // 出た先は枠の中。**いったん出るまで戻らない。**
+  portalGate.latch();
+  world.update(player.position.x, player.position.z);
+  hud.flash(`${dims.nameOf(to)}へ`);
+  saveDirty = true;
+}
+
 function resetFootprint(): void {
   lastFootX = player.position.x;
   lastFootZ = player.position.z;
@@ -468,7 +554,8 @@ function currentSave() {
   const shape = dims.forSave(liveState());
   return {
     version: 1 as const,
-    seed: world.seed,
+    // **`world.seed` ではない**（ネザーに居ると混ぜたあとの値になっている）。
+    seed: worldSeed,
     player: {
       x: player.position.x,
       y: player.position.y,
@@ -540,15 +627,7 @@ const here = dims.fromSave({
   },
   others: saved?.dims,
 });
-startWorld(
-  saved?.seed ?? (Math.random() * 0xffffffff) >>> 0,
-  deserializeEdits(here.edits),
-  saved?.player,
-);
-// **`startWorld()` のあとで。** あちらが `clear()` を呼ぶので、先に入れると消える。
-drops.deserialize(here.drops);
-furnaces.deserialize(here.furnaces);
-chests.deserialize(here.chests);
+startWorld(saved?.seed ?? (Math.random() * 0xffffffff) >>> 0, here, saved?.player);
 beds.deserialize(saved?.bed);
 
 // --- 入力 ---------------------------------------------------------------
@@ -589,7 +668,9 @@ document.getElementById("regen")?.addEventListener("click", () => {
   deathScreen.classList.add("hidden");
   // **別のワールドを始めるので、預かっているぶんを全部忘れる。**
   // 忘れないと、前のワールドで別の次元に置いてきたものが新しいワールドに出てくる。
+  // リスポーン地点も消す（`startWorld()` は次元を移るときも通るので、あちらでは消さない）。
   dims.reset();
+  beds.clear();
   startWorld(seed);
   saveNow(`シード ${seed} で作り直しました`);
 });
@@ -825,6 +906,17 @@ function useOrPlace(): void {
     return;
   }
 
+  // 火打石と打ち金。**どのマスに火を点けるかも枠の判定も `placing.ts` / `portals.ts`。**
+  if (hit && isFireStarter(inventory.selectedItem)) {
+    const lit = tryIgnite(world, hit);
+    if (lit.kind === "blocked") hud.flash(lit.message);
+    if (lit.kind === "placed") {
+      audio.play("place", "stone");
+      saveDirty = true;
+    }
+    return;
+  }
+
   // 食べ物。**何がどれだけ戻るかは `items.ts`、食べられるかは `vitals.ts`**。
   // ここは「押しっぱなしが始まった」ことだけを持つ。
   const food = foodOf(inventory.selectedItem);
@@ -842,41 +934,14 @@ function useOrPlace(): void {
   }
 
   if (!hit) return;
-  const item = inventory.selectedItem;
-  const base = placedBlock(item);
-  if (base === AIR) return;
-
-  // 置くマス（草むらを狙ったならそのマス自身）と向きは placeSpot() が決める。
-  // 階段は置く人の向きで決まるので、見ている向きも渡す。
-  const spot = placeSpot(hit, faceFromYaw(player.yaw));
-  const { x, y, z } = spot;
-  const target = world.getVoxel(x, y, z);
-  if (!isReplaceable(target)) return;
-
-  const id = placedVariant(base, spot);
-
-  if (player.overlapsBlock(x, y, z, id)) return;
-  if (supportFace(base) !== NO_SUPPORT) {
-    if (id === AIR || isLiquid(target) || !world.canPlaceAt(x, y, z, id)) {
-      hud.flash(`${blockName(base)} は床か壁にしか付けられません`);
-      return;
-    }
-  }
-
-  // ベッドは 2 マスにまたがるので、書き込みも `beds.ts` に任せる
-  // （**半分だけ置かれた状態を作らない**のが `placeBed()` の役目）。
-  if (isBed(id)) {
-    const partner = bedPartner(id);
-    // 枕側にプレイヤーが立っていたら置かせない（立方体と同じ扱い）
-    if (partner && player.overlapsBlock(x + partner.dx, y, z + partner.dz, partner.id)) return;
-    if (!placeBed(world, spot, id)) {
-      hud.flash("ベッドを置くには 2 マスの床が要ります");
-      return;
-    }
-  } else if (!world.setVoxel(x, y, z, id)) {
+  // 置けるかどうかと書き込みは `placing.ts`（**判断はあちら**。ここは結果を貼るだけ）。
+  const placed = tryPlace(world, player, hit, player.yaw, placedBlock(inventory.selectedItem));
+  if (placed.kind === "blocked") {
+    hud.flash(placed.message);
     return;
   }
-  audio.play("place", blockSound(id));
+  if (placed.kind !== "placed") return;
+  audio.play("place", blockSound(placed.id));
 
   if (!creative) inventory.consumeSelected(1);
   hud.refresh();
@@ -1168,6 +1233,9 @@ function frame(now: number): void {
 
   dayNight.advance(dt);
   updateEnvironment();
+  // ポータル。**モブより先に見る** —— 次元が変わるとモブも落とし物も入れ替わるので、
+  // 動かしてから移ると、1 フレームぶん前の世界の結果を新しい世界へ持ち込む。
+  if (playing) updatePortal(dt);
   // ここでプレイヤーが殴られる。音・赤い明滅・死亡画面は updateVitals が
   // vitals.takeDamage() で拾うので、モブ用のダメージ処理は書かずに済む
   // （拾い方が「前後の体力の比較」だった頃は、ここが先に走るせいで
@@ -1208,7 +1276,10 @@ function frame(now: number): void {
       `chunk ${Math.floor(player.position.x) >> CHUNK_BITS} ${Math.floor(player.position.z) >> CHUNK_BITS}` +
       `  loaded ${stats.chunks}  queue ${stats.queued}\n` +
       `tris ${stats.triangles.toLocaleString()}  edits ${countEdits(world.editsForSave())}\n` +
-      `time ${dayNight.clock()}  light ${(dayNight.brightness * 100).toFixed(0)}%  ${creative ? "creative" : "survival"}\n` +
+      `time ${dayNight.clock()}  light ${(dayNight.brightness * 100).toFixed(0)}%  ${creative ? "creative" : "survival"}` +
+      `  dim ${dims.nameOf(dims.current)}\n` +
+      // **バイオームはオーバーワールドの値**（`overworld` は種だけ同じ生成器）。
+      // ネザーに居るときも出るが、そこの地形とは関係ない。
       `biome ${biomeName(overworld.biomeAt(Math.floor(player.position.x), Math.floor(player.position.z)))}` +
       `  mobs ${mobs.count}  drops ${drops.count}  furnaces ${furnaces.count}  chests ${chests.count}` +
       `  shots ${projectiles.count}\n` +

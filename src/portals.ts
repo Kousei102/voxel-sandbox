@@ -47,6 +47,18 @@ export function portalBlock(axis: PortalAxis): number {
 }
 
 /**
+ * そのブロックがポータルの面なら、その向き。違えば null。
+ *
+ * **`portalBlock()` の逆。表をここ 1 か所にしておくこと** —— 2 か所に書くと、
+ * 向きを足したときに「点くのに通れない」形で片方だけ残る。
+ */
+export function portalAxis(id: number): PortalAxis | null {
+  if (id === NETHER_PORTAL) return "x";
+  if (id === NETHER_PORTAL_Z) return "z";
+  return null;
+}
+
+/**
  * 面の中の位置（`along` = 横、`up` = 縦）をワールド座標へ。
  * **向きの違いをここ 1 か所に閉じ込める**ので、下の走査は向きを知らずに書ける
  * （2 通りを書き写すと、片方だけ直したときに「X 向きは点くのに Z 向きは点かない」になる）。

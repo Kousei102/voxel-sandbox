@@ -25,17 +25,18 @@
  */
 
 import { existsSync, readdirSync } from "node:fs";
-import { AIR, BLOCKS, LAVA, OBSIDIAN, WATER } from "../src/blocks";
-import { CHUNK_VOLUME } from "../src/constants";
+import { AIR, BLOCKS, LAVA, NETHERRACK, OBSIDIAN, STONE, WATER } from "../src/blocks";
+import { CHUNK_LAYERS, CHUNK_SIZE, CHUNK_VOLUME } from "../src/constants";
 import { RECIPES, findRecipe } from "../src/crafting";
 import { Dimensions, NETHER, OVERWORLD, type DimensionState } from "../src/dimensions";
-import { sourceOf } from "./arena";
+import { Slab, sourceOf } from "./arena";
 import { check, describe } from "./harness";
 import { type Slot } from "../src/inventory";
 import { NO_ITEM, dropOf, isFireStarter, itemName, rollDrop } from "../src/items";
 import { quenchAround } from "../src/liquids";
 import { canHarvest } from "../src/mining";
 import { ignite } from "../src/portals";
+import { arrive, buildPortal, linkScale, linkedSpot, standable } from "../src/portaltravel";
 import { World } from "../src/world";
 import { WorldGen } from "../src/worldgen";
 import { Scene } from "three";
@@ -44,7 +45,7 @@ import { Scene } from "three";
  * **達成済みの件数。項目を達成したときだけ 1 つ上げること。**
  * これより減ったら `npm test` が赤くなる（達成の後戻りを退行として捕まえる）。
  */
-const ACHIEVED_BASELINE = 4;
+const ACHIEVED_BASELINE = 5;
 
 type Probe = () => { done: boolean; detail?: string };
 
@@ -225,7 +226,7 @@ const MILESTONES: readonly Milestone[] = [
   },
   {
     name: "ネザーへ行って戻れる（セーブを往復しても壊れない）",
-    kind: "仮",
+    kind: "本物",
     // **器があるかを見ないこと。** 前は `dimensions.ts` に `export` があるかを見ていて、
     // 器を作った瞬間に達成へ変わりました（行き先も移る手立ても無いのに）。
     // いまは「ネザーが遊べる次元として登録されているか」→「実際に往復して
@@ -235,16 +236,41 @@ const MILESTONES: readonly Milestone[] = [
       if (!dims.known(NETHER)) {
         return { done: false, detail: "ネザーがまだ次元の表に無い（生成器待ち）" };
       }
-      // 往復して、オーバーワールドに置いてきたものが残るか。
+      // ネザーの地形が本当に作られるか（天井があること ＝ 空が見えないこと）。
+      const gen = dims.sourceFor(NETHER, 12345);
+      if (!gen) return { done: false, detail: "ネザーの生成器が無い" };
+      const chunk = new Uint8Array(CHUNK_VOLUME);
+      gen.generateChunk(0, CHUNK_LAYERS - 1, 0, chunk);
+      const roof = chunk[((CHUNK_SIZE - 1) * CHUNK_SIZE + 0) * CHUNK_SIZE + 0];
+      if (roof === AIR) return { done: false, detail: "ネザーに天井が無い" };
+
+      // **実際に往復する。** 枠を建てて、通って、戻ってくるところまで。
+      const over = new Slab();
+      over.fill(-32, 132, 1, 40, -64, 32, STONE);
+      const nether = new Slab();
+      nether.fill(-32, 32, 1, 30, -32, 32, NETHERRACK);
+      buildPortal(over, 100, 41, -37, "x");
+
       const home: DimensionState = { edits: { "0,2,0": [7, 3] } };
       if (!dims.switchTo(NETHER, home)) return { done: false, detail: "ネザーへ移れない" };
+      const go = linkedSpot(100.5, -37.5, linkScale(OVERWORLD, NETHER));
+      const there = arrive(nether, go.x, go.z, 41, "x");
+      if (!standable(nether, Math.floor(there.x), there.y, Math.floor(there.z))) {
+        return { done: false, detail: "ネザーで立てない場所に出る" };
+      }
+
       const back = dims.switchTo(OVERWORLD, { edits: {} });
       if (back?.edits["0,2,0"]?.[1] !== 3) {
         return { done: false, detail: "戻るとオーバーワールドの改変が消える" };
       }
-      // ここだけは仮の判定（配線は `main.ts` にあり、ヘッドレスでは動かせない）。
-      const wired = sourceHas("src/main.ts", "switchTo");
-      return { done: wired.done, detail: wired.done ? "往復できる" : "main.ts に移る配線が無い" };
+      const home2 = linkedSpot(there.x, there.z, linkScale(NETHER, OVERWORLD));
+      const returned = arrive(over, home2.x, home2.z, there.y, "x");
+      if (returned.built) return { done: false, detail: "戻るたびに新しい枠が建つ" };
+
+      // ここだけは配線の確認（`main.ts` はヘッドレスでは動かせない）。
+      const wired = sourceHas("src/main.ts", "switchTo", "arrive", "portalAxis");
+      if (!wired.done) return { done: false, detail: `main.ts に移る配線が無い（${wired.detail}）` };
+      return { done: true, detail: `往復できる（ネザーの出口 ${there.y}）` };
     },
   },
   {

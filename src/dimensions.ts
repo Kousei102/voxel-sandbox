@@ -160,6 +160,19 @@ export class Dimensions {
     return made;
   }
 
+  /**
+   * オーバーワールドの生成器だけは**型が付いたまま**返す。
+   *
+   * `main.ts` の F3 がバイオーム名を出すのに `WorldGen` そのものが要るためで
+   * （`ChunkSource` はバイオームを知りません。`rules/meshing-render.md`）、
+   * **`sourceFor()` と同じキャッシュを通す**ので、オーバーワールドに居るあいだは
+   * 世界の生成器とまったく同じものになります（列のキャッシュも 1 つで済む）。
+   */
+  overworldGen(seed: number): WorldGen {
+    const source = this.sourceFor(OVERWORLD, seed);
+    return source instanceof WorldGen ? source : new WorldGen(seed);
+  }
+
   /** その次元に預けてある持ち物（無ければ空）。 */
   stateOf(id: DimensionId): DimensionState {
     return this.stashed.get(id) ?? emptyState();

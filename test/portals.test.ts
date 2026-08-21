@@ -7,33 +7,14 @@ import {
   MIN_WIDTH,
   findFrame,
   ignite,
+  portalAxis,
   portalBlock,
-  type PortalWorld,
 } from "../src/portals";
 import { World } from "../src/world";
 import { WorldGen } from "../src/worldgen";
-import { sourceOf } from "./arena";
+import { Slab, sourceOf } from "./arena";
 import { check, describe } from "./harness";
 import { Scene } from "three";
-
-/**
- * 試験場。**`World` ではなく Map で持ちます** —— ここで見たいのは
- * 「枠の形をどう読むか」だけで、チャンクの読み込みは関係がないため。
- * **入口は `PortalWorld` と同じ 2 つだけ**なので、本物の `World` と取り違えようがありません
- * （本物で通ることは、下の「実物の World」で 1 度だけ確かめます）。
- */
-class Slab implements PortalWorld {
-  private readonly voxels = new Map<string, number>();
-
-  getVoxel(x: number, y: number, z: number): number {
-    return this.voxels.get(`${x},${y},${z}`) ?? AIR;
-  }
-
-  setVoxel(x: number, y: number, z: number, id: number): boolean {
-    this.voxels.set(`${x},${y},${z}`, id);
-    return true;
-  }
-}
 
 /**
  * 内側 `width` x `height` の枠を組む。`axis` が "x" なら面は X 方向へ伸びる。
@@ -66,6 +47,15 @@ export function run(): void {
   check(
     "向きで別のブロックを返す",
     portalBlock("x") === NETHER_PORTAL && portalBlock("z") === NETHER_PORTAL_Z,
+  );
+  // **`portalBlock()` の逆。表が 1 か所であること** —— 2 か所に書くと、
+  // 向きを足したときに「点くのに通れない」形で片方だけ残る。
+  check(
+    "面のブロックから向きが引ける（`portalBlock` の逆）",
+    portalAxis(NETHER_PORTAL) === "x" &&
+      portalAxis(NETHER_PORTAL_Z) === "z" &&
+      portalAxis(OBSIDIAN) === null &&
+      portalAxis(AIR) === null,
   );
   check("ポータルの面を壊しても何も落ちない", dropOf(NETHER_PORTAL).item === NO_ITEM);
 

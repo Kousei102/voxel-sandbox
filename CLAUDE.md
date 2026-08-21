@@ -48,11 +48,11 @@ npm run build      # typecheck + dist/ に静的ファイル一式
 
 いまある層 2（`paths` は各ファイルの先頭）:
 
-`blocks-shapes.md`（形・支え・液体・ID の細部）/ `items-survival.md` / `inventory-screen.md` /
+`blocks-shapes.md`（形・支え・液体・置く判断・ID の細部）/ `items-survival.md` / `inventory-screen.md` /
 `vitals.md`（体力と空腹）/ `mobs.md` / `drops.md` / `projectiles.md`（飛び道具）/
 `stateful-blocks.md`（かまど・チェスト）/
 `beds.md` / `lighting.md`（光・昼夜・GLSL）/ `meshing-render.md` / `audio.md` / `dom-ui.md` /
-`testing.md` / `worldgen.md`（地形・バイオーム）/ `dimensions.md`（次元とセーブの形）
+`testing.md` / `worldgen.md`（地形・バイオーム）/ `dimensions.md`（次元・ポータルで移る・セーブの形）
 
 いまある層 3: `add-block`（ブロック / アイテムを足す）/ `add-stateful-block`（位置ごとに
 状態を持つブロック・器を足す）/ `unverifiable-pair`（確かめられないものを足す）
