@@ -125,6 +125,18 @@ export const LAVA = 42;
 export const OBSIDIAN = 43;
 
 /**
+ * 砂利。**火打石の出どころ**で、掘ると 10% で火打石が出る（表は `items.ts` の `DROPS`）。
+ *
+ * 火打石が要るのは**火打石と打ち金 = ネザーポータルの点火**だけなので、
+ * これが無いと黒曜石の枠を組んでも火が付かない。
+ *
+ * **落ちません。** Minecraft の砂利は支えを失うと落下するが、この世界には
+ * 落ちるブロックの仕組みがまだ無い（`supportFace` は「支えが消えたら壊れる」であって、
+ * 落下ではない）。掘った下の砂利はその場に浮いたまま残る。
+ */
+export const GRAVEL = 44;
+
+/**
  * ブロック ID の枠は 2 段に分けてある。
  *
  * - **1..63**: 立方体と、**アイテムとして持てる**ブロック（ハーフや階段の「大元」も含む）。
@@ -774,6 +786,14 @@ export const BLOCKS: readonly BlockDef[] = [
     "黒曜石",
     { top: 0x231a33, side: 0x1b1428, bottom: 0x140f1e },
     { hardness: 50, tool: "pickaxe", minTier: TIER_DIAMOND },
+  ),
+  // 砂利。**シャベルで掘る立方体で、特別なのは落とすものだけ**（`items.ts` の `DROPS`）。
+  // 音は砂と同じ粒の音にしてある（専用の材質グループは作っていない）。
+  def(
+    GRAVEL,
+    "砂利",
+    { top: 0x8d8580, side: 0x847c77, bottom: 0x7b736e },
+    { hardness: 0.6, tool: "shovel", sound: "sand" },
   ),
 ];
 

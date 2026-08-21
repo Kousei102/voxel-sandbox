@@ -27,9 +27,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { AIR, BLOCKS, LAVA, WATER } from "../src/blocks";
 import { CHUNK_VOLUME } from "../src/constants";
-import { RECIPES } from "../src/crafting";
+import { RECIPES, findRecipe } from "../src/crafting";
 import { check, describe } from "./harness";
-import { NO_ITEM, dropOf, itemName } from "../src/items";
+import { type Slot } from "../src/inventory";
+import { NO_ITEM, dropOf, itemName, rollDrop } from "../src/items";
 import { quenchAround } from "../src/liquids";
 import { canHarvest } from "../src/mining";
 import { World } from "../src/world";
@@ -40,7 +41,7 @@ import { Scene } from "three";
  * **達成済みの件数。項目を達成したときだけ 1 つ上げること。**
  * これより減ったら `npm test` が赤くなる（達成の後戻りを退行として捕まえる）。
  */
-const ACHIEVED_BASELINE = 2;
+const ACHIEVED_BASELINE = 3;
 
 type Probe = () => { done: boolean; detail?: string };
 
@@ -135,8 +136,41 @@ const MILESTONES: readonly Milestone[] = [
   },
   {
     name: "火打石と打ち金が作れる",
-    kind: "仮",
-    probe: () => ({ done: recipe("火打石と打ち金") && item("火打石") !== NO_ITEM }),
+    kind: "本物",
+    // **砂利を掘るところから通す。** 深い検証は `test/worldgen.test.ts`（砂利の湧き方）と
+    // `test/mining.test.ts`（火打石の割合）と `test/crafting.test.ts`（レシピ）にあるので、
+    // ここは「地面から掘り出して、手持ちの 2x2 で組み上がるか」だけを 1 本通す。
+    probe: () => {
+      const gravel = block("砂利");
+      const flint = item("火打石");
+      if (!gravel || flint === NO_ITEM) return { done: false, detail: "砂利か火打石が無い" };
+
+      // 生成に砂利が埋まっているか（無ければ火打石は永久に手に入らない）。
+      const gen = new WorldGen(12345);
+      const data = new Uint8Array(CHUNK_VOLUME);
+      let buried = 0;
+      for (let cy = 0; cy < 4 && buried === 0; cy++) {
+        gen.generateChunk(0, cy, 0, data);
+        for (const id of data) if (id === gravel.id) buried++;
+      }
+
+      // 掘れば火打石が出る目があるか（`otherwise` があるので外しても砂利は残る）。
+      const hit = rollDrop(gravel.id, 0.05).item === flint;
+      const miss = rollDrop(gravel.id, 0.5).item === gravel.id;
+
+      // 手持ちの 2x2 で組めるか（作業台を探しに戻らずに済む）。
+      const grid: Slot[] = [
+        { item: item("鉄インゴット"), count: 1 },
+        { item: flint, count: 1 },
+        { item: NO_ITEM, count: 0 },
+        { item: NO_ITEM, count: 0 },
+      ];
+      const made = findRecipe(grid, 2)?.name === "火打石と打ち金";
+      return {
+        done: buried > 0 && hit && miss && made,
+        detail: `砂利 ${buried} マス / 火打石 ${hit ? "出る" : "出ない"} / 2x2 で${made ? "作れる" : "作れない"}`,
+      };
+    },
   },
   {
     name: "ポータルの枠を検出して点火できる",

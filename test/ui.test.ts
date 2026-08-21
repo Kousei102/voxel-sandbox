@@ -95,6 +95,12 @@ function mainStaysWiring(): void {
     `${branches} 件 / 上限 ${BRANCH_LIMIT}`,
   );
 
+  // **何が落ちるかは `items.ts` の `rollDrop()`** で、`main.ts` は乱数を 1 個渡すだけ。
+  // ここに確率の比較を書くと、砂利のように「外したら別のものが落ちる」を足したときに、
+  // 掘った経路と支えを失った経路で規則が食い違う（片方だけ直しても気付けない）。
+  const chances = [...source.matchAll(/\.chance\b/g)].length;
+  check("main.ts が落ちる確率を自分で判定していない", chances === 0, `${chances} 件`);
+
   // 新しい `*render.ts` には、必ず対のガードを同時に足すこと
   // （判断が漏れていないかを見張る側。`test/mobs.test.ts` / `test/drops.test.ts` が手本）。
   const renderers = readdirSync("src").filter((n) => n.endsWith("render.ts"));

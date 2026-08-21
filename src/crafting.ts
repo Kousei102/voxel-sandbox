@@ -28,6 +28,8 @@ import {
   DIAMOND_AXE,
   DIAMOND_PICKAXE,
   DIAMOND_SHOVEL,
+  FLINT,
+  FLINT_AND_STEEL,
   IRON_AXE,
   IRON_INGOT,
   IRON_PICKAXE,
@@ -100,6 +102,15 @@ export const RECIPES: readonly Recipe[] = [
   // バケツは鉄 3 個の V 字（Minecraft と同じ）。**これが黒曜石への入口**で、
   // 水を汲んで溶岩に流すところから始まる。左右対称なので反転しても同じ形。
   { name: "バケツ", out: BUCKET, count: 1, shape: ["I.I", ".I."], key: { I: IRON_INGOT } },
+
+  // 火打石と打ち金は鉄インゴット + 火打石の**形なし**（Minecraft も形なし）。
+  // **これがネザーポータルの点火手段**で、黒曜石の枠を組んだあとに要る。
+  {
+    name: "火打石と打ち金",
+    out: FLINT_AND_STEEL,
+    count: 1,
+    ingredients: [IRON_INGOT, FLINT],
+  },
 
   ...toolRecipes("木", PLANK, WOOD_PICKAXE, WOOD_AXE, WOOD_SHOVEL),
   ...toolRecipes("石", COBBLE, STONE_PICKAXE, STONE_AXE, STONE_SHOVEL),

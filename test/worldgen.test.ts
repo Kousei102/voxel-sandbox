@@ -5,6 +5,7 @@ import {
   COAL_ORE,
   DIAMOND_ORE,
   GOLD_ORE,
+  GRAVEL,
   GRASS,
   IRON_ORE,
   LAVA,
@@ -38,7 +39,7 @@ import { CHUNK_VOLUME, SEA_LEVEL } from "../src/constants";
 import { LAVA_LEVEL, WorldGen } from "../src/worldgen";
 import { check, describe } from "./harness";
 
-/** 名前・ID・出てよい高さの上限（worldgen.ts の ORES と合わせる）。 */
+/** 名前・ID・出てよい高さの上限（worldgen.ts の VEINS と合わせる）。 */
 const ORE_TABLE = [
   ["石炭鉱石", COAL_ORE, 62],
   ["鉄鉱石", IRON_ORE, 46],
@@ -108,6 +109,51 @@ export function run(): void {
     }
   }
   check("鉱石が決められた高さより上に出ない", aboveLimit === 0, `${aboveLimit} 個`);
+
+  // --- 砂利（火打石の出どころ）---
+  // **これが 0 だと火打石が手に入らず、ネザーポータルに火が付かない。**
+  const gravelCount = mix.get(GRAVEL) ?? 0;
+  check(
+    "砂利が生成される",
+    gravelCount > 0,
+    `${gravelCount.toLocaleString()} 個 / 石の ${((gravelCount / (stoneish + gravelCount)) * 100).toFixed(2)}%`,
+  );
+
+  // 石炭と同じ高さまでしか出ない（`VEINS` の maxY 62）。地表に出ないことの確認でもある。
+  // ついでに**まとまり具合**を測る: 4x4x4 の枡ごとに数えて、1 枡あたりの平均マス数を出す。
+  // `VeinDef.shift` を 1 に戻すと塊が 2x2x2 になり、この数が一気に落ちる
+  // （石の中に胡椒を撒いたような散り方になり、Minecraft の砂利に見えない）。
+  const cells = new Map<string, number>();
+  let gravelAbove = 0;
+  let gravelTop = -1;
+  // 枡は 4x4x4 でチャンク（16³）を割り切るので、**チャンクの境目で分断されない。**
+  // 1 列だけだと枡が数個しか取れず、地形を触ったときに 0 個になりかねないので 9 列見る。
+  for (let cx = 0; cx < 3; cx++) {
+    for (let cz = 0; cz < 3; cz++) {
+      for (let cy = 0; cy < 8; cy++) {
+        gen.generateChunk(cx, cy, cz, data);
+        for (let i = 0; i < data.length; i++) {
+          if (data[i] !== GRAVEL) continue;
+          const y = cy * 16 + Math.floor(i / 256);
+          const z = cz * 16 + Math.floor((i % 256) / 16);
+          const x = cx * 16 + (i % 16);
+          if (y > gravelTop) gravelTop = y;
+          if (y > 62) gravelAbove++;
+          const cell = `${x >> 2},${y >> 2},${z >> 2}`;
+          cells.set(cell, (cells.get(cell) ?? 0) + 1);
+        }
+      }
+    }
+  }
+  check("砂利が決められた高さより上に出ない", gravelAbove === 0, `一番上 y=${gravelTop} / 上限 62`);
+
+  const inCells = [...cells.values()];
+  const perCell = inCells.reduce((sum, n) => sum + n, 0) / Math.max(1, inCells.length);
+  check(
+    "砂利は塊で埋まっている（1 粒ずつ散らばっていない）",
+    perCell > 20,
+    `4x4x4 の枡あたり平均 ${perCell.toFixed(1)} マス（枡 ${inCells.length} 個）`,
+  );
 
   // --- 溶岩 ---
   // 掘り抜いた空間のうち LAVA_LEVEL 以下を埋めるので、**海面の水とまったく同じ形**。

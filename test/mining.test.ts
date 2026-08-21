@@ -6,6 +6,7 @@ import {
   DIRT,
   GOLD_ORE,
   GRASS,
+  GRAVEL,
   IRON_ORE,
   LEAVES,
   STONE,
@@ -17,14 +18,17 @@ import {
   COAL,
   DIAMOND,
   DIAMOND_PICKAXE,
+  FLINT,
   IRON_PICKAXE,
   NO_ITEM,
   STONE_PICKAXE,
   WOOD_AXE,
   WOOD_PICKAXE,
   dropOf,
+  rollDrop,
 } from "../src/items";
 import { Mining, breakTime, canHarvest } from "../src/mining";
+import { seeded } from "./arena";
 import { check, describe } from "./harness";
 
 export function run(): void {
@@ -90,6 +94,8 @@ export function run(): void {
   check("葉はたまにしか落ちない", dropOf(LEAVES).chance < 1, `${(dropOf(LEAVES).chance * 100).toFixed(0)}%`);
   check("丸石はそのまま丸石", dropOf(COBBLE).item === COBBLE);
 
+  gravelDropsFlint();
+
   // --- 進行 ---
   const mining = new Mining();
   const target = { x: 1, y: 2, z: 3 };
@@ -123,4 +129,47 @@ export function run(): void {
   mining.reset();
   check("掘れないブロックは進まない", !mining.update(10, target, BEDROCK, DIAMOND_PICKAXE) && mining.progress === 0);
   check("狙いが無ければ進まない", !mining.update(10, null, STONE, DIAMOND_PICKAXE));
+}
+
+/**
+ * 砂利 → 火打石。**ネザーポータルの点火手段はここから始まる。**
+ *
+ * `rollDrop()` は乱数を受け取るだけなので、**転がす側をこちらで持てる。**
+ * 境目（0.1 のすぐ下・すぐ上）を直に指定できるうえ、割合の検証も
+ * 種を固定した 1 本で回せる。
+ */
+function gravelDropsFlint(): void {
+  check("砂利はシャベルで掘る", blockName(GRAVEL) === "砂利" && canHarvest(GRAVEL, NO_ITEM));
+
+  // --- 境目。**乱数ではなく値を直に渡す。** ---
+  check("外れの目でも砂利そのものが落ちる", rollDrop(GRAVEL, 0.5).item === GRAVEL);
+  check("当たりの目で火打石が落ちる", rollDrop(GRAVEL, 0.05).item === FLINT);
+  check(
+    "葉は外すと何も落ちない（砂利と違う）",
+    rollDrop(LEAVES, 0.5).item === NO_ITEM && rollDrop(LEAVES, 0.5).count === 0,
+  );
+  check(
+    "確率の無いブロックは目に関わらず同じものが落ちる",
+    rollDrop(STONE, 0).item === COBBLE && rollDrop(STONE, 0.999).item === COBBLE,
+  );
+
+  // --- 割合。**乱数は 1 本を回し続けること** ---
+  // （1 回ごとに `seeded()` を作ると、線形合同法の 1 個目が種に引きずられて偏る）。
+  const random = seeded(20260821);
+  const got = new Map<number, number>();
+  const ROUNDS = 4000;
+  for (let i = 0; i < ROUNDS; i++) {
+    const drop = rollDrop(GRAVEL, random());
+    got.set(drop.item, (got.get(drop.item) ?? 0) + 1);
+  }
+  const flint = got.get(FLINT) ?? 0;
+  const gravel = got.get(GRAVEL) ?? 0;
+  const percent = (flint / ROUNDS) * 100;
+  console.log(
+    `      砂利 ${ROUNDS} 回: 火打石 ${flint} (${percent.toFixed(1)}%) / 砂利 ${gravel}` +
+      `（表は ${(dropOf(GRAVEL).chance * 100).toFixed(0)}%）`,
+  );
+  check("砂利は表どおりの割合で火打石になる", Math.abs(percent - 10) < 2, `${percent.toFixed(1)}%`);
+  // **掘っても何も出ない目があってはいけない。** `otherwise` を落とすとここが減る。
+  check("掘れば必ず何かが落ちる", flint + gravel === ROUNDS, `${flint + gravel} / ${ROUNDS}`);
 }

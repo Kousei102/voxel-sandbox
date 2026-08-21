@@ -61,7 +61,7 @@ import { Furnaces } from "./furnaces";
 import { Inventory } from "./inventory";
 import { quenchAround } from "./liquids";
 import { InventoryScreen } from "./inventoryui";
-import { NO_ITEM, bucketUse, dropOf, foodOf, isBucket, itemName, placedBlock } from "./items";
+import { NO_ITEM, bucketUse, foodOf, isBucket, itemName, placedBlock, rollDrop } from "./items";
 import { Mining, breakTime, canHarvest } from "./mining";
 import { MobRenderer } from "./mobrender";
 import { MOB_KINDS, Mobs, type MobContext } from "./mobs";
@@ -279,7 +279,7 @@ function startWorld(
     // 相方のぶんは落とさない —— 出るベッドは 1 台につき 1 個。
     clearBedPartner(world, x, y, z, id);
     if (creative) return;
-    const drop = dropOf(id);
+    const drop = rollDrop(id, Math.random());
     if (drop.item === NO_ITEM || drop.count <= 0) return;
     drops.burst(drop.item, drop.count, x + 0.5, y + 0.25, z + 0.5);
   };
@@ -912,9 +912,10 @@ function breakBlock(x: number, y: number, z: number, blockId: number, tool: numb
   // 掘ると腹が減る。**どれだけ減るかは `vitals.ts`**（ここは種類を渡すだけ）。
   vitals.exhaust("mine");
   if (!canHarvest(blockId, tool)) return;
-  const drop = dropOf(blockId);
+  // **何が落ちるかは `items.ts`**（砂利のように「外したら別のものが落ちる」がある）。
+  // ここは乱数を 1 個渡すだけで、確率の比較を持たない。
+  const drop = rollDrop(blockId, Math.random());
   if (drop.item === NO_ITEM || drop.count <= 0) return;
-  if (drop.chance < 1 && Math.random() >= drop.chance) return;
   drops.burst(drop.item, drop.count, x + 0.5, y + 0.35, z + 0.5);
 }
 

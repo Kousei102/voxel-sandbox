@@ -7,6 +7,7 @@ import {
   DIRT,
   GLASS,
   GRASS,
+  GRAVEL,
   LEAVES,
   MAX_BLOCK_ID,
   SPRUCE_LEAVES,
@@ -66,7 +67,20 @@ export const BUCKET = 84;
 export const WATER_BUCKET = 85;
 export const LAVA_BUCKET = 86;
 
-export const MAX_ITEM_ID = LAVA_BUCKET;
+/**
+ * 火打石。砂利を掘ると 10% で出る（下の `DROPS`）。
+ * **使い道は火打石と打ち金ひとつだけ**で、そこからネザーポータルの点火に繋がる。
+ */
+export const FLINT = 87;
+
+/**
+ * 火打石と打ち金。**ネザーポータルに火を付ける道具。**
+ * 耐久値がまだ無いので、1 個あれば何度でも点けられる（Minecraft は 64 回）。
+ * 積めるのは 1 個まで —— 道具と同じ扱い。
+ */
+export const FLINT_AND_STEEL = 88;
+
+export const MAX_ITEM_ID = FLINT_AND_STEEL;
 
 export const MAX_STACK = 64;
 
@@ -135,6 +149,10 @@ item({ id: COOKED_PORK, name: "焼き豚", block: AIR, stack: MAX_STACK, color: 
 item({ id: BUCKET, name: "バケツ", block: AIR, stack: 1, color: 0xb0b4bb, tool: null });
 item({ id: WATER_BUCKET, name: "水入りバケツ", block: AIR, stack: 1, color: 0x3f7ad0, tool: null });
 item({ id: LAVA_BUCKET, name: "溶岩入りバケツ", block: AIR, stack: 1, color: 0xe0601a, tool: null });
+
+item({ id: FLINT, name: "火打石", block: AIR, stack: MAX_STACK, color: 0x3c3733, tool: null });
+// 火打石と打ち金は道具と同じで積めない（耐久値が無いので、実質 1 個で足りる）。
+item({ id: FLINT_AND_STEEL, name: "火打石と打ち金", block: AIR, stack: 1, color: 0xa6a094, tool: null });
 
 /** 道具は 4 階層 x 3 種類。ID は tier ごとに pickaxe / axe / shovel の順。 */
 const TOOL_KINDS: ToolKind[] = ["pickaxe", "axe", "shovel"];
@@ -226,6 +244,13 @@ export interface Drop {
   readonly count: number;
   /** 落ちる確率。1 なら必ず。 */
   readonly chance: number;
+  /**
+   * 確率を外したときに 1 個落ちるもの。省略すると**何も落ちない**（葉がこれ）。
+   *
+   * 砂利のためにある —— **10% で火打石、外したら砂利**なので、
+   * 「外れ = 何も出ない」しか無いと砂利が掘れば消えるブロックになる。
+   */
+  readonly otherwise?: number;
 }
 
 /**
@@ -245,6 +270,9 @@ const DROPS = new Map<number, Drop>([
   // 苗木がまだ無いので、葉からはたまに棒だけ出る
   [LEAVES, { item: STICK, count: 1, chance: 0.1 }],
   [SPRUCE_LEAVES, { item: STICK, count: 1, chance: 0.1 }],
+  // 砂利は 10% で火打石、外したら砂利そのもの（Minecraft と同じ）。
+  // **`otherwise` が無いと 90% で消えるブロックになる。**
+  [GRAVEL, { item: FLINT, count: 1, chance: 0.1, otherwise: GRAVEL }],
 ]);
 
 /**
@@ -255,6 +283,21 @@ export function dropOf(blockId: number): Drop {
   const special = DROPS.get(blockId);
   if (special) return special;
   return { item: baseBlock(blockId), count: 1, chance: 1 };
+}
+
+/**
+ * **実際に何が落ちるか**を、乱数 1 個から決める。落ちないなら `NO_ITEM` / 0 個。
+ *
+ * **確率の比較を `main.ts` に書かないこと。** 「外したら別のものが落ちる」（砂利）を
+ * 足した時点で、呼ぶ側が 2 通りに分岐することになる。
+ *
+ * **乱数を作るのは呼ぶ側**（`roll` は 0..1）なので、ここはヘッドレスで丸ごと確かめられる。
+ */
+export function rollDrop(blockId: number, roll: number): { item: number; count: number } {
+  const drop = dropOf(blockId);
+  if (roll < drop.chance) return { item: drop.item, count: drop.count };
+  const missed = drop.otherwise ?? NO_ITEM;
+  return { item: missed, count: missed === NO_ITEM ? 0 : 1 };
 }
 
 // --- バケツ -------------------------------------------------------------

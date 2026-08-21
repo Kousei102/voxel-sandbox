@@ -19,6 +19,8 @@ import {
   DIAMOND,
   IRON_INGOT,
   DIAMOND_PICKAXE,
+  FLINT,
+  FLINT_AND_STEEL,
   NO_ITEM,
   STICK,
   STONE_AXE,
@@ -43,7 +45,7 @@ function grid(size: number, rows: string[], key: Record<string, number>): Slot[]
 export function run(): void {
   describe("クラフト");
 
-  const P = { P: PLANK, S: STICK, W: WOOD, C: COBBLE, D: DIAMOND, A: SAND, O: COAL, T: STONE, I: IRON_INGOT };
+  const P = { P: PLANK, S: STICK, W: WOOD, C: COBBLE, D: DIAMOND, A: SAND, O: COAL, T: STONE, I: IRON_INGOT, F: FLINT };
 
   // --- 形なし ---
   const planks = findRecipe(grid(2, ["W."], P), 2);
@@ -80,6 +82,20 @@ export function run(): void {
   check("上下を逆にするとバケツにならない", bucketUpsideDown === null, bucketUpsideDown?.name ?? "無し");
   const bucketIn2 = findRecipe(grid(2, ["I.", ".I"], P), 2);
   check("2x2 ではバケツは作れない（作業台が要る）", bucketIn2 === null, bucketIn2?.name ?? "無し");
+
+  // --- 火打石と打ち金 ---
+  // **ネザーポータルの点火手段。** 形なしなので 2x2（手持ち）でも作れる ——
+  // 作業台を探しに戻らなくてよいのは Minecraft と同じ。
+  const fireStarter = findRecipe(grid(2, ["IF"], P), 2);
+  check(
+    "鉄インゴット + 火打石 → 火打石と打ち金",
+    fireStarter?.out === FLINT_AND_STEEL && fireStarter.count === 1,
+    fireStarter?.name ?? "無し",
+  );
+  const fireStarterMoved = findRecipe(grid(2, ["..", "FI"], P), 2);
+  check("形なしなので置く場所を選ばない", fireStarterMoved?.out === FLINT_AND_STEEL);
+  const flintAlone = findRecipe(grid(2, ["F."], P), 2);
+  check("火打石だけでは作れない", flintAlone === null, flintAlone?.name ?? "無し");
 
   // --- 盤面の広さ ---
   const pickIn3 = findRecipe(grid(3, ["PPP", ".S.", ".S."], P), 3);

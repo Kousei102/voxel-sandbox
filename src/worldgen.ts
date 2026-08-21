@@ -5,6 +5,7 @@ import {
   COAL_ORE,
   DIAMOND_ORE,
   GOLD_ORE,
+  GRAVEL,
   IRON_ORE,
   LAVA,
   LEAVES,
@@ -63,16 +64,26 @@ function hash3(x: number, y: number, z: number, seed: number): number {
 }
 
 /**
- * 鉱石。上限の高さと、鉱脈の湧きやすさ・鉱脈内の詰まり具合を持つ。
+ * 石の中に埋まっているもの。上限の高さと、鉱脈の湧きやすさ・鉱脈内の詰まり具合を持つ。
  * 深いものほど珍しく、上に行くほど出ない。
+ *
+ * **鉱石でない砂利も同じ表に置いてある。** 湧き方がまったく同じ（座標のハッシュで
+ * 塊を作って中を間引く）ものなので、専用の仕組みを足すと石ブロック 1 個ごとの
+ * ループが 2 本になる。
  */
-interface OreDef {
+interface VeinDef {
   readonly id: number;
   readonly maxY: number;
-  /** 2x2x2 の鉱脈が湧く確率。 */
+  /** 塊 1 つが湧く確率。 */
   readonly veinChance: number;
-  /** 鉱脈の中で実際に鉱石になる確率。1 だと 8 個の塊になって不自然。 */
+  /** 塊の中で実際にそのブロックになる確率。1 だと角ばった塊になって不自然。 */
   readonly fill: number;
+  /**
+   * 塊の粗さ（座標を何ビット落とすか）。1 なら 2x2x2、2 なら 4x4x4。
+   * **鉱石は 1、砂利は 2。** 砂利を 1 にすると石の中に胡椒を撒いたような散り方になり、
+   * Minecraft の「砂利の塊」に見えない。
+   */
+  readonly shift: number;
   readonly salt: number;
 }
 
@@ -86,11 +97,15 @@ interface OreDef {
  */
 export const LAVA_LEVEL = 10;
 
-const ORES: readonly OreDef[] = [
-  { id: COAL_ORE, maxY: 62, veinChance: 0.02, fill: 0.75, salt: 0x51ed },
-  { id: IRON_ORE, maxY: 46, veinChance: 0.015, fill: 0.65, salt: 0x2b17 },
-  { id: GOLD_ORE, maxY: 26, veinChance: 0.005, fill: 0.55, salt: 0x7c39 },
-  { id: DIAMOND_ORE, maxY: 14, veinChance: 0.003, fill: 0.5, salt: 0x1d4b },
+const VEINS: readonly VeinDef[] = [
+  { id: COAL_ORE, maxY: 62, veinChance: 0.02, fill: 0.75, shift: 1, salt: 0x51ed },
+  { id: IRON_ORE, maxY: 46, veinChance: 0.015, fill: 0.65, shift: 1, salt: 0x2b17 },
+  { id: GOLD_ORE, maxY: 26, veinChance: 0.005, fill: 0.55, shift: 1, salt: 0x7c39 },
+  { id: DIAMOND_ORE, maxY: 14, veinChance: 0.003, fill: 0.5, shift: 1, salt: 0x1d4b },
+  // **砂利は一番下に置くこと。** 先に見つかったものが勝つので、上に置くと
+  // 鉱石が砂利に食われる（掘っても鉱石が見つからない世界になる）。
+  // 石炭と同じ高さまで出るので、**火打石を探して深く潜る必要はない。**
+  { id: GRAVEL, maxY: 62, veinChance: 0.03, fill: 0.8, shift: 2, salt: 0x3e91 },
 ];
 
 export class WorldGen {
@@ -153,18 +168,19 @@ export class WorldGen {
   }
 
   /**
-   * その座標の鉱石。無ければ STONE。
+   * その座標に埋まっているもの（鉱石・砂利）。無ければ STONE。
    *
    * 石ブロック 1 個ごとに呼ばれるので、ノイズは使わずハッシュだけで済ませている
    * （noise3 を 1 回足すとチャンク生成が倍近くなり、フレーム予算に収まらなくなる）。
-   * 座標を 1 ビット落としたハッシュで 2x2x2 の鉱脈を作り、その中を fill で間引く。
+   * 座標を `shift` ビット落としたハッシュで塊を作り、その中を fill で間引く。
    */
-  private oreAt(x: number, y: number, z: number): number {
-    for (const ore of ORES) {
-      if (y > ore.maxY) continue;
-      if (hash3(x >> 1, y >> 1, z >> 1, this.seed ^ ore.salt) >= ore.veinChance) continue;
-      if (hash3(x, y, z, this.seed ^ (ore.salt << 1)) >= ore.fill) continue;
-      return ore.id;
+  private veinAt(x: number, y: number, z: number): number {
+    for (const vein of VEINS) {
+      if (y > vein.maxY) continue;
+      const s = vein.shift;
+      if (hash3(x >> s, y >> s, z >> s, this.seed ^ vein.salt) >= vein.veinChance) continue;
+      if (hash3(x, y, z, this.seed ^ (vein.salt << 1)) >= vein.fill) continue;
+      return vein.id;
     }
     return STONE;
   }
@@ -281,7 +297,7 @@ export class WorldGen {
           } else if (depth <= 3) {
             data[index] = filler;
           } else {
-            data[index] = this.oreAt(wx, wy, wz);
+            data[index] = this.veinAt(wx, wy, wz);
           }
         }
       }
