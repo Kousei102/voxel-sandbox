@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { AIR, NETHER_PORTAL, NETHER_PORTAL_Z, OBSIDIAN, STONE, blockName, isProp } from "../src/blocks";
 import { FLINT_AND_STEEL, IRON_PICKAXE, NO_ITEM, dropOf, isFireStarter } from "../src/items";
 import {
@@ -12,6 +11,8 @@ import {
   type PortalWorld,
 } from "../src/portals";
 import { World } from "../src/world";
+import { WorldGen } from "../src/worldgen";
+import { sourceOf } from "./arena";
 import { check, describe } from "./harness";
 import { Scene } from "three";
 
@@ -184,7 +185,7 @@ function inside(axis: "x" | "z", a: number, b: number): [number, number, number]
  * 型が合っていることを確かめる場所がここしかない）。
  */
 function realWorld(): void {
-  const world = new World(new Scene(), 424242);
+  const world = new World(new Scene(), new WorldGen(424242));
   world.primeAround(0.5, 0.5, 1);
   const base = world.surfaceY(0, 0) + 2;
 
@@ -223,9 +224,7 @@ function realWorld(): void {
  * 引っかかって、コードは正しいのに赤くなります（実際に踏みました）。
  */
 function sourceGuards(): void {
-  const source = readFileSync("src/portals.ts", "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/\/\/.*$/gm, "");
+  const source = sourceOf("src/portals.ts");
 
   // three も DOM も出てこない（`beds.ts` / `liquids.ts` と同じ）。
   const leaked = ["Mesh", "AudioContext", "document", "HTMLElement", "Math.random("].filter((w) =>

@@ -20,6 +20,7 @@ import {
 } from "../src/blocks";
 import { Beds, clearBedPartner, placeBed, sleepDecision } from "../src/beds";
 import { World } from "../src/world";
+import { WorldGen } from "../src/worldgen";
 import { check, describe } from "./harness";
 
 /** 置く材料。`placeSpot()` が返すものと同じ形（ベッドは `facing` だけを見る）。 */
@@ -35,7 +36,7 @@ function spotAt(x: number, y: number, z: number, facing: number) {
  * 床の高さと、床の上の空きを返す。
  */
 function flatWorld(): { world: World; floor: number } {
-  const world = new World(new Scene(), 909091);
+  const world = new World(new Scene(), new WorldGen(909091));
   world.primeAround(0.5, 0.5, 1);
   const surface = world.surfaceY(0, 0);
   // 石で 6x6 の平らな床を敷き、その上を 4 マスぶん空ける（頭上の判定に効く）

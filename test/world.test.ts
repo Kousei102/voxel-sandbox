@@ -1,11 +1,12 @@
 import { PerspectiveCamera, Scene, Vector3 } from "three";
-import { AIR, GRASS, STONE, WATER, blockName } from "../src/blocks";
+import { AIR, BRICK, GRASS, STONE, WATER, blockName } from "../src/blocks";
 import { CHUNK_BITS, CHUNK_LAYERS, CHUNK_VOLUME, RENDER_DISTANCE } from "../src/constants";
 import { Player } from "../src/player";
 import { raycastVoxels } from "../src/raycast";
 import { deserializeEdits, serializeEdits } from "../src/storage";
-import { World } from "../src/world";
+import { World, type ChunkSource } from "../src/world";
 import { WorldGen } from "../src/worldgen";
+import { sourceOf } from "./arena";
 import { check, describe } from "./harness";
 
 /** テストからチャンクの状態を覗くための最小限の型。 */
@@ -40,7 +41,7 @@ export function run(): void {
   describe("ワールド（読み込み・編集・保存）");
 
   const scene = new Scene();
-  const world = new World(scene, 4242);
+  const world = new World(scene, new WorldGen(4242));
   world.primeAround(0.5, 0.5, 1);
 
   const stats = world.stats();
@@ -60,10 +61,10 @@ export function run(): void {
 
   // 編集の保存と復元
   const round = deserializeEdits(serializeEdits(world.editsForSave()));
-  const restored = new World(new Scene(), 4242, round);
+  const restored = new World(new Scene(), new WorldGen(4242), round);
   restored.primeAround(0.5, 0.5, 1);
   check("保存した編集が復元される", restored.getVoxel(0, surface - 1, 0) === GRASS);
-  const fresh = new World(new Scene(), 4242);
+  const fresh = new World(new Scene(), new WorldGen(4242));
   fresh.primeAround(0.5, 0.5, 1);
   check("編集なしなら元の地形に戻る", fresh.getVoxel(0, surface - 1, 0) !== AIR);
 
@@ -150,7 +151,7 @@ export function run(): void {
   describe("ストリーミング（歩き続けたときの読み込み）");
 
   const streamScene = new Scene();
-  const stream = new World(streamScene, 777);
+  const stream = new World(streamScene, new WorldGen(777));
   stream.primeAround(0.5, 0.5, 1);
 
   const frames: number[] = [];
@@ -216,4 +217,56 @@ export function run(): void {
 
   stream.dispose();
   check("dispose でシーンが空になる", streamScene.children.length === 0, `${streamScene.children.length} 残り`);
+
+  injectedSource();
+}
+
+/**
+ * **生成器を差し替えられること。** ここが `World` を次元に開く唯一の入口で、
+ * これが無いとネザーもエンドも `World` の中の分岐になります。
+ *
+ * 見るのは 2 つだけ: **渡した生成器のブロックが出てくること**と、
+ * **`world.ts` が `worldgen.ts` を知らないこと**。後者が崩れると、
+ * 差し替えられる形に見えて中で `new WorldGen()` に戻れてしまいます。
+ */
+function injectedSource(): void {
+  // 高さ 8 未満をレンガで埋めるだけの生成器。**地形の話は一切しない。**
+  const bricks: ChunkSource = {
+    seed: 5150,
+    generateChunk(_cx, cy, _cz, data) {
+      data.fill(AIR);
+      for (let ly = 0; ly < 16; ly++) {
+        if (cy * 16 + ly >= 8) break;
+        for (let i = 0; i < 256; i++) data[ly * 256 + i] = BRICK;
+      }
+    },
+  };
+
+  const world = new World(new Scene(), bricks);
+  world.primeAround(0.5, 0.5, 1);
+
+  check("渡した種がそのまま出る（セーブに書く値）", world.seed === 5150, String(world.seed));
+  check(
+    "渡した生成器のブロックが出てくる",
+    world.getVoxel(0, 4, 0) === BRICK && world.getVoxel(0, 9, 0) === AIR,
+    `y=4 ${blockName(world.getVoxel(0, 4, 0))} / y=9 ${blockName(world.getVoxel(0, 9, 0))}`,
+  );
+
+  // 地形が違ってもストリーミングはそのまま動く（メッシュまで通る）。
+  for (let i = 0; i < 400 && world.stats().queued > 0; i++) world.update(0.5, 0.5);
+  check(
+    "差し替えた地形でもメッシュ化まで通る",
+    world.stats().triangles > 0,
+    `${world.stats().triangles.toLocaleString()} 三角形`,
+  );
+  world.dispose();
+
+  // **`World` が生成器を自分で作っていないこと。**
+  const source = sourceOf("src/world.ts");
+  check(
+    "world.ts が worldgen.ts を知らない",
+    !source.includes("./worldgen"),
+    source.includes("./worldgen") ? "import が残っている" : "",
+  );
+  check("world.ts が生成器を自分で作っていない", !source.includes("new WorldGen"));
 }

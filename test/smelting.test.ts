@@ -36,13 +36,9 @@ import {
   tickFurnace,
   type FurnaceState,
 } from "../src/smelting";
+import { sourceOf } from "./arena";
 import { check, describe } from "./harness";
 
-function stripComments(path: string): string {
-  return readFileSync(path, "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/\/\/.*$/gm, "");
-}
 
 /** 材料と燃料を入れたかまど。 */
 function loaded(input: number, inCount: number, fuel: number, fuelCount: number): FurnaceState {
@@ -67,8 +63,8 @@ function grid(items: number[][]): Slot[] {
 export function run(): void {
   describe("精錬（判断の切り分け）");
 
-  const smeltSource = stripComments("src/smelting.ts");
-  const furnaceSource = stripComments("src/furnaces.ts");
+  const smeltSource = sourceOf("src/smelting.ts");
+  const furnaceSource = sourceOf("src/furnaces.ts");
   const leaks = ["document", "getElementById", "HTMLElement", 'from "three"', "AudioContext"].filter(
     (name) => smeltSource.includes(name) || furnaceSource.includes(name),
   );
@@ -81,7 +77,7 @@ export function run(): void {
     !furnaceSource.includes("setVoxel") && !furnaceSource.includes("./world"),
   );
 
-  const uiSource = stripComments("src/inventoryui.ts");
+  const uiSource = sourceOf("src/inventoryui.ts");
   check(
     "inventoryui.ts は smelting.ts を import しない",
     !uiSource.includes('from "./smelting"'),

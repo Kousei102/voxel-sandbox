@@ -20,13 +20,9 @@ import {
   allItemIds,
   itemName,
 } from "../src/items";
+import { sourceOf } from "./arena";
 import { check, describe } from "./harness";
 
-function stripComments(path: string): string {
-  return readFileSync(path, "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/\/\/.*$/gm, "");
-}
 
 /** 画面を 1 つ用意する。size は 2 = 手持ち / 3 = 作業台。 */
 function screen(size: 2 | 3 = 2): CraftScreen {
@@ -67,7 +63,7 @@ export function run(): void {
   // 描画はこの環境では確かめられない。だから「判断」は craftscreen.ts に閉じ込めてあり、
   // DOM を触るのは inventoryui.ts だけ。ここが崩れると、インベントリまわりが丸ごと
   // 「ブラウザを開くまで確かめられないもの」になる。
-  const modelSource = stripComments("src/craftscreen.ts");
+  const modelSource = sourceOf("src/craftscreen.ts");
   const dom = [
     "document",
     "getElementById",
@@ -82,7 +78,7 @@ export function run(): void {
   check("craftscreen.ts は DOM に触らない", dom.length === 0, dom.join(" "));
 
   // 逆向き。判断が描画側へ漏れていないか（漏れると、その判断だけテストが届かなくなる）。
-  const uiSource = stripComments("src/inventoryui.ts");
+  const uiSource = sourceOf("src/inventoryui.ts");
   check(
     "inventoryui.ts は crafting.ts を import しない",
     !uiSource.includes('from "./crafting"'),
@@ -553,7 +549,7 @@ export function run(): void {
 
   // craft は「省略可・無ければ既定」で足したキーなので、version は 1 のままでなければならない。
   // 2 に上げると load() が既存プレイヤーのワールドを丸ごと弾く。
-  const storageSource = stripComments("src/storage.ts");
+  const storageSource = sourceOf("src/storage.ts");
   check(
     "セーブの version を上げていない（古いセーブが読める）",
     storageSource.includes("version !== 1") && storageSource.includes("version: 1"),

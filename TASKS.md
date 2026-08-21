@@ -91,12 +91,19 @@ ID 49（X 向き）/ 103（Z 向き）。`portals.ts` は **`getVoxel` / `setVox
 `translucent: true` は黙って無視される（`rules/meshing-render.md` に追記）。
 ポータルは不透明の紫板にしてある。
 
-### [ ] 1-5. `World` の生成器を注入できるようにする
+### [x] 1-5. `World` の生成器を注入できるようにする
 
-- `constructor(scene, seed, edits?)` の中の `new WorldGen(seed)` をやめ、
-  **生成器を外から渡す**形にする。既存の呼び出し 1 か所（`main.ts` の `startWorld`）を直す
-- **このタスクでは次元を足さない。** 差し替えられる形にするだけ
-- テスト: 別の生成器を渡したら、そのブロックが出ること
+`World` は `ChunkSource`（`seed` と `generateChunk` の 2 つだけ）を外から受け取る形になり、
+**`world.ts` から `worldgen.ts` の import が消えた**（テストが見張っている）。
+作るのは `main.ts` の `startWorld()`。
+
+**バイオームは `ChunkSource` に載せていない** —— オーバーワールドにしか無い話なので、
+F3 の表示用に `main.ts` が `WorldGen` を自分で持つ形にした。
+`new World(scene, seed)` の呼び出し 14 か所（ほぼテスト）は `new WorldGen(seed)` を渡す形へ。
+
+ついでに、見張りのテストが使うソース読み込みを **`arena.ts` の `sourceOf()` に 1 本化**した
+（コメントを落として読む。写しが 5 か所に増えていた）。
+`generateChunk` 1.08〜1.22ms / `world.update` 平均 3.8ms・最悪 16〜19ms で退行なし。
 
 ### [ ] 1-7. `structures.ts` — 構造物の器 **要 1-5**
 

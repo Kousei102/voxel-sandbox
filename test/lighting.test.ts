@@ -25,7 +25,7 @@ import { BLOCK_LIGHT, OFFSETS, SKY_LIGHT } from "../src/lighting";
 import { PAD_VOLUME, buildChunkMesh, padIndex } from "../src/mesher";
 import { deserializeEdits, serializeEdits } from "../src/storage";
 import { LIGHT_ATTRIBUTE, patchTerrainShader } from "../src/terrainshader";
-import { LAVA_LEVEL } from "../src/worldgen";
+import { LAVA_LEVEL, WorldGen } from "../src/worldgen";
 import { World } from "../src/world";
 import { check, describe } from "./harness";
 
@@ -45,7 +45,7 @@ function sameValues(a: Float32Array, b: Float32Array): boolean {
 export function run(): void {
   describe("光（スカイライト）");
 
-  const world = new World(new Scene(), 4242);
+  const world = new World(new Scene(), new WorldGen(4242));
   world.primeAround(0.5, 0.5, 1);
 
   const sky = world.surfaceY(0, 0);
@@ -262,7 +262,7 @@ export function run(): void {
   );
 
   // 保存して読み直しても、松明の光は作り直される（地形は保存しないので毎回再計算になる）
-  const relit = new World(new Scene(), 4242, deserializeEdits(serializeEdits(world.editsForSave())));
+  const relit = new World(new Scene(), new WorldGen(4242), deserializeEdits(serializeEdits(world.editsForSave())));
   relit.primeAround(torchX + 0.5, tz + 0.5, 1);
   check(
     "読み込み直しても松明が光る",
@@ -420,7 +420,7 @@ export function run(): void {
 
   describe("読み込みをまたいでも光が保たれるか");
 
-  const streaming = new World(new Scene(), 31337);
+  const streaming = new World(new Scene(), new WorldGen(31337));
   streaming.primeAround(0.5, 0.5, 1);
   // 待ち行列が空でも update を 1 度は呼ばないと、読み込みキューが積まれない
   for (let i = 0; i < 4000; i++) {

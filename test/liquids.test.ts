@@ -22,6 +22,7 @@ import { quenchAround } from "../src/liquids";
 import { breakTime, canHarvest } from "../src/mining";
 import { World } from "../src/world";
 import { readFileSync } from "node:fs";
+import { WorldGen } from "../src/worldgen";
 import { check, describe } from "./harness";
 
 /**
@@ -30,7 +31,7 @@ import { check, describe } from "./harness";
  * 読み取り専用の試験場では肝心の経路が通らない。
  */
 function stage(): { world: World; y: number } {
-  const world = new World(new Scene(), 424242);
+  const world = new World(new Scene(), new WorldGen(424242));
   world.primeAround(0.5, 0.5, 1);
   const y = world.surfaceY(0, 0) + 3;
   for (let x = -2; x <= 2; x++) {

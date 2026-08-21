@@ -113,7 +113,7 @@ const MILESTONES: readonly Milestone[] = [
       const obsidian = block("黒曜石");
       if (!obsidian) return { done: false, detail: "ブロックが無い" };
 
-      const world = new World(new Scene(), 424242);
+      const world = new World(new Scene(), new WorldGen(424242));
       world.primeAround(0.5, 0.5, 1);
       const y = world.surfaceY(0, 0) + 3;
       for (let dy = -1; dy <= 1; dy++) {
@@ -183,7 +183,7 @@ const MILESTONES: readonly Milestone[] = [
       if (!portal) return { done: false, detail: "ブロックが無い" };
       if (!isFireStarter(item("火打石と打ち金"))) return { done: false, detail: "火種が無い" };
 
-      const world = new World(new Scene(), 424242);
+      const world = new World(new Scene(), new WorldGen(424242));
       world.primeAround(0.5, 0.5, 1);
       const base = world.surfaceY(0, 0) + 2;
       // 内側 2x3 の枠。四隅も置く（角は無くてもよいが、あって困らない）。

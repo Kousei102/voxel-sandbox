@@ -63,6 +63,7 @@ import { breakTime } from "../src/mining";
 import { Player } from "../src/player";
 import { raycastVoxels } from "../src/raycast";
 import { World } from "../src/world";
+import { WorldGen } from "../src/worldgen";
 import { check, describe } from "./harness";
 
 export function run(): void {
@@ -200,7 +201,7 @@ export function run(): void {
 
   describe("ハーフブロックの上に立つ・狙う");
 
-  const world = new World(new Scene(), 20260803);
+  const world = new World(new Scene(), new WorldGen(20260803));
   world.primeAround(0.5, 0.5, 1);
   const ground = world.surfaceY(0, 0); // 地面のすぐ上（= 空いているマス）
   // 足場を平らにならしてから、その上にハーフを置く

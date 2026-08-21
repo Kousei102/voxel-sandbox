@@ -39,9 +39,27 @@ import {
 } from "./lighting";
 import { PAD_SIZE, PAD_VOLUME, buildChunkMesh } from "./mesher";
 import { useTerrainLighting } from "./terrainshader";
-import { WorldGen } from "./worldgen";
 
 export type EditMap = Map<string, Map<number, number>>;
+
+/**
+ * `World` に地形を作らせる相手。**`World` は「どう作るか」を知りません** ——
+ * オーバーワールドの `WorldGen` も、この先のネザー・エンドも、
+ * ここを満たしていれば同じ `World` に載せられます。
+ *
+ * **`world.ts` から `worldgen.ts` の import を消したのが肝心です**
+ * （`test/world.test.ts` が見張っています）。中で `new WorldGen()` していると、
+ * 次元を足すときに「どの生成器か」を渡す道が無く、`World` の中に分岐が生えます。
+ *
+ * バイオームのような**その次元にしか無い話はここに載せないこと。**
+ * `main.ts` の F3 表示はオーバーワールドの `WorldGen` を自分で持っています。
+ */
+export interface ChunkSource {
+  /** セーブに書く種。 */
+  readonly seed: number;
+  /** チャンク 1 個分のボクセルを `data` に書き込む。 */
+  generateChunk(cx: number, cy: number, cz: number, data: Uint8Array): void;
+}
 
 export interface WorldStats {
   chunks: number;
@@ -50,7 +68,6 @@ export interface WorldStats {
 }
 
 export class World {
-  readonly gen: WorldGen;
   private readonly chunks = new Map<string, Chunk>();
   /** ボクセルを生成済みの列。 */
   private readonly columns = new Set<string>();
@@ -94,10 +111,9 @@ export class World {
 
   constructor(
     private readonly scene: Scene,
-    seed: number,
+    private readonly gen: ChunkSource,
     edits?: EditMap,
   ) {
-    this.gen = new WorldGen(seed);
     if (edits) this.edits = edits;
     useTerrainLighting(this.opaqueMaterial, this.daylight);
     useTerrainLighting(this.translucentMaterial, this.daylight);

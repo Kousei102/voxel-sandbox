@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { AIR, BEDROCK } from "../src/blocks";
 import { WORLD_HEIGHT } from "../src/constants";
 import { SKY_LIGHT } from "../src/lighting";
@@ -73,4 +74,19 @@ export function seeded(seed: number): () => number {
     state = (state * 1664525 + 1013904223) >>> 0;
     return state / 0x100000000;
   };
+}
+
+/**
+ * ソースを**コメントを落として**読む。見張りのテスト（`src/**` に何が書かれているか）は
+ * これを通すこと。
+ *
+ * **生のまま探すと、自分で書いた説明が引っかかります。** 実際に 2 度踏みました ——
+ * `portals.ts` に「次元の話は 1-6 でやる」と書いたら `dimension` に、
+ * `world.ts` に「中で `new WorldGen()` していると」と書いたらその語に当たって、
+ * **コードは正しいのにテストだけが赤く**なりました。
+ */
+export function sourceOf(path: string): string {
+  return readFileSync(path, "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "");
 }

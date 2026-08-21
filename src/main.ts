@@ -73,6 +73,7 @@ import { clearSave, countEdits, deserializeEdits, load, save, serializeEdits } f
 import { Hud } from "./ui";
 import { EAT_SECONDS, MAX_HEALTH, MAX_HUNGER, VOID_Y, Vitals } from "./vitals";
 import { World } from "./world";
+import { WorldGen } from "./worldgen";
 import { hashSeed } from "./noise";
 
 const FOG_COLOR = 0x9ec8e8;
@@ -138,6 +139,15 @@ const deathScreen = document.getElementById("death") as HTMLElement;
 const deathCause = document.getElementById("deathcause") as HTMLElement;
 
 let world!: World;
+/**
+ * オーバーワールドの生成器。**`World` は生成器を外から渡してもらう形**になったので
+ * （`ChunkSource`）、作るのはこちらの仕事。
+ *
+ * `world` とは別に持っているのは、**バイオームがオーバーワールドにしか無い話**だから
+ * （F3 の表示で使う）。`ChunkSource` に `biomeAt` を足すと、ネザーの生成器にも
+ * 意味の無い実装を書くことになる。
+ */
+let overworld!: WorldGen;
 /**
  * モブ。**`mobRender` は `world` と一緒に作り直す**（昼夜の uniform は `World` が
  * 持っていて、ワールドを作り直すと別のオブジェクトになるため）。
@@ -252,7 +262,8 @@ function startWorld(
   spawn?: { x: number; y: number; z: number; yaw: number; pitch: number; flying: boolean },
 ): void {
   world?.dispose();
-  world = new World(scene, seed, edits);
+  overworld = new WorldGen(seed);
+  world = new World(scene, overworld, edits);
   seedInput.value = String(seed);
 
   // モブは保存しない（地形と同じで、シードから作り直せるものは持たない）。
@@ -1117,7 +1128,7 @@ function frame(now: number): void {
       `  loaded ${stats.chunks}  queue ${stats.queued}\n` +
       `tris ${stats.triangles.toLocaleString()}  edits ${countEdits(world.editsForSave())}\n` +
       `time ${dayNight.clock()}  light ${(dayNight.brightness * 100).toFixed(0)}%  ${creative ? "creative" : "survival"}\n` +
-      `biome ${biomeName(world.gen.biomeAt(Math.floor(player.position.x), Math.floor(player.position.z)))}` +
+      `biome ${biomeName(overworld.biomeAt(Math.floor(player.position.x), Math.floor(player.position.z)))}` +
       `  mobs ${mobs.count}  drops ${drops.count}  furnaces ${furnaces.count}  chests ${chests.count}\n` +
       `hp ${vitals.health}/${MAX_HEALTH}  food ${vitals.hunger}/${MAX_HUNGER}` +
       `${vitals.poisoned ? " (毒)" : ""}  air ${(vitals.airFraction * 100).toFixed(0)}%\n` +

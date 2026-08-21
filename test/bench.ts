@@ -28,7 +28,9 @@ t = performance.now();
 for (let i = 0; i < 300; i++) tris = (buildChunkMesh(pad, lightPad, blockPad).opaque?.indices.length ?? 0) / 3;
 console.log(`buildChunkMesh  ${((performance.now() - t) / 300).toFixed(2)} ms/チャンク (${tris} 三角形)`);
 
-const world = new World(new Scene(), 999);
+// **上の `gen` を使い回さないこと。** `WorldGen` は列ごとの結果をキャッシュするので、
+// すでに 200 チャンク作った生成器を渡すと、ストリーミングの計測がキャッシュ当たりになる。
+const world = new World(new Scene(), new WorldGen(999));
 t = performance.now();
 world.primeAround(0.5, 0.5, 1);
 console.log(`primeAround     ${(performance.now() - t).toFixed(0)} ms (起動時に 1 度だけ)`);
