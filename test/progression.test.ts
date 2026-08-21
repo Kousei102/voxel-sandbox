@@ -272,7 +272,16 @@ const MILESTONES: readonly Milestone[] = [
   {
     name: "投げたエンダーアイが要塞の方を向く",
     kind: "仮",
-    probe: () => sourceHas("src/projectiles.ts", "export"),
+    // **土台ではなく成果物に掛けること。3 度目です。** 前は
+    // `sourceHas("src/projectiles.ts", "export")` で、飛び道具の器（1-8）を作った瞬間に
+    // 達成へ変わりました —— エンダーアイは 1 個も投げられないのに。
+    // （`structures.ts` で 1 度、`dimensions.ts` で 1 度、同じ形で踏んでいます。）
+    probe: () => {
+      const eye = item("エンダーアイ");
+      if (eye === NO_ITEM) return { done: false, detail: "エンダーアイのアイテムが無い" };
+      // 飛ばす仕掛けはもうある。足りないのは**要塞の方角を決める判断**のほう。
+      return anySourceHas("strongholdDirection");
+    },
   },
   {
     name: "エンドポータルが 12 個の枠で起動する",

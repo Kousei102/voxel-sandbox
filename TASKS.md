@@ -140,7 +140,7 @@ F3 の表示用に `main.ts` が `WorldGen` を自分で持つ形にした。
 - 進行テストの仮の判定を直した。前は「`dimensions.ts` に `export` があるか」で、
   **器を作った瞬間に達成へ化ける**形だった（1-7 で踏んだのと同じ罠）
 
-### [ ] 1-8. `projectiles.ts` + `projectilerender.ts` **見**
+### [x] 1-8. `projectiles.ts` + `projectilerender.ts` **見** — ブラウザ確認待ち（`REVIEW.md`）
 
 - **`drops.ts` / `droprender.ts` とまったく同じ対の形**にすること（判断は全部
   `projectiles.ts`、three は render 側だけ）。火球・矢・投げたエンダーアイ・
@@ -150,6 +150,15 @@ F3 の表示用に `main.ts` が `WorldGen` を自分で持つ形にした。
 - `update()` は `world.update()` の**外**で回すこと（`test/world.test.ts` の p99 に混ぜない）
 - 形は `mobmesh.ts` の `buildBoxMesh()` を使い回す（巡回順の発行点を増やさない）
 - **`projectilerender.ts` に判断が漏れていないかの見張りを同時に足すこと**
+
+**やったこと**（`.claude/rules/projectiles.md`）:
+
+- 4 種類の表（火球・矢・エンダーアイ・ブレス）。違いは**表の値だけ**で飛び方の実装は 1 本
+- **当たったときに何が起きるかは書いていない。** ダメージの数値は手応えの判断なので
+  （停止条件 4）、当たったマスを `onHitBlock` で外へ渡すだけ。誰に当たったかも未実装 ——
+  ブレイズ（2-4）と弓矢（2-12）の周に、ユーザーと数値を決めてから足すこと
+- 当たり判定は **0.2m ごとに刻む**（矢は 40m/s なので、刻まないと重いフレームで壁を抜ける）
+- `N` キーで 4 種類を順ぐりに 1 つ撃てる（`M` のモブ出しと同じデバッグ用）
 
 ## Phase 2 — 導線を通す
 

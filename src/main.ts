@@ -67,6 +67,8 @@ import { Mining, breakTime, canHarvest } from "./mining";
 import { MobRenderer } from "./mobrender";
 import { MOB_KINDS, Mobs, type MobContext } from "./mobs";
 import { Player } from "./player";
+import { PROJECTILE_KINDS, Projectiles } from "./projectiles";
+import { ProjectileRenderer } from "./projectilerender";
 import { raycastVoxels, type RaycastHit } from "./raycast";
 import { DigCadence, EatCadence, StepCadence, clampVolume } from "./sfx";
 import { Sky } from "./sky";
@@ -161,6 +163,15 @@ let mobRender!: MobRenderer;
  */
 const drops = new Drops();
 let dropRender!: DropRenderer;
+/**
+ * 飛んでいるもの（火球・矢・エンダーアイ・ブレス）。**落とし物と違って保存しない**
+ * （読み込んだ瞬間に矢が刺さり直すより、消えているほうが安全側）。
+ * `projectileRender` は `dropRender` と同じ理由で `world` と一緒に作り直す。
+ */
+const projectiles = new Projectiles();
+let projectileRender!: ProjectileRenderer;
+/** `N` で出す飛び道具の順番（4 種類を順ぐりに出すためだけの目印）。 */
+let debugShot = -1;
 /**
  * 置いてあるかまど。**「位置ごとに状態を持つブロック」の初めての例。**
  * モブや落とし物と違って `world` の外にあるので、ワールドを作り直しても
@@ -290,6 +301,10 @@ function startWorld(
   drops.clear();
   dropRender?.dispose();
   dropRender = new DropRenderer(scene, world.daylightUniform());
+  // 飛んでいるものは保存しないので、ここで空にするだけでよい。
+  projectiles.clear();
+  projectileRender?.dispose();
+  projectileRender = new ProjectileRenderer(scene, world.daylightUniform());
 
   // 支えを失って勝手に壊れたぶんを地面へ。**壊した本人が居なくても落ちる**ので、
   // クリエイティブかどうかはここで見る（判断を `world.ts` に持ち込まない）。
@@ -1070,6 +1085,20 @@ window.addEventListener("keydown", (event) => {
         );
       }
       return;
+    case "KeyN":
+      // 飛び道具を 1 つ、視線の向きへ。**種類は押すたびに順ぐり**なので、
+      // 4 種類とも同じ手順で出せる（`M` のモブ出しと同じ、切り分けのための鍵）。
+      // 撃つ相手も当たったときの効果もまだ無い（火球はブレイズ、矢は弓と一緒に入る）。
+      debugShot = (debugShot + 1) % PROJECTILE_KINDS.length;
+      projectiles.launch(
+        PROJECTILE_KINDS[debugShot].kind,
+        player.position.x,
+        player.position.y + 1.5,
+        player.position.z,
+        player.yaw,
+        player.pitch,
+      );
+      return;
     case "F3":
       event.preventDefault();
       hud.toggleDebug();
@@ -1149,6 +1178,9 @@ function frame(now: number): void {
   // p99 に混ぜると、ストリーミングの退行と区別できなくなる）。
   if (playing) drops.update(dt, world, dropContext());
   dropRender.sync(drops.list, world);
+  // 飛んでいるもの。**落とし物と同じ理由で `world.update()` の外。**
+  if (playing) projectiles.update(dt, world);
+  projectileRender.sync(projectiles.list, world);
   // かまど。**画面を開いていても止めないこと** —— 開けた瞬間に止まると、
   // 焼き上がるところを見ていられない（`playing` はポインタが外れると false になる）。
   // 落とし物と同じく `world.update()` の外で回す。
@@ -1178,7 +1210,8 @@ function frame(now: number): void {
       `tris ${stats.triangles.toLocaleString()}  edits ${countEdits(world.editsForSave())}\n` +
       `time ${dayNight.clock()}  light ${(dayNight.brightness * 100).toFixed(0)}%  ${creative ? "creative" : "survival"}\n` +
       `biome ${biomeName(overworld.biomeAt(Math.floor(player.position.x), Math.floor(player.position.z)))}` +
-      `  mobs ${mobs.count}  drops ${drops.count}  furnaces ${furnaces.count}  chests ${chests.count}\n` +
+      `  mobs ${mobs.count}  drops ${drops.count}  furnaces ${furnaces.count}  chests ${chests.count}` +
+      `  shots ${projectiles.count}\n` +
       `hp ${vitals.health}/${MAX_HEALTH}  food ${vitals.hunger}/${MAX_HUNGER}` +
       `${vitals.poisoned ? " (毒)" : ""}  air ${(vitals.airFraction * 100).toFixed(0)}%\n` +
       `${player.flying ? "fly" : player.onGround ? "ground" : "air"}${player.inLiquid ? ` / ${blockName(player.liquid)}` : ""}${vitals.burning ? " / 炎上" : ""}\n` +
