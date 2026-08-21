@@ -20,6 +20,7 @@ import {
 import { biomeDef, classify, resolve, type TreeKind } from "./biomes";
 import { CHUNK_SIZE, SEA_LEVEL, WORLD_HEIGHT } from "./constants";
 import { Noise } from "./noise";
+import { placementsFor, stampPlacements, type Placement, type StructureDef } from "./structures";
 
 interface Tree {
   x: number;
@@ -36,6 +37,11 @@ interface ColumnData {
   readonly biome: Uint8Array;
   /** この列に根を張る木（サボテンもここに入る）。座標はワールド絶対座標。 */
   readonly trees: Tree[];
+  /**
+   * この列のチャンクに掛かりうる構造物。**木と同じで列のキャッシュに持つ。**
+   * ここに置かないと、1 つの列を 8 段ぶん生成するあいだに地面を 8 回測ることになる。
+   */
+  readonly structures: Placement[];
 }
 
 const TREE_RADIUS = 2;
@@ -108,6 +114,14 @@ const VEINS: readonly VeinDef[] = [
   { id: GRAVEL, maxY: 62, veinChance: 0.03, fill: 0.8, shift: 2, salt: 0x3e91 },
 ];
 
+/**
+ * この生成器が建てる構造物（`structures.ts` の器に乗る）。
+ *
+ * **まだ空です。** 器だけ先に通してあり、最初の 1 個はネザー要塞（TASKS 2-3）。
+ * 空のあいだ `stampStructures()` は即座に戻るので、費用は掛かりません。
+ */
+const STRUCTURES: readonly StructureDef[] = [];
+
 export class WorldGen {
   private readonly terrain: Noise;
   private readonly detail: Noise;
@@ -116,6 +130,13 @@ export class WorldGen {
   private readonly temperature: Noise;
   private readonly humidity: Noise;
   private readonly columns = new Map<string, ColumnData>();
+
+  /**
+   * 構造物に渡す「地面の高さ」。**ここで 1 度だけ作る** ——
+   * チャンクごとに閉包を作ると、その GC がフレームの最悪値に出る
+   * （`mesher.ts` のマスクを使い回しているのと同じ理由）。
+   */
+  private readonly groundAt = (x: number, z: number): number => this.heightAt(x, z);
 
   constructor(readonly seed: number) {
     this.terrain = new Noise(seed);
@@ -241,7 +262,8 @@ export class WorldGen {
       trees.push({ x: wx, y: h + 1, z: wz, height: trunk, kind: def.treeKind });
     }
 
-    const data: ColumnData = { height, biome, trees };
+    const structures = placementsFor(STRUCTURES, this.seed, cx, cz, this.groundAt);
+    const data: ColumnData = { height, biome, trees, structures };
     if (this.columns.size >= COLUMN_CACHE_LIMIT) {
       const oldest = this.columns.keys().next().value;
       if (oldest !== undefined) this.columns.delete(oldest);
@@ -304,6 +326,8 @@ export class WorldGen {
     }
 
     this.applyTrees(cx, cy, cz, data);
+    // 構造物は木の**あと**（木より強い）。**列をまたぐ扱いは `structures.ts` が持つ。**
+    stampPlacements(this.column(cx, cz).structures, cx, cy, cz, data);
   }
 
   /** 自分の列と隣接 8 列の木のうち、このチャンクに掛かる部分を書き込む。 */

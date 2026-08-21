@@ -24,10 +24,11 @@
  * `仮` が残ったまま「達成 12 / 12」になっても、それはクリアできるという意味ではない。
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { AIR, BLOCKS, LAVA, OBSIDIAN, WATER } from "../src/blocks";
 import { CHUNK_VOLUME } from "../src/constants";
 import { RECIPES, findRecipe } from "../src/crafting";
+import { sourceOf } from "./arena";
 import { check, describe } from "./harness";
 import { type Slot } from "../src/inventory";
 import { NO_ITEM, dropOf, isFireStarter, itemName, rollDrop } from "../src/items";
@@ -69,10 +70,30 @@ function recipe(name: string): boolean {
   return RECIPES.some((r) => r.name === name);
 }
 
+/**
+ * `src/` のどこかにその語を書いたファイルがあるか。**仮の判定にしか使わないこと。**
+ *
+ * **仮の判定は「成果物」に掛けること。** 「土台のファイルがあるか」に掛けると、
+ * 器を作った瞬間に達成したことになります（`structures.ts` を足した周に
+ * 「ネザー要塞が生成される」が勝手に達成へ変わりました。要塞は 1 個も建っていません）。
+ */
+function anySourceHas(word: string): { done: boolean; detail?: string } {
+  for (const name of readdirSync("src")) {
+    if (!name.endsWith(".ts")) continue;
+    // **コメントを落として読むこと。** 落とさないと、器の説明に書いた
+    // 「ネザー要塞・要塞・エンドの黒曜石の柱が全部これに乗ります」がそのまま当たります
+    // （これで一度、要塞 0 個のまま達成に変わりました）。
+    if (sourceOf(`src/${name}`).includes(word)) {
+      return { done: true, detail: `src/${name}` };
+    }
+  }
+  return { done: false, detail: `どこにも「${word}」が無い` };
+}
+
 /** ソースが存在して、その語を含むか。**仮の判定にしか使わないこと。** */
 function sourceHas(path: string, ...words: string[]): { done: boolean; detail?: string } {
   if (!existsSync(path)) return { done: false, detail: `${path} が無い` };
-  const source = readFileSync(path, "utf8");
+  const source = sourceOf(path);
   const missing = words.filter((w) => !source.includes(w));
   return { done: missing.length === 0, detail: missing.length ? `${missing.join(" ")} が無い` : path };
 }
@@ -215,7 +236,9 @@ const MILESTONES: readonly Milestone[] = [
   {
     name: "ネザー要塞が原点から近くに生成される",
     kind: "仮",
-    probe: () => sourceHas("src/structures.ts", "export"),
+    // **器（`structures.ts`）があるかを見ないこと。** 器を作った周に、要塞が
+    // 1 個も建っていないのに達成へ変わりました。**建つものの名前**で見ます。
+    probe: () => anySourceHas("ネザー要塞"),
   },
   {
     name: "ブレイズがブレイズロッドを落とす",
