@@ -174,12 +174,33 @@ export function run(): void {
     });
   }
 
+  // --- 次元つきのセーブ ---------------------------------------------------
+
+  // **オーバーワールドは上の階層のまま**（`edits` / `drops` / `furnaces` / `chests`）で、
+  // `dims` に入るのはそれ以外の次元だけ。この形なので、上の V1_SAVE がそのまま読める。
+  // 振り分けそのものの検証は `test/dimensions.test.ts`。
+  const withDims = JSON.parse(V1_SAVE) as Record<string, unknown>;
+  withDims.dim = "nether";
+  withDims.dims = { nether: { edits: { "0,2,0": [0, 45] }, drops: [45, 2, 1.5, 33, 1.5] } };
+  withStorage(JSON.stringify(withDims), () => {
+    const saved = load();
+    check("次元つきのセーブが読める", saved !== null);
+    check("dim が読める", saved?.dim === "nether", String(saved?.dim));
+    check(
+      "dims の中身が読める",
+      countEdits(deserializeEdits(saved?.dims?.nether?.edits)) === 1,
+      JSON.stringify(saved?.dims),
+    );
+    // **上の階層は動かさない。** ここが別の次元のぶんに入れ替わると、
+    // 次元を知らないコードで開いたときにネザーの地形がオーバーワールドに貼られる。
+    check("上の階層はオーバーワールドのまま", countEdits(deserializeEdits(saved?.edits)) === 3);
+  });
+
   // --- 知らないキーがあっても読める（前方互換） ---------------------------
 
-  // ループが次元を足したあとのセーブを、**足す前のコードが読めるか**。
+  // ループが新しいキーを足したあとのセーブを、**足す前のコードが読めるか**。
   // ここが通らないと、ブランチを行き来した人のワールドが消える。
   const future = JSON.parse(V1_SAVE) as Record<string, unknown>;
-  future.dims = { nether: { edits: { "0,2,0": [0, 45] } } };
   future.somethingNew = 42;
   withStorage(JSON.stringify(future), () => {
     const saved = load();

@@ -55,6 +55,7 @@ import { Chests } from "./chests";
 import { CrackOverlay } from "./crack";
 import { CraftScreen } from "./craftscreen";
 import { DayNight, WAKE_TIME, canSleep } from "./daynight";
+import { Dimensions, type DimensionState } from "./dimensions";
 import { Drops, type DropContext } from "./drops";
 import { DropRenderer } from "./droprender";
 import { Furnaces } from "./furnaces";
@@ -177,6 +178,14 @@ const chests = new Chests();
  * ワールドを作り直したら明示的に空にすること（`startWorld`）。
  */
 const beds = new Beds();
+/**
+ * 次元。**いま居ない次元の持ち物（`edits` / 落とし物 / かまど / チェスト）を預かる器**で、
+ * 判断は全部 `dimensions.ts` にある（ここは値を集めて貼るだけ）。
+ *
+ * いま登録されているのはオーバーワールドだけなので、**保存の形は今までと変わらない**
+ * （`dim` も `dims` も出ない）。ポータルで移る配線は行き先ができてから。
+ */
+const dims = new Dimensions();
 let playing = false;
 /**
  * 一度でもプレイに入ったか。**タイトル画面の見回し（`frame()`）を止める合図**で、
@@ -423,7 +432,25 @@ function placeAtSpawn(x: number, y: number, z: number): void {
   resetFootprint();
 }
 
+/**
+ * いま居る次元の「位置ごとの持ち物」。**保存するときも、次元を移るときも同じものを渡す。**
+ *
+ * 2 か所に書き写さないこと —— 片方だけ直すと、移った先から戻ったときに
+ * かまどの中身だけが消える、という形で静かに壊れる。
+ */
+function liveState(): DimensionState {
+  return {
+    edits: serializeEdits(world.editsForSave()),
+    drops: drops.serialize(),
+    furnaces: furnaces.serialize(),
+    chests: chests.serialize(),
+  };
+}
+
 function currentSave() {
+  // **いま居る次元のぶんを預けてから書き出す**（`forSave` が中で預かる）。
+  // オーバーワールドの持ち物は今までどおり上の階層、それ以外は `dims` の下。
+  const shape = dims.forSave(liveState());
   return {
     version: 1 as const,
     seed: world.seed,
@@ -442,11 +469,14 @@ function currentSave() {
     inventory: inventory.serialize(),
     craft: craft.serialize(),
     volume: audio.getVolume(),
-    drops: drops.serialize(),
-    furnaces: furnaces.serialize(),
-    chests: chests.serialize(),
+    drops: shape.top.drops,
+    furnaces: shape.top.furnaces,
+    chests: shape.top.chests,
+    // **リスポーン地点は次元ごとに持たない**（世界に 1 つだけの地点なので上の階層のまま）。
     bed: beds.serialize(),
-    edits: serializeEdits(world.editsForSave()),
+    edits: shape.top.edits,
+    dim: shape.dim,
+    dims: shape.others,
   };
 }
 
@@ -482,15 +512,28 @@ if (typeof saved?.health === "number" && saved.health > 0) {
 if (typeof saved?.hunger === "number" && Number.isFinite(saved.hunger)) {
   vitals.hunger = Math.max(0, Math.min(MAX_HUNGER, saved.hunger));
 }
+// **次元ごとに振り分けてから世界を作る。** 上の階層（`edits` / `drops` / `furnaces` /
+// `chests`）はオーバーワールドのぶんで、それ以外は `dims` の下に入っている。
+// 返ってくるのは**いま居る次元**の持ち物（知らない次元ならオーバーワールドに落ちる）。
+const here = dims.fromSave({
+  dim: saved?.dim,
+  top: {
+    edits: saved?.edits,
+    drops: saved?.drops,
+    furnaces: saved?.furnaces,
+    chests: saved?.chests,
+  },
+  others: saved?.dims,
+});
 startWorld(
   saved?.seed ?? (Math.random() * 0xffffffff) >>> 0,
-  deserializeEdits(saved?.edits),
+  deserializeEdits(here.edits),
   saved?.player,
 );
 // **`startWorld()` のあとで。** あちらが `clear()` を呼ぶので、先に入れると消える。
-drops.deserialize(saved?.drops);
-furnaces.deserialize(saved?.furnaces);
-chests.deserialize(saved?.chests);
+drops.deserialize(here.drops);
+furnaces.deserialize(here.furnaces);
+chests.deserialize(here.chests);
 beds.deserialize(saved?.bed);
 
 // --- 入力 ---------------------------------------------------------------
@@ -516,6 +559,9 @@ document.getElementById("wipe")?.addEventListener("click", () => {
   furnaces.clear();
   chests.clear();
   beds.clear();
+  // 他の次元に預けてあるぶんも捨てる（残すと、消したはずの持ち物が
+  // 移った先にそのまま置いてある）。
+  dims.reset();
   hud.refresh();
   saveDirty = false;
   hud.flash("保存データを削除しました");
@@ -526,6 +572,9 @@ document.getElementById("regen")?.addEventListener("click", () => {
   dayNight.setTime(NEW_WORLD_TIME);
   vitals.respawn();
   deathScreen.classList.add("hidden");
+  // **別のワールドを始めるので、預かっているぶんを全部忘れる。**
+  // 忘れないと、前のワールドで別の次元に置いてきたものが新しいワールドに出てくる。
+  dims.reset();
   startWorld(seed);
   saveNow(`シード ${seed} で作り直しました`);
 });

@@ -1,4 +1,5 @@
 import { STORAGE_KEY } from "./constants";
+import type { DimensionState } from "./dimensions";
 import type { EditMap } from "./world";
 
 export interface SaveData {
@@ -60,6 +61,20 @@ export interface SaveData {
   bed?: number[];
   /** チャンクキー -> [localIndex, blockId, ...] の平坦な配列。 */
   edits: Record<string, number[]>;
+  /**
+   * いま居る次元。**オーバーワールドなら省略**（古いセーブと同じ形になる）。
+   * 知らない名前だったらオーバーワールドに落とす（`dimensions.ts` の `fromSave`）。
+   */
+  dim?: string;
+  /**
+   * **オーバーワールド以外の**次元の持ち物。空なら省略。
+   *
+   * オーバーワールドのぶんは上の `edits` / `drops` / `furnaces` / `chests` のままです ——
+   * **動かすと既存のセーブが読めなくなります**（`version` は 1 のままなので、
+   * 古いセーブを新しい形に置き換える手立てがありません）。
+   * 次元を足すときも、キーが 1 つ増えるだけで済むようにしてあります。
+   */
+  dims?: Record<string, DimensionState>;
 }
 
 export function serializeEdits(edits: EditMap): Record<string, number[]> {

@@ -28,6 +28,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { AIR, BLOCKS, LAVA, OBSIDIAN, WATER } from "../src/blocks";
 import { CHUNK_VOLUME } from "../src/constants";
 import { RECIPES, findRecipe } from "../src/crafting";
+import { Dimensions, NETHER, OVERWORLD, type DimensionState } from "../src/dimensions";
 import { sourceOf } from "./arena";
 import { check, describe } from "./harness";
 import { type Slot } from "../src/inventory";
@@ -225,12 +226,25 @@ const MILESTONES: readonly Milestone[] = [
   {
     name: "ネザーへ行って戻れる（セーブを往復しても壊れない）",
     kind: "仮",
-    // 次元ごとの入れ物は `SaveData` の**省略可の新しいキー**に置く。
-    // `version` は 1 のまま（`test/storage.test.ts`）。
+    // **器があるかを見ないこと。** 前は `dimensions.ts` に `export` があるかを見ていて、
+    // 器を作った瞬間に達成へ変わりました（行き先も移る手立ても無いのに）。
+    // いまは「ネザーが遊べる次元として登録されているか」→「実際に往復して
+    // 置いてきたものが残るか」→「`main.ts` に移る配線があるか」の順に見ます。
     probe: () => {
-      const dims = sourceHas("src/dimensions.ts", "export");
-      if (!dims.done) return dims;
-      return sourceHas("src/storage.ts", "dims");
+      const dims = new Dimensions();
+      if (!dims.known(NETHER)) {
+        return { done: false, detail: "ネザーがまだ次元の表に無い（生成器待ち）" };
+      }
+      // 往復して、オーバーワールドに置いてきたものが残るか。
+      const home: DimensionState = { edits: { "0,2,0": [7, 3] } };
+      if (!dims.switchTo(NETHER, home)) return { done: false, detail: "ネザーへ移れない" };
+      const back = dims.switchTo(OVERWORLD, { edits: {} });
+      if (back?.edits["0,2,0"]?.[1] !== 3) {
+        return { done: false, detail: "戻るとオーバーワールドの改変が消える" };
+      }
+      // ここだけは仮の判定（配線は `main.ts` にあり、ヘッドレスでは動かせない）。
+      const wired = sourceHas("src/main.ts", "switchTo");
+      return { done: wired.done, detail: wired.done ? "往復できる" : "main.ts に移る配線が無い" };
     },
   },
   {

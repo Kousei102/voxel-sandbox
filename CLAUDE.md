@@ -51,7 +51,7 @@ npm run build      # typecheck + dist/ に静的ファイル一式
 `blocks-shapes.md`（形・支え・液体・ID の細部）/ `items-survival.md` / `inventory-screen.md` /
 `vitals.md`（体力と空腹）/ `mobs.md` / `drops.md` / `stateful-blocks.md`（かまど・チェスト）/
 `beds.md` / `lighting.md`（光・昼夜・GLSL）/ `meshing-render.md` / `audio.md` / `dom-ui.md` /
-`testing.md` / `worldgen.md`（地形・バイオーム）
+`testing.md` / `worldgen.md`（地形・バイオーム）/ `dimensions.md`（次元とセーブの形）
 
 いまある層 3: `add-block`（ブロック / アイテムを足す）/ `add-stateful-block`（位置ごとに
 状態を持つブロック・器を足す）/ `unverifiable-pair`（確かめられないものを足す）
