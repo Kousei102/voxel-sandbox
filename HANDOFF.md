@@ -6,8 +6,10 @@
 
 ## いまの状態（2026-08-25）
 
-- ブランチ **`loop/endgame`**。**`origin/master` より 32 コミット先**。**push していません**
-  （公開サイトが差し替わるので、push はユーザーの確認を取ってから）
+- ブランチ **`loop/endgame`**。**`origin/master` より 33 コミット先**で、
+  **origin へ push 済み**（2026-08-25。ユーザーの承認あり。Routines から見えるようにするため）。
+  **`master` への push は引き続き禁止** —— `.github/workflows/deploy.yml` は
+  `main` / `master` の push でだけ動くので、公開サイトはユーザーがマージするまで変わりません
 - 作業ツリーはきれい。`npm run typecheck` / `npm test` / `npm run build` すべて通ります
 - **`npm test` 1630 件すべて成功**（1494 → 1630。main.ts から出した判断のテストで 136 件増）
 - **進行（クリア導線）達成 6 / 13**（6 件とも本物）。
@@ -88,6 +90,6 @@
    （色と、太陽・月・星を出すかどうかで足ります）
 2. そのあとは `TASKS.md` の並びどおり 2-4（ブレイズ）→ 2-13（ドラゴン）。
    数値は**本家の値を暫定で置き、`TUNING.md` に 1 行足して止まらない**
-3. **ユーザー待ち: `loop/endgame` を origin へ push してよいか**（Routines へ移すのに要ります。
-   GitHub Pages は `master` の push でしか動かないので、公開サイトは変わりません）
+3. **Routines（無人・定期実行）への移行。** push は済んだので、あとはスケジュールを作って
+   1 周スモークテストするだけ（`LOOP.md` に従って 1 周進める、を 3 時間ごと）
 4. 最後に人がやること: `REVIEW.md` の一括確認 / `TUNING.md` の一括調整 / master へマージ
