@@ -14,9 +14,13 @@ import {
 import { RECIPES, consumeGrid, findRecipe } from "../src/crafting";
 import { isEmpty, type Slot } from "../src/inventory";
 import {
+  BLAZE_POWDER,
+  BLAZE_ROD,
   BUCKET,
   COAL,
   DIAMOND,
+  ENDER_EYE,
+  ENDER_PEARL,
   IRON_INGOT,
   DIAMOND_PICKAXE,
   FLINT,
@@ -26,6 +30,7 @@ import {
   STONE_AXE,
   WOOD_PICKAXE,
   WOOD_SHOVEL,
+  itemStackLimit,
 } from "../src/items";
 import { check, describe } from "./harness";
 
@@ -45,7 +50,11 @@ function grid(size: number, rows: string[], key: Record<string, number>): Slot[]
 export function run(): void {
   describe("クラフト");
 
-  const P = { P: PLANK, S: STICK, W: WOOD, C: COBBLE, D: DIAMOND, A: SAND, O: COAL, T: STONE, I: IRON_INGOT, F: FLINT };
+  const P = {
+    P: PLANK, S: STICK, W: WOOD, C: COBBLE, D: DIAMOND, A: SAND, O: COAL, T: STONE,
+    I: IRON_INGOT, F: FLINT,
+    R: BLAZE_ROD, B: BLAZE_POWDER, E: ENDER_PEARL, Y: ENDER_EYE,
+  };
 
   // --- 形なし ---
   const planks = findRecipe(grid(2, ["W."], P), 2);
@@ -96,6 +105,58 @@ export function run(): void {
   check("形なしなので置く場所を選ばない", fireStarterMoved?.out === FLINT_AND_STEEL);
   const flintAlone = findRecipe(grid(2, ["F."], P), 2);
   check("火打石だけでは作れない", flintAlone === null, flintAlone?.name ?? "無し");
+
+  // --- エンダーアイ（クリア導線が合流する所） ---
+  // **材料の出どころが 2 つある**（要塞のブレイズ / 夜のエンダーマン）ので、
+  // ここが片方だけで通ると、行かなくてよい場所ができる。
+  // どちらも形なしなので 2x2（手持ち）で作れる ——
+  // ネザーや夜の野外で作業台を探しに戻らずに済むのは Minecraft と同じ。
+  const powder = findRecipe(grid(2, ["R."], P), 2);
+  check(
+    "ブレイズロッド 1 本 → ブレイズパウダー 2 個",
+    powder?.out === BLAZE_POWDER && powder.count === 2,
+    `${powder?.name ?? "無し"} x${powder?.count ?? 0}`,
+  );
+  const eye = findRecipe(grid(2, ["BE"], P), 2);
+  check(
+    "ブレイズパウダー + エンダーパール → エンダーアイ 1 個",
+    eye?.out === ENDER_EYE && eye.count === 1,
+    `${eye?.name ?? "無し"} x${eye?.count ?? 0}`,
+  );
+  const eyeMoved = findRecipe(grid(2, ["..", "EB"], P), 2);
+  check("形なしなので置く場所も順番も選ばない", eyeMoved?.out === ENDER_EYE);
+
+  // **ロッドから直接アイを作れないこと。** 作れると 1 → 2 のパウダーが飛ばされて、
+  // 要塞に通う回数が倍になる（ロッド 12 本必要になる）。
+  const shortcut = findRecipe(grid(2, ["RE"], P), 2);
+  check("ロッド + パールでは作れない（パウダーを挟む）", shortcut === null, shortcut?.name ?? "無し");
+  const twoPowder = findRecipe(grid(2, ["BB"], P), 2);
+  check("パウダー 2 個ではアイにならない", twoPowder === null, twoPowder?.name ?? "無し");
+  const pearlAlone = findRecipe(grid(2, ["E."], P), 2);
+  check("エンダーパールだけでは作れない", pearlAlone === null, pearlAlone?.name ?? "無し");
+
+  // エンドポータルの枠は 12 個（2-9）。**1 枠に収まらないと持ち運びが別の話になる。**
+  const PORTAL_EYES = 12;
+  const rodsNeeded = Math.ceil(PORTAL_EYES / (powder?.count ?? 1));
+  console.log(
+    `      エンドポータルの ${PORTAL_EYES} 個 = ロッド ${rodsNeeded} 本 + パール ${PORTAL_EYES} 個` +
+      `（1 枠の上限: アイ ${itemStackLimit(ENDER_EYE)} / パール ${itemStackLimit(ENDER_PEARL)}）`,
+  );
+  check(
+    "エンドポータルぶん（12 個）が 1 枠に収まる",
+    itemStackLimit(ENDER_EYE) >= PORTAL_EYES && itemStackLimit(ENDER_PEARL) >= PORTAL_EYES,
+    `アイ ${itemStackLimit(ENDER_EYE)} / パール ${itemStackLimit(ENDER_PEARL)}`,
+  );
+
+  // 材料が減ること（形なしも 1 スロットにつき 1 個）。
+  const eyeBoard = grid(2, ["BE"], P);
+  eyeBoard[0].count = 3;
+  consumeGrid(eyeBoard);
+  check(
+    "アイを 1 個作るとパウダーとパールが 1 個ずつ減る",
+    eyeBoard[0].count === 2 && isEmpty(eyeBoard[1]),
+    `パウダー ${eyeBoard[0].count} 個 / パール ${eyeBoard[1].count} 個`,
+  );
 
   // --- 盤面の広さ ---
   const pickIn3 = findRecipe(grid(3, ["PPP", ".S.", ".S."], P), 3);

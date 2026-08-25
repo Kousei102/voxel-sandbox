@@ -83,22 +83,39 @@ export const FLINT_AND_STEEL = 88;
 
 /**
  * ブレイズロッド。**ネザー要塞のブレイズだけが落とす。**
- * ここから先（ブレイズパウダー → エンダーアイ）はまだ無いので、いまは
- * 「要塞まで行った証」以上の使い道が無い（2-6 でエンダーアイの材料になる）。
+ * 使い道はブレイズパウダー（→ エンダーアイ）ひとつだけなので、
+ * **要塞まで行かないとエンドポータルは開かない。**
  */
 export const BLAZE_ROD = 89;
 
 /**
  * エンダーパール。**エンダーマンだけが落とす**（50%）。
- * ここから先（エンダーアイ = ブレイズパウダー + これ）はまだ無いので、いまは
- * 「夜に出るものを倒した証」以上の使い道が無い（2-6 でエンダーアイの材料になる）。
+ * 使い道はエンダーアイ（= ブレイズパウダー + これ）ひとつだけ。
  *
  * **積めるのは 16 個まで**（Minecraft と同じ）。エンドポータルの起動に 12 個要るので、
  * 1 枠に収まる上限としてもちょうどいい。
  */
 export const ENDER_PEARL = 90;
 
-export const MAX_ITEM_ID = ENDER_PEARL;
+/**
+ * ブレイズパウダー。**ブレイズロッド 1 本から 2 個**（Minecraft と同じ）。
+ * エンダーアイの材料で、**それ以外の使い道は無い。**
+ *
+ * **ロッドが 2 個に増えるのが効いています** —— エンドポータルに要るアイの 12 個は
+ * ロッド 6 本ぶんで足りるので、要塞に何度も通わずに済みます。
+ */
+export const BLAZE_POWDER = 91;
+
+/**
+ * エンダーアイ。**ブレイズパウダー + エンダーパールの形なし**（Minecraft と同じ）。
+ *
+ * **クリア導線が 2 本ここで合流します** —— ネザー要塞（ロッド）と夜の地表
+ * （パール）の両方を通らないと 1 個も作れません。用途は 2 つで、
+ * 投げて要塞の方角を知ること（2-7）と、エンドポータルの枠 12 個を埋めること（2-9）。
+ */
+export const ENDER_EYE = 92;
+
+export const MAX_ITEM_ID = ENDER_EYE;
 
 export const MAX_STACK = 64;
 
@@ -175,6 +192,10 @@ item({ id: FLINT_AND_STEEL, name: "火打石と打ち金", block: AIR, stack: 1,
 item({ id: BLAZE_ROD, name: "ブレイズロッド", block: AIR, stack: MAX_STACK, color: 0xf2c033, tool: null });
 // エンダーパールは 16 個まで（Minecraft と同じ）。
 item({ id: ENDER_PEARL, name: "エンダーパール", block: AIR, stack: 16, color: 0x11726b, tool: null });
+item({ id: BLAZE_POWDER, name: "ブレイズパウダー", block: AIR, stack: MAX_STACK, color: 0xe8a33d, tool: null });
+// **エンダーアイは 64 個まで**（Minecraft と同じ）。パールが 16 個までなのと違うのは
+// 意図的で、**エンドポータルに要る 12 個が 1 枠に収まる**ようにするため。
+item({ id: ENDER_EYE, name: "エンダーアイ", block: AIR, stack: MAX_STACK, color: 0x3fbf8c, tool: null });
 
 /** 道具は 4 階層 x 3 種類。ID は tier ごとに pickaxe / axe / shovel の順。 */
 const TOOL_KINDS: ToolKind[] = ["pickaxe", "axe", "shovel"];

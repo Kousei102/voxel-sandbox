@@ -22,12 +22,16 @@ import {
 } from "./blocks";
 import { isEmpty, type Slot } from "./inventory";
 import {
+  BLAZE_POWDER,
+  BLAZE_ROD,
   BUCKET,
   COAL,
   DIAMOND,
   DIAMOND_AXE,
   DIAMOND_PICKAXE,
   DIAMOND_SHOVEL,
+  ENDER_EYE,
+  ENDER_PEARL,
   FLINT,
   FLINT_AND_STEEL,
   IRON_AXE,
@@ -111,6 +115,17 @@ export const RECIPES: readonly Recipe[] = [
     count: 1,
     ingredients: [IRON_INGOT, FLINT],
   },
+
+  // ブレイズロッド 1 本 → ブレイズパウダー 2 個（Minecraft と同じ形なし）。
+  // **2 個に増えるのが効いている** —— エンドポータルに要るアイ 12 個が
+  // ロッド 6 本ぶんで足りるので、要塞に何度も通わずに済む。
+  { name: "ブレイズパウダー", out: BLAZE_POWDER, count: 2, ingredients: [BLAZE_ROD] },
+
+  // エンダーアイはパウダー + パールの**形なし**（Minecraft も形なし）。
+  // **ここでクリア導線が合流する** —— ネザー要塞（ロッド）と夜の地表（パール）の
+  // 両方を通らないと 1 個も作れない。**ロッドから直接作れる形を足さないこと**
+  // （パウダーの 1 → 2 が消えて、要塞に通う回数が倍になる）。
+  { name: "エンダーアイ", out: ENDER_EYE, count: 1, ingredients: [BLAZE_POWDER, ENDER_PEARL] },
 
   ...toolRecipes("木", PLANK, WOOD_PICKAXE, WOOD_AXE, WOOD_SHOVEL),
   ...toolRecipes("石", COBBLE, STONE_PICKAXE, STONE_AXE, STONE_SHOVEL),

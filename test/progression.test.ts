@@ -27,7 +27,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import { AIR, BLOCKS, LAVA, NETHERRACK, NETHER_BRICK, OBSIDIAN, STONE, WATER } from "../src/blocks";
 import { CHUNK_LAYERS, CHUNK_SIZE, CHUNK_VOLUME } from "../src/constants";
-import { RECIPES, findRecipe } from "../src/crafting";
+import { findRecipe } from "../src/crafting";
 import { Dimensions, NETHER, OVERWORLD, type DimensionState } from "../src/dimensions";
 import { Arena, Slab, seeded, sourceOf } from "./arena";
 import { MOBS, Mobs, PLAYER_ATTACK_COOLDOWN } from "../src/mobs";
@@ -46,7 +46,7 @@ import { Scene } from "three";
  * **達成済みの件数。項目を達成したときだけ 1 つ上げること。**
  * これより減ったら `npm test` が赤くなる（達成の後戻りを退行として捕まえる）。
  */
-const ACHIEVED_BASELINE = 8;
+const ACHIEVED_BASELINE = 9;
 
 /** ネザー要塞を探す範囲（列）。**広げると `npm test` がそのぶん遅くなります。** */
 const RADIUS = 4;
@@ -69,11 +69,6 @@ function block(name: string) {
 function item(name: string): number {
   for (let id = 1; id <= 255; id++) if (itemName(id) === name) return id;
   return NO_ITEM;
-}
-
-/** レシピの表に、その名前のものがあるか。 */
-function recipe(name: string): boolean {
-  return RECIPES.some((r) => r.name === name);
 }
 
 /**
@@ -396,8 +391,51 @@ const MILESTONES: readonly Milestone[] = [
   },
   {
     name: "エンダーアイが作れる",
-    kind: "仮",
-    probe: () => ({ done: recipe("エンダーアイ") }),
+    kind: "本物",
+    // **レシピの名前があるかを見ないこと。** `recipe("エンダーアイ")` だけなら
+    // `crafting.ts` に 1 行足した瞬間に達成へ化けます（同じ形で 5 度踏んでいます）。
+    // ここは「**2 つの導線が本当に合流しているか**」を見ます ——
+    // 材料がどちらもモブの落とし物であること（＝要塞と夜の両方を通ること）と、
+    // 手持ちの 2x2 で 2 段とも実際に組み上がること。
+    // レシピの細かい検証（順番・置く場所・抜け道）は `test/crafting.test.ts`。
+    probe: () => {
+      const rod = item("ブレイズロッド");
+      const pearl = item("エンダーパール");
+      const powder = item("ブレイズパウダー");
+      const eye = item("エンダーアイ");
+      if (powder === NO_ITEM || eye === NO_ITEM) {
+        return { done: false, detail: "ブレイズパウダーかエンダーアイのアイテムが無い" };
+      }
+
+      // **材料の出どころ。** どちらもモブ落ちでなければ、要塞にも夜にも行かずに作れる。
+      if (MOBS.blaze?.drop.item !== rod || MOBS.enderman?.drop.item !== pearl) {
+        return { done: false, detail: "材料がブレイズとエンダーマンの落とし物になっていない" };
+      }
+
+      // 2x2 の盤面を作る小道具（作業台を探しに戻らずに作れることも見る）。
+      const hand = (...items: number[]): Slot[] =>
+        Array.from({ length: 4 }, (_, i) => ({ item: items[i] ?? NO_ITEM, count: items[i] ? 1 : 0 }));
+
+      // 1 段目: ロッド 1 本 → パウダー（Minecraft と同じで 2 個出る）
+      const toPowder = findRecipe(hand(rod), 2);
+      if (toPowder?.out !== powder) {
+        return { done: false, detail: "ブレイズロッドからパウダーが作れない" };
+      }
+      // 2 段目: パウダー + パール → アイ
+      const toEye = findRecipe(hand(powder, pearl), 2);
+      if (toEye?.out !== eye) {
+        return { done: false, detail: "パウダーとパールからエンダーアイが作れない" };
+      }
+      // **パウダーを飛ばす抜け道が無いこと。** あるとロッドが 2 倍要る。
+      const shortcut = findRecipe(hand(rod, pearl), 2);
+      if (shortcut) return { done: false, detail: `ロッド + パールが ${shortcut.name} になる` };
+
+      const rods = Math.ceil(12 / toEye.count / toPowder.count);
+      return {
+        done: true,
+        detail: `2x2 でロッド 1 → パウダー ${toPowder.count} → アイ ${toEye.count}（枠 12 個 = ロッド ${rods} 本）`,
+      };
+    },
   },
   {
     name: "投げたエンダーアイが要塞の方を向く",
