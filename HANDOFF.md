@@ -6,7 +6,13 @@
 
 ## いまの状態（2026-08-25）
 
-- ブランチ **`loop/endgame`**。**`origin/master` より 34 コミット先**で、origin へ push 済み。
+> **⚠ この周は push できていません。** GitHub 側の権限（403）で、`git push` も API 越しの
+> 書き込みも弾かれました。**理由と直し方は `TASKS.md` の「止まっているもの」**に書いてあります。
+> コミットは使い捨てのコンテナの中にあるだけなので、**ユーザーへ送った patch が正です**
+> （`git am` で当たります）。次の周は**まず push できるか確かめてから**始めてください。
+
+- ブランチ **`loop/endgame`**。**`origin/master` より 34 コミット先**（`origin/loop/endgame`
+  より 2 コミット先。**push は 403 で弾かれました**）。
   **`master` への push とマージは引き続き禁止**（`.github/workflows/deploy.yml` は
   `main` / `master` の push でだけ動くので、公開サイトはユーザーがマージするまで変わりません）
 - 作業ツリーはきれい。`npm run typecheck` / `npm test` / `npm run build` すべて通ります

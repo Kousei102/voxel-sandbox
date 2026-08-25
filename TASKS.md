@@ -266,4 +266,26 @@ F3 の表示用に `main.ts` が `WorldGen` を自分で持つ形にした。
 
 ## 止まっているもの
 
-（`[!]` にしたタスクと理由をここに書くこと）
+### [!] push できません（2026-08-25。**タスクではなく環境の問題**）
+
+**2-3b の実装そのものは終わって緑です**（`npm run typecheck` / `npm test` 1648 件 /
+`npm run build` すべて通っています）。**`origin` へ push できませんでした。**
+
+```
+remote: Claude doesn't have GitHub access to Kousei102/voxel-sandbox for your organization.
+fatal: unable to access 'https://github.com/Kousei102/voxel-sandbox/': error 403
+```
+
+- **読みはできます**（`git fetch` も GitHub の API 越しのブランチ一覧も通ります）。
+  **書きだけが 403** —— API 越しでも同じ（`git/trees` が
+  `403 Resource not accessible by integration`）。**手元で直せるものではありません**
+- 直し方は 2 つのうちどちらか:
+  1. 組織の管理者が Claude の GitHub App にこのリポジトリを入れる
+     （https://github.com/apps/claude/installations/select_target）
+  2. claude.ai の設定から GitHub を繋ぎ直す
+     （https://claude.ai/customize/connectors?auth_start=github&auth_start_force=1）
+- **コミットはこのコンテナの中にあるだけです**（`loop/endgame` の上に 2 つ）。
+  コンテナは使い捨てなので、**push できるようになるまでは patch が正**です
+  （この周はユーザーへ patch を送ってあります）
+- **次の周は、まず push できるかどうかを確かめてから始めてください。**
+  直っていない状態でもう 1 周回すと、失う仕事が増えるだけです
