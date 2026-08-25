@@ -1,6 +1,14 @@
 import { AIR, LAVA, STONE, WATER } from "../src/blocks";
-import { DayNight, WAKE_TIME, canSleep, environmentFor, sunElevation } from "../src/daynight";
+import {
+  DayNight,
+  WAKE_TIME,
+  canSleep,
+  environmentFor,
+  skyStyleFor,
+  sunElevation,
+} from "../src/daynight";
 import { DAY_LENGTH_SECONDS, NIGHT_BRIGHTNESS } from "../src/constants";
+import { DIMENSIONS, END, NETHER, OVERWORLD } from "../src/dimensions";
 import { check, describe } from "./harness";
 
 /** 明るさ・色の連続性を見るための刻み幅（1 日を 1440 分割 = 1 分刻み）。 */
@@ -236,5 +244,160 @@ export function run(): void {
     dn2.setTime(0.75); // 真夜中
     check("水のフォグは夜に暗くなる", snap(WATER).fog !== dayWater);
     check("溶岩のフォグは夜でも変わらない", snap(LAVA).fog === dayLava);
+  }
+
+  describe("次元ごとの空");
+
+  {
+    // **綴りのずれの見張り。** `daynight.ts` は `dimensions.ts` を import しない
+    // （生成器を引き連れてくるので）ぶん、キーが合っているかはここで突き合わせる。
+    // 表に無い次元は `skyStyleFor()` がオーバーワールドの**同じオブジェクト**を返すので、
+    // 参照の一致で「落ちている」ことが分かる。
+    const overworldStyle = skyStyleFor(OVERWORLD);
+    const known = [...DIMENSIONS.map((d) => d.id), END];
+    const missing = known.filter((id) => id !== OVERWORLD && skyStyleFor(id) === overworldStyle);
+    check(
+      "遊べる次元（+ まだ行けないエンド）に全部 空がある",
+      missing.length === 0,
+      missing.length > 0 ? `表に無い: ${missing.join(" ")}` : known.join(" / "),
+    );
+    check("知らない次元はオーバーワールドの空に落ちる", skyStyleFor("なにこれ") === overworldStyle);
+
+    // --- まず 3 つの次元の見え方を出す（触ったとき壊れ方が分かるように）---
+    const dn3 = new DayNight();
+    for (const id of known) {
+      dn3.setDimension(id);
+      const rows: string[] = [];
+      for (const t of [0.25, 0.75]) {
+        dn3.setTime(t);
+        rows.push(
+          `${dn3.clock()} 明るさ ${dn3.brightness.toFixed(2)}` +
+            ` 天頂 #${dn3.zenith.getHexString()} 地平 #${dn3.horizon.getHexString()}` +
+            ` 太陽 ${dn3.sunOpacity.toFixed(2)} 月 ${dn3.moonOpacity.toFixed(2)}` +
+            ` 星 ${dn3.starOpacity.toFixed(2)}`,
+        );
+      }
+      console.log(`      ${id}\n${rows.map((r) => `        ${r}`).join("\n")}`);
+    }
+
+    /** 1 日ぶん回して、次元 1 つの振る舞いをまとめて測る。 */
+    const survey = (id: string) => {
+      dn3.setDimension(id);
+      let sun = 0;
+      let moon = 0;
+      // 星は**最小と最大の両方**を見る。最小だけだと「ネザーでも夜になると星が出る」を
+      // 見逃す（昼は 0 なので最小 0 で通ってしまう。わざと壊して確かめた）。
+      let stars = Infinity;
+      let starsMax = 0;
+      let minBright = Infinity;
+      let maxBright = -Infinity;
+      const horizons = new Set<number>();
+      let inRange = true;
+      for (let i = 0; i < STEPS; i++) {
+        dn3.setTime(i / STEPS);
+        sun = Math.max(sun, dn3.sunOpacity);
+        moon = Math.max(moon, dn3.moonOpacity);
+        stars = Math.min(stars, dn3.starOpacity);
+        starsMax = Math.max(starsMax, dn3.starOpacity);
+        minBright = Math.min(minBright, dn3.brightness);
+        maxBright = Math.max(maxBright, dn3.brightness);
+        horizons.add(dn3.horizon.getHex());
+        for (const c of [dn3.zenith, dn3.horizon, dn3.ground, dn3.tint]) {
+          for (const v of [c.r, c.g, c.b]) if (!(v >= 0 && v <= 1)) inRange = false;
+        }
+      }
+      return { sun, moon, stars, starsMax, minBright, maxBright, horizons: horizons.size, inRange };
+    };
+
+    // --- オーバーワールドは今までどおり（この周の書き換えで昼夜が消えていないか）---
+    const over = survey(OVERWORLD);
+    check(
+      "オーバーワールドは今までどおり昼夜で動く",
+      over.maxBright - over.minBright > 0.5 && over.horizons > 100,
+      `明るさ ${over.minBright.toFixed(2)}..${over.maxBright.toFixed(2)} / 地平線の色 ${over.horizons} 種`,
+    );
+    check(
+      "オーバーワールドは太陽・月が出て、星は夜だけ出る",
+      over.sun > 0.99 && over.moon > 0.99 && over.starsMax > 0.99 && over.stars === 0,
+      `太陽 ${over.sun.toFixed(2)} 月 ${over.moon.toFixed(2)} 星 ${over.stars.toFixed(2)}..${over.starsMax.toFixed(2)}`,
+    );
+
+    // 既定（`setDimension` を一度も呼ばない）がオーバーワールドであること。
+    // ここがずれると、ワールドを開いた瞬間だけ空が違う。
+    const fresh = new DayNight();
+    fresh.setTime(0.3);
+    dn3.setDimension(OVERWORLD);
+    dn3.setTime(0.3);
+    check(
+      "既定はオーバーワールド",
+      fresh.horizon.getHex() === dn3.horizon.getHex() && fresh.brightness === dn3.brightness,
+      `#${fresh.horizon.getHexString()} / 明るさ ${fresh.brightness.toFixed(2)}`,
+    );
+
+    // --- ネザー: 天井があるので天体は 1 つも出さず、明るさも時刻で動かない ---
+    const nether = survey(NETHER);
+    check(
+      "ネザーは太陽・月・星を出さない（夜になっても）",
+      nether.sun === 0 && nether.moon === 0 && nether.starsMax === 0,
+      `1 日の最大: 太陽 ${nether.sun} 月 ${nether.moon} 星 ${nether.starsMax}`,
+    );
+    check(
+      "ネザーの明るさは時刻で動かない",
+      nether.maxBright === nether.minBright,
+      `${nether.minBright.toFixed(2)}..${nether.maxBright.toFixed(2)}`,
+    );
+    check("ネザーの空の色は時刻で動かない", nether.horizons === 1, `${nether.horizons} 種`);
+    check("ネザーの色は 0..1 に収まる", nether.inRange);
+
+    dn3.setDimension(NETHER);
+    dn3.setTime(0.25); // 南中でも赤黒いまま
+    const nZenith = dn3.zenith;
+    const nHorizon = dn3.horizon;
+    check(
+      "ネザーの空は赤い（赤 > 緑・青）",
+      nHorizon.r > nHorizon.g && nHorizon.r > nHorizon.b && nZenith.r > nZenith.b,
+      `地平 #${nHorizon.getHexString()} / 天頂 #${nZenith.getHexString()}`,
+    );
+    check(
+      "ネザーの空は暗い（青空より暗い）",
+      luminance(nHorizon) < 0.2,
+      `輝度 ${luminance(nHorizon).toFixed(3)}`,
+    );
+    // フォグは地平線に追従する（ここがずれるとチャンクの出現が見える）。
+    const netherFog = environmentFor(AIR, dn3).fog.getHex();
+    check("ネザーのフォグは地平線と同じ色", netherFog === nHorizon.getHex(), `#${nHorizon.getHexString()}`);
+
+    // --- エンド: 星だけ。まだ行けないが、表はもう効く（2-10 でそのまま繋がる）---
+    const end = survey(END);
+    check(
+      "エンドは星だけ出す（太陽・月は出さない）",
+      end.sun === 0 && end.moon === 0 && end.stars > 0.99,
+      `太陽 ${end.sun} 月 ${end.moon} 星 ${end.stars.toFixed(2)}`,
+    );
+    check("エンドの明るさも時刻で動かない", end.maxBright === end.minBright, `${end.minBright.toFixed(2)}`);
+    dn3.setDimension(END);
+    dn3.setTime(0.25);
+    check(
+      "エンドの空は紫（青 > 緑）",
+      dn3.horizon.b > dn3.horizon.g && dn3.zenith.b > dn3.zenith.g,
+      `地平 #${dn3.horizon.getHexString()} / 天頂 #${dn3.zenith.getHexString()}`,
+    );
+
+    // --- 行き来 ---
+    // **戻れること**が肝心（`setDimension` が一方通行だと、ネザーから帰っても空が赤いまま）。
+    dn3.setDimension(NETHER);
+    const backHome = survey(OVERWORLD);
+    check(
+      "オーバーワールドへ戻すと昼夜が戻る",
+      backHome.maxBright - backHome.minBright > 0.5,
+      `明るさ ${backHome.minBright.toFixed(2)}..${backHome.maxBright.toFixed(2)}`,
+    );
+
+    // 時刻は次元に依らない（ネザーに居るあいだも進み、戻れば続きになる）。
+    dn3.setTime(0.4);
+    dn3.setDimension(NETHER);
+    check("次元を移っても時刻は変わらない", dn3.time === 0.4, `t=${dn3.time}`);
+    dn3.advance(DAY_LENGTH_SECONDS * 0.1);
+    check("ネザーでも時刻は進む", Math.abs(dn3.time - 0.5) < 1e-9, `t=${dn3.time.toFixed(3)}`);
   }
 }

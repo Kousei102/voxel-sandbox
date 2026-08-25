@@ -9,6 +9,9 @@ import { CHUNK_SIZE, DAY_LENGTH_SECONDS, NIGHT_BRIGHTNESS, RENDER_DISTANCE } fro
  * 逆に言うと、時刻に関する計算は全部ここに置くこと（sky.ts 側は結果を貼るだけにする）。
  *
  * 時刻 t は [0, 1) で、0 = 日の出、0.25 = 南中、0.5 = 日没、0.75 = 真夜中。
+ *
+ * **次元ごとの空もここが持つ**（`SKY_STYLES`）。天井のあるネザーで青空と星が見えないのは、
+ * `sky.ts` が分岐しているからではなく、この表が固定の色と不透明度 0 を返すため。
  */
 
 // 昼と夜の 2 枚を太陽の高さで混ぜ、地平線側にだけ夕焼けを足す。
@@ -33,6 +36,66 @@ const DUSK_TINT_STRENGTH = 0.45;
  * 0 ぴったりにすると日没・日の出のフレームで判定がばたつくので、少し下げてある。
  */
 const SLEEP_ELEVATION = -0.05;
+
+/**
+ * 時刻で変わらない空。**天井のある次元（ネザー）と虚空（エンド）がこれ**で、
+ * 空の 3 色も地形の明るさも固定になる。
+ */
+export interface FixedSky {
+  readonly zenith: number;
+  readonly horizon: number;
+  readonly ground: number;
+  /** 地形のマテリアルに掛ける色（明るさを掛ける前）。 */
+  readonly tint: number;
+  /** 頂点カラーに掛ける明るさ。**時刻に依らない一定値。** */
+  readonly brightness: number;
+}
+
+/**
+ * 次元 1 つぶんの空。**判断はここ**で、`sky.ts` は出てきた値を貼るだけ
+ * （`CLAUDE.md` の対の表。天体を出すかどうかも「不透明度 0」で伝わるので、
+ * **`sky.ts` に次元の分岐は 1 つも要らない**）。
+ */
+export interface SkyStyle {
+  /** **null なら時刻から作る**（オーバーワールド）。それ以外は上の固定の空。 */
+  readonly fixed: FixedSky | null;
+  readonly sun: boolean;
+  readonly moon: boolean;
+  readonly stars: boolean;
+}
+
+const OVERWORLD_SKY: SkyStyle = { fixed: null, sun: true, moon: true, stars: true };
+
+/**
+ * 次元 -> 空。**キーは `dimensions.ts` の `DimensionId` の文字列**だが、
+ * こちらから import はしない —— `dimensions.ts` は生成器（`worldgen.ts` /
+ * `nethergen.ts`）を引き連れてくるので、**時刻の判断だけのこのファイルが重くなる。**
+ * 綴りのずれは `test/daynight.test.ts` が `DIMENSIONS` と突き合わせて見張っている。
+ *
+ * **エンドはまだ行けない**（地形は 2-10）。先に 1 行置いてあるので、その周は表を触らずに済む。
+ */
+const SKY_STYLES: Record<string, SkyStyle> = {
+  overworld: OVERWORLD_SKY,
+  // 赤黒い霧。天井があるので**太陽も月も星も出さない**（横に青空が見えるのがおかしい）。
+  nether: {
+    fixed: { zenith: 0x2a0906, horizon: 0x5a1a12, ground: 0x180504, tint: 0xffffff, brightness: 1 },
+    sun: false,
+    moon: false,
+    stars: false,
+  },
+  // 紫の虚空。**星だけ出す**（本家に寄せた）。
+  end: {
+    fixed: { zenith: 0x0a0716, horizon: 0x1d1236, ground: 0x06040e, tint: 0xd8c8f5, brightness: 0.7 },
+    sun: false,
+    moon: false,
+    stars: true,
+  },
+};
+
+/** その次元の空。**知らない次元はオーバーワールド扱い**（`dimensions.ts` の落とし先と同じ）。 */
+export function skyStyleFor(dimension: string): SkyStyle {
+  return SKY_STYLES[dimension] ?? OVERWORLD_SKY;
+}
 
 /** 寝て起きる時刻。0 = 日の出（Minecraft と同じ）。 */
 export const WAKE_TIME = 0;
@@ -141,6 +204,7 @@ export class DayNight {
   paused = false;
 
   private t = 0;
+  private style: SkyStyle = OVERWORLD_SKY;
 
   constructor(time = 0.05) {
     this.setTime(time);
@@ -148,6 +212,23 @@ export class DayNight {
 
   get time(): number {
     return this.t;
+  }
+
+  /** いま貼っている空（デバッグと見張り用）。 */
+  get skyStyle(): SkyStyle {
+    return this.style;
+  }
+
+  /**
+   * 次元を切り替える。**`main.ts` の `startWorld()` から 1 行呼ぶだけ**
+   * （次元ごとの分岐を `main.ts` に散らさないための入口。`rules/dimensions.md`）。
+   *
+   * **時刻そのものは次元に依らない** —— ネザーに居るあいだも進み、戻れば続きになる。
+   * 変わるのは空の色と天体、そして地形の明るさが時刻で動くかどうかだけ。
+   */
+  setDimension(dimension: string): void {
+    this.style = skyStyleFor(dimension);
+    this.sample();
   }
 
   setTime(time: number): void {
@@ -181,21 +262,34 @@ export class DayNight {
     // 高度 0 付近だけで立つ山。真夜中は |h| = 1 なので 0 になる。
     this.twilight = 1 - smoothstep(0.02, 0.28, Math.abs(h));
 
-    this.brightness = NIGHT_BRIGHTNESS + (1 - NIGHT_BRIGHTNESS) * this.dayness;
+    const fixed = this.style.fixed;
+    if (fixed) {
+      // 天井のある次元・虚空。**`dayness` は太陽の居場所のままだが、明るさには使わない** ——
+      // ここで時刻を混ぜると、天井の下なのに夜だけ暗くなる。
+      this.brightness = fixed.brightness;
+      this.zenith.setHex(fixed.zenith);
+      this.horizon.setHex(fixed.horizon);
+      this.ground.setHex(fixed.ground);
+      this.tint.setHex(fixed.tint).multiplyScalar(fixed.brightness);
+    } else {
+      this.brightness = NIGHT_BRIGHTNESS + (1 - NIGHT_BRIGHTNESS) * this.dayness;
 
-    this.zenith.lerpColors(NIGHT_ZENITH, DAY_ZENITH, this.dayness);
-    this.zenith.lerp(DUSK_ZENITH, this.twilight * 0.5);
-    this.horizon.lerpColors(NIGHT_HORIZON, DAY_HORIZON, this.dayness);
-    this.horizon.lerp(DUSK_HORIZON, this.twilight);
-    this.ground.lerpColors(NIGHT_GROUND, DAY_GROUND, this.dayness);
+      this.zenith.lerpColors(NIGHT_ZENITH, DAY_ZENITH, this.dayness);
+      this.zenith.lerp(DUSK_ZENITH, this.twilight * 0.5);
+      this.horizon.lerpColors(NIGHT_HORIZON, DAY_HORIZON, this.dayness);
+      this.horizon.lerp(DUSK_HORIZON, this.twilight);
+      this.ground.lerpColors(NIGHT_GROUND, DAY_GROUND, this.dayness);
 
-    this.tint.lerpColors(NIGHT_TINT, DAY_TINT, this.dayness);
-    this.tint.lerp(DUSK_TINT, this.twilight * DUSK_TINT_STRENGTH);
-    this.tint.multiplyScalar(this.brightness);
+      this.tint.lerpColors(NIGHT_TINT, DAY_TINT, this.dayness);
+      this.tint.lerp(DUSK_TINT, this.twilight * DUSK_TINT_STRENGTH);
+      this.tint.multiplyScalar(this.brightness);
+    }
 
     // 星は日の出より先に消える。太陽・月は地平線をまたぐところで薄れる。
-    this.starOpacity = 1 - smoothstep(-0.30, -0.02, h);
-    this.sunOpacity = smoothstep(-0.16, -0.02, h);
-    this.moonOpacity = smoothstep(-0.16, -0.02, -h);
+    // **出さない次元では不透明度 0** —— こうしておくと `sky.ts` に分岐が要らない
+    // （`place()` と `stars.visible` が 0 を見て隠す）。固定の空では時刻で薄れない。
+    this.starOpacity = this.style.stars ? (fixed ? 1 : 1 - smoothstep(-0.30, -0.02, h)) : 0;
+    this.sunOpacity = this.style.sun ? smoothstep(-0.16, -0.02, h) : 0;
+    this.moonOpacity = this.style.moon ? smoothstep(-0.16, -0.02, -h) : 0;
   }
 }

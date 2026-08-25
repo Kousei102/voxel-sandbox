@@ -303,6 +303,9 @@ function startWorld(
   overworld = dims.overworldGen(seed);
   world = new World(scene, dims.sourceFor(dimension, seed) ?? overworld, deserializeEdits(state.edits));
   seedInput.value = String(seed);
+  // 次元ごとの空（色・天体・明るさが時刻で動くか）。**決めるのは `daynight.ts` の表**で、
+  // ここは名前を渡すだけ（`sky.ts` にも `main.ts` にも次元の分岐は要らない）。
+  dayNight.setDimension(dimension);
 
   // モブは保存しない（地形と同じで、シードから作り直せるものは持たない）。
   mobs.clear();

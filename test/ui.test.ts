@@ -103,6 +103,7 @@ function mainStaysWiring(): void {
     ["セーブの組み立て", "buildSave("],
     ["読んだ値の均し", "restoredValues("],
     ["空とフォグ", "environmentFor("],
+    ["次元ごとの空", "setDimension("],
     ["足音・着地・水しぶき", "footsteps.update("],
     ["バケツ", "tryBucket("],
     ["食べ進み", "eating.advance("],
