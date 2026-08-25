@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { Vector3 } from "three";
-import { AIR, GRASS, LAVA, SAND, STONE, STONE_SLAB, WATER, WOOL } from "../src/blocks";
+import { AIR, GRASS, LAVA, NETHER_BRICK, SAND, STONE, STONE_SLAB, WATER, WOOL } from "../src/blocks";
 import { MAX_LIGHT } from "../src/constants";
 import { DayNight } from "../src/daynight";
 import { NO_ITEM, RAW_PORK, ROTTEN_FLESH, STONE_AXE, WOOD_PICKAXE, itemName } from "../src/items";
@@ -25,6 +25,7 @@ import {
   WALK_SWING,
   canSpawnHostile,
   canSpawnPassive,
+  hostileFor,
   mobRgb,
   spawnLight,
   sunlightBurns,
@@ -97,9 +98,19 @@ export function run(): void {
 
   // 逆向き。判断が描画側へ漏れていないか（漏れると、その判断だけテストが届かなくなる）。
   const renderSource = stripComments("src/mobrender.ts");
-  const decisions = ["Math.random(", "spawn", "damage", "MOB_KINDS", "maxHealth", "hostile"].filter((name) =>
-    renderSource.includes(name),
-  );
+  // **飛び方と火への強さもここに足すこと。** 種類ごとの分岐が描画側に生えると、
+  // 「ブレイズだけ地面に埋まって見える」類がブラウザを開くまで分からなくなる。
+  const decisions = [
+    "Math.random(",
+    "spawn",
+    "damage",
+    "MOB_KINDS",
+    "maxHealth",
+    "hostile",
+    "flying",
+    "fireproof",
+    "flyTarget",
+  ].filter((name) => renderSource.includes(name));
   check("mobrender.ts に判断が漏れていない", decisions.length === 0, decisions.join(" "));
 
   const lines = (path: string) => readFileSync(path, "utf8").split("\n").length;
@@ -361,6 +372,120 @@ export function run(): void {
     Math.abs(inWater / onLand - 0.6) < 0.08,
     `${(inWater / onLand).toFixed(2)} 倍`,
   );
+
+  describe("飛ぶモブ（ブレイズ）");
+
+  // **飛ぶモブは重力を受けない。** 落ちてしまえば「ネザー要塞の橋の下の
+  // 溶岩の海に沈んだブレイズ」しか居なくなり、ロッドが手に入らない。
+  //
+  // 判断は `MobDef.flying`（表）と `flyTarget`（5Hz の判断）にあるので、
+  // ここは実際に飛ばして高さを見る。**プレイヤーは離しておくこと** ——
+  // 近いと追いかけて高さの狙いが変わる（`FLY_ABOVE`）。
+  /** `floorY` に床のある試験場で `seconds` 秒飛ばし、いちばん低かった高さと最後の高さを返す。 */
+  function hover(kind: MobKind, startY: number, floorY: number, seconds: number) {
+    const arena = quiet(new Arena());
+    if (floorY >= 0) arena.fill(-40, 40, floorY, floorY, -40, 40, NETHER_BRICK);
+    const pack = new Mobs();
+    const mob = pack.spawn(kind, 0.5, startY, 0.5, 0, seeded(201));
+    const away = ctx({ playerX: -60, playerZ: 0.5, random: seeded(203) });
+    let lowest = startY;
+    for (let i = 0; i < seconds * 60; i++) {
+      pack.update(1 / 60, arena.asWorld(), away);
+      lowest = Math.min(lowest, mob.position.y);
+    }
+    return { y: mob.position.y, lowest, onGround: mob.onGround };
+  }
+
+  // 床の上面は floorY + 1。ブレイズはそこから `FLY_HOVER`(2.5) 浮くはずなので 13.5 前後。
+  const aloft = hover("blaze", 11, 10, 5);
+  const grounded = hover("pig", 11, 10, 5);
+  console.log(
+    `      床の上面 11 で 5 秒: ブレイズ y=${aloft.y.toFixed(2)}（最低 ${aloft.lowest.toFixed(2)}） /` +
+      ` 豚 y=${grounded.y.toFixed(2)}`,
+  );
+  check(
+    "豚は床に立つ（試験場が効いている）",
+    Math.abs(grounded.y - 11) < 1e-6 && grounded.onGround,
+    `y=${grounded.y}`,
+  );
+  check(
+    "ブレイズは床から浮いて留まる",
+    aloft.y > 12.5 && aloft.y < 14.5 && aloft.lowest >= 11,
+    `y=${aloft.y.toFixed(2)} / 最低 ${aloft.lowest.toFixed(2)}（床の上面 11）`,
+  );
+
+  // **床が届かない所でも落ちない。** `FLY_SCAN`(8) より下にしか床が無いときは
+  // その場の高さを保つ（溶岩の海の上がこれ）。0 へ降りると海に浸かる。
+  const midair = hover("blaze", 40, -1, 5);
+  console.log(`      床の無い所で 5 秒: ブレイズ y=${midair.y.toFixed(2)}（40 から始めた）`);
+  check(
+    "床が届かなくても高さを保つ（落ちない）",
+    Math.abs(midair.y - 40) < 1.5,
+    `y=${midair.y.toFixed(2)} / 最低 ${midair.lowest.toFixed(2)}`,
+  );
+
+  // **崖では引き返さない。** 飛ぶ意味がここにある（要塞の橋は溶岩の海をまたぐ）。
+  {
+    const arena = quiet(new Arena());
+    arena.fill(-20, 0, 10, 10, -20, 20, NETHER_BRICK);
+    arena.fill(6, 30, 10, 10, -20, 20, NETHER_BRICK);
+    const pack = new Mobs();
+    const mob = pack.spawn("blaze", 0.5, 12, 0.5, -Math.PI / 2, seeded(205));
+    const away = ctx({ playerX: -60, playerZ: 0.5, random: seeded(207) });
+    let lowest = 12;
+    for (let i = 0; i < 480; i++) {
+      mob.walking = true;
+      mob.yaw = mob.targetYaw = -Math.PI / 2; // +X 向き（溝のほう）
+      pack.update(1 / 60, arena.asWorld(), away);
+      lowest = Math.min(lowest, mob.position.y);
+    }
+    console.log(
+      `      幅 5 の溝（x 1..5）へ 8 秒: ブレイズ x=${mob.position.x.toFixed(2)} /` +
+        ` いちばん低かった高さ ${lowest.toFixed(2)}（床の上面 11）`,
+    );
+    check(
+      "溝を飛び越える（落ちない・引き返さない）",
+      mob.position.x > 6 && lowest >= 11,
+      `x=${mob.position.x.toFixed(2)} / 最低 ${lowest.toFixed(2)}`,
+    );
+  }
+
+  describe("湧く地面（どの敵対モブになるか）");
+
+  // **地面を指定したモブが勝つ。** 同じ土俵で抽選すると、要塞の半分がゾンビになって
+  // 「ブレイズロッドを集める場所」という意味が薄れる。
+  const groundRoll = seeded(211);
+  const onBrick = new Set<string>();
+  const onStone = new Set<string>();
+  for (let i = 0; i < 200; i++) {
+    onBrick.add(String(hostileFor(NETHER_BRICK, groundRoll)));
+    onStone.add(String(hostileFor(STONE, groundRoll)));
+  }
+  console.log(
+    `      ネザーレンガ → ${[...onBrick].join(" ")} / 石 → ${[...onStone].join(" ")}`,
+  );
+  check("ネザーレンガの上ではブレイズだけ", onBrick.size === 1 && onBrick.has("blaze"), [...onBrick].join(" "));
+  check("それ以外ではゾンビだけ", onStone.size === 1 && onStone.has("zombie"), [...onStone].join(" "));
+  check(
+    "地面を指定したモブは「どこでも」の地面に湧かない",
+    MOB_KINDS.every((kind) => !MOBS[kind].spawnOn || MOBS[kind].hostile),
+    "受動モブに spawnOn を付けるなら trySpawn 側も直すこと",
+  );
+
+  // 実際に湧かせる。**要塞の床（ネザーレンガ）を暗くした試験場**で、
+  // 出てくるのがブレイズだけであること。
+  {
+    const arena = new Arena();
+    arena.fill(-80, 80, 10, 10, -80, 80, NETHER_BRICK);
+    arena.sky = 0;
+    arena.block = 0; // 暗い ＝ 敵対モブの湧き条件
+    const pack = new Mobs();
+    pack.populate(arena.asWorld(), ctx({ random: seeded(213) }), 400);
+    const kinds = new Set(pack.list.map((m) => m.kind));
+    console.log(`      ネザーレンガの平地に 400 回試して ${pack.count} 体 / 種類 ${[...kinds].join(" ")}`);
+    check("要塞の床には実際に湧く（試験場が効いている）", pack.count > 0, `${pack.count} 体`);
+    check("湧いたのはブレイズだけ", kinds.size === 1 && kinds.has("blaze"), [...kinds].join(" "));
+  }
 
   describe("モブの湧き（明るさの判定）");
 
@@ -871,7 +996,10 @@ export function run(): void {
    * 蓋をした溶岩の池に沈める。**浮き上がって出てしまわないよう蓋をすること**
    * （水と同じで、モブは液面へ浮く）。日光と切り分けるため試験場は暗くする。
    */
-  function swim(kind: MobKind, id: number): { alive: boolean; drops: number; seconds: number; soaked: boolean } {
+  function swim(
+    kind: MobKind,
+    id: number,
+  ): { alive: boolean; drops: number; seconds: number; soaked: boolean; health: number } {
     const arena = quiet(new Arena());
     arena.fill(-20, 20, 0, 9, -20, 20, STONE);
     arena.fill(-6, 6, 10, 20, -6, 6, id);
@@ -891,7 +1019,7 @@ export function run(): void {
       pack.update(1 / 60, world, c);
       soaked ||= mob.liquid === id;
     }
-    return { alive: pack.count > 0, drops, seconds: frames / 60, soaked };
+    return { alive: pack.count > 0, drops, seconds: frames / 60, soaked, health: mob.health };
   }
 
   const boiled = swim("zombie", LAVA);
@@ -909,6 +1037,20 @@ export function run(): void {
   const wet = swim("zombie", WATER);
   check("水に浸かっている（試験場が効いている）", wet.soaked);
   check("水では焼けない", wet.alive);
+
+  // **火に強いモブ（`fireproof`）は溶岩でも焼けない。** ブレイズは溶岩の海の上を
+  // 飛ぶので、かすっただけで 2.5 秒で焼け死ぬと自分の次元で生きていられない。
+  const fireproof = swim("blaze", LAVA);
+  console.log(
+    `      溶岩に沈めたブレイズ: ${fireproof.seconds.toFixed(1)} 秒後も体力 ${fireproof.health} /` +
+      ` 同じ試験場のゾンビは ${boiled.seconds.toFixed(1)} 秒で消えた`,
+  );
+  check("ブレイズが溶岩に浸かっている（試験場が効いている）", fireproof.soaked);
+  check(
+    "火に強いモブは溶岩で焼けない",
+    fireproof.alive && fireproof.health === MOBS.blaze.maxHealth,
+    `体力 ${fireproof.health} / ${MOBS.blaze.maxHealth}`,
+  );
 
   // --- 溶岩から上がったあと ---
   // **プレイヤーと同じ長さ燃え続けること。** 日陰の 2 秒（`BURN_LINGER`）を

@@ -29,7 +29,8 @@ import { AIR, BLOCKS, LAVA, NETHERRACK, NETHER_BRICK, OBSIDIAN, STONE, WATER } f
 import { CHUNK_LAYERS, CHUNK_SIZE, CHUNK_VOLUME } from "../src/constants";
 import { RECIPES, findRecipe } from "../src/crafting";
 import { Dimensions, NETHER, OVERWORLD, type DimensionState } from "../src/dimensions";
-import { Slab, sourceOf } from "./arena";
+import { Arena, Slab, seeded, sourceOf } from "./arena";
+import { MOBS, Mobs, PLAYER_ATTACK_COOLDOWN } from "../src/mobs";
 import { check, describe } from "./harness";
 import { type Slot } from "../src/inventory";
 import { NO_ITEM, dropOf, isFireStarter, itemName, rollDrop } from "../src/items";
@@ -45,7 +46,7 @@ import { Scene } from "three";
  * **達成済みの件数。項目を達成したときだけ 1 つ上げること。**
  * これより減ったら `npm test` が赤くなる（達成の後戻りを退行として捕まえる）。
  */
-const ACHIEVED_BASELINE = 6;
+const ACHIEVED_BASELINE = 7;
 
 /** ネザー要塞を探す範囲（列）。**広げると `npm test` がそのぶん遅くなります。** */
 const RADIUS = 4;
@@ -314,8 +315,44 @@ const MILESTONES: readonly Milestone[] = [
   },
   {
     name: "ブレイズがブレイズロッドを落とす",
-    kind: "仮",
-    probe: () => ({ done: item("ブレイズロッド") !== NO_ITEM }),
+    kind: "本物",
+    // **アイテムがあるかを見ないこと。** 名前だけなら `items.ts` に 1 行足せば達成に
+    // 化けます（`structures.ts` / `dimensions.ts` / `projectiles.ts` で 3 度踏みました）。
+    // ここは「要塞の床に実際に湧く」→「倒すとロッドが落ちる」を 1 本通します。
+    // 飛び方・火への強さの深い検証は `test/mobs.test.ts` にあります。
+    probe: () => {
+      const rod = item("ブレイズロッド");
+      if (rod === NO_ITEM) return { done: false, detail: "ブレイズロッドのアイテムが無い" };
+      if (!MOBS.blaze?.flying) return { done: false, detail: "ブレイズが飛ばない（溶岩の海を越えられない）" };
+
+      // 要塞の床（ネザーレンガ）を暗くした試験場。**実際に湧かせる。**
+      const arena = new Arena();
+      arena.fill(-80, 80, 10, 10, -80, 80, NETHER_BRICK);
+      const mobs = new Mobs();
+      const ctx = { playerX: 0.5, playerY: 11, playerZ: 0.5, brightness: 1, random: seeded(4242) };
+      mobs.populate(arena.asWorld(), ctx, 400);
+      const blaze = mobs.list.find((mob) => mob.kind === "blaze");
+      if (!blaze) return { done: false, detail: "ネザーレンガの上に 1 体も湧かない" };
+      const others = mobs.list.filter((mob) => mob.kind !== "blaze").length;
+      if (others > 0) return { done: false, detail: `要塞の床にブレイズ以外が ${others} 体湧く` };
+
+      // 倒すと落ちるか。**乱数は呼ぶ側が作る**ので、確率 0.5 の当たり側を渡す。
+      let dropped = 0;
+      mobs.onDrop = (id, count) => {
+        if (id === rod) dropped += count;
+      };
+      const axe = item("ダイヤの斧");
+      let swings = 0;
+      while (swings < 20 && mobs.list.includes(blaze)) {
+        if (mobs.attack(blaze, axe, ctx, () => 0)) swings++;
+        // 殴る間隔（`PLAYER_ATTACK_COOLDOWN`）を明ける
+        mobs.update(PLAYER_ATTACK_COOLDOWN, arena.asWorld(), ctx);
+      }
+      return {
+        done: dropped > 0,
+        detail: `${mobs.count + 1} 体ぜんぶブレイズ / ${swings} 回で倒してロッド ${dropped} 個`,
+      };
+    },
   },
   {
     name: "エンダーマンがエンダーパールを落とす",

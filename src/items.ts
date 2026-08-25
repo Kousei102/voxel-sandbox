@@ -81,7 +81,14 @@ export const FLINT = 87;
  */
 export const FLINT_AND_STEEL = 88;
 
-export const MAX_ITEM_ID = FLINT_AND_STEEL;
+/**
+ * ブレイズロッド。**ネザー要塞のブレイズだけが落とす。**
+ * ここから先（ブレイズパウダー → エンダーアイ）はまだ無いので、いまは
+ * 「要塞まで行った証」以上の使い道が無い（2-6 でエンダーアイの材料になる）。
+ */
+export const BLAZE_ROD = 89;
+
+export const MAX_ITEM_ID = BLAZE_ROD;
 
 export const MAX_STACK = 64;
 
@@ -154,6 +161,8 @@ item({ id: LAVA_BUCKET, name: "溶岩入りバケツ", block: AIR, stack: 1, col
 item({ id: FLINT, name: "火打石", block: AIR, stack: MAX_STACK, color: 0x3c3733, tool: null });
 // 火打石と打ち金は道具と同じで積めない（耐久値が無いので、実質 1 個で足りる）。
 item({ id: FLINT_AND_STEEL, name: "火打石と打ち金", block: AIR, stack: 1, color: 0xa6a094, tool: null });
+
+item({ id: BLAZE_ROD, name: "ブレイズロッド", block: AIR, stack: MAX_STACK, color: 0xf2c033, tool: null });
 
 /** 道具は 4 階層 x 3 種類。ID は tier ごとに pickaxe / axe / shovel の順。 */
 const TOOL_KINDS: ToolKind[] = ["pickaxe", "axe", "shovel"];

@@ -10,9 +10,9 @@
  */
 
 import { Color, Vector3 } from "three";
-import { AIR, GRASS, WOOL, isHotLiquid, isLiquid, isSolid } from "./blocks";
+import { AIR, GRASS, NETHER_BRICK, WOOL, isHotLiquid, isLiquid, isSolid } from "./blocks";
 import { MAX_LIGHT, WORLD_HEIGHT, columnOf } from "./constants";
-import { RAW_PORK, ROTTEN_FLESH, toolOf } from "./items";
+import { BLAZE_ROD, RAW_PORK, ROTTEN_FLESH, toolOf } from "./items";
 import { BLOCK_LIGHT, SKY_LIGHT } from "./lighting";
 import { type BodySize, boxBlocked, groundBelow, moveBody } from "./physics";
 import { rayBox } from "./raycast";
@@ -22,7 +22,7 @@ import type { World } from "./world";
 
 // --- 種類の表 -----------------------------------------------------------
 
-export type MobKind = "pig" | "sheep" | "zombie";
+export type MobKind = "pig" | "sheep" | "zombie" | "blaze";
 
 /** 部位の動き方。 */
 export type MobMotion =
@@ -80,6 +80,24 @@ export interface MobDef {
    * 湧きの上限を受動と別に持つので、受動しか居なくても意味がある。
    */
   readonly hostile: boolean;
+  /**
+   * 飛ぶ。**重力を受けず、`flyTarget` の高さへ自分で上がり下がりする。**
+   * 段差登りも跳び越えも持たない（壁に当たったら上がる）。崖でも引き返さない。
+   *
+   * **`step` に「ブレイズなら」と書かないこと** —— 飛ぶものが増えるたびに
+   * 物理の中の分岐が増える。飛び方の違いは全部この表の値で表す。
+   */
+  readonly flying: boolean;
+  /**
+   * 火で焼けない（溶岩も日光も効かない）。**ネザーのモブにはこれが要る** ——
+   * 溶岩の海の上を飛ぶブレイズが、かすっただけで 2.5 秒で焼け死ぬ。
+   */
+  readonly fireproof: boolean;
+  /**
+   * 湧ける地面のブロック。**null なら固い地面ならどこでも。**
+   * 指定のあるモブはその地面で「どこでも」のモブに勝つ（`hostileFor()`）。
+   */
+  readonly spawnOn: readonly number[] | null;
   /** 倒したときのドロップ。倒れた場所に落ちる（`onDrop` → `main.ts` → `drops.ts`）。 */
   readonly drop: MobDrop;
   /**
@@ -120,6 +138,9 @@ const PIG: MobDef = {
   maxHealth: 10,
   speed: 1.7,
   hostile: false,
+  flying: false,
+  fireproof: false,
+  spawnOn: null,
   drop: { item: RAW_PORK, count: 1, chance: 1 },
   voice: 1.4,
   groups: [
@@ -163,6 +184,9 @@ const SHEEP: MobDef = {
   maxHealth: 8,
   speed: 1.5,
   hostile: false,
+  flying: false,
+  fireproof: false,
+  spawnOn: null,
   drop: { item: WOOL, count: 1, chance: 1 },
   voice: 1.25,
   groups: [
@@ -215,6 +239,9 @@ const ZOMBIE: MobDef = {
   // 歩きより速くすると、一度見つかったら振り切れなくなる。
   speed: 4.6,
   hostile: true,
+  flying: false,
+  fireproof: false,
+  spawnOn: null,
   drop: { item: ROTTEN_FLESH, count: 1, chance: 0.6 },
   voice: 0.7,
   groups: [
@@ -240,10 +267,86 @@ const ZOMBIE: MobDef = {
   ],
 };
 
-export const MOBS: Record<MobKind, MobDef> = { pig: PIG, sheep: SHEEP, zombie: ZOMBIE };
-export const MOB_KINDS: readonly MobKind[] = ["pig", "sheep", "zombie"];
+const BLAZE_CORE = 0xd8890f;
+const BLAZE_ROD_COLOR = 0xffd83d;
+const BLAZE_EYE = 0x4a2408;
+
+/**
+ * ブレイズ。**初めての飛ぶモブで、初めての「地面を選んで湧く」モブ。**
+ * ネザー要塞のネザーレンガの上にだけ湧き、溶岩でも日光でも焼けない。
+ *
+ * 当たり判定は Minecraft と同じ 0.6 x 1.8。段差は 0 —— 飛ぶので登る必要がなく、
+ * 0 でないと着地したときだけ壁を登れる、という筋の通らない挙動になる。
+ *
+ * **火球はまだ撃たない**（2-4b）。いまは近づいて殴るだけで、ゾンビと同じ
+ * `strike()` に乗っている。
+ *
+ * グループの並び: 0 = 芯（固定）、1 = 頭、2..5 = 周りの棒 4 本。
+ * 棒は位相を散らしてあるので、動いているあいだ互い違いに揺れる。
+ */
+const BLAZE: MobDef = {
+  kind: "blaze",
+  name: "ブレイズ",
+  size: { half: 0.3, height: 1.8, step: 0 },
+  maxHealth: 20,
+  // プレイヤーの歩き (5.2) より遅い。**速くしないこと** —— 壁も崖も関係なく
+  // 一直線に飛んでくるので、地上のゾンビと同じ速さにすると絶対に振り切れない。
+  speed: 3.6,
+  hostile: true,
+  flying: true,
+  fireproof: true,
+  spawnOn: [NETHER_BRICK],
+  drop: { item: BLAZE_ROD, count: 1, chance: 0.5 },
+  voice: 1.15,
+  groups: [
+    { motion: "fixed", pivot: [0, 0, 0], phase: 0 },
+    { motion: "head", pivot: [0, px(18), 0], phase: 0 },
+    { motion: "swing", pivot: [px(-3.5), px(16), 0], phase: 0 },
+    { motion: "swing", pivot: [px(3.5), px(16), 0], phase: Math.PI },
+    { motion: "swing", pivot: [0, px(16), px(-3.5)], phase: Math.PI / 2 },
+    { motion: "swing", pivot: [0, px(16), px(3.5)], phase: (Math.PI * 3) / 2 },
+  ],
+  boxes: [
+    // 芯（頭からぶら下がる胴。棒はこの周りを囲む）
+    { group: 0, box: [px(-3), px(2), px(-3), px(3), px(18), px(3)], color: BLAZE_CORE },
+    // 頭（軸は首の付け根。箱は軸からの相対）
+    { group: 1, box: [px(-4), 0, px(-4), px(4), px(8), px(4)], color: BLAZE_ROD_COLOR },
+    { group: 1, box: [px(-2.5), px(4), px(-4.1), px(-1), px(5.5), px(-4)], color: BLAZE_EYE },
+    { group: 1, box: [px(1), px(4), px(-4.1), px(2.5), px(5.5), px(-4)], color: BLAZE_EYE },
+    // 周りの棒（**軸からぶら下げる = y1 が 0**。0 でないと真ん中で折れて回る）
+    { group: 2, box: [px(-1), px(-12), px(-1), px(1), 0, px(1)], color: BLAZE_ROD_COLOR },
+    { group: 3, box: [px(-1), px(-12), px(-1), px(1), 0, px(1)], color: BLAZE_ROD_COLOR },
+    { group: 4, box: [px(-1), px(-12), px(-1), px(1), 0, px(1)], color: BLAZE_ROD_COLOR },
+    { group: 5, box: [px(-1), px(-12), px(-1), px(1), 0, px(1)], color: BLAZE_ROD_COLOR },
+  ],
+};
+
+export const MOBS: Record<MobKind, MobDef> = {
+  pig: PIG,
+  sheep: SHEEP,
+  zombie: ZOMBIE,
+  blaze: BLAZE,
+};
+export const MOB_KINDS: readonly MobKind[] = ["pig", "sheep", "zombie", "blaze"];
 /** 湧きの抽選に使う受動モブ。**敵対と混ぜないこと**（湧く条件も上限も別）。 */
 const PASSIVE_KINDS: readonly MobKind[] = ["pig", "sheep"];
+/** 湧きの抽選に使う敵対モブ。**表から作ること**（足したときに書き忘れる）。 */
+const HOSTILE_KINDS: readonly MobKind[] = MOB_KINDS.filter((kind) => MOBS[kind].hostile);
+
+/**
+ * その地面に湧く敵対モブ。誰も湧けないなら null。
+ *
+ * **地面を指定したモブが勝つ。** ネザー要塞のネザーレンガの上ではブレイズだけが湧き、
+ * 「どこでも」のゾンビは負ける（同じ土俵で抽選すると、要塞の半分がゾンビになって
+ * ブレイズロッドを集める場所という意味が薄れる）。指定のあるモブが 1 つも
+ * 当てはまらなければ、「どこでも」の中から選ぶ。
+ */
+export function hostileFor(ground: number, random: () => number): MobKind | null {
+  const picky = HOSTILE_KINDS.filter((kind) => MOBS[kind].spawnOn?.includes(ground));
+  const pool = picky.length > 0 ? picky : HOSTILE_KINDS.filter((kind) => !MOBS[kind].spawnOn);
+  if (pool.length === 0) return null;
+  return pool[Math.min(pool.length - 1, Math.floor(random() * pool.length))];
+}
 
 /**
  * sRGB hex を線形空間の RGB へ。**ブロックの色とまったく同じ道を通すこと**
@@ -309,6 +412,19 @@ const JUMP_SPEED = 8.6;
  */
 const HOP_TIME = 0.7;
 
+/**
+ * 飛ぶモブが床から浮いていたい高さ。**1 より大きいこと** ——
+ * 1 以下だと、床に置いた松明や手すりに引っかかって前へ進めなくなる。
+ */
+const FLY_HOVER = 2.5;
+/** 追いかけているとき、プレイヤーの足元からどれだけ上に居たいか。 */
+const FLY_ABOVE = 1.2;
+/** 床を探しに下へ見る深さ。**溶岩の海の上では見つからない**ので、その場の高さを保つ。 */
+const FLY_SCAN = 8;
+/** 上下の最高速度と、そこへ寄せる加速。 */
+const FLY_RISE = 3;
+const FLY_ACCEL = 12;
+
 export interface Mob {
   readonly id: number;
   readonly kind: MobKind;
@@ -349,8 +465,16 @@ export interface Mob {
   burnTick: number;
   /** 次にプレイヤーを殴れるまでの残り (秒)。**1 体ごとに持つ。** */
   attackTimer: number;
-  /** 壁を跳び越えている残り (秒)。このあいだは加速を待たずに前へ出す。 */
+  /**
+   * 壁を跳び越えている残り (秒)。このあいだは加速を待たずに前へ出す。
+   * **飛ぶモブでは「上がっている残り」**（跳ぶ代わりに壁を越える手立て）。
+   */
   hopTimer: number;
+  /**
+   * 飛ぶモブが居たい高さ。**決めるのは `think`（5Hz）、寄せるのは `step`（毎フレーム）。**
+   * 飛ばないモブでは使わない。
+   */
+  flyTarget: number;
 }
 
 // --- AI と湧きの決まり ---------------------------------------------------
@@ -608,6 +732,8 @@ export class Mobs {
       burnTick: 0,
       attackTimer: 0,
       hopTimer: 0,
+      // 湧いた瞬間から浮き始める（0 にすると、最初の判断まで床に落ちようとする）。
+      flyTarget: y + (MOBS[kind].flying ? FLY_HOVER : 0),
     };
     this.list.push(mob);
     return mob;
@@ -657,7 +783,11 @@ export class Mobs {
 
       // **溶岩は敵味方の区別なく焼く**（日光は敵対だけ）。豚が溶岩の上を
       // 平気で歩いていると、プレイヤーだけが焼ける理由が無くなる。
-      if (isHotLiquid(mob.liquid)) mob.burnTimer = Math.max(mob.burnTimer, LAVA_LINGER);
+      // **火に強いモブ（ブレイズ）だけは別** —— 溶岩の海の上を飛ぶので、
+      // かすっただけで焼け死ぬと自分の次元で生きていられない。
+      if (!def.fireproof && isHotLiquid(mob.liquid)) {
+        mob.burnTimer = Math.max(mob.burnTimer, LAVA_LINGER);
+      }
       // 焼け死んだらここで list から消えているので、続きに触らない
       if (this.burn(mob, def, dt, ctx)) continue;
       if (!def.hostile) continue;
@@ -676,9 +806,14 @@ export class Mobs {
     if (def.hostile) this.thinkHostile(mob, def, world, ctx, random);
     else this.thinkPassive(mob, def, ctx, random);
 
+    // 飛ぶモブは高さを自分で決める（`step` はそこへ寄せるだけ）。
+    if (def.flying) this.aimAltitude(mob, def, world, ctx);
+
     // 進む先が崖なら引き返す。**これが無いと、そのうち全部が穴に落ちる。**
     // 追いかけている最中も同じ（プレイヤーを追って谷へ飛び込まない）。
-    if (mob.walking && mob.onGround) {
+    // **飛ぶモブは引き返さない** —— 崖も溶岩の海も越えていくのが飛ぶ意味で、
+    // ここを通すと着地した瞬間だけ臆病になる。
+    if (mob.walking && mob.onGround && !def.flying) {
       const ahead = forwardOf(mob.targetYaw);
       const gx = mob.position.x + ahead[0] * LEDGE_LOOKAHEAD;
       const gz = mob.position.z + ahead[1] * LEDGE_LOOKAHEAD;
@@ -710,7 +845,7 @@ export class Mobs {
     // 日光。**スカイライトが最大の所だけ**なので、屋根の下・木の下・洞窟では燃えない。
     // 液体に浸かっているあいだも燃えない（Minecraft と同じ）。溶岩はこの下の
     // `update()` が別に点けるので、ここで見なくてよい。
-    if (mob.liquid === AIR) {
+    if (mob.liquid === AIR && !def.fireproof) {
       const sky = world.getLight(
         Math.floor(mob.position.x),
         Math.floor(mob.position.y + def.size.height * 0.8),
@@ -764,6 +899,23 @@ export class Mobs {
   }
 
   /**
+   * 飛ぶモブが居たい高さ（5Hz）。**判断はここ**で、`step` はそこへ寄せるだけ。
+   *
+   * 床から `FLY_HOVER` 浮くのが基本で、追いかけているあいだはプレイヤーの少し上を狙う。
+   * **必ず大きいほうを採ること** —— プレイヤーが穴の底に居るときに合わせにいくと、
+   * 床にめり込んだまま前へ進めなくなる。
+   *
+   * 床が `FLY_SCAN` 以内に無ければ**その場の高さを保つ**（溶岩の海の上がこれ。
+   * 0 に落とすと海面まで降りていって、火に強くない飛ぶモブを足したときに焼ける）。
+   */
+  private aimAltitude(mob: Mob, def: MobDef, world: World, ctx: MobContext): void {
+    const floor = groundBelow(world, mob.position.x, mob.position.y, mob.position.z, def.size, FLY_SCAN);
+    const overFloor = floor === -Infinity ? mob.position.y : floor + FLY_HOVER;
+    const chasing = !ctx.invulnerable && distanceTo(mob, ctx) <= HOSTILE_SIGHT;
+    mob.flyTarget = chasing ? Math.max(overFloor, ctx.playerY + FLY_ABOVE) : overFloor;
+  }
+
+  /**
    * 近くのプレイヤーを目で追う。体ごと向くわけではないので、
    * 振り向ける角度には上限を置く（超えると首が裏返って見える）。
    */
@@ -812,7 +964,10 @@ export class Mobs {
       ? def.speed * (mob.fleeTimer > 0 ? FLEE_SPEED : 1) * aligned * (mob.liquid === AIR ? 1 : LIQUID_SPEED)
       : 0;
     const forward = forwardOf(mob.yaw);
-    const accel = (mob.onGround ? ACCEL_GROUND : ACCEL_AIR) * dt;
+    // **飛ぶモブは空中でも `ACCEL_GROUND`。** 空中の加速（4）は「跳んでいる間は
+    // 向きを変えられない」ための値なので、そのまま掛けると 1 フレームに 0.07 しか
+    // 速度が戻らず、飛ぶモブがほとんど動かない。
+    const accel = (mob.onGround || def.flying ? ACCEL_GROUND : ACCEL_AIR) * dt;
     const targetX = forward[0] * speed;
     const targetZ = forward[1] * speed;
     if (mob.hopTimer > 0) mob.hopTimer = Math.max(0, mob.hopTimer - dt);
@@ -827,7 +982,12 @@ export class Mobs {
       mob.velocity.z += clamp(targetZ - mob.velocity.z, -accel, accel);
     }
 
-    if (mob.liquid !== AIR) {
+    if (def.flying) {
+      // **重力を受けない。** 居たい高さ（`flyTarget`）へ寄せるだけで、
+      // 壁に当たっている間（`hopTimer`）は素直に上がる。
+      const want = mob.hopTimer > 0 ? FLY_RISE : clamp(mob.flyTarget - mob.position.y, -1, 1) * FLY_RISE;
+      mob.velocity.y += clamp(want - mob.velocity.y, -FLY_ACCEL * dt, FLY_ACCEL * dt);
+    } else if (mob.liquid !== AIR) {
       // 落ちてきた勢いを殺しつつ、液面へ向かって浮く
       mob.velocity.y += (LIQUID_RISE - mob.velocity.y) * Math.min(1, dt * 6);
     } else {
@@ -837,11 +997,15 @@ export class Mobs {
 
     const blocked = moveBody(world, mob, def.size, dt, mob.onGround);
 
-    // **段差登り（0.5）で越えられなかった壁は跳んで越える。**
-    // 立方体 1 個ぶんの段差はマイクラでも跳ぶところで、これが無いと
-    // 地形のちょっとした起伏でモブが止まり、ゾンビは 1 段の壁で撒ける。
-    // 跳べるのは接地しているあいだだけ（空中でも跳べると壁を登っていける）。
-    if (blocked && mob.onGround && mob.walking && mob.liquid === AIR) {
+    if (blocked && mob.walking && def.flying) {
+      // **飛ぶモブは跳ばずに上がる。** 段差登り（`size.step` = 0）も跳躍も持たないので、
+      // これが無いと手すり 1 段の前で止まり続ける。
+      mob.hopTimer = HOP_TIME;
+    } else if (blocked && mob.onGround && mob.walking && mob.liquid === AIR) {
+      // **段差登り（0.5）で越えられなかった壁は跳んで越える。**
+      // 立方体 1 個ぶんの段差はマイクラでも跳ぶところで、これが無いと
+      // 地形のちょっとした起伏でモブが止まり、ゾンビは 1 段の壁で撒ける。
+      // 跳べるのは接地しているあいだだけ（空中でも跳べると壁を登っていける）。
       mob.velocity.y = JUMP_SPEED;
       mob.hopTimer = HOP_TIME;
       mob.onGround = false;
@@ -1002,7 +1166,10 @@ export class Mobs {
     const block = world.getLight(x, y, z, BLOCK_LIGHT);
     let kind: MobKind | null = null;
     if (canSpawnHostile(sky, block, ctx.brightness)) {
-      if (hostile < MAX_HOSTILE) kind = "zombie";
+      // **どの敵対モブになるかは地面が決める**（`hostileFor()`）。
+      // ここに `ground === NETHER_BRICK ? ...` と書かないこと —— 種類を足すたびに
+      // 湧きの中の分岐が増え、表を読んでも何が湧くのか分からなくなる。
+      if (hostile < MAX_HOSTILE) kind = hostileFor(ground, random);
     } else if (passive < MAX_PASSIVE && canSpawnPassive(sky, ground)) {
       kind = PASSIVE_KINDS[Math.floor(random() * PASSIVE_KINDS.length)];
     }
