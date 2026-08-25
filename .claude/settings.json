@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Edit(.claude/rules/**)",
+      "Write(.claude/rules/**)",
+      "Edit(.claude/skills/**)",
+      "Write(.claude/skills/**)"
+    ]
+  }
+}
