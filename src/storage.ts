@@ -59,6 +59,14 @@ export interface SaveData {
    * （`beds.ts` の `spawnPosition()`）。
    */
   bed?: number[];
+  /**
+   * `bed` を**どの次元で**記録したか。**オーバーワールドなら省略**（`dim` と同じ作法）。
+   *
+   * 無ければオーバーワールドとみなす。**古いセーブはこれで正しく読める** ——
+   * ネザーが入る前のものなので、寝た場所は必ずオーバーワールドだった。
+   * **`bed` の `[x, y, z]` は形を変えていない**（`version` は 1 のまま）。
+   */
+  bedDim?: string;
   /** チャンクキー -> [localIndex, blockId, ...] の平坦な配列。 */
   edits: Record<string, number[]>;
   /**

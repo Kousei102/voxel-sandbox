@@ -16,7 +16,10 @@ function sources(edits: EditMap = new Map()) {
   };
 }
 
-function parts(shape: { dim?: string; top: DimensionState; others?: Record<string, DimensionState> }) {
+function parts(
+  shape: { dim?: string; top: DimensionState; others?: Record<string, DimensionState> },
+  bedDim?: string,
+) {
   return {
     seed: 4242,
     player: { position: { x: 1.5, y: 70.25, z: -2.5 }, yaw: 0.5, pitch: -0.25, flying: true },
@@ -28,6 +31,7 @@ function parts(shape: { dim?: string; top: DimensionState; others?: Record<strin
     craft: undefined,
     volume: 0.4,
     bed: [3, 64, 5],
+    bedDim,
     shape,
   };
 }
@@ -56,6 +60,9 @@ export function run(): void {
     check("飛行の状態も残る", save.player.flying === true);
     check("体力・空腹・音量が入る", save.health === 12 && save.hunger === 7 && save.volume === 0.4);
     check("リスポーン地点は上の階層", JSON.stringify(save.bed) === "[3,64,5]");
+    // **地点の次元は `dim` と同じ作法**（オーバーワールドなら書かない）。
+    // `beds.serializeDim()` が undefined を返すので、ここもキーごと消える。
+    check("オーバーワールドで寝ていれば bedDim は出ない", save.bedDim === undefined, String(save.bedDim));
     check("オーバーワールドの改変は上の階層", JSON.stringify(save.edits) === '{"0,4,0":[17,3]}');
     // **オーバーワールドに居る限り、次元が入る前と同じ形**（`dim` も `dims` も出ない）。
     check("オーバーワールドでは dim も dims も出ない", save.dim === undefined && save.dims === undefined);
@@ -69,6 +76,14 @@ export function run(): void {
     check("別の次元に居ると dim が入る", save.dim === "nether", String(save.dim));
     check("預かっているぶんは dims の下", JSON.stringify(save.dims?.nether?.edits) === '{"1,2,3":[4,5]}');
     check("上の階層はオーバーワールドのまま空", Object.keys(save.edits).length === 0);
+  }
+
+  {
+    // **地点は 1 つのまま**（`dims` の下に入れない）。増えるのは「どの次元の 1 点か」だけで、
+    // ネザーで寝てオーバーワールドに戻っても、地点はネザーを指したまま上の階層に載る。
+    const save = buildSave(parts({ top: emptyState() }, "nether"));
+    check("ネザーで寝たら bedDim が入る", save.bedDim === "nether", String(save.bedDim));
+    check("地点そのものは上の階層のまま", JSON.stringify(save.bed) === "[3,64,5]" && save.dims === undefined);
   }
 
   // --- 読み戻し -------------------------------------------------------------

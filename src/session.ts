@@ -62,8 +62,13 @@ export interface SaveParts {
   readonly inventory: number[];
   readonly craft: number[] | undefined;
   readonly volume: number;
-  /** リスポーン地点。**次元ごとに持たない**ので上の階層に置く。 */
+  /** リスポーン地点。**世界に 1 点だけ**なので上の階層に置く。 */
   readonly bed: number[] | undefined;
+  /**
+   * その 1 点が**どの次元か**。**オーバーワールドなら `undefined`**（`shape.dim` と同じ作法）。
+   * 地点そのものは 1 つのままで、増えるのは「どの次元の 1 点か」だけ。
+   */
+  readonly bedDim: string | undefined;
   /** `dims.forSave(collectState(...))` の結果。 */
   readonly shape: SaveShape;
 }
@@ -96,6 +101,7 @@ export function buildSave(parts: SaveParts): SaveData {
     furnaces: parts.shape.top.furnaces,
     chests: parts.shape.top.chests,
     bed: parts.bed,
+    bedDim: parts.bedDim,
     edits: parts.shape.top.edits,
     dim: parts.shape.dim,
     dims: parts.shape.others,

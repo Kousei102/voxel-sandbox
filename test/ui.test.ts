@@ -108,6 +108,10 @@ function mainStaysWiring(): void {
     ["バケツ", "tryBucket("],
     ["食べ進み", "eating.advance("],
     ["まとめ捨ての判定", "bulkDiscard("],
+    // リスポーンで**どの次元へ戻るか**。`main.ts` が自分で決め始めると、
+    // ネザーで死んだ人が天井の岩盤の上に湧く形（2-4c）に戻る。
+    ["リスポーンで戻る次元", "respawnDimension("],
+    ["リスポーンの行き先", "respawnPlan("],
   ];
   const inlined = routed.filter(([, call]) => !source.includes(call));
   check(

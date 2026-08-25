@@ -43,7 +43,7 @@ import { Chests } from "./chests";
 import { CrackOverlay } from "./crack";
 import { CraftScreen } from "./craftscreen";
 import { DayNight, WAKE_TIME, canSleep, environmentFor } from "./daynight";
-import { Dimensions, emptyState, type DimensionState } from "./dimensions";
+import { Dimensions, OVERWORLD, emptyState, type DimensionState } from "./dimensions";
 import { Drops, type DropContext } from "./drops";
 import { DropRenderer } from "./droprender";
 import { Furnaces } from "./furnaces";
@@ -198,8 +198,11 @@ const chests = new Chests();
  * リスポーン地点。**「位置ごとに状態を持つブロック」ではなく、地点 1 つだけ**を持つ
  * （ベッドそのものは `edits` に入っている）。かまど・チェストと同じで `world` の外なので、
  * ワールドを作り直したら明示的に空にすること（`startWorld`）。
+ *
+ * **地点は「どの次元の 1 点か」を持つ**ので、記録が無いときに戻る次元を渡しておく
+ * （`beds.ts` は `dimensions.ts` を import しない。綴りはテストが突き合わせている）。
  */
-const beds = new Beds();
+const beds = new Beds(OVERWORLD);
 /**
  * 次元。**いま居ない次元の持ち物（`edits` / 落とし物 / かまど / チェスト）を預かる器**で、
  * 判断は全部 `dimensions.ts` にある（ここは値を集めて貼るだけ）。
@@ -299,7 +302,9 @@ function setCreative(on: boolean): void {
 function startWorld(
   seed: number,
   state: DimensionState = emptyState(),
-  spawn?: { x: number; y: number; z: number; yaw: number; pitch: number; flying: boolean },
+  // `y` を省くと地表に降ろす（リスポーンで次元を戻すときは、そのあと
+  // `moveToSpawn()` が最終的な高さを貼るので見当が要らない）。
+  spawn?: { x: number; y?: number; z: number; yaw: number; pitch: number; flying: boolean },
   dimension = dims.current,
 ): void {
   world?.dispose();
@@ -496,26 +501,51 @@ function resetFootprint(): void {
 }
 
 /**
+ * リスポーンのために次元を戻す。**同じ次元なら何もしない**（世界を作り直す必要が無い）。
+ *
+ * 通る道は `travelThrough()` とまったく同じ（`switchTo()` に `liveState()` を渡してから
+ * `startWorld()`）。**`liveState()` を渡し忘れないこと** —— 渡さないと、死んだ次元に
+ * 残してきた改変・落とし物・かまど・チェストが消える（`rules/dimensions.md`）。
+ *
+ * 行き先の列を `spawn` で渡しておくと、`startWorld()` がそこを先に用意してくれる。
+ */
+function returnToDimension(dim: string, x: number, z: number): void {
+  if (dim === dims.current) return;
+  const state = dims.switchTo(dim, liveState());
+  if (!state) return;
+  const { yaw, pitch, flying } = player;
+  startWorld(worldSeed, state, { x, z, yaw, pitch, flying }, dim);
+  saveDirty = true;
+}
+
+/**
  * リスポーン地点へ戻す。**寝たベッドがあればそこ、無ければワールドの初期位置。**
  *
- * **列を読み込んでから `spawnPosition()` を呼ぶこと。** 未読み込みの列では
+ * **まず次元を戻すこと。** 地点は「どの次元の 1 点か」を持っていて、いま居る次元のまま
+ * そのマスを読むと**ネザーで死んだ人が天井の岩盤の上に湧く**（`surfaceY()` が上から
+ * 降りてくるので、天井の岩盤の上面が返る）。
+ *
+ * **列を読み込んでから `respawnPlan()` を呼ぶこと。** 未読み込みの列では
  * `getVoxel` が AIR を返すので、生きているベッドを「壊されている」と誤読して
  * 遠くの初期位置に飛ばしてしまう（`syncFurnaceBlocks()` と同じ罠）。
  *
- * 使えるかどうかの判断（ベッドがまだあるか・頭上が空いているか）は `beds.ts`。
- * ここは列を用意して、返ってきた位置を貼るだけ。
+ * 使えるかどうかの判断（ベッドがまだあるか・頭上が空いているか・戻る次元）は `beds.ts`。
+ * ここは次元と列を用意して、返ってきた位置を貼るだけ。
  */
 function moveToSpawn(): void {
   const bed = beds.spawnPoint;
-  if (bed) {
-    world.primeAround(bed.x, bed.z, 1);
-    const at = beds.spawnPosition(world);
-    if (at) {
-      placeAtSpawn(at.x, at.y, at.z);
-      return;
-    }
-    hud.flash("ベッドが見つかりません。初期位置に戻ります");
+  returnToDimension(beds.respawnDimension(), bed?.x ?? SPAWN_X, bed?.z ?? SPAWN_Z);
+  if (bed) world.primeAround(bed.x, bed.z, 1);
+
+  const plan = beds.respawnPlan(world);
+  if (plan.at) {
+    placeAtSpawn(plan.at.x, plan.at.y, plan.at.z);
+    return;
   }
+  // ベッドが壊されていた。**既定の次元へ落とす**（`plan.dim`）—— いま居る次元に
+  // 落とすと、ネザーでベッドを壊してから死んだときに岩盤の上へ戻る。
+  if (bed) hud.flash("ベッドが見つかりません。初期位置に戻ります");
+  returnToDimension(plan.dim, SPAWN_X, SPAWN_Z);
   world.primeAround(SPAWN_X, SPAWN_Z, 1);
   placeAtSpawn(
     SPAWN_X,
@@ -551,6 +581,7 @@ function currentSave(): SaveData {
     craft: craft.serialize(),
     volume: audio.getVolume(),
     bed: beds.serialize(),
+    bedDim: beds.serializeDim(),
     shape: dims.forSave(liveState()),
   });
 }
@@ -586,7 +617,9 @@ if (restored.hunger !== null) vitals.hunger = restored.hunger;
 // 返ってくるのは**いま居る次元**の持ち物（知らない次元ならオーバーワールドに落ちる）。
 const here = dims.fromSave(savedShape(saved));
 startWorld(saved?.seed ?? (Math.random() * 0xffffffff) >>> 0, here, saved?.player);
-beds.deserialize(saved?.bed);
+// **次元も一緒に戻す。** 無ければオーバーワールド（ネザーが入る前のセーブは、
+// 寝た場所が必ずオーバーワールドだった）。
+beds.deserialize(saved?.bed, saved?.bedDim);
 
 // --- 入力 ---------------------------------------------------------------
 
@@ -931,7 +964,9 @@ function sleepOrSetSpawn(x: number, y: number, z: number, id: number): void {
   const partner = isBedHead(id) ? bedPartner(id) : null;
   const fx = x + (partner?.dx ?? 0);
   const fz = z + (partner?.dz ?? 0);
-  beds.set(fx, y, fz);
+  // **どの次元で寝たかも一緒に覚える**（覚えないと、ネザーで死んだ人が
+  // オーバーワールドの列を読んで岩盤の上に湧く）。
+  beds.set(fx, y, fz, dims.current);
   saveDirty = true;
 
   const result = sleepDecision(

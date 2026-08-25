@@ -17,6 +17,7 @@ import { readFileSync } from "node:fs";
 import { Beds } from "../src/beds";
 import { Chests } from "../src/chests";
 import { CraftScreen } from "../src/craftscreen";
+import { NETHER, OVERWORLD } from "../src/dimensions";
 import { Drops } from "../src/drops";
 import { Furnaces } from "../src/furnaces";
 import { check, describe } from "./harness";
@@ -136,9 +137,26 @@ export function run(): void {
     chests.deserialize(saved.chests);
     check("チェスト 1 個", chests.count === 1, `${chests.count} 個`);
 
-    const beds = new Beds();
-    beds.deserialize(saved.bed);
+    const beds = new Beds(OVERWORLD);
+    beds.deserialize(saved.bed, saved.bedDim);
     check("リスポーン地点", beds.spawnPoint?.x === 9 && beds.spawnPoint?.z === -3);
+    // **凍らせた v1 には `bedDim` が無い**（ネザーが入る前のセーブ）。
+    // 既定に落ちないと、古いワールドの人が死んだ瞬間にネザーへ飛ばされる。
+    check(
+      "bedDim の無い古いセーブはオーバーワールドとして読める",
+      beds.spawnPoint?.dim === OVERWORLD && beds.respawnDimension() === OVERWORLD,
+      String(beds.spawnPoint?.dim),
+    );
+  });
+
+  // **`bedDim` は省略可のキーとして足したもの**（`version` は 1 のまま）。
+  // 書いてあれば効き、無ければ既定に落ちる、の両方をここで見る。
+  withStorage(V1_SAVE.replace('"bed": [9, 41, -3],', '"bed": [9, 41, -3], "bedDim": "nether",'), () => {
+    const saved = load();
+    check("bedDim を足しても v1 として読める", saved !== null && saved.bedDim === NETHER, String(saved?.bedDim));
+    const beds = new Beds(OVERWORLD);
+    beds.deserialize(saved?.bed, saved?.bedDim);
+    check("bedDim があれば その次元へ戻る", beds.respawnDimension() === NETHER, beds.respawnDimension());
   });
 
   // --- 省略可のキーは 1 つずつ抜いても読める -------------------------------

@@ -121,17 +121,29 @@ export function sleepDecision(canSleepNow: boolean, monstersNear: boolean): Slee
   return monstersNear ? "monsters" : "slept";
 }
 
-/** リスポーン地点。ベッドの**足側**のマスを覚える。 */
+/**
+ * リスポーン地点。ベッドの**足側**のマスと、**どの次元の 1 点か**を覚える。
+ *
+ * **次元を持たせてあるのが肝心。** 持っていなかった頃は「いま居る次元のまま」
+ * そのマスを読んでいたので、**ネザーで死ぬと天井の岩盤の上に湧いていた**
+ * （`surfaceY()` が上から降りてきて最初に当たるのが天井の岩盤）。
+ */
 export interface BedPoint {
   readonly x: number;
   readonly y: number;
   readonly z: number;
+  /** どの次元で寝たか。**綴りは `dimensions.ts` の `DimensionId`** と揃える。 */
+  readonly dim: string;
 }
 
 /**
  * リスポーン地点 1 点。**ベッドが壊されても記録は消さない** ——
  * 消えたかどうかは戻るときに `spawnPosition()` が確かめる（Minecraft と同じ形で、
  * 「ベッドが無くなっていました」と知らせられる）。
+ *
+ * **`dimensions.ts` を import しない**（生成器を引き連れてくる）。次元は
+ * `daynight.ts` の `setDimension()` と同じで**文字列で受ける**だけで、綴りのずれは
+ * テストが `DIMENSIONS` と突き合わせている。
  */
 export class Beds {
   private point: BedPoint | null = null;
@@ -139,13 +151,26 @@ export class Beds {
   /** 記録が変わった合図（セーブの印に使う）。 */
   onChange?: () => void;
 
+  /**
+   * @param home 記録が無いときに戻る次元（オーバーワールド）。**セーブに次元が
+   * 書かれていない古いワールドもここへ落とす** —— ネザーが入る前のセーブなので、
+   * 寝た場所は必ずオーバーワールドだった。
+   */
+  constructor(private readonly home: string) {}
+
+  /** 記録が無いときに戻る次元。**呼ぶ側が `OVERWORLD` を書き写さないため**に出してある。 */
+  get homeDimension(): string {
+    return this.home;
+  }
+
   get spawnPoint(): BedPoint | null {
     return this.point;
   }
 
-  set(x: number, y: number, z: number): void {
-    if (this.point && this.point.x === x && this.point.y === y && this.point.z === z) return;
-    this.point = { x, y, z };
+  set(x: number, y: number, z: number, dim: string): void {
+    const at = this.point;
+    if (at && at.x === x && at.y === y && at.z === z && at.dim === dim) return;
+    this.point = { x, y, z, dim };
     this.onChange?.();
   }
 
@@ -180,17 +205,66 @@ export class Beds {
     };
   }
 
+  /**
+   * リスポーンで**戻る次元**。記録が無ければ既定（オーバーワールド）。
+   *
+   * **「いま居る次元のまま」にしないこと** —— それがこの仕組みが無かった頃の姿で、
+   * ネザーで死ぬと天井の岩盤の上に湧く。**ベッドのマスを読むのは、ここが返した
+   * 次元へ戻したあと**（未読み込みの列では `getVoxel` が AIR を返すので、
+   * 先に読むと生きているベッドを「壊されている」と誤読する）。
+   */
+  respawnDimension(): string {
+    return this.point?.dim ?? this.home;
+  }
+
+  /**
+   * 戻る次元へ移ったあとの**行き先**。`at` が null なら「その次元のワールドの初期位置」。
+   *
+   * **`respawnDimension()` と 2 段になっているのは避けられない** —— 次元を移らないと
+   * ベッドのマスが読めないため。**ベッドが壊されていたら既定の次元へ落とす**
+   * （`dim` が `home` に変わる）: ここを「いま居る次元」にすると、ネザーでベッドを
+   * 壊してから死んだときに岩盤の上へ戻る。
+   */
+  respawnPlan(world: Pick<BedWorld, "getVoxel">): {
+    dim: string;
+    at: { x: number; y: number; z: number } | null;
+  } {
+    const at = this.spawnPosition(world);
+    if (at && this.point) return { dim: this.point.dim, at };
+    return { dim: this.home, at: null };
+  }
+
   /** `[x, y, z]`。記録が無ければ `undefined` を返してキーごと省く（`chests.ts` と同じ作法）。 */
   serialize(): number[] | undefined {
     const at = this.point;
     return at ? [at.x, at.y, at.z] : undefined;
   }
 
-  /** セーブから戻す。**壊れた値は黙って捨てる**（読めないより、無いほうがまし）。 */
-  deserialize(raw: readonly number[] | undefined): void {
+  /**
+   * 寝た次元。**既定（オーバーワールド）なら `undefined` でキーごと省く** ——
+   * `SaveData.dim` の「オーバーワールドなら省略」とまったく同じ作法で、
+   * こうしておけばオーバーワールドだけで遊んでいる人のセーブは今までと 1 バイトも変わらない。
+   */
+  serializeDim(): string | undefined {
+    const at = this.point;
+    return at && at.dim !== this.home ? at.dim : undefined;
+  }
+
+  /**
+   * セーブから戻す。**壊れた値は黙って捨てる**（読めないより、無いほうがまし）。
+   *
+   * `dim` が無ければ既定（オーバーワールド）。**古いセーブはこれで正しく読める** ——
+   * 次元が入る前のものなので、寝た場所は必ずオーバーワールドだった。
+   */
+  deserialize(raw: readonly number[] | undefined, dim?: string): void {
     this.point = null;
     if (!Array.isArray(raw) || raw.length < 3) return;
     if (!raw.slice(0, 3).every((v) => typeof v === "number" && Number.isFinite(v))) return;
-    this.point = { x: raw[0], y: raw[1], z: raw[2] };
+    this.point = {
+      x: raw[0],
+      y: raw[1],
+      z: raw[2],
+      dim: typeof dim === "string" && dim.length > 0 ? dim : this.home,
+    };
   }
 }

@@ -19,6 +19,7 @@ import {
   placedVariant,
 } from "../src/blocks";
 import { Beds, clearBedPartner, placeBed, sleepDecision } from "../src/beds";
+import { DIMENSIONS, NETHER, OVERWORLD } from "../src/dimensions";
 import { World } from "../src/world";
 import { WorldGen } from "../src/worldgen";
 import { check, describe } from "./harness";
@@ -253,15 +254,18 @@ export function run(): void {
     const id = placedVariant(BED, spotAt(1, floor, 1, FACE_XP));
     placeBed(world, spotAt(1, floor, 1, FACE_XP), id);
 
-    const beds = new Beds();
+    const beds = new Beds(OVERWORLD);
     check("記録が無ければ位置も出ない", beds.spawnPosition(world) === null);
 
     let changes = 0;
     beds.onChange = () => changes++;
-    beds.set(1, floor, 1);
+    beds.set(1, floor, 1, OVERWORLD);
     check("記録すると合図が飛ぶ", changes === 1, `${changes} 回`);
-    beds.set(1, floor, 1);
+    beds.set(1, floor, 1, OVERWORLD);
     check("同じ場所を記録し直しても合図は飛ばない", changes === 1, `${changes} 回`);
+    beds.set(1, floor, 1, NETHER);
+    check("同じマスでも次元が違えば記録し直す", changes === 2, `${changes} 回`);
+    beds.set(1, floor, 1, OVERWORLD);
 
     const at = beds.spawnPosition(world);
     check("ベッドの上に立つ位置が出る", at !== null && at.y === floor + BED_HEIGHT + 0.05, at ? `y=${at.y}` : "null");
@@ -280,30 +284,128 @@ export function run(): void {
   }
 
   {
-    const beds = new Beds();
-    beds.set(12, 34, -56);
+    const beds = new Beds(OVERWORLD);
+    beds.set(12, 34, -56, OVERWORLD);
     const flat = beds.serialize();
-    const back = new Beds();
-    back.deserialize(flat);
+    const back = new Beds(OVERWORLD);
+    back.deserialize(flat, beds.serializeDim());
     check(
       "セーブが往復する",
       back.spawnPoint?.x === 12 && back.spawnPoint?.y === 34 && back.spawnPoint?.z === -56,
       JSON.stringify(flat),
     );
 
-    const empty = new Beds();
+    const empty = new Beds(OVERWORLD);
     check("記録が無ければキーごと省く", empty.serialize() === undefined);
 
-    const broken = new Beds();
+    const broken = new Beds(OVERWORLD);
     broken.deserialize([1, 2] as number[]);
     check("欠けたセーブは黙って捨てる", broken.spawnPoint === null);
     broken.deserialize(undefined);
     check("セーブが無くても落ちない", broken.spawnPoint === null);
 
-    const cleared = new Beds();
-    cleared.set(1, 2, 3);
+    const cleared = new Beds(OVERWORLD);
+    cleared.set(1, 2, 3, OVERWORLD);
     cleared.clear();
     check("clear() で記録が消える", cleared.spawnPoint === null);
+  }
+
+  describe("リスポーン地点の次元");
+
+  // `bedDim` は**オーバーワールドなら省く**（`SaveData.dim` と同じ作法）。
+  // ここが崩れると、オーバーワールドだけで遊んでいる人のセーブの形が変わる。
+  {
+    const here = new Beds(OVERWORLD);
+    here.set(1, 2, 3, OVERWORLD);
+    check("既定の次元ならキーごと省く", here.serializeDim() === undefined, String(here.serializeDim()));
+
+    const there = new Beds(OVERWORLD);
+    there.set(1, 2, 3, NETHER);
+    check("別の次元なら名前を書く", there.serializeDim() === NETHER, String(there.serializeDim()));
+
+    const old = new Beds(OVERWORLD);
+    old.deserialize([9, 40, -3]);
+    check(
+      "bedDim の無い古いセーブはオーバーワールド",
+      old.spawnPoint?.dim === OVERWORLD,
+      String(old.spawnPoint?.dim),
+    );
+    check("戻る次元もオーバーワールド", old.respawnDimension() === OVERWORLD);
+
+    const restored = new Beds(OVERWORLD);
+    restored.deserialize([9, 40, -3], NETHER);
+    check("bedDim があればその次元", restored.spawnPoint?.dim === NETHER, String(restored.spawnPoint?.dim));
+    check("戻る次元もネザー", restored.respawnDimension() === NETHER);
+
+    const junk = new Beds(OVERWORLD);
+    junk.deserialize([9, 40, -3], "");
+    check("空の次元名は既定に落とす", junk.spawnPoint?.dim === OVERWORLD, String(junk.spawnPoint?.dim));
+
+    const none = new Beds(OVERWORLD);
+    check("記録が無ければ戻る先は既定", none.respawnDimension() === OVERWORLD);
+    check("既定の次元は名前で引ける", none.homeDimension === OVERWORLD);
+  }
+
+  // **綴りのずれの見張り。** `beds.ts` は `dimensions.ts` を import しない
+  // （生成器を引き連れてくる）ので、文字列で受けている。`daynight.ts` と同じ形。
+  {
+    const known = new Set(DIMENSIONS.map((d) => d.id));
+    check("次元の綴りが表と一致する", known.has(OVERWORLD) && known.has(NETHER), [...known].join(" / "));
+  }
+
+  // **ユーザーがブラウザで見つけた不具合（2-4c）の 4 通り。**
+  // 「地点の記録」×「死んだ場所」で、戻る次元と行き先が決まる。
+  // **`main.ts` と同じ順に並べてある**: 次元を決める → その次元へ戻る →
+  // その次元のワールドでベッドのマスを読む（逆にすると、未読み込みの列で
+  // 生きているベッドを「壊されている」と誤読する）。
+  {
+    const over = flatWorld();
+    const nether = flatWorld();
+    // **2 つの次元で別のマスに置くこと。** 同じマスに置くと、間違った次元を読んでも
+    // ベッドが見つかってしまい、「行き先の次元を間違えた」を見逃す（実際に見逃した）。
+    placeBed(over.world, spotAt(1, over.floor, 1, FACE_XP), placedVariant(BED, spotAt(1, over.floor, 1, FACE_XP)));
+    placeBed(nether.world, spotAt(3, nether.floor, 3, FACE_XP), placedVariant(BED, spotAt(3, nether.floor, 3, FACE_XP)));
+
+    const worlds: Record<string, World> = { [OVERWORLD]: over.world, [NETHER]: nether.world };
+
+    /**
+     * `main.ts` の `moveToSpawn()` とまったく同じ並び（`main.ts` がこれを呼んでいることの
+     * 見張りは `test/ui.test.ts` の routed）。**戻る次元を先に決めて、そのワールドを読む。**
+     */
+    function respawn(beds: Beds, diedIn: string): { dim: string; onBed: boolean } {
+      // (1) 戻る次元を決めて、そこへ移る（`returnToDimension()`）
+      let dim = beds.respawnDimension();
+      // (2) 移った先のワールドでベッドのマスを読む
+      const plan = beds.respawnPlan(worlds[dim] ?? worlds[diedIn]);
+      // (3) ベッドが壊されていたら、さらに既定の次元へ落とす
+      if (!plan.at) dim = plan.dim;
+      return { dim, onBed: plan.at !== null };
+    }
+
+    const noBed = new Beds(OVERWORLD);
+    const r1 = respawn(noBed, NETHER);
+    check("(1) 記録無し × ネザーで死ぬ → オーバーワールドの初期位置", r1.dim === OVERWORLD && !r1.onBed, JSON.stringify(r1));
+
+    const overPoint = new Beds(OVERWORLD);
+    overPoint.set(1, over.floor, 1, OVERWORLD);
+    const r2 = respawn(overPoint, NETHER);
+    check("(2) オーバーワールドのベッド × ネザーで死ぬ → そのベッド", r2.dim === OVERWORLD && r2.onBed, JSON.stringify(r2));
+
+    const netherPoint = new Beds(OVERWORLD);
+    netherPoint.set(3, nether.floor, 3, NETHER);
+    const r3 = respawn(netherPoint, NETHER);
+    // **これが退行の見張り。** 次元を持たせる前から正しく動いていた唯一の組み合わせ。
+    check("(3) ネザーのベッド × ネザーで死ぬ → そのベッド（前から正しい。壊さないこと）", r3.dim === NETHER && r3.onBed, JSON.stringify(r3));
+
+    const r4 = respawn(netherPoint, OVERWORLD);
+    check("(4) ネザーのベッド × オーバーワールドで死ぬ → ネザーのベッド", r4.dim === NETHER && r4.onBed, JSON.stringify(r4));
+
+    // ベッドが壊されていたら**既定の次元**へ（いま居る次元に落とすと、ネザーで
+    // ベッドを壊してから死んだときに天井の岩盤の上に戻る）。
+    nether.world.setVoxel(3, nether.floor, 3, AIR);
+    const r5 = respawn(netherPoint, NETHER);
+    check("(5) ネザーのベッドが壊されていた → オーバーワールドの初期位置", r5.dim === OVERWORLD && !r5.onBed, JSON.stringify(r5));
+    check("(5) 記録そのものは残る", netherPoint.spawnPoint?.dim === NETHER);
   }
 
   describe("寝る（振り分け）");

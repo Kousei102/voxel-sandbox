@@ -256,5 +256,18 @@ export function run(): void {
     const built = sourceOf("src/session.ts").match(/\bserializeEdits\(/g)?.length ?? 0;
     check("持ち物の組み立ては session.ts の 1 か所", built === 1, `${built} か所`);
     check("main.ts はその 1 か所を通す", main.includes("collectState("));
+
+    // **次元を移る経路が増えても、預け忘れを起こさせない。**
+    // `switchTo()` の第 2 引数は「置いていく次元の持ち物」で、ここに `liveState()`
+    // 以外（`emptyState()` など）を渡すと、**残してきた改変・落とし物・かまど・
+    // チェストが黙って消える**。型では防げない（どちらも `DimensionState`）ので、
+    // **呼び方の数**で見張る。いまの経路は 2 つ（ポータル / リスポーンで次元を戻す）。
+    const switches = main.match(/switchTo\(/g)?.length ?? 0;
+    const withLive = main.match(/switchTo\([^)]*liveState\(\)/g)?.length ?? 0;
+    check(
+      "main.ts の switchTo は全部 liveState() を渡している",
+      switches > 0 && switches === withLive,
+      `${withLive} / ${switches} か所`,
+    );
   }
 }
