@@ -14,8 +14,15 @@ import { AIR, GRASS, NETHER_BRICK, WOOL, isHotLiquid, isLiquid, isSolid } from "
 import { MAX_LIGHT, WORLD_HEIGHT, columnOf } from "./constants";
 import { BLAZE_ROD, RAW_PORK, ROTTEN_FLESH, toolOf } from "./items";
 import { BLOCK_LIGHT, SKY_LIGHT } from "./lighting";
-import { type BodySize, boxBlocked, groundBelow, moveBody } from "./physics";
-import { rayBox } from "./raycast";
+import { PLAYER_SIZE, type BodySize, boxBlocked, groundBelow, moveBody } from "./physics";
+import {
+  PLAYER_OWNER,
+  type Projectile,
+  type ProjectileKind,
+  type ProjectileTarget,
+  type Shot,
+} from "./projectiles";
+import { rayBox, raycastVoxels } from "./raycast";
 import type { Sfx } from "./sfx";
 import { BURN_SECONDS, MOB_HURT_COOLDOWN, type DamageCause } from "./vitals";
 import type { World } from "./world";
@@ -67,6 +74,30 @@ export interface MobDrop {
   readonly chance: number;
 }
 
+/**
+ * 遠くから撃つ攻め方。**持っているモブだけが撃つ**（無ければ `null`）。
+ *
+ * **飛び方は書かない** —— それは `projectiles.ts` の表の仕事で、ここが持つのは
+ * 「いつ・どれだけの重みで撃つか」という手応えの数値だけ（`TUNING.md`）。
+ */
+export interface RangedAttack {
+  /** 撃つもの（`projectiles.ts` の表の名前）。 */
+  readonly kind: ProjectileKind;
+  /** 当たったときに減らす量。 */
+  readonly damage: number;
+  /** 撃ち始める距離（水平）。**`HOSTILE_SIGHT` より短いこと**（見えた瞬間に撃たれない）。 */
+  readonly range: number;
+  /**
+   * これより近いと撃たない。**0 にしないこと** —— 足元へ撃つ形になって、
+   * 近づいて殴る間合いと二重取りになる。
+   */
+  readonly near: number;
+  /** 次の 1 発までの間隔 (秒)。 */
+  readonly cooldown: number;
+  /** 撃ち出す高さ（足元から）。 */
+  readonly height: number;
+}
+
 export interface MobDef {
   readonly kind: MobKind;
   readonly name: string;
@@ -80,6 +111,14 @@ export interface MobDef {
    * 湧きの上限を受動と別に持つので、受動しか居なくても意味がある。
    */
   readonly hostile: boolean;
+  /**
+   * 殴られたときに減る量。**種類ごとにここへ持つこと** ——
+   * 1 つの定数を全員で分け合っていた頃は、ブレイズの一撃がゾンビと同じ重さだった。
+   * 受動モブは 0（`strike()` を通らないので、値としての 0 が正しい）。
+   */
+  readonly damage: number;
+  /** 遠くから撃つか。**撃たないモブは `null`。** */
+  readonly ranged: RangedAttack | null;
   /**
    * 飛ぶ。**重力を受けず、`flyTarget` の高さへ自分で上がり下がりする。**
    * 段差登りも跳び越えも持たない（壁に当たったら上がる）。崖でも引き返さない。
@@ -138,6 +177,8 @@ const PIG: MobDef = {
   maxHealth: 10,
   speed: 1.7,
   hostile: false,
+  damage: 0,
+  ranged: null,
   flying: false,
   fireproof: false,
   spawnOn: null,
@@ -184,6 +225,8 @@ const SHEEP: MobDef = {
   maxHealth: 8,
   speed: 1.5,
   hostile: false,
+  damage: 0,
+  ranged: null,
   flying: false,
   fireproof: false,
   spawnOn: null,
@@ -239,6 +282,9 @@ const ZOMBIE: MobDef = {
   // 歩きより速くすると、一度見つかったら振り切れなくなる。
   speed: 4.6,
   hostile: true,
+  // 近接ダメージ。**`MOB_DAMAGE` はこの値の別名**（下の「戦闘の決まり」）。
+  damage: 2,
+  ranged: null,
   flying: false,
   fireproof: false,
   spawnOn: null,
@@ -293,6 +339,21 @@ const BLAZE: MobDef = {
   // 一直線に飛んでくるので、地上のゾンビと同じ速さにすると絶対に振り切れない。
   speed: 3.6,
   hostile: true,
+  // 近接は本家と同じ 6（ゾンビの 3 倍）。**近づかれたら痛い**が、
+  // 火球のほうが本体なので、間合いを取れば殴られない。
+  damage: 6,
+  // 火球。数値は本家に寄せた暫定（`TUNING.md`）で、**本家の 3 連射は入れていない**
+  // （1 発ずつ）。`near` を 0 にしないこと —— 足元へ撃つ形になって、
+  // 近接と二重取りになる。
+  ranged: {
+    kind: "fireball",
+    damage: 5,
+    range: 16,
+    near: 3,
+    cooldown: 3,
+    // 芯の真ん中（当たり判定 1.8 の中ほど）。低すぎると自分の足場に当たる。
+    height: 1.1,
+  },
   flying: true,
   fireproof: true,
   spawnOn: [NETHER_BRICK],
@@ -466,6 +527,12 @@ export interface Mob {
   /** 次にプレイヤーを殴れるまでの残り (秒)。**1 体ごとに持つ。** */
   attackTimer: number;
   /**
+   * 次に撃てるまでの残り (秒)。**殴るほうとは別に持つ** ——
+   * 1 本にすると、間合いを詰められたブレイズが殴りながら撃てなくなる／
+   * 撃ちながら殴れるようになる、のどちらかに転ぶ。
+   */
+  shootTimer: number;
+  /**
    * 壁を跳び越えている残り (秒)。このあいだは加速を待たずに前へ出す。
    * **飛ぶモブでは「上がっている残り」**（跳ぶ代わりに壁を越える手立て）。
    */
@@ -513,9 +580,14 @@ export const HOSTILE_SIGHT = 18;
 /** 殴れる距離（水平）と高さの差。 */
 export const ATTACK_RANGE = 1.4;
 export const ATTACK_HEIGHT = 1.5;
-/** 1 体が殴れる間隔 (秒) とダメージ。 */
+/** 1 体が殴れる間隔 (秒)。**ダメージは種類ごと**（`MobDef.damage`）。 */
 export const MOB_ATTACK_COOLDOWN = 1;
-export const MOB_DAMAGE = 2;
+/**
+ * ゾンビの近接ダメージ。**表（`ZOMBIE.damage`）が本体で、ここはその別名。**
+ * 1 つの定数を全員で分け合っていた頃の名前なので、**新しいモブをここに繋がないこと** ——
+ * 繋いだ瞬間、また「ブレイズの一撃がゾンビと同じ重さ」に戻る。
+ */
+export const MOB_DAMAGE = ZOMBIE.damage;
 /** 殴られたプレイヤーが押される強さ。**押し「続け」はしない**（下記）。 */
 const PLAYER_KNOCKBACK = 5;
 const PLAYER_KNOCKBACK_LIFT = 3.5;
@@ -671,6 +743,12 @@ export interface MobContext {
   readonly invulnerable?: boolean;
   /** プレイヤーの体力。渡さなければ誰も殴られない（テストと、遊んでいない間）。 */
   readonly vitals?: MobTarget;
+  /**
+   * 撃つ受け口。**渡さなければ 1 発も飛ばない**（`onDrop` と同じで、
+   * `mobs.ts` は `projectiles.ts` を持ち込まずに済む）。
+   * 何を・どこから・どれだけの重みで撃つかは**この中**で決めて、注文だけ渡す。
+   */
+  readonly shoot?: (shot: Shot) => void;
   /** 乱数。テストで固定できるように差し替えられる形にしておく。 */
   readonly random?: () => number;
 }
@@ -686,6 +764,8 @@ export class Mobs {
   private spawnTimer = 0;
   /** プレイヤーが次に殴れるまでの残り。 */
   private attackTimer = 0;
+  /** 当たり先の控え。**毎フレーム作り直すので使い回す**（`projectileTargets()`）。 */
+  private readonly targets: ProjectileTarget[] = [];
 
   /**
    * 倒したときの受け取り口。`screen.onChange` と同じ形で `main.ts` から繋ぐ。
@@ -731,6 +811,8 @@ export class Mobs {
       burnTimer: 0,
       burnTick: 0,
       attackTimer: 0,
+      // 湧いた瞬間に撃たせない（目の前に湧いたときの初弾を待たせる）。
+      shootTimer: MOBS[kind].ranged?.cooldown ?? 0,
       hopTimer: 0,
       // 湧いた瞬間から浮き始める（0 にすると、最初の判断まで床に落ちようとする）。
       flyTarget: y + (MOBS[kind].flying ? FLY_HOVER : 0),
@@ -791,7 +873,8 @@ export class Mobs {
       // 焼け死んだらここで list から消えているので、続きに触らない
       if (this.burn(mob, def, dt, ctx)) continue;
       if (!def.hostile) continue;
-      this.strike(mob, dt, ctx);
+      this.strike(mob, def, dt, ctx);
+      this.fire(mob, def, world, dt, ctx);
     }
   }
 
@@ -929,7 +1012,7 @@ export class Mobs {
       return;
     }
     const def = MOBS[mob.kind];
-    const dy = ctx.playerY + 1.4 - (mob.position.y + def.size.height * 0.8);
+    const dy = ctx.playerY + PLAYER_AIM - (mob.position.y + def.size.height * 0.8);
     // yaw 0 = -Z 向き。atan2(-dx, -dz) がその規約での方位になる。
     const want = Math.atan2(-dx, -dz);
     mob.headYaw = clamp(wrapAngle(want - mob.yaw), -HEAD_YAW_LIMIT, HEAD_YAW_LIMIT);
@@ -1045,11 +1128,12 @@ export class Mobs {
    * **プレイヤーを押し続けることはしない。** ノックバックとして速度を 1 回足すだけ。
    * 押し続けると `collides()` の押し戻しと喧嘩して、壁にめり込む。
    */
-  private strike(mob: Mob, dt: number, ctx: MobContext): void {
+  private strike(mob: Mob, def: MobDef, dt: number, ctx: MobContext): void {
     if (mob.attackTimer > 0) {
       mob.attackTimer = Math.max(0, mob.attackTimer - dt);
       return;
     }
+    if (def.damage <= 0) return;
     // クリエイティブは殴られない。**`Vitals` 側では弾けない**ので必ずここで見る。
     if (ctx.invulnerable || !ctx.vitals) return;
 
@@ -1063,7 +1147,9 @@ export class Mobs {
     // 次のフレームで振り直すと、囲まれたときに全員が窓の明ける瞬間を待ち構える形になり、
     // 体力が人数ぶん速く減る（無敵時間で頭打ちにした意味が無くなる）。
     mob.attackTimer = MOB_ATTACK_COOLDOWN;
-    if (!ctx.vitals.damage(MOB_DAMAGE, "モンスター", MOB_HURT_COOLDOWN)) return;
+    // **重みは種類ごと**（`MobDef.damage`）。1 つの定数を分け合うと、
+    // ブレイズの一撃がゾンビと同じ重さになる。
+    if (!ctx.vitals.damage(def.damage, "モンスター", MOB_HURT_COOLDOWN)) return;
 
     const push = ctx.playerVelocity;
     if (push && flat > 1e-4) {
@@ -1071,6 +1157,106 @@ export class Mobs {
       push.z += (dz / flat) * PLAYER_KNOCKBACK;
       if (push.y < PLAYER_KNOCKBACK_LIFT) push.y = PLAYER_KNOCKBACK_LIFT;
     }
+  }
+
+  /**
+   * 遠くから撃つ（毎フレーム）。**いつ・どこから・どれだけの重みで撃つかはここ**で、
+   * どう飛ぶかは `projectiles.ts` の表。撃つ受け口（`ctx.shoot`）が無ければ 1 発も飛ばない。
+   *
+   * **殴るのとは別の間隔（`shootTimer`）で回すこと** —— 1 本にすると、
+   * 間合いを詰められた側が殴りながら撃てなくなる（または撃ちながら殴れる）。
+   */
+  private fire(mob: Mob, def: MobDef, world: World, dt: number, ctx: MobContext): void {
+    const ranged = def.ranged;
+    if (!ranged) return;
+    if (mob.shootTimer > 0) {
+      mob.shootTimer = Math.max(0, mob.shootTimer - dt);
+      return;
+    }
+    // クリエイティブは狙われない（`strike()` と同じ線。`Vitals` 側では弾けない）。
+    if (ctx.invulnerable || !ctx.shoot) return;
+
+    const distance = distanceTo(mob, ctx);
+    if (distance > ranged.range || distance < ranged.near) return;
+
+    const x = mob.position.x;
+    const y = mob.position.y + ranged.height;
+    const z = mob.position.z;
+    const dx = ctx.playerX - x;
+    const dy = ctx.playerY + PLAYER_AIM - y;
+    const dz = ctx.playerZ - z;
+    // **壁越しに撃たないこと。** 姿の見えない所から火球が飛んでくると、
+    // どこから撃たれているのか分からないまま焼かれる（要塞は壁だらけ）。
+    if (!clearShot(world, x, y, z, dx, dy, dz)) return;
+
+    mob.shootTimer = ranged.cooldown;
+    // **狙うのは「いまプレイヤーが居る所」。** 先読みで置きにいくと当たり過ぎて、
+    // 横に歩くだけでは避けられなくなる（飛び道具の意味が消える）。
+    ctx.shoot({ kind: ranged.kind, x, y, z, dx, dy, dz, owner: mob.id, damage: ranged.damage });
+  }
+
+  /**
+   * 飛んでいるものが当たった。**当たったかどうか（形の話）は `projectiles.ts`**で、
+   * **誰に何が起きるか（体力・音・ドロップ・逃げ）はここ。**
+   *
+   * `main.ts` は `projectiles.onHitTarget` をここへ繋ぐだけ（`onDrop` と同じ形）。
+   */
+  hitByProjectile(shot: Projectile, target: ProjectileTarget, ctx: MobContext): void {
+    if (shot.damage <= 0) return;
+
+    if (target.owner === PLAYER_OWNER) {
+      // **近接とまったく同じ無敵時間を共有する**（`MOB_HURT_COOLDOWN`）。
+      // 別の窓にすると、殴られながら火球を受けたときだけ倍の速さで減る。
+      if (!ctx.invulnerable) ctx.vitals?.damage(shot.damage, "モンスター", MOB_HURT_COOLDOWN);
+      return;
+    }
+
+    const mob = this.list.find((m) => m.id === target.owner);
+    if (!mob) return;
+    const def = MOBS[mob.kind];
+    if (!this.wound(mob, shot.damage)) {
+      this.onSound?.("mobhurt", def.voice);
+      // 受動モブは逃げる（殴られたときと同じ規則。**敵対は逃げない**）。
+      if (!def.hostile) {
+        mob.fleeTimer = FLEE_TIME;
+        mob.walking = true;
+        mob.targetYaw = awayFrom(mob, ctx);
+      }
+      return;
+    }
+
+    this.onSound?.("mobdeath", def.voice);
+    // **プレイヤーが撃ったものだけ落ちる**（`attack()` と同じ規則）。
+    // モブ同士の流れ弾で肉が湧いてはいけない。
+    if (shot.owner !== PLAYER_OWNER) return;
+    const drop = def.drop;
+    const random = ctx.random ?? Math.random;
+    if (drop.count > 0 && (drop.chance >= 1 || random() < drop.chance)) {
+      this.onDrop?.(drop.item, drop.count, mob.position.x, mob.position.y, mob.position.z);
+    }
+  }
+
+  /**
+   * 飛んでいるものの当たり先（プレイヤー + モブ）。**毎フレーム集め直す。**
+   *
+   * **プレイヤーぶんもここで作ること** —— `main.ts` で組むと、クリエイティブを
+   * 外す条件（`invulnerable`）が殴られる側と撃たれる側の 2 か所に散る。
+   * `PLAYER_OWNER`(0) とモブの `id`（1 から）は必ず食い違うので、
+   * 撃った本人に当たることはない。
+   *
+   * **返す配列は使い回し。** 呼んだフレームのうちに使い切ること（`projectiles.update()`
+   * にそのまま渡す形で使う）。
+   */
+  projectileTargets(ctx: MobContext): readonly ProjectileTarget[] {
+    this.targets.length = 0;
+    if (!ctx.invulnerable) {
+      playerFoot.set(ctx.playerX, ctx.playerY, ctx.playerZ);
+      this.targets.push({ owner: PLAYER_OWNER, position: playerFoot, size: PLAYER_SIZE });
+    }
+    for (const mob of this.list) {
+      this.targets.push({ owner: mob.id, position: mob.position, size: MOBS[mob.kind].size });
+    }
+    return this.targets;
   }
 
   /**
@@ -1293,6 +1479,40 @@ const rayOrigin = [0, 0, 0];
 const rayDir = [0, 0, 0];
 const pickNormal = [0, 0, 0];
 const hitBox = [0, 0, 0, 0, 0, 0];
+
+/** 見通しの控えと、当たり先に渡すプレイヤーの足元。**どちらも使い回し。** */
+const losOrigin = new Vector3();
+const losDir = new Vector3();
+const playerFoot = new Vector3();
+
+/**
+ * 撃つときと見るときに狙うプレイヤーの高さ（足元から）。**胸のあたり。**
+ * 足元を狙うと、坂の下に居る人には必ず地面が先に当たる。
+ */
+const PLAYER_AIM = 1.4;
+
+/**
+ * その向きに遮るものが無いか（撃ってよいか）。
+ *
+ * **`raycastVoxels` を使うこと。** 自前で刻むと、厚さ 1 マスの壁を飛び越える
+ * （飛び道具の当たり判定で踏んだのと同じ穴）。撃つのは間隔ごとに 1 回だけなので、
+ * 1 本ぶんの光線は毎フレームの費用にならない。
+ */
+function clearShot(
+  world: World,
+  x: number,
+  y: number,
+  z: number,
+  dx: number,
+  dy: number,
+  dz: number,
+): boolean {
+  const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  if (distance <= 1e-4) return true;
+  losOrigin.set(x, y, z);
+  losDir.set(dx / distance, dy / distance, dz / distance);
+  return raycastVoxels(world, losOrigin, losDir, distance) === null;
+}
 
 /** プレイヤーに背を向ける向き。`aimHead` の「見る向き」の裏返し。 */
 function awayFrom(mob: Mob, ctx: MobContext): number {

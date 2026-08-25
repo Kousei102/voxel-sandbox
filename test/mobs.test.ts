@@ -33,7 +33,9 @@ import {
   type MobContext,
   type MobDef,
   type MobKind,
+  type MobTarget,
 } from "../src/mobs";
+import { PLAYER_OWNER, Projectiles, type Shot } from "../src/projectiles";
 import { boxBlocked } from "../src/physics";
 import { raycastVoxels } from "../src/raycast";
 import type { Sfx } from "../src/sfx";
@@ -1175,6 +1177,257 @@ export function run(): void {
   console.log(`      腐った肉の落ちる割合: ${(rate * 100).toFixed(0)}%（表は ${MOBS.zombie.drop.chance * 100}%）`);
   check("腐った肉は表どおりの割合で落ちる", Math.abs(rate - MOBS.zombie.drop.chance) < 0.1, `${(rate * 100).toFixed(0)}%`);
   check("ゾンビは腐った肉を落とす（まだ食べられない）", MOBS.zombie.drop.item === ROTTEN_FLESH);
+
+  describe("ブレイズの火球（撃つ・当たる）");
+
+  {
+    console.log("      種類   近接  遠くから");
+    for (const kind of MOB_KINDS) {
+      const def = MOBS[kind];
+      const r = def.ranged;
+      console.log(
+        `      ${def.name.padEnd(6)} ${String(def.damage).padStart(2)}    ` +
+          (r
+            ? `${r.kind} 重み ${r.damage} / 間合い ${r.near}〜${r.range}m / ${r.cooldown} 秒ごと`
+            : "撃たない"),
+      );
+    }
+    const shooters = MOB_KINDS.filter((kind) => MOBS[kind].ranged);
+    check("撃つのはブレイズだけ", shooters.length === 1 && shooters[0] === "blaze", shooters.join(" "));
+    // **重みを 1 つの定数で分け合わないこと。** 分け合っていた頃、ブレイズの一撃は
+    // ゾンビと同じ 2 だった（本家は 6）。
+    check(
+      "近接の重みが種類ごとに違う",
+      MOBS.zombie.damage === 2 && MOBS.blaze.damage === 6,
+      `ゾンビ ${MOBS.zombie.damage} / ブレイズ ${MOBS.blaze.damage}`,
+    );
+    check("受動モブは殴らない", MOBS.pig.damage === 0 && MOBS.sheep.damage === 0);
+    const ranged = MOBS.blaze.ranged;
+    check(
+      "撃ち始める間合いは追い始める距離より短い",
+      !!ranged && ranged.range < HOSTILE_SIGHT,
+      `${ranged?.range} < ${HOSTILE_SIGHT}`,
+    );
+    check(
+      "近すぎると撃たない線がある",
+      !!ranged && ranged.near > 0 && ranged.near < ranged.range,
+      `${ranged?.near}m`,
+    );
+  }
+
+  /**
+   * ブレイズを 1 体置いて、撃った注文（`Shot`）を集める。
+   * **湧きは止めてある**（`quiet`）ので、集まるのはこの 1 体ぶんだけ。
+   * 湧いた直後の待ちは外す —— ここで見たいのは「撃つかどうか」だけ。
+   */
+  function blazeShots(
+    options: {
+      distance?: number;
+      seconds?: number;
+      wall?: boolean;
+      invulnerable?: boolean;
+      kind?: MobKind;
+    } = {},
+  ) {
+    const { distance = 10, seconds = 1 / 60, wall = false, invulnerable = false, kind = "blaze" } = options;
+    const arena = quiet(flatGrass());
+    // プレイヤー（z = 0.5）とモブのあいだに立てる壁。
+    if (wall) arena.fill(-6, 6, 11, 24, 5, 5, STONE);
+    const pack = new Mobs();
+    const shots: Shot[] = [];
+    const c = ctx({ random: seeded(55), invulnerable, shoot: (shot) => shots.push(shot) });
+    const mob = pack.spawn(kind, 0.5, 13, 0.5 + distance, 0, seeded(56));
+    mob.shootTimer = 0;
+    const world = arena.asWorld();
+    for (let f = 0; f < Math.round(seconds * 60); f++) pack.update(1 / 60, world, c);
+    const left = Math.hypot(mob.position.x - c.playerX, mob.position.z - c.playerZ);
+    return { shots, mob, pack, world, ctx: c, distance: left };
+  }
+
+  {
+    const shot = blazeShots({ distance: 10 });
+    const first = shot.shots[0];
+    console.log(
+      `      10m から: ${shot.shots.length} 発  ${first?.kind} 重み ${first?.damage}  ` +
+        `撃ち手 ${first?.owner}（モブの id ${shot.mob.id}）  ` +
+        `向き (${first?.dx.toFixed(1)}, ${first?.dy.toFixed(1)}, ${first?.dz.toFixed(1)})`,
+    );
+    check("間合いに入ると撃つ", shot.shots.length === 1);
+    check("撃つのは表のもの（火球・重み 5）", first?.kind === "fireball" && first?.damage === 5);
+    // **撃ち手の印が要る。** 無いと、口元から出た火球が自分に当たる。
+    check("撃った本人の印が乗る", first?.owner === shot.mob.id && first?.owner !== PLAYER_OWNER);
+    check("プレイヤーのほうへ向く", !!first && first.dz < 0 && Math.abs(first.dx) < 0.5);
+    // 足元ではなく体の中ほどから（足元だと自分の足場に当たる）
+    check("撃ち出す高さが足元より上", !!first && first.y > shot.mob.position.y + 0.5);
+  }
+
+  {
+    const far = blazeShots({ distance: 17 });
+    const close = blazeShots({ distance: 2 });
+    const creative = blazeShots({ distance: 10, invulnerable: true });
+    const zombie = blazeShots({ distance: 10, kind: "zombie" });
+    console.log(
+      `      17m ${far.shots.length} 発 / 2m ${close.shots.length} 発 / ` +
+        `クリエイティブ ${creative.shots.length} 発 / ゾンビ ${zombie.shots.length} 発`,
+    );
+    check("間合いより遠いと撃たない", far.shots.length === 0);
+    check("近すぎると撃たない（殴る間合い）", close.shots.length === 0);
+    check("クリエイティブは狙われない", creative.shots.length === 0);
+    check("撃たないモブは撃たない", zombie.shots.length === 0);
+  }
+
+  {
+    // 近接の重みが**表から**来ていること。表を直しただけでは、殴る側が
+    // 1 つの定数を見たままでも通ってしまう。
+    const hits: Partial<Record<MobKind, number[]>> = {};
+    for (const kind of ["zombie", "blaze"] as MobKind[]) {
+      const arena = quiet(flatGrass());
+      const pack = new Mobs();
+      const amounts: number[] = [];
+      const vitals: MobTarget = {
+        damage: (amount) => {
+          amounts.push(amount);
+          return true;
+        },
+      };
+      const c = ctx({ random: seeded(63), vitals });
+      // **プレイヤーと同じ高さに置くこと。** ブレイズは床から 2.5 浮くので、
+      // 平地に立っているプレイヤーには（`ATTACK_HEIGHT` を超えて）近接が届かない。
+      pack.spawn(kind, 0.5, 11, 1.5, 0, seeded(64));
+      pack.update(1 / 60, arena.asWorld(), c);
+      hits[kind] = amounts;
+    }
+    console.log(
+      `      近接 1 発: ゾンビ ${JSON.stringify(hits.zombie)} / ブレイズ ${JSON.stringify(hits.blaze)}`,
+    );
+    check(
+      "殴る重みは表から来る",
+      hits.zombie?.[0] === MOBS.zombie.damage && hits.blaze?.[0] === MOBS.blaze.damage,
+      `${hits.zombie?.[0]} / ${hits.blaze?.[0]}`,
+    );
+    check(
+      "ブレイズの一撃はゾンビより重い",
+      (hits.blaze?.[0] ?? 0) > (hits.zombie?.[0] ?? 0),
+      `${hits.blaze?.[0]} > ${hits.zombie?.[0]}`,
+    );
+  }
+
+  {
+    // **壁越しに撃たないこと。** 姿の見えない所から火球が飛んでくると、
+    // どこから撃たれているのか分からないまま焼かれる（要塞は壁だらけ）。
+    const blocked = blazeShots({ distance: 10, wall: true });
+    console.log(`      壁ごし: ${blocked.shots.length} 発（同じ距離で壁が無ければ 1 発）`);
+    check("見えていなければ撃たない", blocked.shots.length === 0);
+  }
+
+  {
+    // 間隔。**1 秒では 2 発目が出ないこと**（`cooldown` は 3 秒）。
+    const short = blazeShots({ distance: 15, seconds: 1 });
+    // **2 発目のすぐあとで止めること。** 回し続けると詰め寄って `near` を割り込み、
+    // 「間隔が明けたのに撃たない」形で落ちる（測っているのは間隔であって間合いではない）。
+    const long = blazeShots({ distance: 15, seconds: 3.2 });
+    console.log(
+      `      15m から 1 秒 ${short.shots.length} 発 / 3.2 秒 ${long.shots.length} 発` +
+        `（3.2 秒後の距離 ${long.distance.toFixed(1)}m・間合いは ${MOBS.blaze.ranged?.near}m から）`,
+    );
+    check("間隔の内は撃ち直さない", short.shots.length === 1, `${short.shots.length} 発`);
+    check("間隔ぶん待つと次の 1 発", long.shots.length === 2, `${long.shots.length} 発`);
+  }
+
+  {
+    // **通しで 1 本。** 撃つ（`mobs.ts`）→ 飛ぶ（`projectiles.ts`）→ 当たる（`mobs.ts`）。
+    // どれか 1 つが繋がっていないと、ここだけが赤くなる。
+    const arena = quiet(flatGrass());
+    const pack = new Mobs();
+    const flying = new Projectiles();
+    const taken: [number, string, number | undefined][] = [];
+    const vitals: MobTarget = {
+      damage: (amount, cause, cooldown) => {
+        taken.push([amount, cause, cooldown]);
+        return true;
+      },
+    };
+    const c = ctx({
+      random: seeded(57),
+      vitals,
+      shoot: (shot) => {
+        flying.fire(shot);
+      },
+    });
+    flying.onHitTarget = (shot, target) => pack.hitByProjectile(shot, target, c);
+    const blaze = pack.spawn("blaze", 0.5, 13, 10.5, 0, seeded(58));
+    blaze.shootTimer = 0;
+    const world = arena.asWorld();
+    let flew = 0;
+    for (let f = 0; f < 120; f++) {
+      pack.update(1 / 60, world, c);
+      flying.update(1 / 60, world, pack.projectileTargets(c));
+      flew = Math.max(flew, flying.count);
+    }
+    console.log(
+      `      通し（2 秒）: 飛んだ ${flew} 個  当たり ${taken.length} 回 ${JSON.stringify(taken)}`,
+    );
+    // **先に「ちゃんと飛んだ」ことを見ること**（`rules/testing.md`）。
+    // 1 発も出ていないのに「当たらなかった」で通る形を避ける。
+    check("火球が飛んだ", flew > 0, `${flew} 個`);
+    check("撃った火球がプレイヤーに当たる", taken.length > 0, `${taken.length} 回`);
+    check("重みは表のとおり（火球 5）", taken[0]?.[0] === 5, `${taken[0]?.[0]}`);
+    // **近接と同じ窓を共有すること。** 別の窓にすると、殴られながら火球を受けたときだけ
+    // 倍の速さで減る。
+    check(
+      "死因も無敵時間も近接と同じ",
+      taken[0]?.[1] === "モンスター" && taken[0]?.[2] === MOB_HURT_COOLDOWN,
+      `${taken[0]?.[1]} / ${taken[0]?.[2]}`,
+    );
+  }
+
+  {
+    // 当たり先の並び。**使い回しの配列なので、その場で控えること。**
+    const pack = new Mobs();
+    pack.spawn("zombie", 3.5, 11, 0.5, 0, seeded(59));
+    pack.spawn("pig", 5.5, 11, 0.5, 0, seeded(60));
+    const c = ctx({});
+    const targets = pack.projectileTargets(c);
+    const owners = targets.map((t) => t.owner);
+    const playerFoot = targets[0].position.y;
+    const playerHeight = targets[0].size.height;
+    const creative = pack.projectileTargets(ctx({ invulnerable: true })).map((t) => t.owner);
+    console.log(
+      `      的: ${owners.join(" ")}（0 はプレイヤー）  クリエイティブ: ${creative.join(" ")}  ` +
+        `プレイヤーの足元 y ${playerFoot} 高さ ${playerHeight}`,
+    );
+    check("プレイヤーとモブが全部並ぶ", owners.length === 3, `${owners.length} 件`);
+    check("プレイヤーの印は 0", owners[0] === PLAYER_OWNER);
+    // モブの id は 1 から。**0 と食い違うので、撃った本人に当たることがない。**
+    check("モブの印は 0 と食い違う", owners.slice(1).every((id) => id !== PLAYER_OWNER), owners.join(" "));
+    check("プレイヤーの的は足元の中心 + 背丈", playerFoot === 11 && playerHeight === 1.8);
+    check("クリエイティブでは的から外れる", creative.length === 2 && !creative.includes(PLAYER_OWNER));
+  }
+
+  {
+    // 当たったあと。**倒したのがプレイヤーの弾のときだけ落ちる**（`attack()` と同じ規則）。
+    const pack = new Mobs();
+    const flying = new Projectiles();
+    const dropped: number[] = [];
+    pack.onDrop = (item) => dropped.push(item);
+    const c = ctx({});
+    pack.spawn("pig", 3.5, 11, 0.5, 0, seeded(61));
+    pack.spawn("pig", 5.5, 11, 0.5, 0, seeded(62));
+    const targets = pack.projectileTargets(c);
+    const mine = targets[1];
+    const stray = targets[2];
+    const arrow = flying.spawn("arrow", 0.5, 12, 0.5, 0, 0, -1, PLAYER_OWNER, 100);
+    const other = flying.spawn("fireball", 0.5, 12, 0.5, 0, 0, -1, 9, 100);
+    pack.hitByProjectile(arrow!, mine, c);
+    const afterMine = [pack.count, dropped.length];
+    pack.hitByProjectile(other!, stray, c);
+    console.log(
+      `      プレイヤーの矢: 残り ${afterMine[0]} 体・落とし物 ${afterMine[1]} 件 → ` +
+        `モブの流れ弾: 残り ${pack.count} 体・落とし物 ${dropped.length} 件`,
+    );
+    check("プレイヤーが倒したら落ちる", afterMine[0] === 1 && dropped[0] === RAW_PORK);
+    check("モブの流れ弾では落ちない", pack.count === 0 && dropped.length === 1);
+  }
 
   describe("モブの費用");
 

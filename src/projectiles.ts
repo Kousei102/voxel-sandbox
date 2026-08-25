@@ -14,6 +14,11 @@
  * **`world.setVoxel` は呼ばない。** `edits` はプレイヤーの操作でなければならず、
  * セーブがそれに乗っている（モブ・ドロップと同じ制約）。当たったマスは
  * `onHitBlock` で外へ渡すだけで、そこで何が起きるかは呼ぶ側が決める。
+ *
+ * **誰に当たったか（`ProjectileTarget`）も同じ形。** ここが持つのは「重なったか」
+ * という形の話だけで、**何がどれだけ減るかは撃った側が弾に載せる**（`Shot.damage`）。
+ * 表（`PROJECTILE_KINDS`）にダメージを書かないこと —— 同じ火球でも撃つ相手が
+ * 変われば重みが変わるし、手応えの数値は撃つ側の判断（`mobs.ts` の表）だから。
  */
 
 import { Vector3 } from "three";
@@ -53,6 +58,46 @@ const LIQUID_GRAVITY = 0.3;
 export const PROJECTILE_SPIN = 2.2;
 
 export type ProjectileKind = "fireball" | "arrow" | "eye" | "breath";
+
+/**
+ * 撃った本人の印。**0 はプレイヤー**で、モブは自分の `id`（1 から）を使う。
+ * 同じ印の相手には当たらない —— 口元・手元から出るので、見ないと必ず自分に当たる。
+ */
+export const PLAYER_OWNER = 0;
+
+/**
+ * 当たる相手（プレイヤーとモブ）。**位置は足元の中心**（`physics.ts` の約束）で、
+ * 飛び道具だけが体の中心を持つ。**呼ぶ側が毎フレーム集めて渡す**ので、
+ * ここは `mobs.ts` も `player.ts` も知らないままでいられる。
+ */
+export interface ProjectileTarget {
+  /** 誰か。`Projectile.owner` と同じなら当たらない（0 はプレイヤー）。 */
+  readonly owner: number;
+  /** **足元の中心。** */
+  readonly position: Vector3;
+  readonly size: BodySize;
+}
+
+/**
+ * 1 発ぶんの注文。**撃つ側（モブの表・弓）が値を決めて渡す。**
+ * `mobs.ts` が `projectiles.ts` を import しないで済むように、`MobContext.shoot`
+ * がこれを受け取る形にしてある（`onDrop` が `drops.ts` を知らないのと同じ筋）。
+ */
+export interface Shot {
+  readonly kind: ProjectileKind;
+  /** 撃ち出す位置（体の中心）。 */
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  /** 向き。長さは問わない（表の速さに正規化する）。 */
+  readonly dx: number;
+  readonly dy: number;
+  readonly dz: number;
+  /** 撃った本人。省略でプレイヤー。 */
+  readonly owner?: number;
+  /** 当たった相手から減らす量。**決めるのは撃つ側**（表には無い）。 */
+  readonly damage?: number;
+}
 
 /**
  * ブロックに当たったときにどうなるか。
@@ -189,6 +234,10 @@ function sizeOf(def: ProjectileDef): BodySize {
 export interface Projectile {
   readonly id: number;
   readonly kind: ProjectileKind;
+  /** 撃った本人（`PLAYER_OWNER` はプレイヤー）。**この相手には当たらない。** */
+  readonly owner: number;
+  /** 当たった相手から減らす量。**撃った側が決めた値をそのまま運ぶだけ。** */
+  readonly damage: number;
   /** **体の中心**（ドロップは足元の中心。飛び道具は回すので中心のほうが素直）。 */
   readonly position: Vector3;
   readonly velocity: Vector3;
@@ -219,6 +268,11 @@ export class Projectiles {
    * そこで何が起きるか（火が付く・音が鳴る・矢が落ちる）は呼ぶ側が決める。
    */
   onHitBlock?: (projectile: Projectile, x: number, y: number, z: number) => void;
+  /**
+   * 相手に当たった合図。**当たったのは誰かを渡すだけ**で、いくつ減るか
+   * （`projectile.damage`）をどう効かせるかは受け取る側（`mobs.ts`）が決める。
+   */
+  onHitTarget?: (projectile: Projectile, target: ProjectileTarget) => void;
   /** 寿命・奈落・上限で消えた合図（当たって消えたときは呼ばない）。 */
   onExpire?: (projectile: Projectile) => void;
 
@@ -240,6 +294,8 @@ export class Projectiles {
     dx: number,
     dy: number,
     dz: number,
+    owner = PLAYER_OWNER,
+    damage = 0,
   ): Projectile | null {
     const def = projectileDef(kind);
     const length = Math.sqrt(dx * dx + dy * dy + dz * dz);
@@ -257,6 +313,8 @@ export class Projectiles {
     const projectile: Projectile = {
       id: this.nextId++,
       kind,
+      owner,
+      damage,
       position: new Vector3(x, y, z),
       velocity,
       yaw: 0,
@@ -283,6 +341,8 @@ export class Projectiles {
     z: number,
     yaw: number,
     pitch: number,
+    owner = PLAYER_OWNER,
+    damage = 0,
   ): Projectile | null {
     const horizontal = Math.cos(pitch);
     return this.spawn(
@@ -293,6 +353,26 @@ export class Projectiles {
       -Math.sin(yaw) * horizontal,
       Math.sin(pitch),
       -Math.cos(yaw) * horizontal,
+      owner,
+      damage,
+    );
+  }
+
+  /**
+   * 注文（`Shot`）を 1 発撃つ。**撃つ側は座標と向きと重みを渡すだけ**で、
+   * 飛び方は表が決める。`MobContext.shoot` の受け口がこれ。
+   */
+  fire(shot: Shot): Projectile | null {
+    return this.spawn(
+      shot.kind,
+      shot.x,
+      shot.y,
+      shot.z,
+      shot.dx,
+      shot.dy,
+      shot.dz,
+      shot.owner ?? PLAYER_OWNER,
+      shot.damage ?? 0,
     );
   }
 
@@ -307,7 +387,7 @@ export class Projectiles {
    * 飛び道具の退行とストリーミングの退行が `test/world.test.ts` の p99 で
    * 区別できなくなる（`mobs.update()` / `drops.update()` とまったく同じ理由）。
    */
-  update(dt: number, world: World): void {
+  update(dt: number, world: World, targets: readonly ProjectileTarget[] = NO_TARGETS): void {
     // **後ろから回すこと。** 当たった・寿命が尽きたものはその場で list から抜ける。
     for (let i = this.list.length - 1; i >= 0; i--) {
       const projectile = this.list[i];
@@ -340,7 +420,7 @@ export class Projectiles {
         continue;
       }
 
-      this.step(projectile, def, world, dt, i);
+      this.step(projectile, def, world, dt, i, targets);
     }
   }
 
@@ -351,6 +431,7 @@ export class Projectiles {
     world: World,
     dt: number,
     index: number,
+    targets: readonly ProjectileTarget[],
   ): void {
     const velocity = projectile.velocity;
 
@@ -379,6 +460,8 @@ export class Projectiles {
     if (def.onBlock === "pass") {
       // ブロックを見ない。**当たり判定ごと飛ばす**ので、要塞の上を歩いていても
       // エンダーアイが地面に刺さって止まることがない。
+      // **相手にも当たらない** —— 案内役なので、通り道に立った人を撃ってしまう
+      // 道理がない（`onBlock` に「素通り」を選ぶとはそういうこと）。
       projectile.position.addScaledVector(velocity, dt);
       return;
     }
@@ -392,6 +475,17 @@ export class Projectiles {
     for (let s = 0; s < steps; s++) {
       const before = projectile.position.clone();
       projectile.position.addScaledVector(velocity, stepDt);
+
+      // **相手を先に見ること。** 壁を背にした相手に当てたとき、先にブロックを見ると
+      // 同じ刻みで壁のほうが勝って、当たったのに何も起きない形になる。
+      // **当たった相手には、刺さるもの（矢）も残らず消える** —— 体に刺さった矢を
+      // 持ち歩かせる仕組みが無いので、壁と同じ扱いにすると宙に浮いた矢が残る。
+      const target = hitTarget(projectile, def, targets);
+      if (target) {
+        this.list.splice(index, 1);
+        this.onHitTarget?.(projectile, target);
+        return;
+      }
 
       const cell = blockedCell(world, projectile.position, size);
       if (!cell) continue;
@@ -432,6 +526,37 @@ function aimAt(projectile: Projectile, def: ProjectileDef): void {
   // `player.ts` の forward の逆算（yaw 0 のとき前は -Z）。
   projectile.yaw = Math.atan2(-v.x, -v.z);
   projectile.pitch = Math.atan2(v.y, horizontal);
+}
+
+/** 相手を渡さなかったとき用。**呼ぶたびに `[]` を作らない**（毎フレーム通る道）。 */
+const NO_TARGETS: readonly ProjectileTarget[] = [];
+
+/**
+ * その位置で重なっている相手。無ければ null。
+ *
+ * **撃った本人には当たらない**（口元・手元から出るので、見ないと必ず自分に当たる）。
+ * 箱どうしの重なりで見るだけ —— 相手は 1 フレームに数十体しか居ないので、
+ * ブロックのように形（`blockOverlapsBody`）まで見る必要はない。
+ *
+ * **y の約束だけが違う。** 飛び道具は体の中心、相手は足元の中心（`physics.ts`）。
+ */
+function hitTarget(
+  projectile: Projectile,
+  def: ProjectileDef,
+  targets: readonly ProjectileTarget[],
+): ProjectileTarget | null {
+  const half = def.half;
+  const p = projectile.position;
+  for (const target of targets) {
+    if (target.owner === projectile.owner) continue;
+    const size = target.size;
+    if (Math.abs(p.x - target.position.x) > half + size.half) continue;
+    if (Math.abs(p.z - target.position.z) > half + size.half) continue;
+    if (p.y + half < target.position.y) continue;
+    if (p.y - half > target.position.y + size.height) continue;
+    return target;
+  }
+  return null;
 }
 
 /** `blockOverlapsBody()` に渡す足元の位置。呼ぶたびに作らないよう使い回す。 */

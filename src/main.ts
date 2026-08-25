@@ -273,6 +273,13 @@ drops.onChange = () => {
 /** モブの声。**何をいつ鳴らすかは `mobs.ts` が決めている**ので、ここは素通し。 */
 mobs.onSound = (sfx, pitch) => audio.play(sfx, "none", pitch);
 
+/**
+ * 飛んでいるものが誰かに当たった。**当たったかどうかは `projectiles.ts`、
+ * 誰に何が起きるかは `mobs.ts`** なので、ここは繋ぐだけ
+ * （ダメージの数値も無敵時間も死因も、あちらが決める）。
+ */
+projectiles.onHitTarget = (shot, target) => mobs.hitByProjectile(shot, target, mobContext());
+
 function setCreative(on: boolean): void {
   creative = on;
   modeButton.textContent = creative ? "クリエイティブ" : "サバイバル";
@@ -370,6 +377,11 @@ function mobContext(): MobContext {
     playerVelocity: player.velocity,
     invulnerable: creative,
     vitals,
+    // 撃つ受け口。**何を・どこから・どれだけの重みで撃つかは `mobs.ts` の表**で、
+    // ここは注文をそのまま飛ばすだけ（`onDrop` と同じ形）。
+    shoot: (shot) => {
+      projectiles.fire(shot);
+    },
   };
 }
 
@@ -1145,7 +1157,9 @@ function frame(now: number): void {
   if (playing) drops.update(dt, world, dropContext());
   dropRender.sync(drops.list, world);
   // 飛んでいるもの。**落とし物と同じ理由で `world.update()` の外。**
-  if (playing) projectiles.update(dt, world);
+  // 当たる相手（プレイヤー + モブ）は `mobs.ts` が集める。**ここで組まないこと** ——
+  // クリエイティブを外す条件が、殴られる側と撃たれる側の 2 か所に散る。
+  if (playing) projectiles.update(dt, world, mobs.projectileTargets(mobContext()));
   projectileRender.sync(projectiles.list, world);
   // かまど。**画面を開いていても止めないこと** —— 開けた瞬間に止まると、
   // 焼き上がるところを見ていられない（`playing` はポインタが外れると false になる）。

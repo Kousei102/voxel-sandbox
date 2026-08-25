@@ -1,12 +1,15 @@
 import { readFileSync } from "node:fs";
+import { Vector3 } from "three";
 import { GRASS, STONE, WATER } from "../src/blocks";
 import {
   MAX_PROJECTILES,
+  PLAYER_OWNER,
   PROJECTILE_KINDS,
   Projectiles,
   boxOf,
   projectileDef,
   type ProjectileKind,
+  type ProjectileTarget,
 } from "../src/projectiles";
 import { buildBoxMesh } from "../src/mobmesh";
 import { mobRgb } from "../src/mobs";
@@ -23,9 +26,23 @@ function field(): Arena {
 }
 
 /** dt 刻みで `seconds` 秒ぶん回す。 */
-function advance(p: Projectiles, arena: Arena, seconds: number, dt = 1 / 60): void {
+function advance(
+  p: Projectiles,
+  arena: Arena,
+  seconds: number,
+  dt = 1 / 60,
+  targets: readonly ProjectileTarget[] = [],
+): void {
   const steps = Math.round(seconds / dt);
-  for (let i = 0; i < steps; i++) p.update(dt, arena.asWorld());
+  for (let i = 0; i < steps; i++) p.update(dt, arena.asWorld(), targets);
+}
+
+/**
+ * 的。**位置は足元の中心**（`physics.ts` の約束。飛び道具だけが体の中心を持つ）で、
+ * 大きさはプレイヤーと同じ 0.6 x 1.8。
+ */
+function dummy(owner: number, x: number, y: number, z: number): ProjectileTarget {
+  return { owner, position: new Vector3(x, y, z), size: { half: 0.3, height: 1.8, step: 0 } };
 }
 
 export function run(): void {
@@ -340,6 +357,104 @@ export function run(): void {
     check("液体の中では失速する", inWater < inAir * 0.6);
     // **液体でも落ちること。** 止めると水面に矢が浮いたまま残る。
     check("液体の中でも沈んでいく", b.list[0].position.y < 20);
+  }
+
+  describe("相手に当たる");
+
+  {
+    const arena = field();
+    const p = new Projectiles();
+    const hits: [number, number][] = [];
+    p.onHitTarget = (shot, target) => hits.push([target.owner, shot.damage]);
+    // 撃ったのはモブ（id 7）で、的はプレイヤー。**重みは撃った側が載せる。**
+    p.spawn("fireball", 0.5, 20, 0.5, 0, 0, -1, 7, 5);
+    advance(p, arena, 1, 1 / 60, [dummy(PLAYER_OWNER, 0.5, 19.2, -5.5)]);
+    console.log(`      火球 → プレイヤー: 当たり ${hits.length} 回 ${JSON.stringify(hits)}  残り ${p.count} 個`);
+    check("相手に当たると消える", p.count === 0 && hits.length === 1);
+    check(
+      "誰に当たったかと重みがそのまま届く",
+      hits[0]?.[0] === PLAYER_OWNER && hits[0]?.[1] === 5,
+      JSON.stringify(hits[0]),
+    );
+  }
+
+  {
+    // **撃った本人には当たらない。** 口元から出るので、見ないと必ず自分に当たる。
+    const arena = field();
+    const p = new Projectiles();
+    let hits = 0;
+    p.onHitTarget = () => hits++;
+    const shot = p.spawn("fireball", 0.5, 20, 0.5, 0, 0, -1, 7, 5);
+    // 撃った本人（id 7）が進む先に立っている。
+    advance(p, arena, 0.3, 1 / 60, [dummy(7, 0.5, 19.2, -2.5)]);
+    console.log(`      本人の中を通す: 当たり ${hits} 回  z ${shot?.position.z.toFixed(2)}`);
+    check("撃った本人には当たらない", hits === 0 && p.count === 1);
+  }
+
+  {
+    // **刺さるもの（矢）も、相手に当たったら残らない。** 体に刺さった矢を
+    // 持ち歩かせる仕組みが無いので、壁と同じ扱いにすると宙に矢が浮く。
+    const arena = field();
+    const p = new Projectiles();
+    let hits = 0;
+    p.onHitTarget = () => hits++;
+    p.spawn("arrow", 0.5, 20, 0.5, 0, 0, -1, PLAYER_OWNER, 9);
+    advance(p, arena, 0.5, 1 / 60, [dummy(3, 0.5, 19.2, -8.5)]);
+    console.log(`      矢 → モブ: 当たり ${hits} 回  残り ${p.count} 個`);
+    check("矢は相手に刺さらず消える", hits === 1 && p.count === 0);
+  }
+
+  {
+    // **素通りするもの（エンダーアイ）は相手も見ない。** 案内役なので、
+    // 通り道に立った人を撃つ道理がない。
+    const arena = field();
+    const p = new Projectiles();
+    let hits = 0;
+    p.onHitTarget = () => hits++;
+    p.spawn("eye", 0.5, 20, 0.5, 0, 0, -1, PLAYER_OWNER, 5);
+    advance(p, arena, 1, 1 / 60, [dummy(3, 0.5, 19.2, -4.5)]);
+    console.log(`      エンダーアイ: 当たり ${hits} 回  z ${p.list[0]?.position.z.toFixed(2)}`);
+    check("素通りするものは相手にも当たらない", hits === 0 && p.count === 1);
+  }
+
+  {
+    // **フレームが重くても相手を飛び越えない**（壁と同じ 0.2m 刻みに乗せてある）。
+    // 矢は 40m/s なので、1/20 秒だと 1 回に 2m 進む —— 刻まないと、
+    // z が -9.5 → -11.5 と飛んで、あいだに立っている的をまたぐ。
+    // **的の高さは落ちたぶんに合わせてある**（11m 先で 1.1m ほど落ちる）。
+    const arena = field();
+    const p = new Projectiles();
+    let hits = 0;
+    p.onHitTarget = () => hits++;
+    p.spawn("arrow", 0.5, 20, 0.5, 0, 0, -1, PLAYER_OWNER, 9);
+    advance(p, arena, 0.5, 1 / 20, [dummy(3, 0.5, 18, -10.5)]);
+    console.log(`      重いフレーム（1/20 秒）: 当たり ${hits} 回  残り ${p.count} 個`);
+    check("1 フレームが重くても相手を抜けない", hits === 1 && p.count === 0);
+  }
+
+  {
+    // 高さの約束（飛び道具は体の中心・相手は足元の中心）。**頭の上は当たらない。**
+    const arena = field();
+    const p = new Projectiles();
+    let hits = 0;
+    p.onHitTarget = () => hits++;
+    p.spawn("fireball", 0.5, 24, 0.5, 0, 0, -1, 7, 5);
+    advance(p, arena, 1, 1 / 60, [dummy(PLAYER_OWNER, 0.5, 19.2, -5.5)]);
+    console.log(`      頭上 3m を通す: 当たり ${hits} 回`);
+    check("背より上を飛んだものは当たらない", hits === 0);
+  }
+
+  {
+    // 注文（`Shot`）の形。**撃つ側が値を決めて渡す**ので、そのまま載っていること。
+    const p = new Projectiles();
+    const shot = p.fire({ kind: "fireball", x: 0.5, y: 20, z: 0.5, dx: 0, dy: 0, dz: -1, owner: 12, damage: 5 });
+    const plain = p.launch("fireball", 0.5, 20, 0.5, 0, 0);
+    console.log(
+      `      注文: owner ${shot?.owner} / 重み ${shot?.damage}　既定: owner ${plain?.owner} / 重み ${plain?.damage}`,
+    );
+    check("注文の撃ち手と重みが弾に載る", shot?.owner === 12 && shot?.damage === 5);
+    // **既定は「プレイヤーが撃った、重み 0」。** デバッグの `N` キーで何かが減らないように。
+    check("既定はプレイヤーの重み 0", plain?.owner === PLAYER_OWNER && plain?.damage === 0);
   }
 
   const lines = (path: string) => readFileSync(path, "utf8").split("\n").length;
