@@ -184,9 +184,17 @@ export function stampPlacements(
   let written = 0;
 
   for (const place of places) {
-    // 高さが掛からない段は `build()` ごと飛ばす（地面より上の段だけが仕事をする）。
+    // **掛からない構造物は `build()` ごと飛ばす。** `put` がチャンクの外を捨てるので
+    // 結果は変わらないが、**捨てられるだけの書き込みを何千回も呼ぶ**ことになる
+    // （要塞は 1 個で 1014 マスあり、列挙されるのは 1 チャンクにつき 9 個まで）。
+    // 判定に使えるのは `extent` だけ —— `build()` がそこより外へ書かないことは
+    // 構造物ごとのテストが見張っている（`rules/worldgen.md`）。
     if (place.y > baseY + CHUNK_SIZE - 1) continue;
     if (place.y + place.def.extent.up < baseY) continue;
+    if (place.x - place.def.extent.x > baseX + CHUNK_SIZE - 1) continue;
+    if (place.x + place.def.extent.x < baseX) continue;
+    if (place.z - place.def.extent.z > baseZ + CHUNK_SIZE - 1) continue;
+    if (place.z + place.def.extent.z < baseZ) continue;
 
     place.def.build(place, (x, y, z, id) => {
       const lx = x - baseX;

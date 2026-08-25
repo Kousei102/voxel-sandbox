@@ -20,6 +20,7 @@ import {
 import { biomeDef, classify, resolve, type TreeKind } from "./biomes";
 import { CHUNK_SIZE, SEA_LEVEL, WORLD_HEIGHT } from "./constants";
 import { Noise } from "./noise";
+import { STRONGHOLD } from "./stronghold";
 import { placementsFor, stampPlacements, type Placement, type StructureDef } from "./structures";
 
 interface Tree {
@@ -117,10 +118,10 @@ const VEINS: readonly VeinDef[] = [
 /**
  * この生成器が建てる構造物（`structures.ts` の器に乗る）。
  *
- * **まだ空です。** 器だけ先に通してあり、最初の 1 個はネザー要塞（TASKS 2-3）。
- * 空のあいだ `stampStructures()` は即座に戻るので、費用は掛かりません。
+ * いまは**要塞（エンドポータルの部屋）1 種類だけ**。
+ * ネザー要塞は別の生成器（`nethergen.ts`）に居ます。
  */
-const STRUCTURES: readonly StructureDef[] = [];
+const STRUCTURES: readonly StructureDef[] = [STRONGHOLD];
 
 export class WorldGen {
   private readonly terrain: Noise;

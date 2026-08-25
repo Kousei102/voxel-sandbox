@@ -6,12 +6,14 @@ import {
   BLOCKS,
   CACTUS,
   COBBLE_SLAB,
+  END_PORTAL_FRAME,
   FACE_XN,
   FACE_XP,
   FACE_YN,
   FACE_YP,
   FACE_ZN,
   FACE_ZP,
+  FRAME_HEIGHT,
   GRASS,
   LAVA,
   MAX_BLOCK_ID,
@@ -29,9 +31,14 @@ import {
   WALL_TORCH_ZN,
   WATER,
   baseBlock,
+  blockDef,
   blockName,
   canSupport,
   collisionBoxes,
+  endPortalFrame,
+  frameFacing,
+  frameHasEye,
+  isEndPortalFrame,
   isProp,
   isHotLiquid,
   isLiquid,
@@ -42,6 +49,7 @@ import {
   shapeBoxes,
 } from "../src/blocks";
 import { MAX_LIGHT } from "../src/constants";
+import { PLAYER_SIZE } from "../src/physics";
 import {
   BUCKET,
   IRON_INGOT,
@@ -698,5 +706,66 @@ export function run(): void {
   // バケツでないものを渡しても何も起きない（`main.ts` が誤って呼んでも安全）
   check("バケツ以外では何も起きない", bucketUse(IRON_INGOT, WATER) === null && bucketUse(NO_ITEM, LAVA) === null);
 
+  endPortalFrames();
+
   world.dispose();
+}
+
+/** エンドポータルの枠（向き 4 x アイの有無 2）。要塞が並べる（`stronghold.ts`）。 */
+function endPortalFrames(): void {
+  describe("エンドポータルの枠");
+
+  const facings = [FACE_XP, FACE_XN, FACE_ZP, FACE_ZN];
+  const all = facings.flatMap((f) => [endPortalFrame(f, false), endPortalFrame(f, true)]);
+  check("向き 4 × アイの有無 2 で 8 通り", new Set(all).size === 8, all.join(" "));
+  check(
+    "大元は +X 向き・アイ無し",
+    endPortalFrame(FACE_XP, false) === END_PORTAL_FRAME,
+    `${endPortalFrame(FACE_XP, false)}`,
+  );
+  check(
+    "大元以外は 64 以降",
+    all.filter((id) => id !== END_PORTAL_FRAME).every((id) => id > MAX_BLOCK_ID),
+    all.join(" "),
+  );
+  check("上下の向きでは枠にならない", endPortalFrame(FACE_YP, false) === AIR && endPortalFrame(FACE_YN, true) === AIR);
+
+  // 状態の読み書きが噛み合っているか（書いた向き・アイが読み出せる）。
+  const roundTrip = facings.every((f) =>
+    [false, true].every((eye) => {
+      const id = endPortalFrame(f, eye);
+      return isEndPortalFrame(id) && frameFacing(id) === f && frameHasEye(id) === eye;
+    }),
+  );
+  check("書いた向きとアイの有無がそのまま読み出せる", roundTrip);
+  check("枠でないものは false", !isEndPortalFrame(STONE) && !isEndPortalFrame(AIR) && !frameHasEye(STONE));
+
+  // **アイテムも名前も 1 つに揃うこと**（壁掛け松明・点火中のかまどと同じ仕掛け）。
+  const names = new Set(all.map((id) => blockName(id)));
+  check("8 通りとも同じ名前で出る", names.size === 1, [...names].join(" "));
+  check(
+    "向き違いはアイテムを作らない",
+    all.filter((id) => id !== END_PORTAL_FRAME).every((id) => baseBlock(id) === END_PORTAL_FRAME),
+  );
+
+  // **壊せないこと。** 掘れると、起動する前に枠を壊してクリアできなくなる。
+  const breakable = all.filter((id) => Number.isFinite(blockDef(id).hardness));
+  check("枠は 8 通りとも壊せない", breakable.length === 0, `${breakable.length} 個が壊せる`);
+
+  // アイが嵌まったことが**形でも**分かること（色だけだと箱の数が合わなくなっても気付けない）。
+  const plain = shapeBoxes(endPortalFrame(FACE_XP, false));
+  const eyed = shapeBoxes(endPortalFrame(FACE_XP, true));
+  console.log(
+    `      枠の高さ ${FRAME_HEIGHT}（箱 ${plain.length} 個） / アイ入りは箱 ${eyed.length} 個`,
+  );
+  check("アイ入りは箱がひとつ増える", eyed.length === plain.length + 1, `${plain.length} → ${eyed.length}`);
+  check("枠の高さは 13/16", plain[0][4] === FRAME_HEIGHT, `${plain[0][4]}`);
+  // 13/16 は `STEP_HEIGHT`(0.6) より高いので、歩いて乗り越えられない（跳ぶことになる）。
+  check(
+    "歩いて乗り越えられない高さ",
+    FRAME_HEIGHT > PLAYER_SIZE.step,
+    `${FRAME_HEIGHT} > ${PLAYER_SIZE.step}`,
+  );
+  // 上面が丸ごと埋まっていないので、松明は載らない（下付きハーフと同じ理由）。
+  check("枠の上面は支えにならない", !canSupport(END_PORTAL_FRAME, FACE_YP));
 }

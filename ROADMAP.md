@@ -128,9 +128,9 @@
 | 48 | `NETHER_BRICK` | ネザー要塞の材料。**実装済み** |
 | 49 | `NETHER_PORTAL` | 非立方体（`isProp`）。X 向きが 49 / Z 向きが **103**。**実装済み** |
 | 50 | `END_STONE` | |
-| 51 | `END_PORTAL_FRAME` | 非立方体。向き 4 種 x 目の有無は 64 以降 |
+| 51 | `END_PORTAL_FRAME` | 非立方体。向き 4 種 x 目の有無 = 8 通り（104..110）。**壊せない。実装済み** |
 | 52 | `END_PORTAL` | 非立方体 |
-| 53 | `STONE_BRICK` | 要塞（stronghold） |
+| 53 | `STONE_BRICK` | 要塞（stronghold）の材料。**実装済み** |
 | 54..63 | **予備 10 個** | ネザーレンガ・石レンガのハーフ／階段はここから |
 
 **立方体は 63 まで**（`encodeFace` の 6 ビット）。向き違い・状態違いは 64 以降へ。
@@ -160,7 +160,7 @@
 | 溶岩 | 黒曜石が作れない。ネザーの溶岩海も | **済み**（`LAVA` 42 / `quenched()`） |
 | `portals.ts` | 枠の検出・点火の可否 | **済み**（配線は 2-2） |
 | `dimensions.ts` + `World` の生成器注入 | ネザー / エンド | **済み**（`ChunkSource`。次元の器は `rules/dimensions.md`） |
-| `structures.ts` | ネザー要塞・要塞・エンドの柱 | **済み**（ネザー要塞が乗った。`fortress.ts`） |
+| `structures.ts` | ネザー要塞・要塞・エンドの柱 | **済み**（ネザー要塞 `fortress.ts` と要塞 `stronghold.ts` が乗った） |
 | `projectiles.ts` + `projectilerender.ts` | 火球・矢・投げたエンダーアイ・ブレス | **済み**（当たった効果はまだ無い） |
 | `nethergen.ts` | ネザーの地形 | **済み**（`DIMENSIONS` に登録済み。行く手段は 2-2） |
 

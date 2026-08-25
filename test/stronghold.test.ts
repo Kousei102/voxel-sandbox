@@ -1,8 +1,25 @@
-import { CHUNK_SIZE } from "../src/constants";
+import {
+  AIR,
+  STONE_BRICK,
+  blockName,
+  endPortalFrame,
+  frameFacing,
+  frameHasEye,
+  isEndPortalFrame,
+  isSolid,
+  supportFace,
+} from "../src/blocks";
+import { CHUNK_SIZE, CHUNK_VOLUME } from "../src/constants";
 import { projectileDef } from "../src/projectiles";
 import {
   EYE_RISE,
+  STRONGHOLD,
   STRONGHOLD_CHANCE,
+  STRONGHOLD_DEPTH,
+  STRONGHOLD_FRAMES,
+  STRONGHOLD_HALF,
+  STRONGHOLD_HEIGHT,
+  STRONGHOLD_RING,
   STRONGHOLD_SEARCH,
   STRONGHOLD_SITE,
   STRONGHOLD_SPACING,
@@ -11,6 +28,7 @@ import {
   strongholdDirection,
 } from "../src/stronghold";
 import { cellSize, placementsFor, siteAt, type StructureDef } from "../src/structures";
+import { WorldGen } from "../src/worldgen";
 import { sourceOf } from "./arena";
 import { check, describe } from "./harness";
 
@@ -235,7 +253,358 @@ export function run(): void {
   );
 
   eyeThrow();
+  roomShape();
+  roomInWorld();
   sourceGuards();
+}
+
+/** `build()` の書き込みを、座標ごとに 1 個ずつ受け止める（チャンクの外も落とさない）。 */
+function stamped(x = 0, y = 40, z = 0): Map<string, number> {
+  const cells = new Map<string, number>();
+  STRONGHOLD.build({ def: STRONGHOLD, x, y, z }, (px, py, pz, id) => {
+    cells.set(`${px},${py},${pz}`, id);
+  });
+  return cells;
+}
+
+/** 要塞の部屋の形（`build()` を直に呼ぶ）。 */
+function roomShape(): void {
+  describe("要塞の部屋（エンドポータル）");
+
+  const y0 = 40;
+  const cells = stamped(0, y0, 0);
+  const at = (x: number, y: number, z: number) => cells.get(`${x},${y},${z}`);
+  const top = STRONGHOLD_HEIGHT + 1;
+
+  // --- 申告した範囲の外へ書いていないか ---
+  let outside = 0;
+  let brick = 0;
+  let air = 0;
+  let frames = 0;
+  for (const [key, id] of cells) {
+    const [x, y, z] = key.split(",").map(Number);
+    if (
+      Math.abs(x) > STRONGHOLD.extent.x ||
+      Math.abs(z) > STRONGHOLD.extent.z ||
+      y < y0 ||
+      y > y0 + STRONGHOLD.extent.up
+    ) {
+      outside++;
+    }
+    if (id === STONE_BRICK) brick++;
+    if (id === AIR) air++;
+    if (isEndPortalFrame(id)) frames++;
+  }
+  console.log(
+    `      部屋 1 個: ${cells.size} マス（石レンガ ${brick} / 空 ${air} / 枠 ${frames}）  ` +
+      `外側 ${STRONGHOLD_HALF * 2 + 1} 角  内側の高さ ${STRONGHOLD_HEIGHT}  深さ ${STRONGHOLD_DEPTH}`,
+  );
+  check("申告した extent の外へ書かない", outside === 0, `${outside} マス`);
+
+  // --- 殻が閉じているか（穴が空いていると、土や水が流れ込んだように見える） ---
+  let holes = 0;
+  for (let dy = 0; dy <= top; dy++) {
+    for (let dz = -STRONGHOLD_HALF; dz <= STRONGHOLD_HALF; dz++) {
+      for (let dx = -STRONGHOLD_HALF; dx <= STRONGHOLD_HALF; dx++) {
+        const wall =
+          dy === 0 ||
+          dy === top ||
+          Math.abs(dx) === STRONGHOLD_HALF ||
+          Math.abs(dz) === STRONGHOLD_HALF;
+        if (!wall) continue;
+        if (at(dx, y0 + dy, dz) !== STONE_BRICK) holes++;
+      }
+    }
+  }
+  check("床・天井・4 面の壁が石レンガで閉じている", holes === 0, `${holes} マス欠け`);
+
+  // --- 中が空いているか（山の中に建っても掘らずに歩ける） ---
+  let blocked = 0;
+  for (let dy = 1; dy < top; dy++) {
+    for (let dz = -STRONGHOLD_HALF + 1; dz <= STRONGHOLD_HALF - 1; dz++) {
+      for (let dx = -STRONGHOLD_HALF + 1; dx <= STRONGHOLD_HALF - 1; dx++) {
+        // 書かれていないマス（`undefined`）は無い —— 殻が中まで塗るので、
+        // 抜けていたらそれ自体が欠けなので数える。
+        const id = at(dx, y0 + dy, dz) ?? STONE_BRICK;
+        // 空いているか、通り抜けられるもの（松明）か、枠（膝の高さ）ならよい。
+        if (id === AIR || isEndPortalFrame(id) || !isSolid(id)) continue;
+        blocked++;
+      }
+    }
+  }
+  check("中は歩ける（枠と松明のほかは空）", blocked === 0, `${blocked} マス`);
+
+  // --- エンドポータルの輪 ---
+  check(`枠がちょうど ${STRONGHOLD_FRAMES} 個`, frames === STRONGHOLD_FRAMES, `${frames} 個`);
+
+  let eyed = 0;
+  let outward = 0;
+  const ringY = y0 + 1;
+  for (let dz = -STRONGHOLD_RING; dz <= STRONGHOLD_RING; dz++) {
+    for (let dx = -STRONGHOLD_RING; dx <= STRONGHOLD_RING; dx++) {
+      const id = at(dx, ringY, dz);
+      const corner =
+        Math.abs(dx) === STRONGHOLD_RING && Math.abs(dz) === STRONGHOLD_RING;
+      const onRing = Math.max(Math.abs(dx), Math.abs(dz)) === STRONGHOLD_RING && !corner;
+      if (!onRing) continue;
+      if (id === undefined || !isEndPortalFrame(id)) continue;
+      if (frameHasEye(id)) eyed++;
+      // 向きは中心を向くこと。面番号から 1 マス進んだ先が、いまより中心に近いか。
+      const step: Record<number, [number, number]> = {
+        0: [1, 0],
+        1: [-1, 0],
+        4: [0, 1],
+        5: [0, -1],
+      };
+      const [sx, sz] = step[frameFacing(id)] ?? [0, 0];
+      const now = Math.abs(dx) + Math.abs(dz);
+      const then = Math.abs(dx + sx) + Math.abs(dz + sz);
+      if (then >= now) outward++;
+    }
+  }
+  check("枠は全部が輪の中心を向く", outward === 0, `${outward} 個が外を向く`);
+  // **アイは嵌めないこと。** 嵌めた状態で建てると、探して集める工程が丸ごと消える。
+  check("生成した枠にアイは嵌まっていない", eyed === 0, `${eyed} 個`);
+
+  // 真ん中の 3x3 は空（起動するとここがポータルになる。TASKS 2-9）。
+  let centre = 0;
+  for (let dz = -1; dz <= 1; dz++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (at(dx, ringY, dz) !== AIR) centre++;
+      // その下は床のまま（抜けていると、輪の中に立った人が落ちる）。
+      if (at(dx, y0, dz) !== STONE_BRICK) centre++;
+    }
+  }
+  check("輪の中の 3x3 は空で、その下は床", centre === 0, `${centre} マス`);
+
+  // --- 松明（真っ暗な部屋にしない） ---
+  const inner = STRONGHOLD_HALF - 1;
+  const lights = [
+    at(-inner, y0 + 3, 0),
+    at(inner, y0 + 3, 0),
+    at(0, y0 + 3, -inner),
+    at(0, y0 + 3, inner),
+  ];
+  const wallTorches = lights.filter(
+    (id) => id !== undefined && id !== AIR && supportFace(id) !== -1 && !isSolid(id),
+  ).length;
+  console.log(`      壁掛けの松明: ${lights.map((id) => blockName(id ?? AIR)).join(" / ")}`);
+  check("壁に松明が 4 本ある", wallTorches === 4, `${wallTorches} 本`);
+  // 支えの向きが壁の側でないと、読み込み直後に `breakUnsupported` で落ちる。
+  const facingWall =
+    supportFace(lights[0] ?? AIR) === 1 &&
+    supportFace(lights[1] ?? AIR) === 0 &&
+    supportFace(lights[2] ?? AIR) === 5 &&
+    supportFace(lights[3] ?? AIR) === 4;
+  check("松明の支えは背にした壁の側", facingWall);
+
+  // --- 枠を作る入口が 1 つであること ---
+  const states = new Set<number>();
+  for (const facing of [0, 1, 4, 5]) {
+    for (const eye of [false, true]) states.add(endPortalFrame(facing, eye));
+  }
+  check("向き 4 × アイの有無 2 で 8 通りある", states.size === 8, `${states.size} 通り`);
+  check(
+    "上下の向きでは枠にならない",
+    endPortalFrame(2, false) === AIR && endPortalFrame(3, true) === AIR,
+  );
+}
+
+/** 本当に地面の下に建つか（実際に生成してみる）。 */
+function roomInWorld(): void {
+  describe("要塞の部屋（生成）");
+
+  const top = STRONGHOLD_HEIGHT + 1;
+
+  // --- 岩盤を突き抜けないか（深さの上限を決めているのはここ） ---
+  let lowest = Infinity;
+  let sites = 0;
+  const grounds: number[] = [];
+  for (const seed of SEEDS) {
+    const gen = new WorldGen(seed);
+    for (let gx = -4; gx <= 4; gx++) {
+      for (let gz = -4; gz <= 4; gz++) {
+        const site = siteAt(STRONGHOLD_SITE, seed, gx, gz);
+        if (!site) continue;
+        sites++;
+        const ground = gen.heightAt(site.x, site.z);
+        grounds.push(ground);
+        lowest = Math.min(lowest, ground - STRONGHOLD_DEPTH);
+      }
+    }
+  }
+  grounds.sort((a, b) => a - b);
+  console.log(
+    `      要塞 ${sites} 箇所の地面 ${grounds[0]} 〜 ${grounds[grounds.length - 1]}` +
+      `（中央 ${grounds[grounds.length >> 1]}） / いちばん低い床 y=${lowest}`,
+  );
+  // y = 0 は岩盤。**そこより下に床を置くと、床が黙って欠けた部屋になる。**
+  check("いちばん低い要塞でも床が岩盤より上", lowest >= 1, `y=${lowest}`);
+
+  // --- 地面の下に埋まっているか（掘らないと入れないか） ---
+  {
+    let exposed = 0;
+    let columns = 0;
+    for (const seed of SEEDS) {
+      const gen = new WorldGen(seed);
+      for (let gx = -3; gx <= 3; gx++) {
+        for (let gz = -3; gz <= 3; gz++) {
+          const site = siteAt(STRONGHOLD_SITE, seed, gx, gz);
+          if (!site) continue;
+          const ceiling = gen.heightAt(site.x, site.z) - STRONGHOLD_DEPTH + top;
+          for (let dz = -STRONGHOLD_HALF; dz <= STRONGHOLD_HALF; dz++) {
+            for (let dx = -STRONGHOLD_HALF; dx <= STRONGHOLD_HALF; dx++) {
+              columns++;
+              if (gen.heightAt(site.x + dx, site.z + dz) <= ceiling) exposed++;
+            }
+          }
+        }
+      }
+    }
+    const ratio = (exposed / columns) * 100;
+    console.log(
+      `      天井より地面が低い（＝外から見える）柱: ${exposed} / ${columns}` +
+        `（${ratio.toFixed(2)}%）`,
+    );
+    // **0 は保証できません** —— 基準点 1 点の高さで建てる割り切りなので、
+    // 崖の途中に当たれば露出します。ほぼ全部が埋まっていることだけを見ます。
+    check("要塞はほぼ地面の下に埋まっている", ratio < 1, `${ratio.toFixed(2)}%`);
+  }
+
+  // --- 実際に生成して部屋を数える ---
+  {
+    let spanning = 0;
+    let checked = 0;
+    const lines: string[] = [];
+    for (const seed of SEEDS) {
+      const gen = new WorldGen(seed);
+      const site = nearestStronghold(seed, 0.5, 0.5);
+      if (!site) continue;
+      const y0 = gen.heightAt(site.x, site.z) - STRONGHOLD_DEPTH;
+
+      const found = new Map<string, number>();
+      const chunk = new Uint8Array(CHUNK_VOLUME);
+      const cx0 = (site.x - STRONGHOLD_HALF) >> 4;
+      const cx1 = (site.x + STRONGHOLD_HALF) >> 4;
+      const cz0 = (site.z - STRONGHOLD_HALF) >> 4;
+      const cz1 = (site.z + STRONGHOLD_HALF) >> 4;
+      const cy0 = y0 >> 4;
+      const cy1 = (y0 + top) >> 4;
+      const columns = (cx1 - cx0 + 1) * (cz1 - cz0 + 1) * (cy1 - cy0 + 1);
+      if (columns > 1) spanning++;
+      for (let cx = cx0; cx <= cx1; cx++) {
+        for (let cz = cz0; cz <= cz1; cz++) {
+          for (let cy = cy0; cy <= cy1; cy++) {
+            chunk.fill(0);
+            gen.generateChunk(cx, cy, cz, chunk);
+            for (let ly = 0; ly < CHUNK_SIZE; ly++) {
+              for (let lz = 0; lz < CHUNK_SIZE; lz++) {
+                for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+                  const id = chunk[(ly * CHUNK_SIZE + lz) * CHUNK_SIZE + lx];
+                  if (id !== STONE_BRICK && !isEndPortalFrame(id)) continue;
+                  found.set(
+                    `${cx * CHUNK_SIZE + lx},${cy * CHUNK_SIZE + ly},${cz * CHUNK_SIZE + lz}`,
+                    id,
+                  );
+                }
+              }
+            }
+          }
+        }
+      }
+
+      const brick = [...found.values()].filter((id) => id === STONE_BRICK).length;
+      const frames = [...found.values()].filter((id) => isEndPortalFrame(id)).length;
+      // 殻の 1 マスも欠けていないこと（チャンクをまたいでも同じ形が出る）。
+      let missing = 0;
+      for (let dy = 0; dy <= top; dy++) {
+        for (let dz = -STRONGHOLD_HALF; dz <= STRONGHOLD_HALF; dz++) {
+          for (let dx = -STRONGHOLD_HALF; dx <= STRONGHOLD_HALF; dx++) {
+            const wall =
+              dy === 0 ||
+              dy === top ||
+              Math.abs(dx) === STRONGHOLD_HALF ||
+              Math.abs(dz) === STRONGHOLD_HALF;
+            if (!wall) continue;
+            if (found.get(`${site.x + dx},${y0 + dy},${site.z + dz}`) !== STONE_BRICK) missing++;
+          }
+        }
+      }
+      // 殻の枚数は形から出す（数を焼き付けると、部屋を広げたときに嘘になる）。
+      const side = STRONGHOLD_HALF * 2 + 1;
+      const inner = STRONGHOLD_HALF * 2 - 1;
+      const expected = side * side * (top + 1) - inner * inner * (top - 1);
+      const ok = brick === expected && frames === STRONGHOLD_FRAMES && missing === 0;
+      lines.push(
+        `${seed}: (${site.x}, ${site.z}) y=${y0} レンガ ${brick}/${expected} 枠 ${frames}` +
+          ` チャンク ${columns} 個 欠け ${missing}${ok ? "" : " ← NG"}`,
+      );
+      checked++;
+    }
+    for (const line of lines) console.log(`      ${line}`);
+    check("4 つの種すべてで最寄りの要塞を生成できた", checked === SEEDS.length, `${checked} 件`);
+    const broken = lines.filter((l) => l.endsWith("NG"));
+    check("どの要塞も欠けずに建つ", broken.length === 0, broken.join(" / "));
+    // **1 チャンクに収まった要塞だけを見ていると、端の欠けを見逃す。**
+    check("複数のチャンクにまたがる要塞が含まれている", spanning > 0, `${spanning} / ${checked} 件`);
+  }
+
+  // --- 生成の順に依らないか ---
+  {
+    const seed = SEEDS[0];
+    const gen = new WorldGen(seed);
+    const other = new WorldGen(seed);
+    const site = nearestStronghold(seed, 0.5, 0.5);
+    if (!site) return;
+    const cx = site.x >> 4;
+    const cz = site.z >> 4;
+    const cy = (gen.heightAt(site.x, site.z) - STRONGHOLD_DEPTH) >> 4;
+    const a = new Uint8Array(CHUNK_VOLUME);
+    const b = new Uint8Array(CHUNK_VOLUME);
+    // 片方は周りを先に作ってから、もう片方はいきなり真ん中を作る。
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) other.generateChunk(cx + dx, cy, cz + dz, b);
+    }
+    gen.generateChunk(cx, cy, cz, a);
+    other.generateChunk(cx, cy, cz, b);
+    let same = 0;
+    for (let i = 0; i < a.length; i++) if (a[i] === b[i]) same++;
+    console.log(`      生成の順を変えて一致 ${same} / ${a.length}`);
+    check("生成の順に依らない", same === a.length);
+  }
+
+  // --- 費用（要塞の掛かる段と掛からない段を、同じ土俵で比べる） ---
+  {
+    const seed = SEEDS[1];
+    const gen = new WorldGen(seed);
+    const buffer = new Uint8Array(CHUNK_VOLUME);
+    const site = nearestStronghold(seed, 0.5, 0.5);
+    if (!site) return;
+    const band = (gen.heightAt(site.x, site.z) - STRONGHOLD_DEPTH) >> 4;
+    const timeOf = (run: (i: number) => void) => {
+      const times: number[] = [];
+      for (let i = 0; i < 24; i++) {
+        const t0 = performance.now();
+        run(i);
+        times.push(performance.now() - t0);
+      }
+      times.sort((x, y) => x - y);
+      return times[times.length >> 1];
+    };
+    const cx = site.x >> 4;
+    const cz = site.z >> 4;
+    // **比べる相手は「同じ高さの段で、要塞から離れた列」**にすること。
+    // 上の段と比べると、地面より上（ほぼ空気）と比べることになって差が読めない。
+    // グリッドは 24 列ごとなので、12 列ずらせばマスの真ん中で必ず離れる。
+    const withRoom = timeOf(() => gen.generateChunk(cx, band, cz, buffer));
+    const without = timeOf(() => gen.generateChunk(cx + 12, band, cz + 12, buffer));
+    console.log(
+      `      チャンク 1 個: 要塞の掛かる列 ${withRoom.toFixed(3)}ms` +
+        ` / 同じ高さで離れた列 ${without.toFixed(3)}ms`,
+    );
+    // 予算は 1 フレーム 3ms（`constants.ts` の `GENERATE_BUDGET_MS`）。
+    check("要塞のぶんで予算を食い潰さない", withRoom < 1.5, `${withRoom.toFixed(3)}ms`);
+  }
 }
 
 /** 投げたときの注文（`Shot`）そのもの。 */

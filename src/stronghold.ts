@@ -1,12 +1,12 @@
 /**
- * 要塞（エンドポータルのある建物）が**どこに建つか**と、投げたエンダーアイが
- * **どちらを向くか**。**判断だけのファイル**で、three も DOM も乱数も出てこない
+ * 要塞（エンドポータルのある建物）が**どこに建つか・どんな形か**と、
+ * 投げたエンダーアイが**どちらを向くか**。**判断だけのファイル**で、
+ * three も DOM も乱数も出てきません
  * （`portals.ts` / `beds.ts` / `portaltravel.ts` と同じ形。見張りは `test/stronghold.test.ts`）。
  *
- * **建てるのはまだこの先の周です**（TASKS 2-8）。ここにあるのは「どこに建つか」の
- * 規則だけで、**その規則を `structures.ts` の `SiteRule` として持っている**のが肝心です ——
- * 建てる側（あとの周が書く `StructureDef`）はこの `STRONGHOLD_SITE` をそのまま広げて
- * 使うので、**アイの指す先と実際に建つ場所が食い違いようがありません。**
+ * **建てる規則と指す規則を同じファイルの同じ `SiteRule` から引いている**のが肝心です ——
+ * `STRONGHOLD`（`StructureDef`）は `STRONGHOLD_SITE` を広げただけなので、
+ * **アイの指す先と実際に建つ場所が食い違いようがありません。**
  * 場所を 2 か所に写した瞬間、**アイの指す方角に何も無い**という形で静かに壊れます
  * （しかも地面の下なので、掘るまで気付けません）。
  *
@@ -15,7 +15,17 @@
  * あちらの表が決めます。
  */
 
-import { cellOf, siteAt, type SiteRule } from "./structures";
+import {
+  AIR,
+  FACE_XN,
+  FACE_XP,
+  FACE_ZN,
+  FACE_ZP,
+  STONE_BRICK,
+  endPortalFrame,
+  torchVariant,
+} from "./blocks";
+import { cellOf, siteAt, type Placement, type Put, type SiteRule, type StructureDef } from "./structures";
 import type { Shot } from "./projectiles";
 
 /**
@@ -148,3 +158,127 @@ export function eyeShot(seed: number, x: number, y: number, z: number): Shot | n
     dz: bearing.dz,
   };
 }
+
+// ---------------------------------------------------------------------------
+// 要塞の形（`structures.ts` の器に乗る建物）
+//
+// **いまはエンドポータルの部屋 1 つだけです**（通路も階段も部屋も無い。
+// TASKS 2-8 は「クリアできる最小」で止めています）。掘って降りれば辿り着けて、
+// 枠 12 個が揃っている、というところまで。
+// ---------------------------------------------------------------------------
+
+/**
+ * 部屋の外壁までの半径。外側は `HALF * 2 + 1` = 13 マス四方、内側は 11 マス四方。
+ *
+ * **狭くしないこと。** 投げたアイは「その辺り」までしか案内してくれない
+ * （近づくと落ちる仕掛けが無い）ので、掘り当てる的が小さいと詰みに近くなります。
+ */
+export const STRONGHOLD_HALF = 6;
+
+/** 床の上に空ける高さ（内側は `y + 1` から `y + HEIGHT`）。天井はその 1 つ上。 */
+export const STRONGHOLD_HEIGHT = 4;
+
+/**
+ * 地面から何マス下に**床**を置くか（`lift` の絶対値）。**手触りの数値**（`TUNING.md`）。
+ *
+ * **深くしすぎないこと。** 地形のいちばん低い所は実測で高さ 25 前後なので、
+ * ここを 24 以上にすると海の底の要塞が岩盤（y = 0）を突き抜けて床が欠けます。
+ * **浅くしすぎないこと。** 天井（床 + 5）から地表までの土かぶりが薄いと、
+ * 少し掘っただけで部屋が露出して「地下の建物」に見えません。
+ */
+export const STRONGHOLD_DEPTH = 18;
+
+/** エンドポータルの輪の半径。5x5 の四隅を落とすと 12 個になる（Minecraft と同じ）。 */
+export const STRONGHOLD_RING = 2;
+/** 輪に並ぶ枠の数。**12 個ちょうどでなければならない**（アイも 12 個で足りる）。 */
+export const STRONGHOLD_FRAMES = 12;
+
+/**
+ * 輪の中の位置 `(dx, dz)` から、**中心を向く水平の面番号**。
+ *
+ * 輪の上では `|dx|` と `|dz|` のどちらか一方だけが `STRONGHOLD_RING` なので、
+ * 大きいほうの軸で決めれば必ず内向きになる。
+ */
+function facingToCentre(dx: number, dz: number): number {
+  if (Math.abs(dx) > Math.abs(dz)) return dx > 0 ? FACE_XN : FACE_XP;
+  return dz > 0 ? FACE_ZN : FACE_ZP;
+}
+
+/** 輪の上のマスか（5x5 の縁のうち四隅を除いた 12 マス）。 */
+function onRing(dx: number, dz: number): boolean {
+  const ax = Math.abs(dx);
+  const az = Math.abs(dz);
+  return Math.max(ax, az) === STRONGHOLD_RING && !(ax === STRONGHOLD_RING && az === STRONGHOLD_RING);
+}
+
+/** 部屋の殻（床・天井・4 面の壁）を石レンガで、中を空気で埋める。 */
+function shell(place: Placement, put: Put): void {
+  const top = STRONGHOLD_HEIGHT + 1;
+  for (let dy = 0; dy <= top; dy++) {
+    for (let dz = -STRONGHOLD_HALF; dz <= STRONGHOLD_HALF; dz++) {
+      for (let dx = -STRONGHOLD_HALF; dx <= STRONGHOLD_HALF; dx++) {
+        const wall =
+          dy === 0 ||
+          dy === top ||
+          Math.abs(dx) === STRONGHOLD_HALF ||
+          Math.abs(dz) === STRONGHOLD_HALF;
+        // **必ず空気も書くこと。** 書かないと、山の中に建った部屋が石で埋まったままになる
+        // （ネザー要塞が頭上を空けているのと同じ理由）。
+        put(place.x + dx, place.y + dy, place.z + dz, wall ? STONE_BRICK : AIR);
+      }
+    }
+  }
+}
+
+/**
+ * エンドポータルの枠 12 個。**床の 1 つ上**（＝立つ高さ）に輪を置き、
+ * **真ん中の 3x3 は空気のまま**にする（起動するとそこがポータルになる。TASKS 2-9）。
+ */
+function ring(place: Placement, put: Put): void {
+  for (let dz = -STRONGHOLD_RING; dz <= STRONGHOLD_RING; dz++) {
+    for (let dx = -STRONGHOLD_RING; dx <= STRONGHOLD_RING; dx++) {
+      if (!onRing(dx, dz)) continue;
+      // **向きは `endPortalFrame()` に聞くこと**（状態の番号を写さない）。
+      put(place.x + dx, place.y + 1, place.z + dz, endPortalFrame(facingToCentre(dx, dz), false));
+    }
+  }
+}
+
+/**
+ * 壁掛けの松明を 4 本。**明かりが 1 つも無いと、掘り当てた部屋が真っ暗**で
+ * 何があるか分からないうえ、その場で敵対モブが湧き続ける。
+ *
+ * **向きは `torchVariant()` に聞くこと**（壁掛けの ID を名指ししない）。
+ * 渡すのは「支えのある向き」＝壁のある側。
+ */
+function torches(place: Placement, put: Put): void {
+  const inner = STRONGHOLD_HALF - 1;
+  const y = place.y + 3;
+  put(place.x - inner, y, place.z, torchVariant(FACE_XN));
+  put(place.x + inner, y, place.z, torchVariant(FACE_XP));
+  put(place.x, y, place.z - inner, torchVariant(FACE_ZN));
+  put(place.x, y, place.z + inner, torchVariant(FACE_ZP));
+}
+
+/**
+ * 要塞 1 個。**`STRONGHOLD_SITE` を広げただけ**なので、投げたエンダーアイが指す先と
+ * ここが建てる場所は同じ `siteAt()` から出てくる（写していない）。
+ *
+ * **`build()` の中で地面を測らないこと**（`fortress.ts` と同じ）。器が渡す基準点
+ * 1 点で全部が決まる形を崩すと、チャンクの生成順で形が変わる。
+ */
+export const STRONGHOLD: StructureDef = {
+  ...STRONGHOLD_SITE,
+  name: "要塞",
+  // 上へは天井まで。**`extent` を小さく申告すると、離れたチャンクを作ったときに
+  // 端が黙って欠ける**（`rules/worldgen.md`）。
+  extent: { x: STRONGHOLD_HALF, up: STRONGHOLD_HEIGHT + 1, z: STRONGHOLD_HALF },
+  // 地面の下に埋める。**器は `ground + lift` を基準点にする**ので、負の値で潜る。
+  lift: -STRONGHOLD_DEPTH,
+  build(place, put) {
+    // **殻 → 輪 → 松明の順。** 殻が中を空気で塗り潰すので、先に置いたものは消える。
+    shell(place, put);
+    ring(place, put);
+    torches(place, put);
+  },
+};

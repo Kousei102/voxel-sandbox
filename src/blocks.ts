@@ -172,6 +172,33 @@ export const NETHER_BRICK = 48;
 export const NETHER_PORTAL = 49;
 
 /**
+ * エンドポータルの枠。**12 個を輪にして並べ、全部にエンダーアイを嵌めると起動する**
+ * （嵌める操作そのものは TASKS 2-9。ここが持つのは形と状態だけ）。
+ *
+ * **壊せない**（`hardness` が無限）。クリア導線の唯一の出口なので、掘れると
+ * 「起動させる前に枠を壊して詰む」が作れてしまう。Minecraft も壊せない。
+ *
+ * 状態は **向き 4 x エンダーアイの有無 2 = 8 通り**で、番号は階段・ベッドと同じ
+ * `向きの添字 * 2 + もう 1 ビット`（もう 1 ビットの意味は「アイが嵌まっているか」）。
+ * 大元（+X 向き・アイ無し）だけが 1..63 に居て、残り 7 個は 64 以降。
+ *
+ * **向きはまだ見た目に出ません**（4 向きとも同じ形・同じ色で、`BlockDef` は
+ * 面ごとに 3 色しか持てない）。それでも持たせてあるのは、**輪の向きが正しいか**を
+ * 建てた側の外から確かめられるようにするため（`test/stronghold.test.ts`）で、
+ * ID を先に取っておかないと**あとから足すときに振り直しになる**（セーブが化ける）。
+ */
+export const END_PORTAL_FRAME = 51;
+
+/**
+ * 石レンガ。**要塞（`stronghold.ts`）の材料**で、地形には湧かない
+ * （ネザーレンガがネザー要塞専用なのと同じ）。
+ *
+ * 硬さは丸石と同じ 2.0。**石（1.5）より硬い**ので、要塞の壁を掘り抜くより
+ * 通路を歩いたほうが速い ——「建物である」ことが手で分かる差。
+ */
+export const STONE_BRICK = 53;
+
+/**
  * ブロック ID の枠は 2 段に分けてある。
  *
  * - **1..63**: 立方体と、**アイテムとして持てる**ブロック（ハーフや階段の「大元」も含む）。
@@ -217,6 +244,13 @@ const FIRST_BED_VARIANT = 96;
  * 大元は `NETHER_PORTAL`（X 向き）なので、アイテムもドロップも名前も増えない。
  */
 export const NETHER_PORTAL_Z = 103;
+
+/**
+ * エンドポータルの枠の状態違い。**向き 4 x アイの有無 2 で 8 通り**あり、
+ * 大元（+X 向き・アイ無し）だけが 1..63 に居るので、ここから 7 個を連番で取る。
+ * 個別に名前は付けない（引くのは `endPortalFrame()`）。
+ */
+const FIRST_FRAME_VARIANT = 104;
 
 /** 採掘に向いた道具の種類。 */
 export type ToolKind = "pickaxe" | "axe" | "shovel";
@@ -613,6 +647,64 @@ function bedSet(
   return defs;
 }
 
+/**
+ * エンドポータルの枠の高さ。Minecraft と同じ 13/16。
+ * **`STEP_HEIGHT`(0.6) より高いので、歩いて乗り越えられず跳ぶことになる** ——
+ * 輪の中へ落ちる形になり、起動した瞬間に踏むのと同じになる。
+ */
+export const FRAME_HEIGHT = 0.8125;
+const FRAME_BOX: BoxList = [[0, 0, 0, 1, FRAME_HEIGHT, 1]];
+/** アイを嵌めた版。**上面の真ん中に小さい箱がひとつ乗るだけ**（形で嵌まったと分かる）。 */
+const FRAME_EYE_BOX: BoxList = [
+  [0, 0, 0, 1, FRAME_HEIGHT, 1],
+  [0.25, FRAME_HEIGHT, 0.25, 0.75, 1, 0.75],
+];
+
+/** 枠の状態の数（向き 4 x アイの有無 2）。番号は `向きの添字 * 2 + (アイ ? 1 : 0)`。 */
+const FRAME_STATES = HORIZONTAL_FACINGS.length * 2;
+/** `[状態]` -> 実際のブロック ID。大元が 1 個で、残り 7 個は 64 以降。 */
+const FRAMES_BY_STATE = new Uint8Array(FRAME_STATES);
+/** ブロック ID -> 枠の状態。枠でなければ -1。 */
+const FRAME_STATE_OF = new Int8Array(ID_LIMIT).fill(-1);
+
+/**
+ * エンドポータルの枠 8 個ぶんの定義。**アイ無しとアイ入りで色と箱だけが違う。**
+ *
+ * アイ入りは `variantOf: END_PORTAL_FRAME` なので、名前もアイテムもドロップも
+ * 「エンドポータル枠」1 つに揃う（壁掛け松明・点火中のかまどと同じ仕掛け）。
+ */
+function endPortalFrameSet(): BlockDef[] {
+  const shared = {
+    // 立方体でないので opaque は false。**屋根としては光を止める**（地下の部屋なので
+    // 効き目は薄いが、ハーフ・階段と同じ扱いに揃えておく）
+    opaque: false,
+    blocksSky: true,
+    solid: true,
+    // **壊せない。** 掘れると、起動する前に枠を壊して詰められる
+    hardness: UNBREAKABLE,
+    model: "boxes" as const,
+  };
+  const plain = { top: 0x8f9b74, side: 0x6d7357, bottom: 0x5c6149 };
+  // アイを嵌めた側は上面だけ緑に光る色へ（`ENDER_EYE` のアイテム色と同じ）。
+  const eyed = { top: 0x3fbf8c, side: 0x6d7357, bottom: 0x5c6149 };
+
+  const defs: BlockDef[] = [];
+  for (let state = 0; state < FRAME_STATES; state++) {
+    const id = state === 0 ? END_PORTAL_FRAME : FIRST_FRAME_VARIANT + state - 1;
+    const eye = (state & 1) === 1;
+    FRAMES_BY_STATE[state] = id;
+    FRAME_STATE_OF[id] = state;
+    defs.push(
+      def(id, "エンドポータル枠", eye ? eyed : plain, {
+        ...shared,
+        boxes: eye ? FRAME_EYE_BOX : FRAME_BOX,
+        variantOf: state === 0 ? AIR : END_PORTAL_FRAME,
+      }),
+    );
+  }
+  return defs;
+}
+
 /** ポータルの 2 向き。形以外はまったく同じなので、1 か所で作る。 */
 function portalPair(): BlockDef[] {
   const shared = {
@@ -909,6 +1001,16 @@ export const BLOCKS: readonly BlockDef[] = [
   // **すぐ壊せる（hardness 0）が、何も落ちない**（`items.ts` の `DROPS`）——
   // 枠を壊したら消える仕組みはまだ無いので、消す手段をひとつ残しておく。
   ...portalPair(),
+
+  // 要塞（`stronghold.ts`）の材料。**地形には湧かない**（ネザーレンガと同じ扱い）。
+  def(
+    STONE_BRICK,
+    "石レンガ",
+    { top: 0x7d8288, side: 0x757a80, bottom: 0x6d7278 },
+    { hardness: 2, tool: "pickaxe", minTier: TIER_WOOD },
+  ),
+  // エンドポータルの枠 8 通り（向き 4 x アイの有無 2）。**壊せない。**
+  ...endPortalFrameSet(),
 ];
 
 
@@ -1328,6 +1430,38 @@ export function bedPartner(id: number): { dx: number; dz: number; id: number } |
   // 足側から見て向いている先が枕。枕側から見れば逆向きに足がある。
   const sign = head ? -1 : 1;
   return { dx: sx * sign, dz: sz * sign, id: BEDS_BY_STATE[state ^ 1] };
+}
+
+/**
+ * エンドポータルの枠 1 個。`facing` は**輪の中心を向く水平の面番号**で、
+ * `eye` はエンダーアイが嵌まっているか。水平でない向きを渡したら `AIR`。
+ *
+ * **枠を書き出す唯一の入口。** `stronghold.ts` が輪を並べるときも、
+ * アイを嵌める周（TASKS 2-9）も、必ずここを通すこと ——
+ * 状態の番号（`向きの添字 * 2 + アイ`）を写すと、片方だけ並べ替えたときに
+ * 「輪はできているのにアイだけ別の向きに嵌まる」形で静かに壊れる。
+ */
+export function endPortalFrame(facing: number, eye: boolean): number {
+  const index = HORIZONTAL_FACING_INDEX[facing];
+  if (index === undefined || index < 0) return AIR;
+  return FRAMES_BY_STATE[index * 2 + (eye ? 1 : 0)];
+}
+
+/** エンドポータルの枠か（アイの有無・向きを問わない）。 */
+export function isEndPortalFrame(id: number): boolean {
+  return FRAME_STATE_OF[id] >= 0;
+}
+
+/** その枠にエンダーアイが嵌まっているか。枠でなければ false。 */
+export function frameHasEye(id: number): boolean {
+  const state = FRAME_STATE_OF[id];
+  return state >= 0 && (state & 1) === 1;
+}
+
+/** その枠が向いている水平の面番号。枠でなければ `NO_SUPPORT`。 */
+export function frameFacing(id: number): number {
+  const state = FRAME_STATE_OF[id];
+  return state < 0 ? NO_SUPPORT : HORIZONTAL_FACINGS[state >> 1];
 }
 
 export function isTranslucent(id: number): boolean {

@@ -204,6 +204,54 @@ export function run(): void {
     `y=112..127 に ${farWrote} マス`,
   );
 
+  // --- 横に外れた構造物は `build()` ごと飛ばす ---
+  // **結果は変わらない**（`put` がチャンクの外を捨てるので）が、**捨てられるだけの
+  // 書き込みを何千回も呼ぶ**ことになる。要塞は 1 個 1014 マス・1 チャンクにつき
+  // 最大 9 個列挙されるので、飛ばさないと 9000 回ぶん空回りする。
+  {
+    let builds = 0;
+    const counted: StructureDef = {
+      ...CUBE,
+      name: "数える立方体",
+      build(place, put) {
+        builds++;
+        CUBE.build(place, put);
+      },
+    };
+    const column = placementsFor([counted], SEED, 0, 0, flatGround().at);
+    check("横に外れた判定の前提（列挙が 2 個以上ある）", column.length > 1, `${column.length} 個`);
+
+    // 同じ高さの段で、チャンク (0,0) に**掛かる**ものだけが建つこと。
+    builds = 0;
+    const data = new Uint8Array(CHUNK_VOLUME);
+    stampPlacements(column, 0, 2, 0, data);
+    const overlapping = column.filter(
+      (p) =>
+        p.x + p.def.extent.x >= 0 &&
+        p.x - p.def.extent.x <= CHUNK_SIZE - 1 &&
+        p.z + p.def.extent.z >= 0 &&
+        p.z - p.def.extent.z <= CHUNK_SIZE - 1,
+    ).length;
+    console.log(`      列挙 ${column.length} 個のうち、掛かるのは ${overlapping} 個 / 建てた ${builds} 回`);
+    check("掛からない構造物は build() を呼ばない", builds === overlapping, `${builds} 回`);
+
+    // **書き込んだ結果が変わらないこと**（飛ばしすぎていない裏取り）。
+    const reference = new Uint8Array(CHUNK_VOLUME);
+    for (const place of column) {
+      place.def.build(place, (x, y, z, id) => {
+        const lx = x;
+        const ly = y - 2 * CHUNK_SIZE;
+        const lz = z;
+        if (lx < 0 || ly < 0 || lz < 0) return;
+        if (lx >= CHUNK_SIZE || ly >= CHUNK_SIZE || lz >= CHUNK_SIZE) return;
+        reference[(ly * CHUNK_SIZE + lz) * CHUNK_SIZE + lx] = id;
+      });
+    }
+    let differ = 0;
+    for (let i = 0; i < data.length; i++) if (data[i] !== reference[i]) differ++;
+    check("飛ばしても書き込む中身は変わらない", differ === 0, `${differ} マス違う`);
+  }
+
   // --- 種類が違えば別の場所に散る ---
   // **`salt` が効いていることを、書き込んだ結果ではなく置き場所で見る。**
   // 「1 チャンクに両方のブロックが出たか」で見ると、たまたま片方が
