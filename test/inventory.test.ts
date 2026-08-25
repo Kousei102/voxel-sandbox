@@ -1,5 +1,5 @@
 import { COBBLE, DIRT, STONE } from "../src/blocks";
-import { HOTBAR_SIZE, INVENTORY_SIZE, Inventory, isEmpty } from "../src/inventory";
+import { HOTBAR_SIZE, INVENTORY_SIZE, Inventory, bulkDiscard, isEmpty } from "../src/inventory";
 import { MAX_STACK, NO_ITEM, WOOD_PICKAXE, itemStackLimit } from "../src/items";
 import { check, describe } from "./harness";
 
@@ -173,7 +173,20 @@ export function run(): void {
   check("壊れた保存データでも上限を超えない", broken.count(STONE) === MAX_STACK, `${broken.count(STONE)} 個`);
   broken.deserialize(undefined);
   check("保存データが無ければ空になる", broken.slots.every(isEmpty));
+
+  describe("まとめ捨ての判定（bulkDiscard）");
+
+  {
+    const none = { ctrlKey: false, metaKey: false, shiftKey: false };
+    check("素の Q は 1 個だけ", !bulkDiscard(none));
+    check("Ctrl+Q は山ごと", bulkDiscard({ ...none, ctrlKey: true }));
+    check("Cmd+Q（Mac）も山ごと", bulkDiscard({ ...none, metaKey: true }));
+    // **Shift も受けるのは意図的。** ブラウザによっては Ctrl+Q が窓を閉じる操作に
+    // 割り当てられていて `preventDefault()` で止められないので、逃げ道を残してある。
+    check("Shift+Q も山ごと（逃げ道）", bulkDiscard({ ...none, shiftKey: true }));
+  }
 }
+
 
 function countUsed(inv: Inventory): number {
   return inv.slots.filter((slot) => !isEmpty(slot)).length;

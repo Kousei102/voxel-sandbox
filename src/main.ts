@@ -15,26 +15,19 @@ import {
   CRAFTING_TABLE,
   FURNACE,
   FURNACE_LIT,
-  OBSIDIAN,
   PALETTE,
-  WATER,
   baseBlock,
   blockName,
   blockSound,
   bedPartner,
-  faceFromYaw,
   isBed,
   isBedHead,
-  isReplaceable,
-  liquidFog,
-  placeSpot,
   shapeBounds,
 } from "./blocks";
 import { AudioEngine } from "./audio";
 import { biomeName } from "./biomes";
 import {
   AUTOSAVE_INTERVAL,
-  CHUNK_BITS,
   CHUNK_SIZE,
   REACH,
   RENDER_DISTANCE,
@@ -49,17 +42,15 @@ import {
 import { Chests } from "./chests";
 import { CrackOverlay } from "./crack";
 import { CraftScreen } from "./craftscreen";
-import { DayNight, WAKE_TIME, canSleep } from "./daynight";
+import { DayNight, WAKE_TIME, canSleep, environmentFor } from "./daynight";
 import { Dimensions, emptyState, type DimensionState } from "./dimensions";
 import { Drops, type DropContext } from "./drops";
 import { DropRenderer } from "./droprender";
 import { Furnaces } from "./furnaces";
-import { Inventory } from "./inventory";
-import { quenchAround } from "./liquids";
+import { Inventory, bulkDiscard } from "./inventory";
 import { InventoryScreen } from "./inventoryui";
 import {
   NO_ITEM,
-  bucketUse,
   foodOf,
   isBucket,
   isFireStarter,
@@ -67,11 +58,13 @@ import {
   placedBlock,
   rollDrop,
 } from "./items";
-import { Mining, breakTime, canHarvest } from "./mining";
+import { debugMob, nextShot } from "./debugspawn";
+import { debugText } from "./debugtext";
+import { Mining, canHarvest } from "./mining";
 import { MobRenderer } from "./mobrender";
-import { MOB_KINDS, Mobs, type MobContext } from "./mobs";
+import { Mobs, type MobContext } from "./mobs";
 import { Player } from "./player";
-import { tryIgnite, tryPlace } from "./placing";
+import { tryBucket, tryIgnite, tryPlace } from "./placing";
 import { portalAxis, type PortalAxis } from "./portals";
 import {
   PortalGate,
@@ -83,11 +76,12 @@ import {
 import { PROJECTILE_KINDS, Projectiles } from "./projectiles";
 import { ProjectileRenderer } from "./projectilerender";
 import { raycastVoxels, type RaycastHit } from "./raycast";
-import { DigCadence, EatCadence, StepCadence, clampVolume } from "./sfx";
+import { DigCadence, Footsteps, clampVolume } from "./sfx";
 import { Sky } from "./sky";
-import { clearSave, countEdits, deserializeEdits, load, save, serializeEdits } from "./storage";
+import { buildSave, collectState, restoredValues, savedShape } from "./session";
+import { clearSave, countEdits, deserializeEdits, load, save, type SaveData } from "./storage";
 import { Hud } from "./ui";
-import { EAT_SECONDS, MAX_HEALTH, MAX_HUNGER, VOID_Y, Vitals } from "./vitals";
+import { Eating, VOID_Y, Vitals, deathMessage } from "./vitals";
 import { World } from "./world";
 import { WorldGen } from "./worldgen";
 import { hashSeed } from "./noise";
@@ -138,18 +132,16 @@ const player = new Player(camera);
 // 音。鳴らすかどうかの判断は sfx.ts、実際に鳴らすのは audio.ts。
 // ここは「起きたこと」を渡すだけにして、条件を書かない。
 const audio = new AudioEngine();
-const stepCadence = new StepCadence();
+const footsteps = new Footsteps();
 const digCadence = new DigCadence();
-const eatCadence = new EatCadence();
+const eating = new Eating();
 /**
- * 足音・着水・空腹の消耗に使う、前のフレームの状態。
+ * 空腹の消耗と足音に使う、前のフレームの位置。
  * **飛ばしたら（リスポーン・ワールド作り直し）必ず `resetFootprint()` を呼ぶこと** ——
  * 呼ばないと数百 m 歩いたことになって、着いた瞬間に腹が減る。
  */
 let lastFootX = 0;
 let lastFootZ = 0;
-let wasOnGround = false;
-let wasInWater = false;
 
 const deathScreen = document.getElementById("death") as HTMLElement;
 const deathCause = document.getElementById("deathcause") as HTMLElement;
@@ -227,13 +219,6 @@ let autosaveTimer = 0;
 let hit: RaycastHit | null = null;
 let underwater = false;
 let breaking = false;
-/**
- * 食べている最中。**掘る（`breaking`）とまったく同じ形**で、押している間だけ続く。
- * `eatItem` は食べ始めたアイテムで、手が変わったら中断するために控える。
- */
-let eating = false;
-let eatTimer = 0;
-let eatItem = NO_ITEM;
 let furnaceUiTimer = 0;
 /** クリエイティブでは即掘れて、置いてもアイテムが減らない。 */
 let creative = false;
@@ -431,7 +416,6 @@ function refreshFurnaceUi(dt: number): void {
   screen.refresh();
 }
 
-/** 飛んだ距離を歩いたことにしないための控え直し。**位置を飛ばしたら必ず呼ぶ。** */
 /**
  * ポータルに立っていたら向こうへ。**待つ時間も掛け金も `portaltravel.ts` の
  * `PortalGate`** で、ここは「いま面の中に居るか」を渡すだけ。
@@ -489,10 +473,11 @@ function travelThrough(axis: PortalAxis): void {
   saveDirty = true;
 }
 
+/** 飛んだ距離を歩いたことにしないための控え直し。**位置を飛ばしたら必ず呼ぶ。** */
 function resetFootprint(): void {
   lastFootX = player.position.x;
   lastFootZ = player.position.z;
-  stepCadence.reset();
+  footsteps.reset();
 }
 
 /**
@@ -533,37 +518,16 @@ function placeAtSpawn(x: number, y: number, z: number): void {
   resetFootprint();
 }
 
-/**
- * いま居る次元の「位置ごとの持ち物」。**保存するときも、次元を移るときも同じものを渡す。**
- *
- * 2 か所に書き写さないこと —— 片方だけ直すと、移った先から戻ったときに
- * かまどの中身だけが消える、という形で静かに壊れる。
- */
+/** いま居る次元の「位置ごとの持ち物」。組み立ては `session.ts`（判断はあちら）。 */
 function liveState(): DimensionState {
-  return {
-    edits: serializeEdits(world.editsForSave()),
-    drops: drops.serialize(),
-    furnaces: furnaces.serialize(),
-    chests: chests.serialize(),
-  };
+  return collectState({ world, drops, furnaces, chests });
 }
 
-function currentSave() {
+function currentSave(): SaveData {
   // **いま居る次元のぶんを預けてから書き出す**（`forSave` が中で預かる）。
-  // オーバーワールドの持ち物は今までどおり上の階層、それ以外は `dims` の下。
-  const shape = dims.forSave(liveState());
-  return {
-    version: 1 as const,
-    // **`world.seed` ではない**（ネザーに居ると混ぜたあとの値になっている）。
+  return buildSave({
     seed: worldSeed,
-    player: {
-      x: player.position.x,
-      y: player.position.y,
-      z: player.position.z,
-      yaw: player.yaw,
-      pitch: player.pitch,
-      flying: player.flying,
-    },
+    player,
     time: dayNight.time,
     creative,
     health: vitals.health,
@@ -571,15 +535,9 @@ function currentSave() {
     inventory: inventory.serialize(),
     craft: craft.serialize(),
     volume: audio.getVolume(),
-    drops: shape.top.drops,
-    furnaces: shape.top.furnaces,
-    chests: shape.top.chests,
-    // **リスポーン地点は次元ごとに持たない**（世界に 1 つだけの地点なので上の階層のまま）。
     bed: beds.serialize(),
-    edits: shape.top.edits,
-    dim: shape.dim,
-    dims: shape.others,
-  };
+    shape: dims.forSave(liveState()),
+  });
 }
 
 function saveNow(message = "保存しました"): void {
@@ -594,7 +552,9 @@ function saveNow(message = "保存しました"): void {
 // --- 起動 ---------------------------------------------------------------
 
 const saved = load();
-if (typeof saved?.time === "number" && Number.isFinite(saved.time)) dayNight.setTime(saved.time);
+// **読んだ値をどこまで信じるかは `session.ts`**（`null` は「セーブに無い」）。
+const restored = restoredValues(saved);
+if (restored.time !== null) dayNight.setTime(restored.time);
 inventory.deserialize(saved?.inventory);
 // **必ずインベントリを入れたあとで。** 盤面と掴んでいた山は「預かり物」なので、
 // 読んだらそのままインベントリへ返す（開いたままタブを閉じてもアイテムが消えない）。
@@ -605,28 +565,11 @@ craft.returnAll();
 if (saved?.craft) saveDirty = true;
 audio.setVolume(clampVolume(saved?.volume));
 setCreative(saved?.creative ?? false);
-// 死んだまま保存された場合は満タンで再開する（読み込み直後に死亡画面を出さない）
-if (typeof saved?.health === "number" && saved.health > 0) {
-  vitals.health = Math.min(MAX_HEALTH, saved.health);
-}
-// 空腹が無かった頃のセーブには入っていないので、そのときは満腹で再開する。
-// **0 も受け取る**（体力と違って、空腹 0 では死んでいない）。
-if (typeof saved?.hunger === "number" && Number.isFinite(saved.hunger)) {
-  vitals.hunger = Math.max(0, Math.min(MAX_HUNGER, saved.hunger));
-}
-// **次元ごとに振り分けてから世界を作る。** 上の階層（`edits` / `drops` / `furnaces` /
-// `chests`）はオーバーワールドのぶんで、それ以外は `dims` の下に入っている。
+if (restored.health !== null) vitals.health = restored.health;
+if (restored.hunger !== null) vitals.hunger = restored.hunger;
+// **次元ごとに振り分けてから世界を作る**（振り分け方は `session.ts` の `savedShape()`）。
 // 返ってくるのは**いま居る次元**の持ち物（知らない次元ならオーバーワールドに落ちる）。
-const here = dims.fromSave({
-  dim: saved?.dim,
-  top: {
-    edits: saved?.edits,
-    drops: saved?.drops,
-    furnaces: saved?.furnaces,
-    chests: saved?.chests,
-  },
-  others: saved?.dims,
-});
+const here = dims.fromSave(savedShape(saved));
 startWorld(saved?.seed ?? (Math.random() * 0xffffffff) >>> 0, here, saved?.player);
 beds.deserialize(saved?.bed);
 
@@ -736,7 +679,7 @@ document.addEventListener("pointerlockchange", () => {
     player.clearKeys();
     breaking = false;
     mining.reset();
-    stopEating();
+    eating.stop();
     syncTimeInput();
     if (saveDirty) saveNow();
   }
@@ -750,7 +693,7 @@ function openPanel(show: () => void): void {
   if (screen.isOpen) return;
   breaking = false;
   mining.reset();
-  stopEating();
+  eating.stop();
   show();
   hud.setPlaying(false, false);
   document.exitPointerLock();
@@ -819,7 +762,7 @@ document.addEventListener("mousedown", (event) => {
       // 殴っている間は掘らない（ひび割れが出ると、何を壊しているのか分からない）
       breaking = false;
       mining.reset();
-      stopEating();
+      eating.stop();
     } else if (hit) {
       // クリエイティブは 1 クリック 1 個。サバイバルは押しっぱなしで掘り進める。
       if (creative) breakBlock(hit.block.x, hit.block.y, hit.block.z, hit.id, NO_ITEM);
@@ -844,7 +787,7 @@ document.addEventListener("mouseup", (event) => {
     mining.reset();
   } else if (event.button === 2) {
     // 離したら食べかけは無かったことに（アイテムは減らさない）
-    stopEating();
+    eating.stop();
   }
 });
 
@@ -864,14 +807,6 @@ function fitHighlight(target: RaycastHit): void {
 
 /** 形を囲む箱の控え。毎フレーム使うので配列は使い回す。 */
 const bounds = [0, 0, 0, 1, 1, 1];
-
-/** 食べるのをやめる。**押している間だけ続く**ので、手を離す・画面が変わるたびに呼ぶ。 */
-function stopEating(): void {
-  eating = false;
-  eatTimer = 0;
-  eatItem = NO_ITEM;
-  eatCadence.reset();
-}
 
 /** 右クリック: 作業台なら開く、食べ物なら食べ始める、それ以外は持っているブロックを置く。 */
 function useOrPlace(): void {
@@ -926,10 +861,7 @@ function useOrPlace(): void {
       hud.flash("お腹は空いていません");
       return;
     }
-    eating = true;
-    eatTimer = 0;
-    eatItem = inventory.selectedItem;
-    eatCadence.reset();
+    eating.begin(inventory.selectedItem);
     return;
   }
 
@@ -949,8 +881,7 @@ function useOrPlace(): void {
 }
 
 /**
- * バケツで汲む／流す。**判断は `items.ts` の `bucketUse()`** にあるので、
- * ここは「どのマスに効くか」を決めて結果を貼るだけ。
+ * バケツで汲む／流す。**判断は `placing.ts` の `tryBucket()`。**
  *
  * **ここだけ光線を引き直す。** 普段の光線は液体を素通りするので
  * （溶岩湖の向こうを狙えるように）、そのままでは水面を狙えず汲めない。
@@ -959,32 +890,15 @@ function useBucket(held: number): void {
   const target = raycastVoxels(world, camera.position, lookDirection, REACH, true);
   if (!target) return;
 
-  const use = bucketUse(held, target.id);
-  if (!use) {
-    hud.flash("汲めるのは水と溶岩だけです");
-    return;
-  }
+  const used = tryBucket(world, target, held, player.yaw);
+  if (used.kind === "blocked") hud.flash(used.message);
+  if (used.kind !== "used") return;
 
-  // 汲むのは狙ったマス。流すのは置くマス（狙ったのが液体ならそのマス自身）。
-  const spot = use.kind === "fill" ? target.block : placeSpot(target, faceFromYaw(player.yaw));
-  const { x, y, z } = spot;
-  if (use.kind === "empty" && !isReplaceable(world.getVoxel(x, y, z))) return;
-  if (!world.setVoxel(x, y, z, use.kind === "fill" ? AIR : use.liquid)) return;
-
-  // 流した液体が周りとぶつかって固まるか。**どう固まるかは `liquids.ts`**（判断）で、
-  // ここは「流した直後に効かせる」ことだけを持つ。
-  const hardened = use.kind === "empty" ? quenchAround(world, x, y, z) : 0;
-
-  // **クリエイティブでも中身は入れ替える。** バケツは「減る道具」ではなく
-  // 中身そのものがアイテムなので、入れ替えないと永久に空のままで何も流せない。
-  inventory.setSelected(use.item, 1);
+  // **クリエイティブでも中身は入れ替える**（`placing.ts` の `BucketOutcome`）。
+  inventory.setSelected(used.item, 1);
   // 水の音を借りている（溶岩用の音はまだ無い）。
   audio.play("splash");
-  hud.flash(
-    hardened > 0
-      ? `${blockName(OBSIDIAN)}ができた（${hardened} 個）`
-      : `${blockName(use.liquid)}を${use.kind === "fill" ? "汲んだ" : "流した"}`,
-  );
+  hud.flash(used.message);
   hud.refresh();
   saveDirty = true;
 }
@@ -1065,18 +979,6 @@ window.addEventListener("wheel", (event) => {
   hud.refresh();
 });
 
-/**
- * まとめ捨てか（Q に修飾キーが付いているか）。
- *
- * **Shift も受けるのは意図的です。** Minecraft と同じ Ctrl+Q を本命にしていますが、
- * ブラウザによっては Ctrl+Q がブラウザ自身の終了に割り当てられていて、
- * `preventDefault()` では止められません。押した人が窓ごと閉じるより、
- * 逃げ道を 1 つ持たせるほうが安全側です。
- */
-function bulkDiscard(event: KeyboardEvent): boolean {
-  return event.ctrlKey || event.metaKey || event.shiftKey;
-}
-
 window.addEventListener("keydown", (event) => {
   // インベントリを開いているときは、閉じる・捨てる・ホットバーへ入れ替えるだけ
   if (screen.isOpen) {
@@ -1137,24 +1039,17 @@ window.addEventListener("keydown", (event) => {
     case "KeyF":
       player.toggleFly();
       return;
-    case "KeyM":
-      // 狙った所にモブを 1 体。湧きの条件に関わらず出せるので、
-      // 「湧かない場所」と「描けていない」を切り分けるのに使える。
-      if (hit) {
-        mobs.spawn(
-          MOB_KINDS[Math.floor(Math.random() * MOB_KINDS.length)],
-          hit.block.x + hit.normal.x + 0.5,
-          hit.block.y + hit.normal.y,
-          hit.block.z + hit.normal.z + 0.5,
-          player.yaw + Math.PI,
-        );
-      }
+    case "KeyM": {
+      // 狙った所にモブを 1 体（何を・どこに出すかは `debugspawn.ts`）。
+      if (!hit) return;
+      const spawn = debugMob(hit, player.yaw, Math.random());
+      mobs.spawn(spawn.kind, spawn.x, spawn.y, spawn.z, spawn.yaw);
       return;
+    }
     case "KeyN":
-      // 飛び道具を 1 つ、視線の向きへ。**種類は押すたびに順ぐり**なので、
-      // 4 種類とも同じ手順で出せる（`M` のモブ出しと同じ、切り分けのための鍵）。
+      // 飛び道具を 1 つ、視線の向きへ。**種類は押すたびに順ぐり**（`debugspawn.ts`）。
       // 撃つ相手も当たったときの効果もまだ無い（火球はブレイズ、矢は弓と一緒に入る）。
-      debugShot = (debugShot + 1) % PROJECTILE_KINDS.length;
+      debugShot = nextShot(debugShot);
       projectiles.launch(
         PROJECTILE_KINDS[debugShot].kind,
         player.position.x,
@@ -1270,25 +1165,28 @@ function frame(now: number): void {
 
   const stats = world.stats();
   hud.setLoading(stats.queued > 0);
+  // 並べ方は `debugtext.ts`（判断はあちら。ここは値を集めるだけ）。
   hud.setDebug(
-    `${fps.toFixed(0)} fps\n` +
-      `xyz ${player.position.x.toFixed(1)} ${player.position.y.toFixed(1)} ${player.position.z.toFixed(1)}\n` +
-      `chunk ${Math.floor(player.position.x) >> CHUNK_BITS} ${Math.floor(player.position.z) >> CHUNK_BITS}` +
-      `  loaded ${stats.chunks}  queue ${stats.queued}\n` +
-      `tris ${stats.triangles.toLocaleString()}  edits ${countEdits(world.editsForSave())}\n` +
-      `time ${dayNight.clock()}  light ${(dayNight.brightness * 100).toFixed(0)}%  ${creative ? "creative" : "survival"}` +
-      `  dim ${dims.nameOf(dims.current)}\n` +
-      // **バイオームはオーバーワールドの値**（`overworld` は種だけ同じ生成器）。
-      // ネザーに居るときも出るが、そこの地形とは関係ない。
-      `biome ${biomeName(overworld.biomeAt(Math.floor(player.position.x), Math.floor(player.position.z)))}` +
-      `  mobs ${mobs.count}  drops ${drops.count}  furnaces ${furnaces.count}  chests ${chests.count}` +
-      `  shots ${projectiles.count}\n` +
-      `hp ${vitals.health}/${MAX_HEALTH}  food ${vitals.hunger}/${MAX_HUNGER}` +
-      `${vitals.poisoned ? " (毒)" : ""}  air ${(vitals.airFraction * 100).toFixed(0)}%\n` +
-      `${player.flying ? "fly" : player.onGround ? "ground" : "air"}${player.inLiquid ? ` / ${blockName(player.liquid)}` : ""}${vitals.burning ? " / 炎上" : ""}\n` +
-      `hand ${inventory.selectedItem === NO_ITEM ? "-" : itemName(inventory.selectedItem)}\n` +
-      `target ${hit ? `${blockName(hit.id)} (${hit.block.x}, ${hit.block.y}, ${hit.block.z})` : "-"}` +
-      (hit ? `  ${formatBreakTime(hit.id, inventory.selectedItem)}` : ""),
+    debugText({
+      fps,
+      player,
+      stats,
+      edits: countEdits(world.editsForSave()),
+      dayNight,
+      creative,
+      dimension: dims.nameOf(dims.current),
+      biome: biomeName(overworld.biomeAt(Math.floor(player.position.x), Math.floor(player.position.z))),
+      counts: {
+        mobs: mobs.count,
+        drops: drops.count,
+        furnaces: furnaces.count,
+        chests: chests.count,
+        shots: projectiles.count,
+      },
+      vitals,
+      held: inventory.selectedItem,
+      hit,
+    }),
   );
 
   renderer.render(scene, camera);
@@ -1328,13 +1226,10 @@ function updateVitals(dt: number, moved: number): void {
   if (hurt && vitals.dead) {
     breaking = false;
     mining.reset();
-    stopEating();
+    eating.stop();
     // **リスポーンより前に落とすこと**（`moveToSpawn()` が位置を変えるので、
     // あとに回すと初期位置に湧く）。
-    const lost = dropOnDeath();
-    deathCause.textContent =
-      (vitals.cause ? `死因: ${vitals.cause}` : "") +
-      (lost > 0 ? `　持ち物 ${lost} 山を落としました（5 分以内に取りに戻る）` : "");
+    deathCause.textContent = deathMessage(vitals.cause, dropOnDeath());
     deathScreen.classList.remove("hidden");
     saveDirty = true;
     document.exitPointerLock();
@@ -1349,28 +1244,17 @@ function updateVitals(dt: number, moved: number): void {
  * 食べられるかは `vitals.ts` が持っていて、ここには数値を書かない。
  */
 function updateEating(dt: number): void {
-  if (!eating) return;
-  // 手が変わった・持ち物が尽きた・満腹になったら中断（食べかけは消費しない）
-  if (!playing || inventory.selectedItem !== eatItem || !vitals.canEat) {
-    stopEating();
-    return;
-  }
-  const food = foodOf(eatItem);
-  if (!food) {
-    stopEating();
-    return;
-  }
-
-  eatTimer += dt;
-  if (eatCadence.advance(dt)) audio.play("eat");
-  if (eatTimer < EAT_SECONDS) return;
+  const held = inventory.selectedItem;
+  const food = foodOf(held);
+  const step = eating.advance(dt, { playing, held, canEat: vitals.canEat, isFood: food !== null });
+  if (step === "chew") audio.play("eat");
+  if (step !== "done" || !food) return;
 
   vitals.eat(food);
   inventory.consumeSelected(1);
-  hud.flash(`${itemName(eatItem)} を食べました`);
+  hud.flash(`${itemName(held)} を食べました`);
   hud.refresh();
   saveDirty = true;
-  stopEating();
 }
 
 /**
@@ -1391,13 +1275,6 @@ function dropOnDeath(): number {
   }
   if (lost.length > 0) hud.refresh();
   return lost.length;
-}
-
-/** デバッグ表示用: いま持っている道具で何秒かかるか。 */
-function formatBreakTime(blockId: number, tool: number): string {
-  const time = breakTime(blockId, tool);
-  if (!Number.isFinite(time)) return "掘れない";
-  return `${time.toFixed(2)}s${canHarvest(blockId, tool) ? "" : " (落ちない)"}`;
 }
 
 /** 掘り進める。ひび割れの表示もここでまとめて更新する。 */
@@ -1435,25 +1312,12 @@ function updateMining(dt: number): void {
  */
 function updateSounds(moved: number): void {
   audio.setUnderwater(underwater);
-
   const { x, y, z } = player.position;
-
-  if (!playing) {
-    stepCadence.reset();
-    wasOnGround = player.onGround;
-    wasInWater = player.inWater;
-    return;
-  }
-
   // 足元のブロック。立っている面の材質で足音が変わる
   const ground = world.getVoxel(Math.floor(x), Math.floor(y - 0.1), Math.floor(z));
-
-  if (stepCadence.advance(moved, player)) audio.play("step", blockSound(ground));
-  if (player.onGround && !wasOnGround) audio.play("land", blockSound(ground));
-  if (player.inWater !== wasInWater) audio.play("splash");
-
-  wasOnGround = player.onGround;
-  wasInWater = player.inWater;
+  for (const cue of footsteps.update({ playing, moved, ground: blockSound(ground), player })) {
+    audio.play(cue.sfx, cue.group);
+  }
 }
 
 /**
@@ -1461,31 +1325,22 @@ function updateSounds(moved: number): void {
  * フォグの色は地平線と揃えておかないと、チャンクの出現が見えてしまう。
  */
 function updateEnvironment(): void {
-  const head = world.getVoxel(
-    Math.floor(camera.position.x),
-    Math.floor(camera.position.y),
-    Math.floor(camera.position.z),
+  // **決めるのは `daynight.ts` の `environmentFor()`**（ここは引いて貼るだけ）。
+  const env = environmentFor(
+    world.getVoxel(
+      Math.floor(camera.position.x),
+      Math.floor(camera.position.y),
+      Math.floor(camera.position.z),
+    ),
+    dayNight,
   );
-  // **息と音のこもりは水だけ。** 液体すべてに広げると、溶岩の中で溺れ始める。
-  underwater = head === WATER;
-
-  // フォグは液体すべてに掛ける。**どの色でどれだけ濃いかは `blocks.ts` の `fog`**
-  // （ここは引いて貼るだけ。数値を持つと main.ts が判断を持ち始める）。
-  const liquid = liquidFog(head);
-  if (liquid) {
-    fog.color.setHex(liquid.color);
-    // 水は夜に暗くなるが、溶岩は自分で光るので掛けない
-    if (liquid.daylit) fog.color.multiplyScalar(dayNight.brightness);
-    fog.near = liquid.near;
-    fog.far = liquid.far;
-  } else {
-    fog.color.copy(dayNight.horizon);
-    fog.near = RENDER_DISTANCE * CHUNK_SIZE * 0.55;
-    fog.far = RENDER_DISTANCE * CHUNK_SIZE * 0.98;
-  }
+  underwater = env.headInWater;
+  fog.color.copy(env.fog);
+  fog.near = env.near;
+  fog.far = env.far;
 
   // 天球も液体の色で塗りつぶす（水面から上を見上げたときと同じ扱い）
-  sky.setUnderwater(liquid !== null, fog.color);
+  sky.setUnderwater(env.inLiquid, fog.color);
   sky.update(dayNight);
   world.setDaylight(dayNight.tint);
 }

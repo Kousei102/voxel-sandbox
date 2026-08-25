@@ -1,4 +1,5 @@
-import { DayNight, WAKE_TIME, canSleep, sunElevation } from "../src/daynight";
+import { AIR, LAVA, STONE, WATER } from "../src/blocks";
+import { DayNight, WAKE_TIME, canSleep, environmentFor, sunElevation } from "../src/daynight";
 import { DAY_LENGTH_SECONDS, NIGHT_BRIGHTNESS } from "../src/constants";
 import { check, describe } from "./harness";
 
@@ -196,4 +197,44 @@ export function run(): void {
   check("起きた瞬間はもう寝られない", !canSleep(WAKE_TIME));
   dn.setTime(WAKE_TIME);
   check("起きる時刻は 06:00", dn.clock() === "06:00", dn.clock());
+
+  describe("空とフォグ（environmentFor）");
+
+  {
+    const dn2 = new DayNight();
+    dn2.setTime(0.25); // 南中
+    // **返るのは使い回しの 1 個**（毎フレーム呼ぶので作り直さない）。
+    // だから値は**引いたらすぐ控える**こと —— これを忘れると、2 回目の呼び出しで
+    // 1 回目の結果まで書き換わる（このテスト自身が最初にそれで落ちた）。
+    const snap = (head: number) => {
+      const e = environmentFor(head, dn2);
+      return { headInWater: e.headInWater, inLiquid: e.inLiquid, fog: e.fog.getHex(), near: e.near, far: e.far };
+    };
+
+    check("使い回しの 1 個を返す", environmentFor(AIR, dn2) === environmentFor(WATER, dn2));
+
+    const open = snap(AIR);
+    check("空の下では地平線の色（チャンクの出現が見えない）", open.fog === dn2.horizon.getHex());
+    check("空の下では浸かっていない", !open.headInWater && !open.inLiquid);
+    check("素のフォグは描画距離の内側で終わる", open.near > 0 && open.far > open.near, `${open.near.toFixed(1)} .. ${open.far.toFixed(1)}`);
+
+    const solid = snap(STONE);
+    check("岩の中でも液体扱いにしない", !solid.inLiquid && solid.fog === dn2.horizon.getHex());
+
+    const water = snap(WATER);
+    // **息と音のこもりは水だけ**（液体すべてに広げると溶岩で溺れる）。
+    check("水中は headInWater が立つ", water.headInWater && water.inLiquid);
+    check("水中のフォグは近い", water.far < open.far, `${water.far} < ${open.far.toFixed(1)}`);
+
+    const lava = snap(LAVA);
+    check("溶岩は inLiquid だけ（息は水と同じにしない）", lava.inLiquid && !lava.headInWater);
+    check("溶岩のフォグはいちばん近い", lava.far <= water.far, `${lava.far} <= ${water.far}`);
+
+    // 水は夜に暗くなり、溶岩は自分で光るので変わらない。
+    const dayWater = snap(WATER).fog;
+    const dayLava = snap(LAVA).fog;
+    dn2.setTime(0.75); // 真夜中
+    check("水のフォグは夜に暗くなる", snap(WATER).fog !== dayWater);
+    check("溶岩のフォグは夜でも変わらない", snap(LAVA).fog === dayLava);
+  }
 }

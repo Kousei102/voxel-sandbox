@@ -3,6 +3,8 @@ import {
   BURN_DAMAGE,
   BURN_SECONDS,
   DROWN_DAMAGE,
+  EAT_SECONDS,
+  Eating,
   EXHAUST_ATTACK,
   EXHAUST_LIMIT,
   EXHAUST_MINE,
@@ -12,6 +14,7 @@ import {
   LAVA_DAMAGE,
   LAVA_INTERVAL,
   MAX_HEALTH,
+  deathMessage,
   MAX_HUNGER,
   MOB_HURT_COOLDOWN,
   POISON_FLOOR,
@@ -601,4 +604,88 @@ export function run(): void {
     reborn.hunger === MAX_HUNGER && reborn.saturation === START_SATURATION && !reborn.poisoned,
     `空腹 ${reborn.hunger} / 満腹度 ${reborn.saturation}`,
   );
+
+  describe("食べる操作（Eating）");
+
+  {
+    const bread = { hunger: 5, saturation: 6, poison: false };
+    const HELD = 81;
+    const OTHER = 82;
+    const full = (over: Partial<{ playing: boolean; held: number; canEat: boolean; isFood: boolean }> = {}) => ({
+      playing: true,
+      held: HELD,
+      canEat: true,
+      isFood: true,
+      ...over,
+    });
+    /**
+     * 押しっぱなしのまま n 秒進める。返るのは**「その間に起きた一番強い結果」**
+     * （最後のフレームだけ見ると、食べ切ったあとの "none" に隠れる）。
+     */
+    const hold = (e: Eating, seconds: number, ctx = full()) => {
+      let strongest = "none";
+      for (let i = 0; i < Math.round(seconds * 60); i++) {
+        const step = e.advance(1 / 60, ctx);
+        if (step === "done") strongest = "done";
+        else if (step === "chew" && strongest === "none") strongest = "chew";
+      }
+      return strongest;
+    };
+
+    const eat = new Eating();
+    check("何もしていなければ進まない", eat.advance(1, full()) === "none" && !eat.active);
+
+    eat.begin(HELD);
+    check("食べ始めたら active", eat.active);
+    check("始めた瞬間には終わらない", eat.advance(0, full()) === "none");
+    check(`${EAT_SECONDS} 秒の手前ではまだ終わらない`, hold(eat, EAT_SECONDS * 0.9) !== "done");
+    check("食べ切ると done", hold(eat, EAT_SECONDS * 0.2) === "done");
+    // **食べ切ったら必ず止める**（押しっぱなしでも 1 回ぶんずつ）。
+    check("食べ切ったら止まる", !eat.active);
+    check("押しっぱなしでも 2 個目は勝手に食べない", hold(eat, EAT_SECONDS * 2) === "none");
+
+    // 咀嚼音。**この環境では食べる動きを描けないので、進んでいる手ごたえはこれだけ。**
+    const chewing = new Eating();
+    chewing.begin(HELD);
+    let bites = 0;
+    for (let i = 0; i < Math.round(EAT_SECONDS * 60); i++) {
+      if (chewing.advance(1 / 60, full()) === "chew") bites++;
+    }
+    check("食べているあいだ何口か噛む", bites >= 2, `${bites} 口`);
+
+    // 中断する条件。**どれも「食べかけは消費しない」**（`begin()` からやり直し）。
+    for (const [label, ctx] of [
+      ["手が変わったら中断", full({ held: OTHER })],
+      ["画面が変わったら中断", full({ playing: false })],
+      ["満腹になったら中断", full({ canEat: false })],
+      ["食べ物でなくなったら中断", full({ isFood: false })],
+    ] as const) {
+      const e = new Eating();
+      e.begin(HELD);
+      hold(e, EAT_SECONDS * 0.5);
+      check(label, e.advance(1 / 60, ctx) === "none" && !e.active);
+    }
+
+    const stopped = new Eating();
+    stopped.begin(HELD);
+    hold(stopped, EAT_SECONDS * 0.9);
+    stopped.stop();
+    stopped.begin(HELD);
+    check("やめたら進み具合も戻る", hold(stopped, EAT_SECONDS * 0.5) !== "done");
+
+    // 食べ切ったあとに何が戻るかは `Vitals.eat()`（ここは進み具合だけ）。
+    const belly = new Vitals();
+    belly.hunger = 10;
+    belly.saturation = 0;
+    belly.eat(bread);
+    check("食べた結果は Vitals が持つ", belly.hunger === 15, `${belly.hunger}`);
+  }
+
+  describe("死亡画面の 1 行（deathMessage）");
+
+  check("死因が出る", deathMessage("溶岩", 0) === "死因: 溶岩", deathMessage("溶岩", 0));
+  // 死んだ場所が遠いと取りに戻れないので、山の数と猶予を必ず出す。
+  check("落とした山の数と猶予も出る", deathMessage("モンスター", 3).includes("3 山") && deathMessage("モンスター", 3).includes("5 分"), deathMessage("モンスター", 3));
+  check("何も落としていなければ触れない", !deathMessage("落下", 0).includes("山"), deathMessage("落下", 0));
+  check("死因が分からなくても落ちない", deathMessage(null, 2).startsWith("　持ち物"), deathMessage(null, 2));
 }

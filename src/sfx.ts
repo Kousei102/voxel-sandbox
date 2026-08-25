@@ -179,6 +179,69 @@ export class StepCadence {
   }
 }
 
+/** 鳴らすもの 1 件。材質の要らない音（水しぶき）は `"none"`。 */
+export interface Cue {
+  readonly sfx: Sfx;
+  readonly group: SoundGroup;
+}
+
+/** `Footsteps.update()` に渡す、そのフレームの事実。**判断はこちらでしない。** */
+export interface FootstepInput {
+  /** 操作を受け付けているか。false のあいだは鳴らさず、溜めもしない。 */
+  readonly playing: boolean;
+  /** 水平に動いた距離。**空腹の消耗（`vitals.ts`）と同じ値を渡すこと。** */
+  readonly moved: number;
+  /** 立っている面の材質（`blockSound()` の結果）。 */
+  readonly ground: SoundGroup;
+  readonly player: {
+    readonly onGround: boolean;
+    readonly inLiquid: boolean;
+    readonly inWater: boolean;
+    readonly flying: boolean;
+  };
+}
+
+/**
+ * 足音・着地・水しぶき。**「前のフレームはどうだったか」もここが持つ** ——
+ * `main.ts` に置くと、鳴らす条件（着地した瞬間・水面をまたいだ瞬間）が
+ * ブラウザでしか確かめられない場所に散る。
+ */
+export class Footsteps {
+  private readonly cadence = new StepCadence();
+  private wasOnGround = false;
+  private wasInWater = false;
+
+  /** そのフレームで鳴らすものを順に返す。**呼ぶのは 1 フレームに 1 回だけ。** */
+  update(at: FootstepInput): Cue[] {
+    const { player, ground } = at;
+    if (!at.playing) {
+      // 止まっている間は溜めない（再開した瞬間に足音が連発しない）。
+      this.cadence.reset();
+      this.remember(player);
+      return [];
+    }
+
+    const cues: Cue[] = [];
+    if (this.cadence.advance(at.moved, player)) cues.push({ sfx: "step", group: ground });
+    // 着地は「空中から地面へ」の瞬間だけ。水面は出入りのどちらでも鳴らす。
+    if (player.onGround && !this.wasOnGround) cues.push({ sfx: "land", group: ground });
+    if (player.inWater !== this.wasInWater) cues.push({ sfx: "splash", group: "none" });
+
+    this.remember(player);
+    return cues;
+  }
+
+  /** 位置を飛ばしたとき（リスポーン・次元の移動）。飛んだ距離を歩いたことにしない。 */
+  reset(): void {
+    this.cadence.reset();
+  }
+
+  private remember(player: FootstepInput["player"]): void {
+    this.wasOnGround = player.onGround;
+    this.wasInWater = player.inWater;
+  }
+}
+
 /** コツコツ音 1 回ぶんの採掘の進み具合。1 ブロック掘るあいだに 4〜5 回鳴る。 */
 export const DIG_STEP = 0.22;
 

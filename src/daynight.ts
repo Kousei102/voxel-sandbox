@@ -1,5 +1,6 @@
 import { Color, Vector3 } from "three";
-import { DAY_LENGTH_SECONDS, NIGHT_BRIGHTNESS } from "./constants";
+import { WATER, liquidFog } from "./blocks";
+import { CHUNK_SIZE, DAY_LENGTH_SECONDS, NIGHT_BRIGHTNESS, RENDER_DISTANCE } from "./constants";
 
 /**
  * 時刻から空の色・地形の明るさ・太陽と月の位置を決める。
@@ -61,6 +62,53 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
 function wrap01(t: number): number {
   const w = t % 1;
   return w < 0 ? w + 1 : w;
+}
+
+/** 空とフォグに掛ける値。**色は使い回しの `Color`** なので、貼ったらすぐ使うこと。 */
+export interface Environment {
+  /**
+   * 頭が**水**の中か。息（`vitals.ts`）と音のこもり（`audio.ts`）が見る。
+   * **液体すべてに広げないこと** —— 溶岩の中で溺れ始める。
+   */
+  readonly headInWater: boolean;
+  /** 頭が液体の中か。フォグと天球の塗り潰しはこちら（水でも溶岩でも掛かる）。 */
+  readonly inLiquid: boolean;
+  readonly fog: Color;
+  readonly near: number;
+  readonly far: number;
+}
+
+/** 使い回し。毎フレーム呼ばれるので `Color` を作り直さない。 */
+const environment = { headInWater: false, inLiquid: false, fog: new Color(), near: 0, far: 0 };
+
+/** 素の（液体に浸かっていないときの）フォグの掛かり始めと終わり。 */
+const FOG_NEAR = RENDER_DISTANCE * CHUNK_SIZE * 0.55;
+const FOG_FAR = RENDER_DISTANCE * CHUNK_SIZE * 0.98;
+
+/**
+ * 頭の位置のブロックと時刻から、フォグと天球の値を決める。
+ *
+ * **フォグの色は地平線と揃えること** —— ずれるとチャンクが湧いて出るのが見える。
+ * どの色でどれだけ濃いかは `blocks.ts` の `fog`（`main.ts` は貼るだけ）。
+ */
+export function environmentFor(head: number, dayNight: DayNight): Environment {
+  const env = environment;
+  env.headInWater = head === WATER;
+
+  const liquid = liquidFog(head);
+  env.inLiquid = liquid !== null;
+  if (liquid) {
+    env.fog.setHex(liquid.color);
+    // 水は夜に暗くなるが、溶岩は自分で光るので掛けない
+    if (liquid.daylit) env.fog.multiplyScalar(dayNight.brightness);
+    env.near = liquid.near;
+    env.far = liquid.far;
+  } else {
+    env.fog.copy(dayNight.horizon);
+    env.near = FOG_NEAR;
+    env.far = FOG_FAR;
+  }
+  return env;
 }
 
 export class DayNight {

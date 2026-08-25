@@ -249,8 +249,12 @@ export function run(): void {
     // 預け忘れを型では防げないので、**呼び方そのもの**を見張る。
     check("main.ts は保存の前に必ず預ける", main.includes("forSave(liveState())"));
     // 持ち物の組み立ては 1 か所（写すと、片方だけ直したときに静かに食い違う）。
+    // **いまは `session.ts` の `collectState()` がその 1 か所**（`main.ts` は呼ぶだけ）。
     // **`\b` を落とさないこと** —— `deserializeEdits(` にも当たって 2 か所に見える。
-    const built = main.match(/\bserializeEdits\(/g)?.length ?? 0;
-    check("main.ts が持ち物を 1 か所で組み立てている", built === 1, `${built} か所`);
+    const inMain = main.match(/\bserializeEdits\(/g)?.length ?? 0;
+    check("main.ts は持ち物を自分で組み立てない", inMain === 0, `${inMain} か所`);
+    const built = sourceOf("src/session.ts").match(/\bserializeEdits\(/g)?.length ?? 0;
+    check("持ち物の組み立ては session.ts の 1 か所", built === 1, `${built} か所`);
+    check("main.ts はその 1 か所を通す", main.includes("collectState("));
   }
 }

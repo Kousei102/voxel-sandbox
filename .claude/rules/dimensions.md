@@ -4,8 +4,10 @@ paths:
   - "src/portals.ts"
   - "src/portaltravel.ts"
   - "src/storage.ts"
+  - "src/session.ts"
   - "src/main.ts"
   - "test/dimensions.test.ts"
+  - "test/session.test.ts"
   - "test/portaltravel.test.ts"
   - "test/storage.test.ts"
 ---
@@ -44,6 +46,10 @@ paths:
 - **`main.ts` に次元ごとの分岐を散らさないこと**（`test/ui.test.ts` が数えています）。
   持ち物の組み立ても `liveState()` の 1 か所です（写すと、片方だけ直したときに
   「戻ったらかまどの中身だけ消えている」形で静かに壊れます）。
+- **セーブの組み立てと読み戻しは `session.ts`。** `collectState()` が持ち物を集める唯一の場所で
+  （`test/dimensions.test.ts` が `serializeEdits(` の数を数えています）、`buildSave()` がキーの
+  並びを、`restoredValues()` が「読んだ値をどこまで信じるか」を持ちます。**`main.ts` に
+  `typeof saved?.health === "number"` のような均しを書き戻さないこと。**
 - **別のワールドを始めるときは `reset()`。** 忘れると、前のワールドで別の次元に
   置いてきたものが新しいワールドに出てきます（「この種で作り直す」と「保存データを削除」の 2 か所）。
 

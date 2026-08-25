@@ -68,6 +68,24 @@ export function addToSlots(
  * 36 スロット。**先頭 9 個がホットバー**で、残り 27 が収納。
  * 拾ったものはホットバーから先に埋める（Minecraft と同じ並び）。
  */
+/**
+ * まとめ捨てか（Q に修飾キーが付いているか）。**入力の意味をここで決める** ——
+ * 押されたキーそのものは DOM の事実なので、`main.ts` は `KeyboardEvent` を
+ * そのまま渡すだけにしてある（`rules/inventory-screen.md`）。
+ *
+ * **Shift も受けるのは意図的です。** Minecraft と同じ Ctrl+Q を本命にしているが、
+ * ブラウザによっては Ctrl+Q がブラウザ自身の終了に割り当てられていて、
+ * `preventDefault()` では止められない。押した人が窓ごと閉じるより、
+ * 逃げ道を 1 つ持たせるほうが安全側。
+ */
+export function bulkDiscard(mods: {
+  readonly ctrlKey: boolean;
+  readonly metaKey: boolean;
+  readonly shiftKey: boolean;
+}): boolean {
+  return mods.ctrlKey || mods.metaKey || mods.shiftKey;
+}
+
 export class Inventory {
   readonly slots: Slot[] = Array.from({ length: INVENTORY_SIZE }, empty);
   selected = 0;

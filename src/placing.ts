@@ -18,6 +18,7 @@
 import {
   AIR,
   NO_SUPPORT,
+  OBSIDIAN,
   bedPartner,
   blockName,
   faceFromYaw,
@@ -30,6 +31,8 @@ import {
   type PlaceAim,
 } from "./blocks";
 import { placeBed, type BedWorld } from "./beds";
+import { bucketUse } from "./items";
+import { quenchAround } from "./liquids";
 import { ignite, portalBlock } from "./portals";
 
 /**
@@ -115,4 +118,44 @@ export function tryIgnite(world: PlaceWorld, aim: PlaceAim): PlaceOutcome {
   const lit = ignite(world, aim.block.x + aim.normal.x, aim.block.y + aim.normal.y, aim.block.z + aim.normal.z);
   if (lit <= 0) return { kind: "blocked", message: "黒曜石の枠がありません" };
   return { kind: "placed", id: portalBlock("x") };
+}
+
+/**
+ * バケツで汲んだ結果。`item` は**手に持ち替えるバケツ**（空 ⇔ 中身入り）。
+ * **クリエイティブでも持ち替えること** —— バケツは「減る道具」ではなく
+ * 中身そのものがアイテムなので、入れ替えないと永久に空のままで何も流せない。
+ */
+export type BucketOutcome =
+  | { readonly kind: "none" }
+  | { readonly kind: "blocked"; readonly message: string }
+  | { readonly kind: "used"; readonly item: number; readonly message: string };
+
+/**
+ * バケツで汲む／流す。**汲めるか流せるかの表は `items.ts` の `bucketUse()`**、
+ * 固まるかどうかは `liquids.ts` の `quenchAround()`。ここが持つのは
+ * **「どのマスに効くか」**と、書き込んだあとの言い分けだけ。
+ *
+ * `aim` は**液体に当たる光線**（`raycastVoxels(..., true)`）で取ること ——
+ * 普段の光線は液体を素通りするので、そのままでは水面を狙えず汲めない。
+ */
+export function tryBucket(world: PlaceWorld, aim: PlaceAim, held: number, yaw: number): BucketOutcome {
+  const use = bucketUse(held, aim.id);
+  if (!use) return { kind: "blocked", message: "汲めるのは水と溶岩だけです" };
+
+  // 汲むのは狙ったマス。流すのは置くマス（狙ったのが液体ならそのマス自身）。
+  const spot = use.kind === "fill" ? aim.block : placeSpot(aim, faceFromYaw(yaw));
+  const { x, y, z } = spot;
+  if (use.kind === "empty" && !isReplaceable(world.getVoxel(x, y, z))) return { kind: "none" };
+  if (!world.setVoxel(x, y, z, use.kind === "fill" ? AIR : use.liquid)) return { kind: "none" };
+
+  // 流した液体が周りとぶつかって固まるか。**どう固まるかは `liquids.ts`。**
+  const hardened = use.kind === "empty" ? quenchAround(world, x, y, z) : 0;
+  return {
+    kind: "used",
+    item: use.item,
+    message:
+      hardened > 0
+        ? `${blockName(OBSIDIAN)}ができた（${hardened} 個）`
+        : `${blockName(use.liquid)}を${use.kind === "fill" ? "汲んだ" : "流した"}`,
+  };
 }

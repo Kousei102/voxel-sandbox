@@ -7,6 +7,8 @@
  * 「それで何がどれだけ減るか」は全部この中にある。
  */
 
+import { EatCadence } from "./sfx";
+
 /** 体力の上限。ハート 10 個ぶん。 */
 export const MAX_HEALTH = 20;
 /** この落差までは無傷（Minecraft と同じ 3 ブロック）。 */
@@ -104,6 +106,17 @@ export const BURN_DAMAGE = 1;
 export type DamageCause = "落下" | "溺れ" | "奈落" | "モンスター" | "空腹" | "毒" | "溶岩" | "炎上";
 
 /**
+ * 死亡画面に出す 1 行。**落とした山の数も出すこと** —— 死んだ場所が遠いと
+ * 取りに戻れないので、猶予（`drops.ts` の `DESPAWN_AGE` = 5 分）を知らせる。
+ */
+export function deathMessage(cause: DamageCause | null, lostPiles: number): string {
+  return (
+    (cause ? `死因: ${cause}` : "") +
+    (lostPiles > 0 ? `　持ち物 ${lostPiles} 山を落としました（5 分以内に取りに戻る）` : "")
+  );
+}
+
+/**
  * 消耗が増える出来事。**数値は下の表に持つ**ので、呼ぶ側は種類を渡すだけ。
  * 移動ぶんは `update()` が距離から作るので、ここには無い。
  */
@@ -122,6 +135,77 @@ export interface FoodValue {
   readonly hunger: number;
   readonly saturation: number;
   readonly poison: boolean;
+}
+
+/** 食べ進めた 1 フレームの結果。 */
+export type EatingStep =
+  /** 何も起きていない（食べていない・まだ噛んでいる途中）。 */
+  | "none"
+  /** ひと噛み（咀嚼音を鳴らす）。 */
+  | "chew"
+  /** 食べ切った（呼ぶ側が `eat()` して 1 個減らす）。 */
+  | "done";
+
+/** `Eating.advance()` に渡す、そのフレームの事実。 */
+export interface EatingContext {
+  /** 操作を受け付けているか。 */
+  readonly playing: boolean;
+  /** いま手に持っているアイテム。**始めたものと違えば中断する。** */
+  readonly held: number;
+  /** まだ食べる余地があるか（`Vitals.canEat`）。 */
+  readonly canEat: boolean;
+  /** 手に持っているものが食べ物か（`items.ts` の `foodOf()` の結果）。 */
+  readonly isFood: boolean;
+}
+
+/**
+ * 右クリック長押しで食べている最中。**掘る（`Mining`）とまったく同じ形**で、
+ * 押している間だけ続き、離すと無かったことになる（アイテムは減らない）。
+ *
+ * **中断する条件をここに集めてある** —— 手が変わった・持ち物が尽きた・満腹になった・
+ * 画面が変わった。`main.ts` に散らすと、器を足すたびに 1 つずつ抜ける。
+ * この環境では食べる動きを描けないので、進んでいる手ごたえは咀嚼音だけ
+ * （間隔は `sfx.ts` の `EatCadence`）。
+ */
+export class Eating {
+  private readonly cadence = new EatCadence();
+  private timer = 0;
+  private item = 0;
+  private eating = false;
+
+  get active(): boolean {
+    return this.eating;
+  }
+
+  /** 食べ始める。**始めたアイテムを控える**（手が変わったら中断するため）。 */
+  begin(item: number): void {
+    this.eating = true;
+    this.timer = 0;
+    this.item = item;
+    this.cadence.reset();
+  }
+
+  /** やめる。手を離す・画面が変わる・持ち物が変わるたびに呼ぶ。 */
+  stop(): void {
+    this.eating = false;
+    this.timer = 0;
+    this.item = 0;
+    this.cadence.reset();
+  }
+
+  advance(dt: number, at: EatingContext): EatingStep {
+    if (!this.eating) return "none";
+    if (!at.playing || at.held !== this.item || !at.canEat || !at.isFood) {
+      this.stop();
+      return "none";
+    }
+
+    this.timer += dt;
+    if (this.timer < EAT_SECONDS) return this.cadence.advance(dt) ? "chew" : "none";
+    // **食べ切ったら必ず止める**（そのまま押していても 1 回ぶんずつしか食べない）。
+    this.stop();
+    return "done";
+  }
 }
 
 export interface VitalsContext {

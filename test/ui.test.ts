@@ -95,6 +95,26 @@ function mainStaysWiring(): void {
     `${branches} 件 / 上限 ${BRANCH_LIMIT}`,
   );
 
+  // 出した判断を**呼び直していること**を見張る。行数の上限だけでは
+  // 「出したのに `main.ts` にも書き戻した」を止められない（両方あっても行は増えない）。
+  // ここに並ぶのは、どれも**出した先にテストがある**もの。
+  const routed: [string, string][] = [
+    ["F3 の組み立て", "debugText("],
+    ["セーブの組み立て", "buildSave("],
+    ["読んだ値の均し", "restoredValues("],
+    ["空とフォグ", "environmentFor("],
+    ["足音・着地・水しぶき", "footsteps.update("],
+    ["バケツ", "tryBucket("],
+    ["食べ進み", "eating.advance("],
+    ["まとめ捨ての判定", "bulkDiscard("],
+  ];
+  const inlined = routed.filter(([, call]) => !source.includes(call));
+  check(
+    "main.ts は出した判断を呼び直している",
+    inlined.length === 0,
+    inlined.map(([name]) => name).join(" / "),
+  );
+
   // **何が落ちるかは `items.ts` の `rollDrop()`** で、`main.ts` は乱数を 1 個渡すだけ。
   // ここに確率の比較を書くと、砂利のように「外したら別のものが落ちる」を足したときに、
   // 掘った経路と支えを失った経路で規則が食い違う（片方だけ直しても気付けない）。

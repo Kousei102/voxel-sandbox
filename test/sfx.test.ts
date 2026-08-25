@@ -23,6 +23,7 @@ import {
   DigCadence,
   EAT_INTERVAL,
   EatCadence,
+  Footsteps,
   STEP_DISTANCE,
   StepCadence,
   clampVolume,
@@ -266,4 +267,58 @@ export function run(): void {
       clampVolume("0.5") === DEFAULT_VOLUME,
   );
   check("0 にできる（音を完全に切れる）", clampVolume(0) === 0);
+
+  describe("足音・着地・水しぶき（Footsteps）");
+
+  {
+    // 前のフレームの状態も `Footsteps` が持つ。**`main.ts` に置かないこと** ——
+    // 鳴らす条件（着地した瞬間・水面をまたいだ瞬間）がブラウザでしか確かめられなくなる。
+    const walking = { onGround: true, inLiquid: false, inWater: false, flying: false };
+    const airborne = { onGround: false, inLiquid: false, inWater: false, flying: false };
+    const swimming = { onGround: true, inLiquid: true, inWater: true, flying: false };
+    const feet = new Footsteps();
+    const names = (cues: { sfx: string }[]) => cues.map((c) => c.sfx).join("+");
+
+    // 1 フレーム目は「空中から地面へ」に見えるので着地音が鳴る（初期値が false）。
+    feet.update({ playing: true, moved: 0, ground: "grass", player: walking });
+
+    let steps = 0;
+    let wrongMaterial = 0;
+    for (let i = 0; i < 600; i++) {
+      for (const cue of feet.update({ playing: true, moved: (5.2 * 1) / 60, ground: "grass", player: walking })) {
+        if (cue.sfx === "step") steps++;
+        if (cue.group !== "grass") wrongMaterial++;
+      }
+    }
+    check("歩くと足音が鳴る", steps > 20, `10 秒で ${steps} 歩`);
+    check("足音は立っている面の材質で鳴る", wrongMaterial === 0, `${wrongMaterial} 件`);
+
+    feet.update({ playing: true, moved: 0, ground: "stone", player: airborne });
+    const landed = feet.update({ playing: true, moved: 0, ground: "stone", player: walking });
+    check("着地した瞬間だけ着地音", names(landed) === "land", names(landed));
+    const still = feet.update({ playing: true, moved: 0, ground: "stone", player: walking });
+    check("立ち続けても鳴らない", names(still) === "", names(still));
+
+    const entered = feet.update({ playing: true, moved: 0, ground: "stone", player: swimming });
+    check("水に入ると水しぶき", names(entered) === "splash", names(entered));
+    const inside = feet.update({ playing: true, moved: 2, ground: "stone", player: swimming });
+    check("水の中では足音を鳴らさない", names(inside) === "", names(inside));
+    const left = feet.update({ playing: true, moved: 0, ground: "stone", player: walking });
+    check("水から出ても水しぶき", names(left) === "splash", names(left));
+
+    // 止まっている間（メニュー・インベントリ）は鳴らさず、溜めもしない。
+    const paused = new Footsteps();
+    let pausedCues = 0;
+    for (let i = 0; i < 60; i++) {
+      pausedCues += paused.update({ playing: false, moved: 5, ground: "grass", player: walking }).length;
+    }
+    check("止まっている間は 1 つも鳴らない", pausedCues === 0, `${pausedCues} 件`);
+    check("溜め込まない（再開した瞬間に鳴らない）", paused.update({ playing: true, moved: 0.1, ground: "grass", player: walking }).length === 0);
+
+    // 位置を飛ばしたとき（リスポーン・次元の移動）。
+    const jumped = new Footsteps();
+    jumped.update({ playing: true, moved: STEP_DISTANCE * 0.9, ground: "grass", player: walking });
+    jumped.reset();
+    check("飛ばした距離を歩いたことにしない", jumped.update({ playing: true, moved: 0.1, ground: "grass", player: walking }).every((c) => c.sfx !== "step"));
+  }
 }
