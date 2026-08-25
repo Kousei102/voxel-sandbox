@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { Vector3 } from "three";
-import { AIR, GRASS, LAVA, NETHER_BRICK, SAND, STONE, STONE_SLAB, WATER, WOOL } from "../src/blocks";
-import { MAX_LIGHT } from "../src/constants";
+import { AIR, GRASS, LAVA, NETHER_BRICK, SAND, STONE, STONE_SLAB, WATER, WOOL, isLiquid } from "../src/blocks";
+import { MAX_LIGHT, columnOf } from "../src/constants";
 import { DayNight } from "../src/daynight";
-import { NO_ITEM, RAW_PORK, ROTTEN_FLESH, STONE_AXE, WOOD_PICKAXE, itemName } from "../src/items";
+import { ENDER_PEARL, NO_ITEM, RAW_PORK, ROTTEN_FLESH, STONE_AXE, WOOD_PICKAXE, itemName } from "../src/items";
 import { buildMobMesh } from "../src/mobmesh";
 import {
   ATTACK_RANGE,
@@ -29,11 +29,13 @@ import {
   mobRgb,
   spawnLight,
   sunlightBurns,
+  teleportSpot,
   walkSwing,
   type MobContext,
   type MobDef,
   type MobKind,
   type MobTarget,
+  type TeleportRule,
 } from "../src/mobs";
 import { PLAYER_OWNER, Projectiles, type Shot } from "../src/projectiles";
 import { boxBlocked } from "../src/physics";
@@ -112,6 +114,10 @@ export function run(): void {
     "flying",
     "fireproof",
     "flyTarget",
+    // **跳び方と湧きの重みもここに足すこと。** 描画側に生えると
+    // 「エンダーマンだけ跳んだ先が見えない」類がブラウザを開くまで分からなくなる。
+    "teleport",
+    "spawnWeight",
   ].filter((name) => renderSource.includes(name));
   check("mobrender.ts に判断が漏れていない", decisions.length === 0, decisions.join(" "));
 
@@ -452,22 +458,208 @@ export function run(): void {
     );
   }
 
+  describe("跳ぶモブ（エンダーマン）");
+
+  // **跳ぶ判断は 2 つに割れている。** 「いつ跳ぶか」は `Mobs.teleport()`（`world` が要る）、
+  // 「どこへ跳べるか」は `teleportSpot()`（純粋に近い。座標しか知らない）。
+  // ここは後者を先に、保険が 4 つとも効いていることから見る。
+  check("跳ぶのは表に teleport を持つモブだけ", MOBS.enderman.teleport !== null);
+  check(
+    "跳ぶモブは 1 種類だけ（増やしたら数値を TUNING.md へ）",
+    MOB_KINDS.filter((k) => MOBS[k].teleport).join(" ") === "enderman",
+    MOB_KINDS.filter((k) => MOBS[k].teleport).join(" "),
+  );
+  check("エンダーマンはエンダーパールを落とす", MOBS.enderman.drop.item === ENDER_PEARL);
+  const TP = MOBS.enderman.teleport as TeleportRule;
+  const ENDER_SIZE = MOBS.enderman.size;
+
+  {
+    // 床の上に、跳んではいけない所を 3 種類作る:
+    // 岩の塊（+X 側。上まで詰まっているので立てない）/ 水たまり（-Z 側）/ 未生成の列。
+    const arena = new Arena();
+    arena.fill(-40, 40, 10, 10, -40, 40, STONE);
+    arena.fill(4, 40, 12, 19, -40, 40, STONE);
+    arena.fill(-40, 40, 11, 11, -40, -12, WATER);
+    arena.missingColumns.add("1,0");
+    quiet(arena);
+    const world = arena.asWorld();
+    const roll = seeded(601);
+
+    let found = 0;
+    let stuck = 0;
+    let wet = 0;
+    let ghost = 0;
+    let strayed = 0;
+    for (let i = 0; i < 500; i++) {
+      const spot = teleportSpot(world, ENDER_SIZE, 0.5, 11, 0.5, TP.range, TP, roll);
+      if (!spot) continue;
+      found++;
+      // **保険が効いているかは、返ってきた行き先を独立に測って見ること。**
+      if (boxBlocked(world, spot.x, spot.y, spot.z, ENDER_SIZE)) stuck++;
+      if (isLiquid(arena.getVoxel(Math.floor(spot.x), spot.y, Math.floor(spot.z)))) wet++;
+      if (!arena.hasColumn(columnOf(spot.x), columnOf(spot.z))) ghost++;
+      // **半径は軸ごとに掛かる**（探すのは正方形の中）ので、円で測らないこと。
+      if (Math.abs(spot.y - 11) > TP.vertical) strayed++;
+      if (Math.abs(spot.x - 0.5) > TP.range + 1 || Math.abs(spot.z - 0.5) > TP.range + 1) strayed++;
+    }
+    console.log(
+      `      500 回試して行き先が見つかったのは ${found} 回` +
+        `（埋まり ${stuck} / 液体 ${wet} / 未生成の列 ${ghost} / 範囲外 ${strayed}）`,
+    );
+    check("行き先はふつう見つかる（試験場が効いている）", found > 400, `${found} / 500`);
+    check("壁や低い天井の中へ跳ばない", stuck === 0, `${stuck} 件`);
+    check("液体の中へ跳ばない", wet === 0, `${wet} 件`);
+    check("ボクセルの無い列へ跳ばない", ghost === 0, `${ghost} 件`);
+    check("range と vertical の外へは跳ばない", strayed === 0, `${strayed} 件`);
+  }
+
+  // **行き先が無ければ跳ばない。** 壁の中に出す代わりに、その場に留まるのが正しい。
+  {
+    const solid = new Arena();
+    solid.fill(-40, 40, 0, 40, -40, 40, STONE);
+    const nowhere = teleportSpot(solid.asWorld(), ENDER_SIZE, 0.5, 11, 0.5, TP.range, TP, seeded(603));
+    check("隙間がまったく無ければ跳ばない（null）", nowhere === null, String(nowhere));
+  }
+
+  /** 跳ぶ試験場。**湧きも日光も止めた平地**（`quiet` は sky 0 + block 15）。 */
+  function jumpArena(): Arena {
+    return quiet(flatGrass());
+  }
+
+  check("湧いた直後は跳べない（1 回ぶん待つ）", new Mobs().spawn("enderman", 0.5, 11, 0.5, 0, seeded(604)).teleportTimer === TP.cooldown);
+
+  // 殴られると跳ぶ。**プレイヤーは `HOSTILE_SIGHT`(18) より遠くに置くこと** ——
+  // 近いと「間合いを詰める側」の跳びが混ざって、どちらで跳んだのか分からなくなる。
+  {
+    const arena = jumpArena();
+    const pack = new Mobs();
+    // 乱数 0 = 必ず跳ぶ側（`hurtChance` 0.5 の内側）。
+    const c = ctx({ random: () => 0 });
+    const man = pack.spawn("enderman", 0.5, 11, 25.5, 0, seeded(605));
+    man.teleportTimer = 0;
+    const before = new Vector3().copy(man.position);
+    check("殴る前は視界の外に居る（試験場が効いている）", before.distanceTo(new Vector3(0.5, 11, 0.5)) > HOSTILE_SIGHT);
+    pack.attack(man, NO_ITEM, c);
+    pack.update(1 / 60, arena.asWorld(), c);
+    const jumped = Math.hypot(man.position.x - before.x, man.position.z - before.z);
+    console.log(`      殴られた直後: ${jumped.toFixed(1)} ブロック跳んだ（体力 ${man.health} / ${MOBS.enderman.maxHealth}）`);
+    check("殴られると跳ぶ", jumped > 2, `${jumped.toFixed(1)} ブロック`);
+    check("跳んでも消えない（体力が減っただけ）", pack.list.includes(man) && man.health < MOBS.enderman.maxHealth);
+    check("跳んだら勢いは消える（着いた先で叩きつけられない）", man.velocity.length() === 0);
+  }
+
+  // **確率を外した目では跳ばない。** `hurtChance` を 1 にすると一発も当てられなくなる。
+  {
+    const arena = jumpArena();
+    const pack = new Mobs();
+    const c = ctx({ random: () => 0.9 });
+    const man = pack.spawn("enderman", 0.5, 11, 25.5, 0, seeded(606));
+    man.teleportTimer = 0;
+    const before = new Vector3().copy(man.position);
+    pack.attack(man, NO_ITEM, c);
+    pack.update(1 / 60, arena.asWorld(), c);
+    const moved = Math.hypot(man.position.x - before.x, man.position.z - before.z);
+    check("確率を外した目では跳ばない", moved < 1, `${moved.toFixed(2)} ブロック / 確率 ${TP.hurtChance}`);
+    check("跳ばなくても殴られてはいる", man.health < MOBS.enderman.maxHealth, `体力 ${man.health}`);
+  }
+
+  // 間隔（`cooldown`）。殴り続けても、跳ぶのはこの間隔より詰まらない。
+  {
+    const arena = jumpArena();
+    const world = arena.asWorld();
+    const pack = new Mobs();
+    const c = ctx({ random: () => 0 });
+    const man = pack.spawn("enderman", 0.5, 11, 25.5, 0, seeded(607));
+    man.teleportTimer = 0;
+    const at: number[] = [];
+    const prev = new Vector3();
+    for (let f = 0; f < 300; f++) {
+      pack.attack(man, NO_ITEM, c); // プレイヤー側のクールダウン中は何も起きない
+      prev.copy(man.position);
+      pack.update(1 / 60, world, c);
+      if (Math.hypot(man.position.x - prev.x, man.position.z - prev.z) > 2) at.push(f / 60);
+      if (!pack.list.includes(man)) break;
+    }
+    const gaps = at.slice(1).map((t, i) => t - at[i]);
+    console.log(
+      `      殴り続けた 5 秒で跳んだのは ${at.length} 回` +
+        `（${at.map((t) => t.toFixed(2)).join(" / ")} 秒 → 間隔 ${gaps.map((g) => g.toFixed(2)).join(" / ")}）`,
+    );
+    check("殴り続ければ何度も跳ぶ", at.length >= 2, `${at.length} 回`);
+    check(
+      `跳ぶ間隔は cooldown(${TP.cooldown}) を下回らない`,
+      gaps.every((g) => g >= TP.cooldown - 1e-6),
+      gaps.map((g) => g.toFixed(2)).join(" / "),
+    );
+  }
+
+  // 遠い相手へは跳んで間合いを詰める。**ゾンビ（跳ばない）と並べて見ること** ——
+  // 並べないと「たまたま歩いて近づいた」と区別が付かない。
+  {
+    /** 1 秒回して、プレイヤーにいちばん近づいた距離。 */
+    function closeIn(kind: MobKind, seed: number): number {
+      const arena = jumpArena();
+      const pack = new Mobs();
+      const c = ctx({ random: seeded(seed) });
+      const mob = pack.spawn(kind, 0.5, 11, 15.5, 0, seeded(seed + 1));
+      mob.teleportTimer = 0;
+      let closest = 15;
+      for (let f = 0; f < 60; f++) {
+        pack.update(1 / 60, arena.asWorld(), c);
+        closest = Math.min(closest, Math.hypot(mob.position.x - 0.5, mob.position.z - 0.5));
+      }
+      return closest;
+    }
+    const man = closeIn("enderman", 611);
+    const zombie = closeIn("zombie", 621);
+    console.log(
+      `      15 ブロック先から 1 秒: エンダーマン ${man.toFixed(1)} / ゾンビ ${zombie.toFixed(1)} ブロックまで`,
+    );
+    check("遠い相手へは跳んで間合いを詰める", man < TP.chaseAt, `${man.toFixed(1)} < ${TP.chaseAt}`);
+    check("跳ばないモブは歩いてしか近づけない", zombie > TP.chaseAt, `ゾンビ ${zombie.toFixed(1)}`);
+  }
+
   describe("湧く地面（どの敵対モブになるか）");
 
   // **地面を指定したモブが勝つ。** 同じ土俵で抽選すると、要塞の半分がゾンビになって
   // 「ブレイズロッドを集める場所」という意味が薄れる。
   const groundRoll = seeded(211);
   const onBrick = new Set<string>();
-  const onStone = new Set<string>();
-  for (let i = 0; i < 200; i++) {
+  const onStone: Record<string, number> = {};
+  const ROLLS = 2000;
+  for (let i = 0; i < ROLLS; i++) {
     onBrick.add(String(hostileFor(NETHER_BRICK, groundRoll)));
-    onStone.add(String(hostileFor(STONE, groundRoll)));
+    const kind = String(hostileFor(STONE, groundRoll));
+    onStone[kind] = (onStone[kind] ?? 0) + 1;
   }
   console.log(
-    `      ネザーレンガ → ${[...onBrick].join(" ")} / 石 → ${[...onStone].join(" ")}`,
+    `      ネザーレンガ → ${[...onBrick].join(" ")} / 石 → ` +
+      Object.entries(onStone)
+        .map(([k, n]) => `${k} ${((n / ROLLS) * 100).toFixed(1)}%`)
+        .join(" / "),
   );
   check("ネザーレンガの上ではブレイズだけ", onBrick.size === 1 && onBrick.has("blaze"), [...onBrick].join(" "));
-  check("それ以外ではゾンビだけ", onStone.size === 1 && onStone.has("zombie"), [...onStone].join(" "));
+  // **地面を指定しない敵対は重み（`spawnWeight`）で分ける。** 均等割りだったころ、
+  // エンダーマン（体力 40・一撃 7）を足した瞬間に夜の敵対の半分がエンダーマンになった。
+  {
+    const anywhere = MOB_KINDS.filter((k) => MOBS[k].hostile && !MOBS[k].spawnOn);
+    const total = anywhere.reduce((sum, k) => sum + MOBS[k].spawnWeight, 0);
+    const off = anywhere.map((k) => Math.abs((onStone[k] ?? 0) / ROLLS - MOBS[k].spawnWeight / total));
+    console.log(
+      `      重みの表: ${anywhere.map((k) => `${MOBS[k].name} ${MOBS[k].spawnWeight}`).join(" / ")}` +
+        `（ずれ 最大 ${(Math.max(...off) * 100).toFixed(1)} ポイント）`,
+    );
+    check(
+      "地面を指定しない敵対は表の重みどおりに湧く",
+      anywhere.every((k) => (onStone[k] ?? 0) > 0) && Math.max(...off) < 0.03,
+      `${anywhere.length} 種類 / ずれ ${(Math.max(...off) * 100).toFixed(1)} ポイント`,
+    );
+    check(
+      "ゾンビがいちばん出やすい（エンダーマンはたまに）",
+      (onStone.zombie ?? 0) > (onStone.enderman ?? 0) * 5,
+      `ゾンビ ${onStone.zombie ?? 0} / エンダーマン ${onStone.enderman ?? 0}`,
+    );
+  }
   check(
     "地面を指定したモブは「どこでも」の地面に湧かない",
     MOB_KINDS.every((kind) => !MOBS[kind].spawnOn || MOBS[kind].hostile),

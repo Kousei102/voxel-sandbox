@@ -46,7 +46,7 @@ import { Scene } from "three";
  * **達成済みの件数。項目を達成したときだけ 1 つ上げること。**
  * これより減ったら `npm test` が赤くなる（達成の後戻りを退行として捕まえる）。
  */
-const ACHIEVED_BASELINE = 7;
+const ACHIEVED_BASELINE = 8;
 
 /** ネザー要塞を探す範囲（列）。**広げると `npm test` がそのぶん遅くなります。** */
 const RADIUS = 4;
@@ -356,8 +356,43 @@ const MILESTONES: readonly Milestone[] = [
   },
   {
     name: "エンダーマンがエンダーパールを落とす",
-    kind: "仮",
-    probe: () => ({ done: item("エンダーパール") !== NO_ITEM }),
+    kind: "本物",
+    // **アイテムがあるかを見ないこと。** 名前だけなら `items.ts` に 1 行足せば達成に
+    // 化けます（`structures.ts` / `dimensions.ts` / `projectiles.ts` / ブレイズで
+    // 4 度踏みました）。ここは「夜の地表に実際に湧く」→「倒すとパールが落ちる」を
+    // 1 本通します。跳び方の深い検証は `test/mobs.test.ts` にあります。
+    probe: () => {
+      const pearl = item("エンダーパール");
+      if (pearl === NO_ITEM) return { done: false, detail: "エンダーパールのアイテムが無い" };
+      if (!MOBS.enderman?.teleport) return { done: false, detail: "エンダーマンが跳ばない" };
+
+      // 暗い石の平地（＝夜の地表と同じ湧き条件）。**実際に湧かせる。**
+      // ゾンビ 100 に対して重み 10 なので、当たるまで試行数が要ります。
+      const arena = new Arena();
+      arena.fill(-80, 80, 10, 10, -80, 80, STONE);
+      const mobs = new Mobs();
+      const ctx = { playerX: 0.5, playerY: 11, playerZ: 0.5, brightness: 1, random: seeded(8181) };
+      mobs.populate(arena.asWorld(), ctx, 600);
+      const man = mobs.list.find((mob) => mob.kind === "enderman");
+      if (!man) return { done: false, detail: `${mobs.count} 体湧いたがエンダーマンは 0 体` };
+
+      // 倒すと落ちるか。**乱数は呼ぶ側が作る**ので、確率 0.5 の当たり側を渡す。
+      let dropped = 0;
+      mobs.onDrop = (id, count) => {
+        if (id === pearl) dropped += count;
+      };
+      const axe = item("ダイヤの斧");
+      let swings = 0;
+      while (swings < 30 && mobs.list.includes(man)) {
+        if (mobs.attack(man, axe, ctx, () => 0)) swings++;
+        // 殴る間隔（`PLAYER_ATTACK_COOLDOWN`）を明ける
+        mobs.update(PLAYER_ATTACK_COOLDOWN, arena.asWorld(), ctx);
+      }
+      return {
+        done: dropped > 0,
+        detail: `${mobs.count + 1} 体中エンダーマンが湧く / ${swings} 回で倒してパール ${dropped} 個`,
+      };
+    },
   },
   {
     name: "エンダーアイが作れる",

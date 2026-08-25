@@ -88,7 +88,17 @@ export const FLINT_AND_STEEL = 88;
  */
 export const BLAZE_ROD = 89;
 
-export const MAX_ITEM_ID = BLAZE_ROD;
+/**
+ * エンダーパール。**エンダーマンだけが落とす**（50%）。
+ * ここから先（エンダーアイ = ブレイズパウダー + これ）はまだ無いので、いまは
+ * 「夜に出るものを倒した証」以上の使い道が無い（2-6 でエンダーアイの材料になる）。
+ *
+ * **積めるのは 16 個まで**（Minecraft と同じ）。エンドポータルの起動に 12 個要るので、
+ * 1 枠に収まる上限としてもちょうどいい。
+ */
+export const ENDER_PEARL = 90;
+
+export const MAX_ITEM_ID = ENDER_PEARL;
 
 export const MAX_STACK = 64;
 
@@ -163,6 +173,8 @@ item({ id: FLINT, name: "火打石", block: AIR, stack: MAX_STACK, color: 0x3c37
 item({ id: FLINT_AND_STEEL, name: "火打石と打ち金", block: AIR, stack: 1, color: 0xa6a094, tool: null });
 
 item({ id: BLAZE_ROD, name: "ブレイズロッド", block: AIR, stack: MAX_STACK, color: 0xf2c033, tool: null });
+// エンダーパールは 16 個まで（Minecraft と同じ）。
+item({ id: ENDER_PEARL, name: "エンダーパール", block: AIR, stack: 16, color: 0x11726b, tool: null });
 
 /** 道具は 4 階層 x 3 種類。ID は tier ごとに pickaxe / axe / shovel の順。 */
 const TOOL_KINDS: ToolKind[] = ["pickaxe", "axe", "shovel"];

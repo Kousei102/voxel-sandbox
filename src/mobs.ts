@@ -12,7 +12,7 @@
 import { Color, Vector3 } from "three";
 import { AIR, GRASS, NETHER_BRICK, WOOL, isHotLiquid, isLiquid, isSolid } from "./blocks";
 import { MAX_LIGHT, WORLD_HEIGHT, columnOf } from "./constants";
-import { BLAZE_ROD, RAW_PORK, ROTTEN_FLESH, toolOf } from "./items";
+import { BLAZE_ROD, ENDER_PEARL, RAW_PORK, ROTTEN_FLESH, toolOf } from "./items";
 import { BLOCK_LIGHT, SKY_LIGHT } from "./lighting";
 import { PLAYER_SIZE, type BodySize, boxBlocked, groundBelow, moveBody } from "./physics";
 import {
@@ -29,7 +29,7 @@ import type { World } from "./world";
 
 // --- 種類の表 -----------------------------------------------------------
 
-export type MobKind = "pig" | "sheep" | "zombie" | "blaze";
+export type MobKind = "pig" | "sheep" | "zombie" | "blaze" | "enderman";
 
 /** 部位の動き方。 */
 export type MobMotion =
@@ -98,6 +98,32 @@ export interface RangedAttack {
   readonly height: number;
 }
 
+/**
+ * 跳ぶ（テレポートする）モブの決まり。**持っているモブだけが跳ぶ**（無ければ `null`）。
+ *
+ * **どこへ跳ぶかの「探し方」は `teleportSpot()` 1 本**で、ここが持つのは
+ * 「どれだけ遠くへ・どれだけの間隔で・どんなときに」という手応えの数値だけ（`TUNING.md`）。
+ */
+export interface TeleportRule {
+  /** 殴られて逃げるとき、自分の周りをこの半径で探す。 */
+  readonly range: number;
+  /** 追いかけて間合いを詰めるとき、プレイヤーの周りをこの半径で探す。 */
+  readonly closeIn: number;
+  /** 上下に探す幅。**深すぎると穴の底へ落ちにいく。** */
+  readonly vertical: number;
+  /** 行き先を探す試行回数。**見つからなければ跳ばない**（壁の中に出ないための唯一の保険）。 */
+  readonly tries: number;
+  /** 次に跳べるまでの間隔 (秒)。 */
+  readonly cooldown: number;
+  /** 殴られたときに跳ぶ確率。**1 にしないこと** —— 一発も当てられなくなる。 */
+  readonly hurtChance: number;
+  /**
+   * 追いかけている相手がこれより遠いと、跳んで間合いを詰める。
+   * **`ATTACK_STOP` よりずっと大きいこと** —— 目の前で跳ばれると殴れない。
+   */
+  readonly chaseAt: number;
+}
+
 export interface MobDef {
   readonly kind: MobKind;
   readonly name: string;
@@ -119,6 +145,17 @@ export interface MobDef {
   readonly damage: number;
   /** 遠くから撃つか。**撃たないモブは `null`。** */
   readonly ranged: RangedAttack | null;
+  /** テレポートするか。**跳ばないモブは `null`。** */
+  readonly teleport: TeleportRule | null;
+  /**
+   * 湧きの抽選での重み。**同じ土俵に並んだモブの出やすさの比**で、
+   * 受動どうし・敵対どうしの中でしか効かない（受動と敵対の割り振りは明るさが決める）。
+   *
+   * **1 種類ずつ足すたびに `hostileFor()` の中で分岐を書かないこと。** 重みが無かった頃、
+   * 敵対は全部が同じ確率で湧いたので、エンダーマン（体力 40）を足すと**夜の半分が
+   * エンダーマン**になった。数値は Minecraft の湧きの重みに寄せてある。
+   */
+  readonly spawnWeight: number;
   /**
    * 飛ぶ。**重力を受けず、`flyTarget` の高さへ自分で上がり下がりする。**
    * 段差登りも跳び越えも持たない（壁に当たったら上がる）。崖でも引き返さない。
@@ -179,6 +216,8 @@ const PIG: MobDef = {
   hostile: false,
   damage: 0,
   ranged: null,
+  teleport: null,
+  spawnWeight: 10,
   flying: false,
   fireproof: false,
   spawnOn: null,
@@ -227,6 +266,8 @@ const SHEEP: MobDef = {
   hostile: false,
   damage: 0,
   ranged: null,
+  teleport: null,
+  spawnWeight: 12,
   flying: false,
   fireproof: false,
   spawnOn: null,
@@ -285,6 +326,10 @@ const ZOMBIE: MobDef = {
   // 近接ダメージ。**`MOB_DAMAGE` はこの値の別名**（下の「戦闘の決まり」）。
   damage: 2,
   ranged: null,
+  teleport: null,
+  // **いちばん重い。** 敵対の「どこでも」の枠はゾンビが大半で、
+  // エンダーマン（10）はときどき混じる程度（Minecraft と同じ比）。
+  spawnWeight: 100,
   flying: false,
   fireproof: false,
   spawnOn: null,
@@ -354,6 +399,10 @@ const BLAZE: MobDef = {
     // 芯の真ん中（当たり判定 1.8 の中ほど）。低すぎると自分の足場に当たる。
     height: 1.1,
   },
+  teleport: null,
+  // 要塞の床では 1 種類しか候補に残らないので、比としては効かない
+  // （**それでも書いておくこと** —— 地面を指定しないモブが増えたときに効き始める）。
+  spawnWeight: 10,
   flying: true,
   fireproof: true,
   spawnOn: [NETHER_BRICK],
@@ -382,13 +431,87 @@ const BLAZE: MobDef = {
   ],
 };
 
+const ENDERMAN_SKIN = 0x14121a;
+const ENDERMAN_EYE = 0xd07bfa;
+
+/**
+ * エンダーマン。**初めての跳ぶ（テレポートする）モブ**で、エンダーパールの出どころ。
+ *
+ * 当たり判定は Minecraft と同じ 0.6 x 2.9 —— **背が高いので、天井まで 3 マス空いた所に
+ * しか湧かない**（洞窟の低い所には出ない）。段差は 0.6 でゾンビと同じなので、
+ * プレイヤーが登れる所には付いてくる。
+ *
+ * **本家と違って中立ではありません**（見つめると怒る、が無い）。
+ * ゾンビと同じ「暗い所に湧いて襲ってくる」側で、代わりに殴られると跳んで逃げる。
+ * 中立にするなら `hostile` の使われ方（湧きの枠・逃げ方・日光・ベッド）を
+ * まとめて考え直すことになるので、ここでは足していない。
+ *
+ * グループの並び: 0 = 胴（固定）、1 = 頭、2..3 = 腕、4..5 = 脚。
+ * 腕も脚も 26px と長い（本家の細長い体型）。腕は同じ側の脚と逆の位相にする。
+ */
+const ENDERMAN: MobDef = {
+  kind: "enderman",
+  name: "エンダーマン",
+  size: { half: 0.3, height: 2.9, step: 0.6 },
+  maxHealth: 40,
+  // プレイヤーの歩き (5.2) よりわずかに遅い。**本家の比では 6.0 だが、
+  // ゾンビと同じ「歩きより遅く」の線に揃えてある**（`TUNING.md`）——
+  // 跳んで間合いを詰めてくるぶん、速さまで上回ると走っても逃げ切れない。
+  speed: 5,
+  hostile: true,
+  // 本家と同じ 7（ゾンビ 2 / ブレイズ 6 より重い）。**近づかれたら 3 発で死ぬ。**
+  damage: 7,
+  ranged: null,
+  // 跳び方。数値は本家に寄せた暫定（`TUNING.md`）。**`hurtChance` を 1 にしないこと** ——
+  // 殴るたびに必ず消えるので、体力 40 を削り切れなくなる。
+  teleport: {
+    range: 16,
+    closeIn: 5,
+    vertical: 8,
+    tries: 8,
+    cooldown: 1.5,
+    hurtChance: 0.5,
+    chaseAt: 8,
+  },
+  flying: false,
+  fireproof: false,
+  spawnOn: null,
+  drop: { item: ENDER_PEARL, count: 1, chance: 0.5 },
+  // 本家の湧きの重み。ゾンビ (100) の 1/10 なので、夜に出会うのはたまに。
+  spawnWeight: 10,
+  voice: 0.6,
+  groups: [
+    { motion: "fixed", pivot: [0, 0, 0], phase: 0 },
+    { motion: "head", pivot: [0, px(38), 0], phase: 0 },
+    { motion: "swing", pivot: [px(-3.5), px(38), 0], phase: Math.PI },
+    { motion: "swing", pivot: [px(3.5), px(38), 0], phase: 0 },
+    { motion: "swing", pivot: [px(-1.5), px(26), 0], phase: 0 },
+    { motion: "swing", pivot: [px(1.5), px(26), 0], phase: Math.PI },
+  ],
+  boxes: [
+    // 胴（細い。当たり判定 0.6 = 9.6px に収める）
+    { group: 0, box: [px(-3), px(26), px(-2), px(3), px(38), px(2)], color: ENDERMAN_SKIN },
+    // 頭（軸は首。箱は軸からの相対）。**上端 38 + 8 = 46px = 2.875** で高さ 2.9 に収まる
+    { group: 1, box: [px(-4), 0, px(-4), px(4), px(8), px(4)], color: ENDERMAN_SKIN },
+    // 目。**体が真っ黒なので、ここだけが暗闇で見えるもの**になる
+    { group: 1, box: [px(-3), px(4), px(-4.1), px(-1), px(5.5), px(-4)], color: ENDERMAN_EYE },
+    { group: 1, box: [px(1), px(4), px(-4.1), px(3), px(5.5), px(-4)], color: ENDERMAN_EYE },
+    // 腕・脚（**軸からぶら下げる = y1 が 0**。0 でないと肘や膝で回る）
+    { group: 2, box: [px(-1), px(-26), px(-1), px(1), 0, px(1)], color: ENDERMAN_SKIN },
+    { group: 3, box: [px(-1), px(-26), px(-1), px(1), 0, px(1)], color: ENDERMAN_SKIN },
+    { group: 4, box: [px(-1), px(-26), px(-1), px(1), 0, px(1)], color: ENDERMAN_SKIN },
+    { group: 5, box: [px(-1), px(-26), px(-1), px(1), 0, px(1)], color: ENDERMAN_SKIN },
+  ],
+};
+
 export const MOBS: Record<MobKind, MobDef> = {
   pig: PIG,
   sheep: SHEEP,
   zombie: ZOMBIE,
   blaze: BLAZE,
+  enderman: ENDERMAN,
 };
-export const MOB_KINDS: readonly MobKind[] = ["pig", "sheep", "zombie", "blaze"];
+export const MOB_KINDS: readonly MobKind[] = ["pig", "sheep", "zombie", "blaze", "enderman"];
 /** 湧きの抽選に使う受動モブ。**敵対と混ぜないこと**（湧く条件も上限も別）。 */
 const PASSIVE_KINDS: readonly MobKind[] = ["pig", "sheep"];
 /** 湧きの抽選に使う敵対モブ。**表から作ること**（足したときに書き忘れる）。 */
@@ -405,8 +528,29 @@ const HOSTILE_KINDS: readonly MobKind[] = MOB_KINDS.filter((kind) => MOBS[kind].
 export function hostileFor(ground: number, random: () => number): MobKind | null {
   const picky = HOSTILE_KINDS.filter((kind) => MOBS[kind].spawnOn?.includes(ground));
   const pool = picky.length > 0 ? picky : HOSTILE_KINDS.filter((kind) => !MOBS[kind].spawnOn);
+  return pickWeighted(pool, random);
+}
+
+/**
+ * 重み（`MobDef.spawnWeight`）つきの抽選。候補が空なら null。
+ *
+ * **受動と敵対で共有すること。** 均等割りだったころ、エンダーマンを足した瞬間に
+ * 夜の敵対の半分がエンダーマン（体力 40・一撃 7）になった。**種類を足すたびに
+ * 抽選の中へ分岐を書かない**ための表の値で、`hostileFor()` と `trySpawn()` の
+ * 受動側が同じ 1 本を通る。
+ */
+export function pickWeighted(pool: readonly MobKind[], random: () => number): MobKind | null {
   if (pool.length === 0) return null;
-  return pool[Math.min(pool.length - 1, Math.floor(random() * pool.length))];
+  let total = 0;
+  for (const kind of pool) total += MOBS[kind].spawnWeight;
+  if (total <= 0) return pool[pool.length - 1];
+  let roll = random() * total;
+  for (const kind of pool) {
+    roll -= MOBS[kind].spawnWeight;
+    // **最後は必ず返すこと**（`random()` が 1 を返す実装でも表の外を引かない）。
+    if (roll < 0) return kind;
+  }
+  return pool[pool.length - 1];
 }
 
 /**
@@ -542,6 +686,14 @@ export interface Mob {
    * 飛ばないモブでは使わない。
    */
   flyTarget: number;
+  /** 次に跳べる（テレポートできる）までの残り (秒)。跳ばないモブでは使わない。 */
+  teleportTimer: number;
+  /**
+   * 殴られたので跳びたがっている。**跳ぶのは `update()` の中**（行き先を探すのに
+   * `world` が要る）。`wound()` は `attack()` / `hitByProjectile()` / `burn()` の
+   * 3 か所から呼ばれるので、**印を立てるだけにしておけば 3 通りとも同じ経路に乗る。**
+   */
+  teleportUrge: boolean;
 }
 
 // --- AI と湧きの決まり ---------------------------------------------------
@@ -816,6 +968,9 @@ export class Mobs {
       hopTimer: 0,
       // 湧いた瞬間から浮き始める（0 にすると、最初の判断まで床に落ちようとする）。
       flyTarget: y + (MOBS[kind].flying ? FLY_HOVER : 0),
+      // 湧いた瞬間に跳ばせない（`shootTimer` と同じ理屈。目の前に湧いて即詰められると避けられない）。
+      teleportTimer: MOBS[kind].teleport?.cooldown ?? 0,
+      teleportUrge: false,
     };
     this.list.push(mob);
     return mob;
@@ -872,6 +1027,8 @@ export class Mobs {
       }
       // 焼け死んだらここで list から消えているので、続きに触らない
       if (this.burn(mob, def, dt, ctx)) continue;
+      // **跳ぶのは焼けたあと。** 燃えているエンダーマンが日陰へ逃げられるのはここ。
+      this.teleport(mob, def, world, dt, ctx, random);
       if (!def.hostile) continue;
       this.strike(mob, def, dt, ctx);
       this.fire(mob, def, world, dt, ctx);
@@ -1196,6 +1353,57 @@ export class Mobs {
   }
 
   /**
+   * 跳ぶ（毎フレーム）。**いつ跳ぶかはここ**で、**どこへ跳べるかは `teleportSpot()`**。
+   *
+   * 跳ぶ理由は 2 つだけ:
+   * 1. **殴られた**（`teleportUrge`）→ 自分の周りへ逃げる。確率つき（`hurtChance`）
+   * 2. **追いかけている相手が遠い**（`chaseAt` より遠い）→ 相手の周りへ詰める
+   *
+   * **行き先が見つからなければ跳ばない**（`teleportSpot()` が null）。壁の中・液体の中・
+   * ボクセルの無い列へ出さないための保険はそこ 1 か所にまとめてある。
+   */
+  private teleport(
+    mob: Mob,
+    def: MobDef,
+    world: World,
+    dt: number,
+    ctx: MobContext,
+    random: () => number,
+  ): void {
+    const rule = def.teleport;
+    if (!rule) return;
+    if (mob.teleportTimer > 0) {
+      mob.teleportTimer = Math.max(0, mob.teleportTimer - dt);
+      // **溜めないこと。** 待っているあいだの「跳びたい」を持ち越すと、
+      // 殴るのをやめたあとに 1 回だけ跳ぶ、という理由の分からない動きになる。
+      mob.teleportUrge = false;
+      return;
+    }
+
+    const urge = mob.teleportUrge;
+    mob.teleportUrge = false;
+    const distance = distanceTo(mob, ctx);
+    // クリエイティブは狙われない（`strike()` / `fire()` と同じ線）。
+    const chasing = !ctx.invulnerable && distance <= HOSTILE_SIGHT && distance > rule.chaseAt;
+    if (!urge && !chasing) return;
+    // **殴られたぶんは確率つき。** 必ず跳ぶと、体力 40 を削り切れなくなる。
+    if (urge && random() >= rule.hurtChance) return;
+
+    // 逃げるなら自分の周り、詰めるなら相手の周り。**半径も別**（`range` と `closeIn`）。
+    const spot = urge
+      ? teleportSpot(world, def.size, mob.position.x, mob.position.y, mob.position.z, rule.range, rule, random)
+      : teleportSpot(world, def.size, ctx.playerX, ctx.playerY, ctx.playerZ, rule.closeIn, rule, random);
+    if (!spot) return;
+
+    mob.position.set(spot.x, spot.y, spot.z);
+    // **勢いも消すこと。** 落ちている途中に跳ぶと、着いた先でその落下速度のまま
+    // 地面へ叩きつけられる（`moveBody` は速度を見て押し戻す）。
+    mob.velocity.set(0, 0, 0);
+    mob.onGround = true;
+    mob.teleportTimer = rule.cooldown;
+  }
+
+  /**
    * 飛んでいるものが当たった。**当たったかどうか（形の話）は `projectiles.ts`**で、
    * **誰に何が起きるか（体力・音・ドロップ・逃げ）はここ。**
    *
@@ -1266,6 +1474,9 @@ export class Mobs {
   private wound(mob: Mob, amount: number): boolean {
     mob.health -= amount;
     mob.hurtTimer = HURT_FLASH;
+    // **跳ぶモブは「跳びたい」の印だけ立てる**（行き先を探すには `world` が要る）。
+    // ここ 1 か所にしておけば、殴られた・撃たれた・焼けたの 3 通りとも同じ経路に乗る。
+    mob.teleportUrge = true;
     if (mob.health > 0) return false;
     const index = this.list.indexOf(mob);
     if (index >= 0) this.list.splice(index, 1);
@@ -1357,7 +1568,7 @@ export class Mobs {
       // 湧きの中の分岐が増え、表を読んでも何が湧くのか分からなくなる。
       if (hostile < MAX_HOSTILE) kind = hostileFor(ground, random);
     } else if (passive < MAX_PASSIVE && canSpawnPassive(sky, ground)) {
-      kind = PASSIVE_KINDS[Math.floor(random() * PASSIVE_KINDS.length)];
+      kind = pickWeighted(PASSIVE_KINDS, random);
     }
     if (!kind) return;
     const px = x + 0.5;
@@ -1547,13 +1758,54 @@ function distanceTo(mob: Mob, ctx: MobContext): number {
 }
 
 /**
+ * テレポートの行き先を 1 つ選ぶ。**見つからなければ null**（＝跳ばない）。
+ *
+ * **壁の中・液体の中・ボクセルの無い列へ出さない保険はここ 1 か所。** `Mobs.teleport()`
+ * には条件を書かないこと —— 逃げる側と詰める側の 2 通りがあるので、写すと必ず片方だけ直す。
+ *
+ * 座標を知っているだけで three も DOM も出てこないので、丸ごとヘッドレスで確かめられる。
+ * `world` に聞くのは `getVoxel` / `hasColumn` の 2 つだけ（`boxBlocked` 経由も含む）。
+ *
+ * @param radius 探す水平の半径。**逃げる（`range`）と詰める（`closeIn`）で違う**ので引数。
+ */
+export function teleportSpot(
+  world: World,
+  size: BodySize,
+  x: number,
+  y: number,
+  z: number,
+  radius: number,
+  rule: TeleportRule,
+  random: () => number,
+): { x: number; y: number; z: number } | null {
+  for (let i = 0; i < rule.tries; i++) {
+    const tx = Math.floor(x + (random() * 2 - 1) * radius);
+    const tz = Math.floor(z + (random() * 2 - 1) * radius);
+    // **ボクセルの無い列へ跳ばないこと。** `getVoxel` が AIR を返すので、
+    // 跳んだ先で足場が見つかったつもりになり、そのまま世界を突き抜けて落ちる。
+    if (!world.hasColumn(columnOf(tx), columnOf(tz))) continue;
+    // 上下は `vertical` の幅だけ。**広げると穴の底や天井裏へ出る。**
+    const ty = findGround(world, tx, Math.floor(y) + rule.vertical, tz, rule.vertical * 2);
+    if (ty < 0) continue;
+    // **液体の中へ出さないこと**（水なら溺れ、溶岩なら焼ける。湧きと同じ線）。
+    if (isLiquid(world.getVoxel(tx, ty, tz))) continue;
+    const px = tx + 0.5;
+    const pz = tz + 0.5;
+    // 形のあるブロック（ハーフ・階段）や低い天井の中に出ないよう、当たり判定の箱で見る。
+    if (boxBlocked(world, px, ty, pz, size)) continue;
+    return { x: px, y: ty, z: pz };
+  }
+  return null;
+}
+
+/**
  * `from` から下へ探して、上が空いている最初の固い地面の高さを返す。無ければ -1。
  * **列を丸ごと（128 段）走査しないこと。** 湧きは 1 フレームに何度も試すので、
  * ここが重いと湧きだけでフレームを食う。
  */
-function findGround(world: World, x: number, from: number, z: number): number {
+function findGround(world: World, x: number, from: number, z: number, depth = SPAWN_SCAN_DEPTH): number {
   const top = Math.min(WORLD_HEIGHT - 1, from);
-  for (let y = top; y > top - SPAWN_SCAN_DEPTH && y > 1; y--) {
+  for (let y = top; y > top - depth && y > 1; y--) {
     if (!isSolid(world.getVoxel(x, y - 1, z))) continue;
     if (isSolid(world.getVoxel(x, y, z))) continue;
     return y;
