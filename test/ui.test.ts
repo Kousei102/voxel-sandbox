@@ -112,6 +112,9 @@ function mainStaysWiring(): void {
     // ネザーで死んだ人が天井の岩盤の上に湧く形（2-4c）に戻る。
     ["リスポーンで戻る次元", "respawnDimension("],
     ["リスポーンの行き先", "respawnPlan("],
+    // 投げたエンダーアイが**どちらを向くか**。`main.ts` が自分で要塞を探し始めると、
+    // 建てる側（`structures.ts` の器）と食い違っても掘るまで気付けない。
+    ["エンダーアイの向き", "eyeShot("],
   ];
   const inlined = routed.filter(([, call]) => !source.includes(call));
   check(

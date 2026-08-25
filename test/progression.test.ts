@@ -24,7 +24,7 @@
  * `仮` が残ったまま「達成 12 / 12」になっても、それはクリアできるという意味ではない。
  */
 
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { AIR, BLOCKS, LAVA, NETHERRACK, NETHER_BRICK, OBSIDIAN, STONE, WATER } from "../src/blocks";
 import { CHUNK_LAYERS, CHUNK_SIZE, CHUNK_VOLUME } from "../src/constants";
 import { findRecipe } from "../src/crafting";
@@ -38,6 +38,9 @@ import { quenchAround } from "../src/liquids";
 import { canHarvest } from "../src/mining";
 import { ignite } from "../src/portals";
 import { arrive, buildPortal, linkScale, linkedSpot, standable } from "../src/portaltravel";
+import { Projectiles, projectileDef } from "../src/projectiles";
+import { STRONGHOLD_SITE, eyeShot, nearestStronghold } from "../src/stronghold";
+import { placementsFor, type StructureDef } from "../src/structures";
 import { World } from "../src/world";
 import { WorldGen } from "../src/worldgen";
 import { Scene } from "three";
@@ -46,7 +49,7 @@ import { Scene } from "three";
  * **達成済みの件数。項目を達成したときだけ 1 つ上げること。**
  * これより減ったら `npm test` が赤くなる（達成の後戻りを退行として捕まえる）。
  */
-const ACHIEVED_BASELINE = 9;
+const ACHIEVED_BASELINE = 10;
 
 /** ネザー要塞を探す範囲（列）。**広げると `npm test` がそのぶん遅くなります。** */
 const RADIUS = 4;
@@ -72,26 +75,16 @@ function item(name: string): number {
 }
 
 /**
- * `src/` のどこかにその語を書いたファイルがあるか。**仮の判定にしか使わないこと。**
+ * ソースが存在して、その語を含むか。**仮の判定にしか使わないこと。**
  *
- * **仮の判定は「成果物」に掛けること。** 「土台のファイルがあるか」に掛けると、
- * 器を作った瞬間に達成したことになります（`structures.ts` を足した周に
- * 「ネザー要塞が生成される」が勝手に達成へ変わりました。要塞は 1 個も建っていません）。
+ * **仮の判定は「成果物」に掛けること。** 「土台のファイルがあるか」「その名前の
+ * 関数があるか」に掛けると、**器を作った瞬間・1 行足した瞬間に達成へ化けます**
+ * （`structures.ts` / `dimensions.ts` / `projectiles.ts` / ブレイズ /
+ * エンダーアイのレシピ / 要塞の方角と、同じ形で 6 度踏んでいます）。
+ *
+ * **コメントを落として読むこと**（`sourceOf`）。落とさないと、器の説明に書いた
+ * 「ネザー要塞・要塞・エンドの黒曜石の柱が全部これに乗ります」がそのまま当たります。
  */
-function anySourceHas(word: string): { done: boolean; detail?: string } {
-  for (const name of readdirSync("src")) {
-    if (!name.endsWith(".ts")) continue;
-    // **コメントを落として読むこと。** 落とさないと、器の説明に書いた
-    // 「ネザー要塞・要塞・エンドの黒曜石の柱が全部これに乗ります」がそのまま当たります
-    // （これで一度、要塞 0 個のまま達成に変わりました）。
-    if (sourceOf(`src/${name}`).includes(word)) {
-      return { done: true, detail: `src/${name}` };
-    }
-  }
-  return { done: false, detail: `どこにも「${word}」が無い` };
-}
-
-/** ソースが存在して、その語を含むか。**仮の判定にしか使わないこと。** */
 function sourceHas(path: string, ...words: string[]): { done: boolean; detail?: string } {
   if (!existsSync(path)) return { done: false, detail: `${path} が無い` };
   const source = sourceOf(path);
@@ -439,16 +432,70 @@ const MILESTONES: readonly Milestone[] = [
   },
   {
     name: "投げたエンダーアイが要塞の方を向く",
-    kind: "仮",
-    // **土台ではなく成果物に掛けること。3 度目です。** 前は
-    // `sourceHas("src/projectiles.ts", "export")` で、飛び道具の器（1-8）を作った瞬間に
-    // 達成へ変わりました —— エンダーアイは 1 個も投げられないのに。
-    // （`structures.ts` で 1 度、`dimensions.ts` で 1 度、同じ形で踏んでいます。）
+    kind: "本物",
+    // **名前があるかを見ないこと。** 前は `anySourceHas("strongholdDirection")` で、
+    // 関数を 1 つ書いた瞬間に達成へ変わりました（`structures.ts` / `dimensions.ts` /
+    // `projectiles.ts` / ブレイズ / エンダーアイのレシピと、同じ形で 5 度踏んでいます）。
+    //
+    // ここは**実際に投げます**。深い検証は `test/stronghold.test.ts` にあるので、
+    // 導線として要る 2 つだけを見ます ——
+    // (1) 投げた弾が本当に飛んでいて、その向きが要塞を指しているか
+    // (2) その要塞を、地形を作る側（`structures.ts` の器）も同じ場所に建てるか
+    //     （食い違うと、指した先を掘っても何も無い）。
     probe: () => {
       const eye = item("エンダーアイ");
       if (eye === NO_ITEM) return { done: false, detail: "エンダーアイのアイテムが無い" };
-      // 飛ばす仕掛けはもうある。足りないのは**要塞の方角を決める判断**のほう。
-      return anySourceHas("strongholdDirection");
+
+      // 要塞は地面の下なので、壁で止まる飛び道具では案内にならない。
+      if (projectileDef("eye").onBlock !== "pass") {
+        return { done: false, detail: "エンダーアイが壁で止まる" };
+      }
+
+      // **`STRONGHOLD_SITE` を広げただけの建物**を器に通す（建てるのは 2-8）。
+      const marker: StructureDef = {
+        ...STRONGHOLD_SITE,
+        name: "要塞",
+        extent: { x: 0, up: 0, z: 0 },
+        build: () => {},
+      };
+
+      const spots: [number, number][] = [
+        [0.5, 0.5],
+        [523.5, -318.5],
+        [-1204.5, 877.5],
+      ];
+      const seen: string[] = [];
+      for (const seed of [12345, 4242]) {
+        for (const [x, z] of spots) {
+          const shot = eyeShot(seed, x, 70, z);
+          if (!shot) return { done: false, detail: `種 ${seed} の (${x}, ${z}) で投げられない` };
+
+          // **実際に飛ばす。** 注文の向きだけを見ると、表の速さ 0 でも通る。
+          const flying = new Projectiles();
+          const fired = flying.fire(shot);
+          if (!fired || fired.velocity.length() <= 0) {
+            return { done: false, detail: "投げたアイが飛ばない" };
+          }
+
+          const site = nearestStronghold(seed, x, z);
+          if (!site) return { done: false, detail: "要塞が見つからない" };
+          const dot =
+            (fired.velocity.x * (site.x - x) + fired.velocity.z * (site.z - z)) /
+            Math.hypot(fired.velocity.x, fired.velocity.z) /
+            site.distance;
+          if (dot < 1 - 1e-6) {
+            return { done: false, detail: `向きが要塞を指していない（内積 ${dot.toFixed(3)}）` };
+          }
+
+          // **指した先に本当に建つか。** ここが食い違うと、掘るまで気付けない。
+          const places = placementsFor([marker], seed, site.x >> 4, site.z >> 4, () => 40);
+          if (!places.some((p) => p.x === site.x && p.z === site.z)) {
+            return { done: false, detail: "指した先を地形の側が知らない" };
+          }
+          seen.push(site.distance.toFixed(0));
+        }
+      }
+      return { done: true, detail: `${seen.length} 通りとも要塞を指す（${seen.join(" / ")} マス先）` };
     },
   },
   {

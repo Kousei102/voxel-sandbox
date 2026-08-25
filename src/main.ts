@@ -50,6 +50,7 @@ import { Furnaces } from "./furnaces";
 import { Inventory, bulkDiscard } from "./inventory";
 import { InventoryScreen } from "./inventoryui";
 import {
+  ENDER_EYE,
   NO_ITEM,
   foodOf,
   isBucket,
@@ -76,6 +77,7 @@ import {
 import { PROJECTILE_KINDS, Projectiles } from "./projectiles";
 import { ProjectileRenderer } from "./projectilerender";
 import { raycastVoxels, type RaycastHit } from "./raycast";
+import { eyeShot } from "./stronghold";
 import { DigCadence, Footsteps, clampVolume } from "./sfx";
 import { Sky } from "./sky";
 import { buildSave, collectState, restoredValues, savedShape } from "./session";
@@ -886,6 +888,17 @@ function useOrPlace(): void {
   // バケツは押しっぱなしではなく 1 回で終わる。
   if (isBucket(inventory.selectedItem)) {
     useBucket(inventory.selectedItem);
+    return;
+  }
+
+  // エンダーアイ。**どこへ向けて飛ぶかは `stronghold.ts` の `eyeShot()`**
+  // （視線ではなく要塞のほうを向く案内役なので、`hit` は要らない）。
+  // **種は `worldSeed`** —— `world.seed` はネザーだと塩を混ぜたあとの値で、
+  // 渡すとオーバーワールドと別の場所を指す（`rules/dimensions.md`）。
+  if (inventory.selectedItem === ENDER_EYE) {
+    const shot = eyeShot(worldSeed, camera.position.x, camera.position.y, camera.position.z);
+    if (shot) projectiles.fire(shot);
+    else hud.flash("要塞の見当が付きません");
     return;
   }
 

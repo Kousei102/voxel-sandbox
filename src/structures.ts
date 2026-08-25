@@ -38,8 +38,16 @@ export interface Extent {
   readonly z: number;
 }
 
-export interface StructureDef {
-  readonly name: string;
+/**
+ * **どこに建つか**だけの規則。`StructureDef` から切り出してあります ——
+ * **建て方（`build`）を持たない側からも同じ場所を引けるようにするため**です。
+ *
+ * エンダーアイがこれを使います（`stronghold.ts`）。要塞そのものを建てるのは
+ * あとの周ですが、**投げたアイが指す先と、実際に建つ場所は同じでなければなりません。**
+ * 別々に持つと、**アイの指す方角に何も無い**という形で静かに壊れます
+ * （しかも地面の下なので、掘るまで気付けません）。
+ */
+export interface SiteRule {
   /**
    * 何列（チャンク）ごとに 1 個試すか。**この正方形のグリッド 1 マスに最大 1 個**で、
    * 場所はマスの中で散らします（規則正しく並ばないように）。
@@ -47,9 +55,13 @@ export interface StructureDef {
   readonly spacing: number;
   /** 試したうち実際に建つ割合 0..1。1 なら必ず建つ。 */
   readonly chance: number;
-  readonly extent: Extent;
   /** 同じ座標でも構造物ごとに違う場所へ散らすための種。**種類ごとに変えること。** */
   readonly salt: number;
+}
+
+export interface StructureDef extends SiteRule {
+  readonly name: string;
+  readonly extent: Extent;
   /** 地面からいくつ上に基準点を置くか（既定 1 = 地表の 1 つ上）。 */
   readonly lift?: number;
   /** 中身を書き込む。**`put` はチャンクの外を勝手に捨てる**ので、全体を素直に書けばよい。 */
@@ -66,6 +78,39 @@ function hash2(x: number, z: number, seed: number): number {
 /** 負数でも下へ丸める割り算。**`Math.floor(a / b)` を素直に書くと -0.1 が 0 になる。** */
 function floorDiv(a: number, b: number): number {
   return Math.floor(a / b);
+}
+
+/** グリッド 1 マスの一辺（ワールド単位）。 */
+export function cellSize(rule: SiteRule): number {
+  return rule.spacing * CHUNK_SIZE;
+}
+
+/**
+ * グリッドのマス `(gx, gz)` に建つなら、その**水平の位置**。建たなければ null。
+ *
+ * **建つかどうかと、どこに立つかの唯一の出どころ。** `placementsFor()` も、
+ * 方角だけを知りたい側（`stronghold.ts`）も、必ずここを通します ——
+ * 写すと「アイの指す先に何も無い」形で食い違います。
+ */
+export function siteAt(
+  rule: SiteRule,
+  seed: number,
+  gx: number,
+  gz: number,
+): { x: number; z: number } | null {
+  if (hash2(gx, gz, seed ^ rule.salt) >= rule.chance) return null;
+  const cell = cellSize(rule);
+  // マスの中で散らす。**軸ごとに別の種を使うこと**（同じ種だと x と z が
+  // 同じ値になり、構造物が斜めの線の上に並ぶ）。
+  return {
+    x: gx * cell + Math.floor(hash2(gx, gz, seed ^ (rule.salt + 1)) * cell),
+    z: gz * cell + Math.floor(hash2(gx, gz, seed ^ (rule.salt + 2)) * cell),
+  };
+}
+
+/** その座標を含むグリッドのマスの番号。 */
+export function cellOf(rule: SiteRule, v: number): number {
+  return floorDiv(v, cellSize(rule));
 }
 
 /**
@@ -90,7 +135,7 @@ export function placementsFor(
   const hiZ = loZ + CHUNK_SIZE - 1;
 
   for (const def of defs) {
-    const cell = def.spacing * CHUNK_SIZE;
+    const cell = cellSize(def);
     // グリッドのマス g が届きうる範囲は [g*cell - extent, g*cell + cell - 1 + extent]。
     // これが [lo, hi] と重なる g だけを見る。
     const gxMin = floorDiv(loX - cell + 1 - def.extent.x, cell);
@@ -100,14 +145,12 @@ export function placementsFor(
 
     for (let gz = gzMin; gz <= gzMax; gz++) {
       for (let gx = gxMin; gx <= gxMax; gx++) {
-        if (hash2(gx, gz, seed ^ def.salt) >= def.chance) continue;
-        // マスの中で散らす。**軸ごとに別の種を使うこと**（同じ種だと x と z が
-        // 同じ値になり、構造物が斜めの線の上に並ぶ）。
-        const x = gx * cell + Math.floor(hash2(gx, gz, seed ^ (def.salt + 1)) * cell);
-        const z = gz * cell + Math.floor(hash2(gx, gz, seed ^ (def.salt + 2)) * cell);
+        // **場所を決めるのは `siteAt()` 1 か所**（方角を知りたい側と共有する）。
+        const site = siteAt(def, seed, gx, gz);
+        if (!site) continue;
         // ここで初めて地面を測る（建つと決まった 1 個につき 1 回）。
-        const y = ground(x, z) + (def.lift ?? 1);
-        out.push({ def, x, y, z });
+        const y = ground(site.x, site.z) + (def.lift ?? 1);
+        out.push({ def, x: site.x, y, z: site.z });
       }
     }
   }
