@@ -30,7 +30,9 @@ npm run build      # typecheck + dist/ に静的ファイル一式
 
 **クリア導線（ネザー → エンド → エンダードラゴン）はループで進めています。**
 1 周の手順と禁じ手は `LOOP.md`、タスクの並びは `TASKS.md`、ブラウザ確認の積み残しは
-`REVIEW.md`、**あとで決める手触りの数値は `TUNING.md`**。進み具合は `npm test` の「進行（クリア導線）」が「達成 N / 13」で出します
+`REVIEW.md`、**あとで決める手触りの数値は `TUNING.md`**、
+**無人の周が書いた決まりごとの更新待ちは `RULES-INBOX.md`**（`.claude/rules/` を
+直接編集すると確認待ちで止まるため。取り込むのは人が居る周）。進み具合は `npm test` の「進行（クリア導線）」が「達成 N / 13」で出します
 （`test/progression.test.ts`）。**ブロック ID とアイテム ID は `ROADMAP.md` の予約表から取ること。**
 **`HANDOFF.md` は消さずに、セッションの終わりに丸ごと書き直して次へ渡すこと**
 （引き写さず、`git fetch` と `npm test` で裏を取ってから）。
