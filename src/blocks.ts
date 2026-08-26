@@ -190,6 +190,19 @@ export const NETHER_PORTAL = 49;
 export const END_PORTAL_FRAME = 51;
 
 /**
+ * エンドポータルの面。**枠 12 個すべてにエンダーアイを嵌めると、輪の内側 3x3 に
+ * これが現れる**（起動の規則は `endportal.ts`）。
+ *
+ * ネザーポータルと違って**縦ではなく横に寝ている**ので、向きは 1 つしか要らない
+ * （落ちて入る形。Minecraft と同じ）。**通り抜けられる**（`solid: false`）ので、
+ * 起動したら踏み抜けます。
+ *
+ * **壊せない**（`hardness` が無限）。枠と同じ理由で、起動したあとに消せると
+ * 「アイを 12 個使い切ったのに入れない」が作れてしまう。
+ */
+export const END_PORTAL = 52;
+
+/**
  * 石レンガ。**要塞（`stronghold.ts`）の材料**で、地形には湧かない
  * （ネザーレンガがネザー要塞専用なのと同じ）。
  *
@@ -457,6 +470,12 @@ export const PORTAL_BOX_X: BoxList = [[0, 0, 0.375, 1, 1, 0.625]];
 export const PORTAL_BOX_Z: BoxList = [[0.375, 0, 0, 0.625, 1, 1]];
 
 /**
+ * エンドポータルの明るさ。Minecraft と同じ 15（溶岩と同じで、これ以上は無い）。
+ * **枠より上には何も無いので、起動すると部屋がここだけで明るくなる。**
+ */
+export const END_PORTAL_LIGHT = 15;
+
+/**
  * 溶岩の明るさ。Minecraft と同じ 15（`MAX_LIGHT` と同じで、これ以上は無い）。
  * **松明より明るい**ので、溶岩の見える洞窟は松明を持たずに歩ける。
  */
@@ -654,6 +673,11 @@ function bedSet(
  */
 export const FRAME_HEIGHT = 0.8125;
 const FRAME_BOX: BoxList = [[0, 0, 0, 1, FRAME_HEIGHT, 1]];
+/**
+ * エンドポータルの面。**枠と同じ高さで寝かせる**（`FRAME_HEIGHT` を写さないこと）——
+ * 1 にすると、膝までの枠の輪から板だけが飛び出して見える。
+ */
+const END_PORTAL_BOX: BoxList = [[0, 0, 0, 1, FRAME_HEIGHT, 1]];
 /** アイを嵌めた版。**上面の真ん中に小さい箱がひとつ乗るだけ**（形で嵌まったと分かる）。 */
 const FRAME_EYE_BOX: BoxList = [
   [0, 0, 0, 1, FRAME_HEIGHT, 1],
@@ -1011,6 +1035,26 @@ export const BLOCKS: readonly BlockDef[] = [
   ),
   // エンドポータルの枠 8 通り（向き 4 x アイの有無 2）。**壊せない。**
   ...endPortalFrameSet(),
+
+  // エンドポータルの面。**枠 12 個にアイが揃うと輪の内側 3x3 に現れる**
+  // （規則は `endportal.ts`）。ネザーポータルと違って寝ているので向きは 1 つだけ。
+  // **壊せない** —— 消せると、アイを 12 個使い切ったのに入れない状態が作れる。
+  def(
+    END_PORTAL,
+    "エンドポータル",
+    { top: 0x2a1d52, side: 0x1a1136, bottom: 0x120b26 },
+    {
+      opaque: false,
+      solid: false,
+      // 薄く寝た面なので、屋根としては数えない（ネザーポータルと同じ扱い）。
+      blocksSky: false,
+      hardness: UNBREAKABLE,
+      emission: END_PORTAL_LIGHT,
+      sound: "glass",
+      model: "boxes",
+      boxes: END_PORTAL_BOX,
+    },
+  ),
 ];
 
 

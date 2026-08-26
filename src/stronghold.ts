@@ -199,7 +199,7 @@ export const STRONGHOLD_FRAMES = 12;
  * 輪の上では `|dx|` と `|dz|` のどちらか一方だけが `STRONGHOLD_RING` なので、
  * 大きいほうの軸で決めれば必ず内向きになる。
  */
-function facingToCentre(dx: number, dz: number): number {
+export function facingToCentre(dx: number, dz: number): number {
   if (Math.abs(dx) > Math.abs(dz)) return dx > 0 ? FACE_XN : FACE_XP;
   return dz > 0 ? FACE_ZN : FACE_ZP;
 }
@@ -210,6 +210,36 @@ function onRing(dx: number, dz: number): boolean {
   const az = Math.abs(dz);
   return Math.max(ax, az) === STRONGHOLD_RING && !(ax === STRONGHOLD_RING && az === STRONGHOLD_RING);
 }
+
+/**
+ * 輪 12 個の位置（中心からの `[dx, dz]`）。**輪の形の唯一の出どころ。**
+ *
+ * 建てる側（下の `ring()`）と、起動を見る側（`endportal.ts`）が**同じこれを読む**こと ——
+ * 写して 2 か所に持つと、輪の形を変えたときに「建っている輪では起動できない」形で
+ * 静かに壊れる（しかも地下 18 マスなので、掘って 12 個嵌めるまで気付けない）。
+ */
+export const RING_OFFSETS: readonly (readonly [number, number])[] = (() => {
+  const out: [number, number][] = [];
+  for (let dz = -STRONGHOLD_RING; dz <= STRONGHOLD_RING; dz++) {
+    for (let dx = -STRONGHOLD_RING; dx <= STRONGHOLD_RING; dx++) {
+      if (onRing(dx, dz)) out.push([dx, dz]);
+    }
+  }
+  return out;
+})();
+
+/**
+ * 輪の内側のマス（中心からの `[dx, dz]`）。**起動するとここがポータルの面になる。**
+ * 半径 1 の 3x3 なので 9 マス（`STRONGHOLD_RING - 1` から作るので、輪を広げれば付いてくる）。
+ */
+export const RING_INSIDE: readonly (readonly [number, number])[] = (() => {
+  const out: [number, number][] = [];
+  const half = STRONGHOLD_RING - 1;
+  for (let dz = -half; dz <= half; dz++) {
+    for (let dx = -half; dx <= half; dx++) out.push([dx, dz]);
+  }
+  return out;
+})();
 
 /** 部屋の殻（床・天井・4 面の壁）を石レンガで、中を空気で埋める。 */
 function shell(place: Placement, put: Put): void {
@@ -235,12 +265,9 @@ function shell(place: Placement, put: Put): void {
  * **真ん中の 3x3 は空気のまま**にする（起動するとそこがポータルになる。TASKS 2-9）。
  */
 function ring(place: Placement, put: Put): void {
-  for (let dz = -STRONGHOLD_RING; dz <= STRONGHOLD_RING; dz++) {
-    for (let dx = -STRONGHOLD_RING; dx <= STRONGHOLD_RING; dx++) {
-      if (!onRing(dx, dz)) continue;
-      // **向きは `endPortalFrame()` に聞くこと**（状態の番号を写さない）。
-      put(place.x + dx, place.y + 1, place.z + dz, endPortalFrame(facingToCentre(dx, dz), false));
-    }
+  for (const [dx, dz] of RING_OFFSETS) {
+    // **向きは `endPortalFrame()` に聞くこと**（状態の番号を写さない）。
+    put(place.x + dx, place.y + 1, place.z + dz, endPortalFrame(facingToCentre(dx, dz), false));
   }
 }
 

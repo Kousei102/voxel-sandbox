@@ -25,7 +25,18 @@
  */
 
 import { existsSync } from "node:fs";
-import { AIR, BLOCKS, LAVA, NETHERRACK, NETHER_BRICK, OBSIDIAN, STONE, WATER } from "../src/blocks";
+import {
+  AIR,
+  BLOCKS,
+  LAVA,
+  NETHERRACK,
+  NETHER_BRICK,
+  OBSIDIAN,
+  STONE,
+  WATER,
+  frameHasEye,
+  isEndPortalFrame,
+} from "../src/blocks";
 import { CHUNK_LAYERS, CHUNK_SIZE, CHUNK_VOLUME } from "../src/constants";
 import { findRecipe } from "../src/crafting";
 import { Dimensions, NETHER, OVERWORLD, type DimensionState } from "../src/dimensions";
@@ -33,13 +44,14 @@ import { Arena, Slab, seeded, sourceOf } from "./arena";
 import { MOBS, Mobs, PLAYER_ATTACK_COOLDOWN } from "../src/mobs";
 import { check, describe } from "./harness";
 import { type Slot } from "../src/inventory";
-import { NO_ITEM, dropOf, isFireStarter, itemName, rollDrop } from "../src/items";
+import { NO_ITEM, dropOf, isFireStarter, itemName, itemStackLimit, rollDrop } from "../src/items";
 import { quenchAround } from "../src/liquids";
 import { canHarvest } from "../src/mining";
 import { ignite } from "../src/portals";
 import { arrive, buildPortal, linkScale, linkedSpot, standable } from "../src/portaltravel";
 import { Projectiles, projectileDef } from "../src/projectiles";
-import { STRONGHOLD_SITE, eyeShot, nearestStronghold } from "../src/stronghold";
+import { STRONGHOLD, STRONGHOLD_SITE, eyeShot, nearestStronghold } from "../src/stronghold";
+import { fitEye } from "../src/endportal";
 import { placementsFor, type StructureDef } from "../src/structures";
 import { World } from "../src/world";
 import { WorldGen } from "../src/worldgen";
@@ -49,7 +61,7 @@ import { Scene } from "three";
  * **達成済みの件数。項目を達成したときだけ 1 つ上げること。**
  * これより減ったら `npm test` が赤くなる（達成の後戻りを退行として捕まえる）。
  */
-const ACHIEVED_BASELINE = 10;
+const ACHIEVED_BASELINE = 11;
 
 /** ネザー要塞を探す範囲（列）。**広げると `npm test` がそのぶん遅くなります。** */
 const RADIUS = 4;
@@ -500,8 +512,65 @@ const MILESTONES: readonly Milestone[] = [
   },
   {
     name: "エンドポータルが 12 個の枠で起動する",
-    kind: "仮",
-    probe: () => ({ done: !!block("エンドポータル枠") && !!block("エンドポータル") }),
+    kind: "本物",
+    // **ブロックがあるかを見ないこと。** 前は「エンドポータル枠」と「エンドポータル」が
+    // 表にあるかだけで、**ブロックを 1 行足した瞬間に達成へ化けました**
+    // （`structures.ts` / `dimensions.ts` / `projectiles.ts` / ブレイズ /
+    // エンダーアイのレシピ / 要塞の方角と、同じ形で 6 度踏んでいます）。
+    //
+    // ここは**要塞が実際に建てた輪**にアイを 12 個嵌めます。手で並べた輪だと、
+    // 建てる側と起動する側が食い違っていても両方とも緑になります。
+    // 深い検証（順番・角寄りの枠・未読み込みの列）は `test/endportal.test.ts`。
+    probe: () => {
+      const eye = item("エンダーアイ");
+      const portal = block("エンドポータル");
+      if (eye === NO_ITEM || !portal) return { done: false, detail: "アイかポータルのブロックが無い" };
+
+      // **要塞の部屋をそのまま建てる**（`stronghold.ts` の `build()` を通す）。
+      const slab = new Slab();
+      const y = 40;
+      STRONGHOLD.build({ def: STRONGHOLD, x: 0, y, z: 0 }, (px, py, pz, id) => {
+        slab.setVoxel(px, py, pz, id);
+      });
+
+      // 建った枠を舐めて探す（輪の表を読み直さない）。
+      const spots: [number, number, number][] = [];
+      for (let dz = -6; dz <= 6; dz++) {
+        for (let dx = -6; dx <= 6; dx++) {
+          if (isEndPortalFrame(slab.getVoxel(dx, y + 1, dz))) spots.push([dx, y + 1, dz]);
+        }
+      }
+      if (spots.length !== 12) return { done: false, detail: `枠が ${spots.length} 個しか建たない` };
+      if (spots.some(([x, fy, z]) => frameHasEye(slab.getVoxel(x, fy, z)))) {
+        return { done: false, detail: "建った時点でアイが嵌まっている" };
+      }
+
+      // **アイ 12 個が 1 枠に収まること**（`stack` が足りないと集めきれない）。
+      if (itemStackLimit(eye) < 12) return { done: false, detail: `アイのスタックが ${itemStackLimit(eye)}` };
+
+      const inside = () => {
+        let n = 0;
+        for (let dz = -1; dz <= 1; dz++) {
+          for (let dx = -1; dx <= 1; dx++) if (slab.getVoxel(dx, y + 1, dz) === portal.id) n++;
+        }
+        return n;
+      };
+
+      let used = 0;
+      for (const [x, fy, z] of spots) {
+        const fit = fitEye(slab, x, fy, z);
+        if (fit.kind !== "fitted") return { done: false, detail: `${used + 1} 個目が嵌まらない` };
+        used++;
+        // **11 個では起動しないこと**（1 個でも足りれば、集める工程が意味を失う）。
+        if (used < 12 && inside() > 0) return { done: false, detail: `${used} 個で起動してしまう` };
+      }
+      if (inside() !== 9) return { done: false, detail: `12 個嵌めても中心が ${inside()} マス` };
+
+      // ここだけは配線の確認（`main.ts` はヘッドレスでは動かせない）。
+      const wired = sourceHas("src/main.ts", "fitEye(");
+      if (!wired.done) return { done: false, detail: "main.ts に嵌める配線が無い" };
+      return { done: true, detail: `アイ ${used} 個で中心 3x3 が開く` };
+    },
   },
   {
     name: "エンドへ行ける",

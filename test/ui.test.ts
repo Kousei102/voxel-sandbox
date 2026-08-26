@@ -115,6 +115,10 @@ function mainStaysWiring(): void {
     // 投げたエンダーアイが**どちらを向くか**。`main.ts` が自分で要塞を探し始めると、
     // 建てる側（`structures.ts` の器）と食い違っても掘るまで気付けない。
     ["エンダーアイの向き", "eyeShot("],
+    // 枠にアイを嵌める／揃ったら起動する。`main.ts` が輪を数え始めると、
+    // **地下 18 マスの部屋を掘り当てるまで確かめられない**場所に判断が戻る。
+    ["エンドポータルの起動", "fitEye("],
+    ["エンドポータルの文言", "eyeMessage("],
   ];
   const inlined = routed.filter(([, call]) => !source.includes(call));
   check(

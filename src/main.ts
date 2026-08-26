@@ -13,6 +13,8 @@ import {
   AIR,
   CHEST,
   CRAFTING_TABLE,
+  END_PORTAL,
+  END_PORTAL_FRAME,
   FURNACE,
   FURNACE_LIT,
   PALETTE,
@@ -22,6 +24,7 @@ import {
   bedPartner,
   isBed,
   isBedHead,
+  isEndPortalFrame,
   shapeBounds,
 } from "./blocks";
 import { AudioEngine } from "./audio";
@@ -43,6 +46,7 @@ import { Chests } from "./chests";
 import { CrackOverlay } from "./crack";
 import { CraftScreen } from "./craftscreen";
 import { DayNight, WAKE_TIME, canSleep, environmentFor } from "./daynight";
+import { eyeMessage, fitEye } from "./endportal";
 import { Dimensions, OVERWORLD, emptyState, type DimensionState } from "./dimensions";
 import { Drops, type DropContext } from "./drops";
 import { DropRenderer } from "./droprender";
@@ -891,6 +895,13 @@ function useOrPlace(): void {
     return;
   }
 
+  // エンドポータルの枠にエンダーアイを嵌める。**投げる側より先に見ること** ——
+  // 逆にすると、枠を狙っても手からアイが飛んでいって永久に嵌まらない。
+  if (hit && inventory.selectedItem === ENDER_EYE && isEndPortalFrame(hit.id)) {
+    fitEndPortalEye(hit.block.x, hit.block.y, hit.block.z);
+    return;
+  }
+
   // エンダーアイ。**どこへ向けて飛ぶかは `stronghold.ts` の `eyeShot()`**
   // （視線ではなく要塞のほうを向く案内役なので、`hit` は要らない）。
   // **種は `worldSeed`** —— `world.seed` はネザーだと塩を混ぜたあとの値で、
@@ -937,6 +948,22 @@ function useOrPlace(): void {
   audio.play("place", blockSound(placed.id));
 
   if (!creative) inventory.consumeSelected(1);
+  hud.refresh();
+  saveDirty = true;
+}
+
+/**
+ * 枠にエンダーアイを嵌める。**嵌まるか・揃ったら起動するか・何と出すかは
+ * 全部 `endportal.ts`**（ここは減らして貼るだけ）。
+ */
+function fitEndPortalEye(x: number, y: number, z: number): void {
+  const fit = fitEye(world, x, y, z);
+  const message = eyeMessage(fit);
+  if (message) hud.flash(message);
+  // **`already` ではアイを減らさない**（嵌まっている枠を叩いても損しない）。
+  if (fit.kind !== "fitted") return;
+  if (!creative) inventory.consumeSelected(1);
+  audio.play("place", blockSound(fit.lit > 0 ? END_PORTAL : END_PORTAL_FRAME));
   hud.refresh();
   saveDirty = true;
 }
