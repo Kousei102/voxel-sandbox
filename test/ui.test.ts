@@ -130,6 +130,10 @@ function mainStaysWiring(): void {
     // 矢が尽きた）が器を足すたびに 1 つずつ抜ける（食べかけで通った道）。
     ["弓の引き", "drawing.advance("],
     ["弓を放つ", "drawing.release("],
+    // **呼び出しの側も見ること。** 判断を呼ぶ関数が `main.ts` にあるだけでは、
+    // フレームから外しても・マウスから外しても緑のまま通る（実際に通った）。
+    ["弓を毎フレーム引き進める", "updateDrawing(dt)"],
+    ["離したら放つ", "loose();"],
   ];
   const inlined = routed.filter(([, call]) => !source.includes(call));
   check(
