@@ -126,6 +126,10 @@ function mainStaysWiring(): void {
     // 消さないと**砕けた相手だけが消えて、矢が空中に浮いたまま残る**
     // （柱の上なので、下から見上げるまで気付けない）。
     ["砕いた弾を消す", "projectiles.remove("],
+    // 弓の引き。`main.ts` が自分で秒数を数え始めると、中断する条件（手が変わった・
+    // 矢が尽きた）が器を足すたびに 1 つずつ抜ける（食べかけで通った道）。
+    ["弓の引き", "drawing.advance("],
+    ["弓を放つ", "drawing.release("],
   ];
   const inlined = routed.filter(([, call]) => !source.includes(call));
   check(

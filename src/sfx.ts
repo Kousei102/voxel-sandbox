@@ -29,6 +29,12 @@ export type Sfx =
    * 押しっぱなしの 1.6 秒が進んでいる手ごたえはこの音だけ。**
    */
   | "eat"
+  /**
+   * 弓。**放った瞬間と、満引きに達した瞬間の 2 か所で鳴らす**（後者は音程を上げて。
+   * 声色とまったく同じ仕掛けで、`bow.ts` の `FULL_DRAW_PITCH`）。
+   * **この環境では引く動きを描けないので、満引きに達したことは音でしか分からない。**
+   */
+  | "bow"
   /** モブの鳴き声・悲鳴・断末魔。**種類ごとの声色は音程の倍率で付ける**（`MOB_VOICE`）。 */
   | "mobsay"
   | "mobhurt"
@@ -108,6 +114,10 @@ const EVENTS: Record<Sfx, EventDef> = {
   pickup: { material: false, duration: 0.1, gain: 0.24, spread: 0.18, sweep: 1.7, freq: 820, cutoff: 5200, noise: 0.08 },
   // 咀嚼。**いちばんこもらせる**（口の中の音）。1 口ごとに高さを散らして機械的にしない。
   eat: { material: false, duration: 0.12, gain: 0.3, spread: 0.22, sweep: 0.75, freq: 220, cutoff: 700, noise: 0.85 },
+
+  // 弓の弦。**短く、下がりながら**（ビュンと放たれる向き）。満引きの合図は
+  // 同じ音を `FULL_DRAW_PITCH` 倍で鳴らすので、ここは 1 種類しか持たない。
+  bow: { material: false, duration: 0.22, gain: 0.34, spread: 0.07, sweep: 0.5, freq: 520, cutoff: 3000, noise: 0.6 },
 
   // モブの声。トーン寄り（noise 低め）にしないと「声」に聞こえない。
   // 高さは種類ごとの倍率で散らすので、ここは真ん中の 1 種類だけ持つ。

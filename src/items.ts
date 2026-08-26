@@ -116,7 +116,22 @@ export const BLAZE_POWDER = 91;
  */
 export const ENDER_EYE = 92;
 
-export const MAX_ITEM_ID = ENDER_EYE;
+/**
+ * 弓。**エンドクリスタルを離れた所から壊す手段**（柱の上まで登らずに済む）。
+ *
+ * 材料は棒 3 + 羊毛 3。**Minecraft の糸の代わりに羊毛**にしてあるのは、
+ * 蜘蛛がまだ居ないから（羊はもう居て、ベッドで羊毛を集める導線もある）。
+ * 積めるのは 1 個まで —— 道具と同じ扱い（耐久値はまだ無い）。
+ */
+export const BOW = 93;
+
+/**
+ * 矢。**火打石 + 棒で 4 本**（Minecraft は羽根も要るが、鶏がまだ居ない）。
+ * 砂利から火打石が出るので、**弓を作れる頃には材料が揃っている。**
+ */
+export const ARROW = 94;
+
+export const MAX_ITEM_ID = ARROW;
 
 export const MAX_STACK = 64;
 
@@ -197,6 +212,10 @@ item({ id: BLAZE_POWDER, name: "ブレイズパウダー", block: AIR, stack: MA
 // **エンダーアイは 64 個まで**（Minecraft と同じ）。パールが 16 個までなのと違うのは
 // 意図的で、**エンドポータルに要る 12 個が 1 枠に収まる**ようにするため。
 item({ id: ENDER_EYE, name: "エンダーアイ", block: AIR, stack: MAX_STACK, color: 0x3fbf8c, tool: null });
+
+// 弓は道具と同じで積めない（耐久値が無いので、実質 1 本で足りる）。矢は普通に積める。
+item({ id: BOW, name: "弓", block: AIR, stack: 1, color: 0xa9763c, tool: null });
+item({ id: ARROW, name: "矢", block: AIR, stack: MAX_STACK, color: 0xd9d2c4, tool: null });
 
 /** 道具は 4 階層 x 3 種類。ID は tier ごとに pickaxe / axe / shovel の順。 */
 const TOOL_KINDS: ToolKind[] = ["pickaxe", "axe", "shovel"];
@@ -413,6 +432,19 @@ const FIRE_STARTERS: readonly number[] = [FLINT_AND_STEEL];
 
 export function isFireStarter(item: number): boolean {
   return FIRE_STARTERS.includes(item);
+}
+
+/**
+ * 引いて放つもの（弓）。**表 1 本に聞くこと** —— 火種・バケツとまったく同じ理由で、
+ * `item === BOW` と書き始めると、種類が増えたときに持てる側と引く側で
+ * 片方だけ直すことになる。
+ *
+ * **引きの長さもダメージも `bow.ts`**（ここは「どれが弓か」しか知らない）。
+ */
+const BOWS: readonly number[] = [BOW];
+
+export function isBow(item: number): boolean {
+  return BOWS.includes(item);
 }
 
 /** 全アイテム ID（テストと UI の列挙用）。 */

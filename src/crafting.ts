@@ -22,8 +22,10 @@ import {
 } from "./blocks";
 import { isEmpty, type Slot } from "./inventory";
 import {
+  ARROW,
   BLAZE_POWDER,
   BLAZE_ROD,
+  BOW,
   BUCKET,
   COAL,
   DIAMOND,
@@ -126,6 +128,15 @@ export const RECIPES: readonly Recipe[] = [
   // 両方を通らないと 1 個も作れない。**ロッドから直接作れる形を足さないこと**
   // （パウダーの 1 → 2 が消えて、要塞に通う回数が倍になる）。
   { name: "エンダーアイ", out: ENDER_EYE, count: 1, ingredients: [BLAZE_POWDER, ENDER_PEARL] },
+
+  // 弓は棒 3 + 糸 3 の形（Minecraft と同じ並び）。**糸の代わりが羊毛**で、
+  // 蜘蛛がまだ居ないぶんを羊で代用している（ベッドと同じ材料なので、
+  // 羊を探す道のりがそのまま弓にも効く）。左右反転でも作れる。
+  { name: "弓", out: BOW, count: 1, shape: [".SW", "S.W", ".SW"], key: { S: STICK, W: WOOL } },
+
+  // 矢は火打石 + 棒で 4 本（Minecraft は羽根も要るが、鶏がまだ居ない）。
+  // 1 列なので 2x2 でも作れる —— **弓を持って出たまま矢を作り足せる。**
+  { name: "矢", out: ARROW, count: 4, shape: ["F", "S"], key: { F: FLINT, S: STICK } },
 
   ...toolRecipes("木", PLANK, WOOD_PICKAXE, WOOD_AXE, WOOD_SHOVEL),
   ...toolRecipes("石", COBBLE, STONE_PICKAXE, STONE_AXE, STONE_SHOVEL),

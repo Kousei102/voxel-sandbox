@@ -10,12 +10,15 @@ import {
   STONE_STAIRS,
   TORCH,
   WOOD,
+  WOOL,
 } from "../src/blocks";
 import { RECIPES, consumeGrid, findRecipe } from "../src/crafting";
 import { isEmpty, type Slot } from "../src/inventory";
 import {
+  ARROW,
   BLAZE_POWDER,
   BLAZE_ROD,
+  BOW,
   BUCKET,
   COAL,
   DIAMOND,
@@ -52,7 +55,7 @@ export function run(): void {
 
   const P = {
     P: PLANK, S: STICK, W: WOOD, C: COBBLE, D: DIAMOND, A: SAND, O: COAL, T: STONE,
-    I: IRON_INGOT, F: FLINT,
+    I: IRON_INGOT, F: FLINT, L: WOOL,
     R: BLAZE_ROD, B: BLAZE_POWDER, E: ENDER_PEARL, Y: ENDER_EYE,
   };
 
@@ -156,6 +159,35 @@ export function run(): void {
     "アイを 1 個作るとパウダーとパールが 1 個ずつ減る",
     eyeBoard[0].count === 2 && isEmpty(eyeBoard[1]),
     `パウダー ${eyeBoard[0].count} 個 / パール ${eyeBoard[1].count} 個`,
+  );
+
+  // --- 弓と矢（エンドクリスタルを離れた所から壊す手段） ---
+  // **糸の代わりが羊毛**（蜘蛛がまだ居ない）。羊はもう居るので、ベッドと同じ材料で作れる。
+  const bow = findRecipe(grid(3, [".SL", "S.L", ".SL"], P), 3);
+  check("棒 3 + 羊毛 3 → 弓 1 本", bow?.out === BOW && bow.count === 1, bow?.name ?? "無し");
+  const bowMirrored = findRecipe(grid(3, ["LS.", "L.S", "LS."], P), 3);
+  check("弓は左右どちらの向きでも作れる", bowMirrored?.out === BOW, bowMirrored?.name ?? "無し");
+  const bowIn2 = findRecipe(grid(2, [".S", "S."], P), 2);
+  check("2x2 では弓は作れない（作業台が要る）", bowIn2 === null, bowIn2?.name ?? "無し");
+
+  // 矢は火打石 + 棒（Minecraft は羽根も要るが、鶏がまだ居ない）。
+  // **1 列なので 2x2 でも作れる** —— 弓を持って出たまま矢を作り足せる。
+  const arrow = findRecipe(grid(2, ["F.", "S."], P), 2);
+  check("火打石 + 棒 → 矢 4 本", arrow?.out === ARROW && arrow.count === 4, `${arrow?.name} x${arrow?.count}`);
+  const arrowUpsideDown = findRecipe(grid(2, ["S.", "F."], P), 2);
+  check("上下を逆にすると矢にならない", arrowUpsideDown === null, arrowUpsideDown?.name ?? "無し");
+  // **松明と取り違えないこと**（同じ「上に何か + 下に棒」の形で、上が石炭か火打石かだけが違う）。
+  const torchAgain = findRecipe(grid(2, ["O.", "S."], P), 2);
+  check("石炭のほうは今までどおり松明", torchAgain?.out === TORCH, torchAgain?.name ?? "無し");
+
+  // 弓は 1 本あれば足りるが、**矢は 1 本ずつ枠を食うと使い物にならない。**
+  console.log(
+    `      1 枠の上限: 弓 ${itemStackLimit(BOW)} / 矢 ${itemStackLimit(ARROW)}` +
+      `（矢 1 回のクラフトで ${arrow?.count ?? 0} 本）`,
+  );
+  check(
+    "矢はまとめて持てる（弓は道具と同じで 1 本）",
+    itemStackLimit(ARROW) >= 64 && itemStackLimit(BOW) === 1,
   );
 
   // --- 盤面の広さ ---

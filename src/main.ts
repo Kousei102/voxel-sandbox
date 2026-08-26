@@ -42,6 +42,7 @@ import {
   clearBedPartner,
   sleepDecision,
 } from "./beds";
+import { Drawing, FULL_DRAW_PITCH, SHOOT_HEIGHT } from "./bow";
 import { Chests } from "./chests";
 import { CrackOverlay } from "./crack";
 import { CraftScreen } from "./craftscreen";
@@ -55,9 +56,11 @@ import { Furnaces } from "./furnaces";
 import { Inventory, bulkDiscard } from "./inventory";
 import { InventoryScreen } from "./inventoryui";
 import {
+  ARROW,
   ENDER_EYE,
   NO_ITEM,
   foodOf,
+  isBow,
   isBucket,
   isFireStarter,
   itemName,
@@ -78,7 +81,7 @@ import {
   portalAt,
   type PortalHere,
 } from "./portaltravel";
-import { PROJECTILE_KINDS, Projectiles } from "./projectiles";
+import { PLAYER_OWNER, PROJECTILE_KINDS, Projectiles } from "./projectiles";
 import { ProjectileRenderer } from "./projectilerender";
 import { raycastVoxels, type RaycastHit } from "./raycast";
 import { eyeShot } from "./stronghold";
@@ -141,6 +144,8 @@ const audio = new AudioEngine();
 const footsteps = new Footsteps();
 const digCadence = new DigCadence();
 const eating = new Eating();
+/** 弓を引いている最中。**引きの長さも放つかどうかも `bow.ts`**（掘る・食べると同じ形）。 */
+const drawing = new Drawing();
 /**
  * 空腹の消耗と足音に使う、前のフレームの位置。
  * **飛ばしたら（リスポーン・ワールド作り直し）必ず `resetFootprint()` を呼ぶこと** ——
@@ -758,6 +763,7 @@ document.addEventListener("pointerlockchange", () => {
     breaking = false;
     mining.reset();
     eating.stop();
+    drawing.stop();
     syncTimeInput();
     if (saveDirty) saveNow();
   }
@@ -772,6 +778,7 @@ function openPanel(show: () => void): void {
   breaking = false;
   mining.reset();
   eating.stop();
+  drawing.stop();
   show();
   hud.setPlaying(false, false);
   document.exitPointerLock();
@@ -864,8 +871,9 @@ document.addEventListener("mouseup", (event) => {
     breaking = false;
     mining.reset();
   } else if (event.button === 2) {
-    // 離したら食べかけは無かったことに（アイテムは減らさない）
+    // 離したら食べかけは無かったことに（アイテムは減らさない）。弓は逆に、離すと放つ。
     eating.stop();
+    loose();
   }
 });
 
@@ -945,6 +953,13 @@ function useOrPlace(): void {
       audio.play("place", "stone");
       saveDirty = true;
     }
+    return;
+  }
+
+  // 弓。**引き始めるだけ**で、放つのは離したとき（`loose()`）。長さも下限も `bow.ts`。
+  if (isBow(inventory.selectedItem)) {
+    if (creative || inventory.has(ARROW)) drawing.begin(inventory.selectedItem);
+    else hud.flash("矢がありません");
     return;
   }
 
@@ -1240,6 +1255,7 @@ function frame(now: number): void {
 
   updateMining(dt);
   updateEating(dt);
+  updateDrawing(dt);
 
   dayNight.advance(dt);
   updateEnvironment();
@@ -1344,6 +1360,7 @@ function updateVitals(dt: number, moved: number): void {
     breaking = false;
     mining.reset();
     eating.stop();
+    drawing.stop();
     // **リスポーンより前に落とすこと**（`moveToSpawn()` が位置を変えるので、
     // あとに回すと初期位置に湧く）。
     deathCause.textContent = deathMessage(vitals.cause, dropOnDeath());
@@ -1370,6 +1387,23 @@ function updateEating(dt: number): void {
   vitals.eat(food);
   inventory.consumeSelected(1);
   hud.flash(`${itemName(held)} を食べました`);
+  hud.refresh();
+  saveDirty = true;
+}
+
+/** 弓を引き進める。**手ごたえは満引きの合図の音だけ**（引く動きは描けない。判断は `bow.ts`）。 */
+function updateDrawing(dt: number): void {
+  const facts = { playing, held: inventory.selectedItem, hasArrow: creative || inventory.has(ARROW) };
+  if (drawing.advance(dt, facts) === "full") audio.play("bow", "none", FULL_DRAW_PITCH);
+}
+
+/** 弓を離した。**放つかどうかとダメージは `bow.ts`**（ここは矢を 1 本減らして飛ばすだけ）。 */
+function loose(): void {
+  const shot = drawing.release();
+  if (!shot || (!creative && !inventory.consume(ARROW, 1))) return;
+  const at = player.position;
+  projectiles.launch("arrow", at.x, at.y + SHOOT_HEIGHT, at.z, player.yaw, player.pitch, PLAYER_OWNER, shot.damage);
+  audio.play("bow");
   hud.refresh();
   saveDirty = true;
 }
