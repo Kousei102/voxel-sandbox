@@ -160,7 +160,7 @@
 | 溶岩 | 黒曜石が作れない。ネザーの溶岩海も | **済み**（`LAVA` 42 / `quenched()`） |
 | `portals.ts` | 枠の検出・点火の可否 | **済み**（配線は 2-2） |
 | `dimensions.ts` + `World` の生成器注入 | ネザー / エンド | **済み**（`ChunkSource`。次元の器は `rules/dimensions.md`） |
-| `structures.ts` | ネザー要塞・要塞・エンドの柱 | **済み**（ネザー要塞 `fortress.ts` と要塞 `stronghold.ts` が乗った） |
+| `structures.ts` | ネザー要塞・要塞 | **済み**（ネザー要塞 `fortress.ts` と要塞 `stronghold.ts` が乗った。**エンドの柱は乗っていません** —— グリッドに確率で撒く `SiteRule` とは性質が違うので、`endgen.ts` の中で直に建てています） |
 | `projectiles.ts` + `projectilerender.ts` | 火球・矢・投げたエンダーアイ・ブレス | **済み**（当たった効果はまだ無い） |
 | `nethergen.ts` | ネザーの地形 | **済み**（`DIMENSIONS` に登録済み。行く手段は 2-2） |
 
@@ -169,5 +169,5 @@
 
 ## 進み具合
 
-`test/progression.test.ts` が「達成 N / 12」を毎回出します。**これが進捗の唯一の指標**で、
+`test/progression.test.ts` が「達成 N / 13」を毎回出します。**これが進捗の唯一の指標**で、
 `npm test` の緑は「壊していない」しか言いません。

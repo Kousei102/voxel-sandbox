@@ -15,9 +15,12 @@
  * という形をしている。**島の中心（原点）が必ず地面であること**が唯一の不変条件で、
  * ここが崩れると**ポータルを通った人が虚空に出て即死する**（出る場所は
  * `portaltravel.ts` の `END_ARRIVAL` で原点に固定してある）。
+ *
+ * 島の上には**黒曜石の柱が 10 本**立つ（下の `PILLARS`）。**位置も高さも種に依らず固定**で、
+ * ドラゴンの戦場（2-13）は誰のワールドでも同じ形になる。
  */
 
-import { AIR, END_STONE } from "./blocks";
+import { AIR, END_STONE, OBSIDIAN } from "./blocks";
 import { CHUNK_SIZE } from "./constants";
 import { Noise } from "./noise";
 import type { ChunkSource } from "./world";
@@ -59,6 +62,99 @@ const COLUMN_CACHE_LIMIT = 2048;
 /** その列に地面が無い（虚空）ことを表す上面の値。 */
 const VOID_COLUMN = -1;
 
+// --- 黒曜石の柱 ---------------------------------------------------------
+
+/**
+ * ふちが**いちばん内側まで食い込んだときの半径**。
+ *
+ * `reachAt()` の揺れは `(n / 1.2) * 2 * EDGE_WOBBLE` で、`fbm2` の実効レンジが
+ * ±0.6（`rules/worldgen.md`）なので `|n / 1.2| ≤ 0.5`、つまり揺れは `±EDGE_WOBBLE`。
+ * **どんな種でも、この半径の内側には必ず地面がある。**
+ *
+ * **柱を立ててよい場所はここで決まる。** 実測した最小値（ある種で 39.1）で線を引くと、
+ * 別の種で虚空に柱が浮く —— 測った値ではなく**式のほう**を根拠にすること。
+ */
+export const EDGE_MIN_REACH = ISLAND_RADIUS * (1 - EDGE_WOBBLE);
+
+/** 柱の本数。**本家と同じ 10 本。** */
+export const PILLAR_COUNT = 10;
+
+/** 柱の輪の半径（島の中心から柱の中心まで）。 */
+export const PILLAR_RING = 28;
+
+/** いちばん太い柱の半径。 */
+export const PILLAR_MAX_RADIUS = 3;
+
+/**
+ * 柱の高さ（島の上面から。輪を回る順）。**高い・低いを交互に並べてあること** ——
+ * 順に並べると、輪がぐるりと一周する坂に見える。
+ *
+ * 数値は本家（上面が y76〜103。島の上面 y64 から 12〜39）をそのまま持ってきている。
+ */
+const PILLAR_HEIGHTS: readonly number[] = [12, 27, 15, 33, 21, 39, 18, 30, 24, 36];
+
+/** 太い柱になる高さの境目。**本家と同じで、高い柱ほど太い。** */
+const PILLAR_THICK_FROM = 27;
+
+/** 黒曜石の柱 1 本。**上面は `top` ちょうどで平ら**（島のうねりは根元で吸収する）。 */
+export interface Pillar {
+  readonly x: number;
+  readonly z: number;
+  /** 水平の半径（マス）。`dx² + dz² ≤ radius²` の列に立つ。 */
+  readonly radius: number;
+  /** 島の上面（`ISLAND_SURFACE`）からの高さ。 */
+  readonly height: number;
+  /** 上面の絶対 y。**エンドクリスタル（2-11b）はこの 1 つ上に載る。** */
+  readonly top: number;
+}
+
+/**
+ * 柱の表。**種を受け取らない** —— 位置も高さも固定で、誰のワールドでも同じ戦場になる。
+ *
+ * **柱の並びの出どころはここ 1 か所。** 上に載せるもの（2-11b のエンドクリスタル）も
+ * この表を読むこと。写して 2 か所に持つと、**柱の無い所にクリスタルが浮く**という形で
+ * 静かに壊れる（しかも空中なので、下から見上げるまで気付けない）。
+ */
+export const PILLARS: readonly Pillar[] = PILLAR_HEIGHTS.map((height, i) => {
+  const angle = (i / PILLAR_HEIGHTS.length) * Math.PI * 2;
+  return {
+    x: Math.round(Math.cos(angle) * PILLAR_RING),
+    z: Math.round(Math.sin(angle) * PILLAR_RING),
+    radius: height >= PILLAR_THICK_FROM ? PILLAR_MAX_RADIUS : 2,
+    height,
+    top: ISLAND_SURFACE + height,
+  };
+});
+
+/** その列に柱が立っていないことを表す値。 */
+export const NO_PILLAR = -1;
+
+/**
+ * 走査を早めに切るための帯。**`PILLAR_RING ± PILLAR_MAX_RADIUS` で決め打ちにしないこと** ——
+ * 柱の中心はマスに丸めてあるので原点からの距離が `PILLAR_RING` ちょうどではなく、
+ * 決め打ちにすると**柱のふちが 1 マス欠ける**（欠けた所から中が見える）。
+ * 実際の中心から出しておけば、輪を動かしても帯が付いてくる。
+ */
+const PILLAR_NEAR = Math.min(...PILLARS.map((p) => Math.hypot(p.x, p.z) - p.radius));
+const PILLAR_FAR = Math.max(...PILLARS.map((p) => Math.hypot(p.x, p.z) + p.radius));
+
+/**
+ * その (x, z) に柱が立っていれば**その柱の上面の絶対 y**、無ければ `NO_PILLAR`。
+ *
+ * **種を受け取らないので、島の形とは無関係に答える。** 虚空の上に浮かないのは
+ * `blockAt()` が「島の無い列には何も置かない」ためで、**その 1 か所だけが保険**。
+ */
+export function pillarTopAt(wx: number, wz: number): number {
+  const d = Math.hypot(wx, wz);
+  if (d < PILLAR_NEAR || d > PILLAR_FAR) return NO_PILLAR;
+  for (const pillar of PILLARS) {
+    const dx = wx - pillar.x;
+    const dz = wz - pillar.z;
+    if (dx * dx + dz * dz <= pillar.radius * pillar.radius) return pillar.top;
+  }
+  return NO_PILLAR;
+}
+
 /**
  * ポータルを通って出る場所（島の中心）。**`portaltravel.ts` がここを読む。**
  *
@@ -76,6 +172,8 @@ interface EndColumn {
   readonly top: Int16Array;
   /** 16x16 の下面（この高さのマスから上が地面）。 */
   readonly bottom: Int16Array;
+  /** 16x16 の柱の上面（絶対 y）。柱の無い列は `NO_PILLAR`。 */
+  readonly pillar: Int16Array;
 }
 
 function clamp01(v: number): number {
@@ -110,10 +208,10 @@ export class EndGen implements ChunkSource {
    * その 1 マスの上面と下面。**虚空なら `top` が `VOID_COLUMN`。**
    * 列のキャッシュを通さないので、テストと計測から直に呼べる。
    */
-  shapeAt(wx: number, wz: number): { top: number; bottom: number } {
+  shapeAt(wx: number, wz: number): { top: number; bottom: number; pillar: number } {
     const d = Math.hypot(wx, wz);
     const reach = this.reachAt(wx, wz);
-    if (d >= reach) return { top: VOID_COLUMN, bottom: 0 };
+    if (d >= reach) return { top: VOID_COLUMN, bottom: 0, pillar: NO_PILLAR };
 
     // 中心 1 / ふち 0。**`sqrt` で寄せる**と、ふちが崖にならずに薄く伸びる。
     const fall = Math.sqrt(clamp01(1 - d / reach));
@@ -124,7 +222,7 @@ export class EndGen implements ChunkSource {
     const ramp = clamp01((d - LANDING_RADIUS) / LANDING_RAMP);
     const n = this.surfaceNoise.fbm2(wx * SURFACE_SCALE, wz * SURFACE_SCALE, 3);
     const top = ISLAND_SURFACE + Math.round((n / 1.2) * 2 * SURFACE_WOBBLE * ramp);
-    return { top, bottom: top - thickness + 1 };
+    return { top, bottom: top - thickness + 1, pillar: pillarTopAt(wx, wz) };
   }
 
   private column(cx: number, cz: number): EndColumn {
@@ -134,6 +232,7 @@ export class EndGen implements ChunkSource {
 
     const top = new Int16Array(CHUNK_SIZE * CHUNK_SIZE);
     const bottom = new Int16Array(CHUNK_SIZE * CHUNK_SIZE);
+    const pillar = new Int16Array(CHUNK_SIZE * CHUNK_SIZE);
     for (let lz = 0; lz < CHUNK_SIZE; lz++) {
       const wz = cz * CHUNK_SIZE + lz;
       for (let lx = 0; lx < CHUNK_SIZE; lx++) {
@@ -142,10 +241,11 @@ export class EndGen implements ChunkSource {
         const shape = this.shapeAt(wx, wz);
         top[at] = shape.top;
         bottom[at] = shape.bottom;
+        pillar[at] = shape.pillar;
       }
     }
 
-    const data: EndColumn = { top, bottom };
+    const data: EndColumn = { top, bottom, pillar };
     if (this.columns.size >= COLUMN_CACHE_LIMIT) {
       const oldest = this.columns.keys().next().value;
       if (oldest !== undefined) this.columns.delete(oldest);
@@ -156,7 +256,7 @@ export class EndGen implements ChunkSource {
 
   /** チャンク 1 個分のボクセルを `data` に書き込む。 */
   generateChunk(cx: number, cy: number, cz: number, data: Uint8Array): void {
-    const { top, bottom } = this.column(cx, cz);
+    const { top, bottom, pillar } = this.column(cx, cz);
     const baseY = cy * CHUNK_SIZE;
 
     for (let lz = 0; lz < CHUNK_SIZE; lz++) {
@@ -164,9 +264,10 @@ export class EndGen implements ChunkSource {
         const at = lz * CHUNK_SIZE + lx;
         const hi = top[at];
         const lo = bottom[at];
+        const post = pillar[at];
         for (let ly = 0; ly < CHUNK_SIZE; ly++) {
           const index = (ly * CHUNK_SIZE + lz) * CHUNK_SIZE + lx;
-          data[index] = this.blockAt(baseY + ly, hi, lo);
+          data[index] = this.blockAt(baseY + ly, hi, lo, post);
         }
       }
     }
@@ -178,9 +279,16 @@ export class EndGen implements ChunkSource {
    *
    * **岩盤を置かないこと。** 底を塞ぐと、島から落ちた人が世界の底に立ってしまい、
    * 「落ちたら死ぬ」という虚空の意味がまるごと消える。
+   *
+   * 柱は**島の上面から `pillar` まで**を黒曜石で埋める。**絶対の高さで止めるので
+   * 上面は平ら**になり、島のうねりのぶんは根元で吸収される（＝根元に隙間ができない）。
+   * **島の無い列（`VOID_COLUMN`）には何も置かない** —— 虚空に柱が浮かないのは
+   * この 1 行だけが保険で、`pillarTopAt()` は島の形を知らない。
    */
-  blockAt(wy: number, top: number, bottom: number): number {
+  blockAt(wy: number, top: number, bottom: number, pillar: number): number {
     if (top === VOID_COLUMN) return AIR;
-    return wy >= bottom && wy <= top ? END_STONE : AIR;
+    if (wy >= bottom && wy <= top) return END_STONE;
+    if (pillar !== NO_PILLAR && wy > top && wy <= pillar) return OBSIDIAN;
+    return AIR;
   }
 }
