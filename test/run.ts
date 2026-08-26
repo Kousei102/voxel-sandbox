@@ -22,6 +22,7 @@ import { run as endportal } from "./endportal.test";
 import { run as structures } from "./structures.test";
 import { run as mesher } from "./mesher.test";
 import { run as nethergen } from "./nethergen.test";
+import { run as endgen } from "./endgen.test";
 import { run as mining } from "./mining.test";
 import { run as mobs } from "./mobs.test";
 import { run as physics } from "./physics.test";
@@ -38,6 +39,7 @@ import { run as worldgen } from "./worldgen.test";
 
 worldgen();
 nethergen();
+endgen();
 fortress();
 mesher();
 blocks();

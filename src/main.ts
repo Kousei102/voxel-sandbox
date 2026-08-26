@@ -70,13 +70,12 @@ import { MobRenderer } from "./mobrender";
 import { Mobs, type MobContext } from "./mobs";
 import { Player } from "./player";
 import { tryBucket, tryIgnite, tryPlace } from "./placing";
-import { portalAxis, type PortalAxis } from "./portals";
 import {
   PortalGate,
-  arrive,
-  linkScale,
-  linkedSpot,
-  portalTarget,
+  arriveThrough,
+  planTravel,
+  portalAt,
+  type PortalHere,
 } from "./portaltravel";
 import { PROJECTILE_KINDS, Projectiles } from "./projectiles";
 import { ProjectileRenderer } from "./projectilerender";
@@ -449,7 +448,10 @@ function refreshFurnaceUi(dt: number): void {
 const portalGate = new PortalGate();
 
 function updatePortal(dt: number): void {
-  const axis = portalAxis(
+  // **どのポータルかを見分けるのは `portalAt()` の 1 か所**（`rules/dimensions.md`）。
+  // ここで面のブロック ID を名指しすると、ポータルを足すたびに
+  // 「踏んだか」「どこへ行くか」「どこに出るか」の 3 か所を直して回ることになる。
+  const here = portalAt(
     world.getVoxel(
       Math.floor(player.position.x),
       Math.floor(player.position.y + 0.5),
@@ -457,8 +459,8 @@ function updatePortal(dt: number): void {
     ),
   );
   // **`step()` は 1 フレームに 1 回だけ**（2 回呼ぶと dt を二重に数える）。
-  // true が返るのは面の中に居るときだけなので、`axis` は必ずある。
-  if (portalGate.step(dt, axis) && axis) travelThrough(axis);
+  // true が返るのは面の中に居るときだけなので、`here` は必ずある。
+  if (portalGate.step(dt, here) && here) travelThrough(here);
 }
 
 /**
@@ -468,25 +470,31 @@ function updatePortal(dt: number): void {
  * **`switchTo()` に `liveState()` を渡すのが肝心**（渡し忘れると、戻ったときに
  * こちら側の改変・落とし物・かまど・チェストが消える。`rules/dimensions.md`）。
  */
-function travelThrough(axis: PortalAxis): void {
-  const from = dims.current;
-  const to = portalTarget(from);
-  const spot = linkedSpot(player.position.x, player.position.z, linkScale(from, to));
-  const state = dims.switchTo(to, liveState());
+function travelThrough(here: PortalHere): void {
+  // **行き先も目指すマスも `planTravel()` が決める**（`rules/dimensions.md`）——
+  // ネザーは 1:8 で移し、エンドは島の中心に固定する。ここに書き分けを戻すと、
+  // 遠くの要塞から入った人が島の外の虚空に出る。
+  const trip = planTravel(
+    dims.current,
+    here,
+    player.position.x,
+    player.position.y,
+    player.position.z,
+  );
+  const state = dims.switchTo(trip.to, liveState());
   if (!state) return;
 
   // 世界ごと入れ替える（改変・落とし物・かまど・チェストは `startWorld()` が
   // 次元のぶんに差し替える）。**リスポーン地点はそのまま**（次元ごとに持たない）。
-  const yHint = Math.floor(player.position.y);
   const { yaw, pitch, flying } = player;
-  const spawn = { x: spot.x + 0.5, y: yHint, z: spot.z + 0.5, yaw, pitch, flying };
-  startWorld(worldSeed, state, spawn, to);
+  const spawn = { x: trip.x + 0.5, y: trip.yHint, z: trip.z + 0.5, yaw, pitch, flying };
+  startWorld(worldSeed, state, spawn, trip.to);
 
   // **枠を探す前にボクセルを用意すること。** 未読み込みの列では `getVoxel` が
   // AIR を返すので、行きに作った枠を見落として毎回建て直すことになる
-  // （`moveToSpawn()` が `primeAround()` を先に呼ぶのと同じ罠）。
-  world.primeAround(spot.x, spot.z, 1);
-  const landing = arrive(world, spot.x, spot.z, yHint, axis);
+  // （エンドでは「島がまだ無い」ことになって、虚空に降ろされる）。
+  world.primeAround(trip.x, trip.z, 1);
+  const landing = arriveThrough(world, trip);
   player.position.set(landing.x, landing.y, landing.z);
   player.velocity.set(0, 0, 0);
   player.syncCamera();
@@ -495,7 +503,7 @@ function travelThrough(axis: PortalAxis): void {
   // 出た先は枠の中。**いったん出るまで戻らない。**
   portalGate.latch();
   world.update(player.position.x, player.position.z);
-  hud.flash(`${dims.nameOf(to)}へ`);
+  hud.flash(`${dims.nameOf(trip.to)}へ`);
   saveDirty = true;
 }
 

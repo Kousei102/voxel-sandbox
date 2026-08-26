@@ -16,10 +16,35 @@
  * 4. 溶岩の海の底や岩盤の中に出さない
  */
 
-import { AIR, OBSIDIAN, isSolid } from "./blocks";
+import { AIR, END_PORTAL, OBSIDIAN, isSolid } from "./blocks";
 import { WORLD_HEIGHT } from "./constants";
-import { NETHER, OVERWORLD, type DimensionId } from "./dimensions";
+import { END, NETHER, OVERWORLD, type DimensionId } from "./dimensions";
+import { END_SPAWN } from "./endgen";
 import { portalAxis, portalBlock, type PortalAxis, type PortalWorld } from "./portals";
+
+/**
+ * いま踏んでいるマスがどのポータルか。**種類ごとの違いはこの型で運ぶ**ので、
+ * 呼ぶ側（`main.ts`）に「ネザーポータルなら…」という分岐が生えない。
+ *
+ * ネザーポータルだけ `axis` を持つのは、**向こう側に枠を建てるときに要る**から。
+ * エンドの面は寝ていて向きが 1 つしか無く、枠も建てない（島の上に降ろすだけ）。
+ */
+export type PortalHere =
+  | { readonly kind: "nether"; readonly axis: PortalAxis }
+  | { readonly kind: "end" };
+
+export type PortalKind = PortalHere["kind"];
+
+/**
+ * そのマスがポータルなら種類、違うなら null。**ここが唯一の見分け方**にしてある ——
+ * `main.ts` が `id === END_PORTAL` と書き始めると、ポータルを足すたびに
+ * 「踏んだか」「どこへ行くか」「どこに出るか」の 3 か所を直して回ることになる。
+ */
+export function portalAt(id: number): PortalHere | null {
+  const axis = portalAxis(id);
+  if (axis) return { kind: "nether", axis };
+  return id === END_PORTAL ? { kind: "end" } : null;
+}
 
 /**
  * ポータルに立ってから移るまでの間（秒）。**0 にしないこと** ——
@@ -39,9 +64,9 @@ export class PortalGate {
   private timer = 0;
   private latched = false;
 
-  /** 面の中に居るなら向き、居ないなら null。**移るなら true を返す。** */
-  step(dt: number, axis: PortalAxis | null): boolean {
-    if (!axis) {
+  /** 面の中に居るならその種類、居ないなら null。**移るなら true を返す。** */
+  step(dt: number, here: PortalHere | null): boolean {
+    if (!here) {
       this.timer = 0;
       this.latched = false;
       return false;
@@ -85,8 +110,12 @@ const ROOF_MARGIN = 8;
 /**
  * そのポータルの行き先。**表はここ 1 本**にしてあるので、`main.ts` に
  * 「いまネザーなら…」という分岐が生えない（`test/ui.test.ts` が数えている）。
+ *
+ * **行き先は「いまどこに居るか」だけでは決まらない。** オーバーワールドには
+ * ネザーポータルとエンドポータルの両方が建つので、**踏んだ面の種類**も要る。
  */
-export function portalTarget(from: DimensionId): DimensionId {
+export function portalTarget(from: DimensionId, kind: PortalKind): DimensionId {
+  if (kind === "end") return from === END ? OVERWORLD : END;
   return from === NETHER ? OVERWORLD : NETHER;
 }
 
@@ -296,4 +325,102 @@ export function arrive(
   const base = baseFor(world, tx, tz, yHint, axis);
   buildPortal(world, tx, base, tz, axis);
   return { x: tx + 0.5, y: base, z: tz + 0.5, built: true };
+}
+
+/** エンドで降りる場所を探す広さ（マス）。**`primeAround(_, _, 1)` の 1 列ぶんに収めること。** */
+export const END_SEARCH = 8;
+
+/** その列の一番上の立てる高さ。無ければ -1。**上から降りる**ので、屋根の上ではなく地面に降りる。 */
+function topStand(world: PortalWorld, x: number, z: number): number {
+  for (let y = WORLD_HEIGHT - 2; y >= 1; y--) {
+    if (standable(world, x, y, z)) return y;
+  }
+  return -1;
+}
+
+/**
+ * 島の上に降ろす。**エンドがこれ**（枠も足場も建てない）。
+ *
+ * **枠を建てないのが肝心。** エンドには帰りのポータルがまだ無いので
+ * （本家もドラゴンを倒すまで出口は開かない）、`arrive()` を使い回すと
+ * **島の真ん中に黒曜石の枠が生えて、そこからネザーへ行けてしまう。**
+ *
+ * 狙った列に地面が無ければ、**近い順に `END_SEARCH` マスまで**探す。
+ * 見つからなければ null（呼ぶ側が保険の高さに落とす）。
+ */
+export function landOnGround(world: PortalWorld, tx: number, tz: number): Arrival | null {
+  let best: Arrival | null = null;
+  let bestScore = Infinity;
+  for (let z = tz - END_SEARCH; z <= tz + END_SEARCH; z++) {
+    for (let x = tx - END_SEARCH; x <= tx + END_SEARCH; x++) {
+      const score = (x - tx) * (x - tx) + (z - tz) * (z - tz);
+      if (score >= bestScore) continue;
+      const y = topStand(world, x, z);
+      if (y < 0) continue;
+      bestScore = score;
+      best = { x: x + 0.5, y, z: z + 0.5, built: false };
+    }
+  }
+  return best;
+}
+
+/**
+ * 1 回ぶんの旅程。**「どの次元へ」「どのマスを目指すか」がここで決まりきる**ので、
+ * `main.ts` は受け取った値を貼るだけで済む。
+ */
+export interface Trip {
+  readonly to: DimensionId;
+  /** 通ったポータル（出る場所の決め方が種類で変わる）。 */
+  readonly here: PortalHere;
+  /** 行き先で目指すマス。 */
+  readonly x: number;
+  readonly z: number;
+  /** 出る高さの見当。 */
+  readonly yHint: number;
+}
+
+/**
+ * 通ったポータルから旅程を決める。**次元の対応も座標の移し方もこの 1 本。**
+ *
+ * - ネザー ↔ オーバーワールドは **1:8 で座標を移す**（`linkScale`）
+ * - エンドは **島の中心に固定**（`endgen.ts` の `END_SPAWN`）。
+ *   掛け算で移すと、要塞が原点から遠いときに**島の外の虚空に出て即死する**
+ * - エンドから戻るときも掛け算をしない（島の中心は原点なので、掛けても意味が無い）
+ */
+export function planTravel(
+  from: DimensionId,
+  here: PortalHere,
+  x: number,
+  y: number,
+  z: number,
+): Trip {
+  const to = portalTarget(from, here.kind);
+  if (here.kind === "end") {
+    // **行きだけ場所が決まっている。** 帰り（エンド → オーバーワールド）は
+    // いまの座標をそのまま使う（島の中心は原点なので、原点のあたりに出る）。
+    const spot = to === END ? END_SPAWN : { x: Math.floor(x), z: Math.floor(z), y: Math.floor(y) };
+    return { to, here, x: spot.x, z: spot.z, yHint: spot.y };
+  }
+  const spot = linkedSpot(x, z, linkScale(from, to));
+  return { to, here, x: spot.x, z: spot.z, yHint: Math.floor(y) };
+}
+
+/**
+ * 旅程どおりに出る場所を決める。**種類で分かれるのはここ 1 か所だけ。**
+ *
+ * ネザーポータルは「探して、無ければ建てる」（`arrive`）、
+ * エンドポータルは「島の上に降ろす」（`landOnGround`）。
+ */
+export function arriveThrough(world: PortalWorld, trip: Trip): Arrival {
+  if (trip.here.kind === "nether") {
+    return arrive(world, trip.x, trip.z, trip.yHint, trip.here.axis);
+  }
+  return (
+    landOnGround(world, trip.x, trip.z) ?? {
+      x: trip.x + 0.5,
+      y: trip.yHint,
+      z: trip.z + 0.5,
+      built: false,
+    }
+  );
 }

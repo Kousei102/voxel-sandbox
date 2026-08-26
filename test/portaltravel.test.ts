@@ -1,17 +1,32 @@
-import { LAVA, NETHERRACK, OBSIDIAN, STONE, WATER } from "../src/blocks";
-import { NETHER, OVERWORLD } from "../src/dimensions";
+import {
+  END_PORTAL,
+  END_STONE,
+  LAVA,
+  NETHERRACK,
+  OBSIDIAN,
+  STONE,
+  WATER,
+} from "../src/blocks";
+import { END, NETHER, OVERWORLD } from "../src/dimensions";
+import { END_SPAWN } from "../src/endgen";
 import { portalBlock } from "../src/portals";
 import {
+  END_SEARCH,
   PORTAL_DELAY,
   PORTAL_SCALE,
   PortalGate,
   SEARCH_RADIUS,
   arrive,
+  arriveThrough,
   buildPortal,
+  landOnGround,
   linkScale,
   linkedSpot,
+  planTravel,
+  portalAt,
   portalTarget,
   standable,
+  type PortalHere,
 } from "../src/portaltravel";
 import { Slab, sourceOf } from "./arena";
 import { check, describe } from "./harness";
@@ -22,6 +37,10 @@ function ground(id = STONE, top = 40): Slab {
   slab.fill(-64, 64, 1, top, -64, 64, id);
   return slab;
 }
+
+/** テストで使う「いま踏んでいるポータル」。 */
+const NETHER_HERE: PortalHere = { kind: "nether", axis: "x" };
+const END_HERE: PortalHere = { kind: "end" };
 
 export function run(): void {
   describe("ポータルを通る（次元の対応と出る場所）");
@@ -34,8 +53,8 @@ export function run(): void {
 
   // --- 次元の対応 ---------------------------------------------------------
 
-  check("オーバーワールドのポータルはネザーへ", portalTarget(OVERWORLD) === NETHER);
-  check("ネザーのポータルはオーバーワールドへ", portalTarget(NETHER) === OVERWORLD);
+  check("オーバーワールドのポータルはネザーへ", portalTarget(OVERWORLD, "nether") === NETHER);
+  check("ネザーのポータルはオーバーワールドへ", portalTarget(NETHER, "nether") === OVERWORLD);
   console.log(
     `      1:${PORTAL_SCALE}  ネザーへ ${linkScale(OVERWORLD, NETHER)} / 戻り ${linkScale(NETHER, OVERWORLD)}`,
   );
@@ -186,6 +205,111 @@ export function run(): void {
     check("同じ場所に出る", again.x === first.x && again.z === first.z && again.y === first.y);
   }
 
+  // --- エンドポータル（種類で分かれるのは 1 か所） -------------------------
+
+  describe("エンドポータルを通る");
+
+  {
+    // **どのポータルかを見分けるのは `portalAt()` だけ。**
+    const nether = portalAt(portalBlock("x"));
+    const end = portalAt(END_PORTAL);
+    console.log(
+      `      面の見分け: ネザー ${nether?.kind}/${nether?.kind === "nether" ? nether.axis : "-"}  ` +
+        `エンド ${end?.kind}  石 ${portalAt(STONE) ?? "null"}`,
+    );
+    check("ネザーポータルの面は向きつきで見分けられる", nether?.kind === "nether");
+    check("エンドポータルの面が見分けられる", end?.kind === "end");
+    check("ポータルでないマスは null", portalAt(STONE) === null && portalAt(END_STONE) === null);
+  }
+
+  {
+    // **行き先は「いまどこか」だけでは決まらない。** オーバーワールドには
+    // ネザーポータルとエンドポータルの両方が建つ。
+    check("オーバーワールドのエンドポータルはエンドへ", portalTarget(OVERWORLD, "end") === END);
+    check("エンドのポータルはオーバーワールドへ", portalTarget(END, "end") === OVERWORLD);
+    // 同じ次元から出ても、踏んだ面が違えば行き先が違う（ここが分かれていないと、
+    // 要塞で起動したポータルがネザーに繋がる）。
+    check(
+      "同じオーバーワールドでも面の種類で行き先が変わる",
+      portalTarget(OVERWORLD, "end") !== portalTarget(OVERWORLD, "nether"),
+    );
+  }
+
+  {
+    // **エンドへは座標を掛けない。** 要塞は原点から遠いので、掛けると島の外に出る。
+    const near = planTravel(OVERWORLD, END_HERE, 12.5, 41, -8.5);
+    const far = planTravel(OVERWORLD, END_HERE, 5312.5, 41, -4096.5);
+    console.log(
+      `      エンドへ: (12, -8) → (${near.x}, ${near.z}) / ` +
+        `(5312, -4096) → (${far.x}, ${far.z})  島の中心 (${END_SPAWN.x}, ${END_SPAWN.z})`,
+    );
+    check("行き先はエンド", near.to === END && far.to === END);
+    check(
+      "どこから入っても島の中心を目指す",
+      near.x === END_SPAWN.x && near.z === END_SPAWN.z && far.x === END_SPAWN.x && far.z === END_SPAWN.z,
+      `(${far.x}, ${far.z})`,
+    );
+    // 比較のため、ネザーは今までどおり掛け算のまま。
+    const toNether = planTravel(OVERWORLD, NETHER_HERE, 5312.5, 41, -4096.5);
+    check(
+      "ネザーは今までどおり 1/8 で移す",
+      toNether.x === 664 && toNether.z === -513,
+      `(${toNether.x}, ${toNether.z})`,
+    );
+  }
+
+  {
+    // 島の上に降ろす。**枠を建てないこと** —— 建てると、エンドの真ん中から
+    // ネザーへ抜ける道ができる（本家はドラゴンを倒すまで出口が開かない）。
+    const island = new Slab();
+    island.fill(-20, 20, 30, 48, -20, 20, END_STONE);
+    const before = island.filled;
+    const trip = planTravel(OVERWORLD, END_HERE, 512.5, 41, 512.5);
+    const landing = arriveThrough(island, trip);
+    console.log(
+      `      エンドの島へ: (${landing.x}, ${landing.y}, ${landing.z})  建てた ${landing.built}  ` +
+        `置いたマス ${before} → ${island.filled}`,
+    );
+    check("島の上に立てる", standable(island, Math.floor(landing.x), landing.y, Math.floor(landing.z)));
+    check("地面のすぐ上に出る", landing.y === 49, `y ${landing.y}`);
+    check("枠を建てない", !landing.built && island.filled === before);
+    check(
+      "黒曜石を 1 マスも置かない",
+      island.getVoxel(0, 49, 0) !== OBSIDIAN && island.getVoxel(0, 48, 0) === END_STONE,
+    );
+  }
+
+  {
+    // 狙った列が虚空でも、近くに地面があれば拾う（島のふちに掛かったとき）。
+    const island = new Slab();
+    island.fill(4, 20, 30, 48, -20, 20, END_STONE);
+    const landing = landOnGround(island, 0, 0);
+    console.log(`      中心が虚空: ${landing ? `(${landing.x}, ${landing.y}, ${landing.z})` : "見つからない"}`);
+    check("近くの地面に降ろす", !!landing && landing.y === 49);
+    check("いちばん近い列を選ぶ", landing?.x === 4.5, `x ${landing?.x}`);
+  }
+
+  {
+    // **どこにも地面が無ければ null。** 呼ぶ側（`arriveThrough`）が保険の高さに落とす。
+    const empty = new Slab();
+    const nothing = landOnGround(empty, 0, 0);
+    const trip = planTravel(OVERWORLD, END_HERE, 0.5, 41, 0.5);
+    const fallback = arriveThrough(empty, trip);
+    console.log(
+      `      虚空しか無い: ${nothing === null ? "null" : "拾ってしまう"}  ` +
+        `保険の高さ y ${fallback.y}（探す広さ ±${END_SEARCH}）`,
+    );
+    check("地面がどこにも無ければ null", nothing === null);
+    check("保険は島の想定の高さ", fallback.y === END_SPAWN.y, `y ${fallback.y}`);
+  }
+
+  {
+    // 探す広さの外の地面は拾わない（島の反対側まで飛ばされない）。
+    const far = new Slab();
+    far.fill(END_SEARCH + 4, END_SEARCH + 20, 30, 48, -4, 4, END_STONE);
+    check("探す広さの外の地面は拾わない", landOnGround(far, 0, 0) === null);
+  }
+
   describe("ポータルに立っている時間（掛け金）");
 
   {
@@ -197,7 +321,7 @@ export function run(): void {
 
     // 面の中に立ち続けると、待ち時間ぶんで 1 回だけ起きる。
     let steps = 0;
-    while (!gate.step(1 / 60, "x") && steps < 600) steps++;
+    while (!gate.step(1 / 60, NETHER_HERE) && steps < 600) steps++;
     console.log(`      待ち時間 ${PORTAL_DELAY}s ＝ ${steps + 1} フレーム（60fps）`);
     check("待つと移る", steps < 600);
     check("待ち時間ぶん待たされる", Math.abs((steps + 1) / 60 - PORTAL_DELAY) < 0.05);
@@ -205,13 +329,13 @@ export function run(): void {
     // **出た先は枠の中。** 掛け金を掛けたら、外へ出るまで二度と起きない。
     gate.latch();
     let again = 0;
-    for (let i = 0; i < 600; i++) if (gate.step(1 / 60, "x")) again++;
+    for (let i = 0; i < 600; i++) if (gate.step(1 / 60, NETHER_HERE)) again++;
     check("掛け金が掛かっていると、立ったままでは移らない", again === 0, `${again} 回`);
 
     // いったん外へ出ると外れる。
     gate.step(1 / 60, null);
     let back = 0;
-    for (let i = 0; i < 600; i++) if (gate.step(1 / 60, "x")) back++;
+    for (let i = 0; i < 600; i++) if (gate.step(1 / 60, NETHER_HERE)) back++;
     console.log(`      出てから入り直すと ${back} 回（600 フレーム）`);
     check("外へ出れば掛け金が外れる", back > 0);
   }
@@ -221,7 +345,7 @@ export function run(): void {
     const gate = new PortalGate();
     let fired = 0;
     for (let i = 0; i < 20; i++) {
-      if (gate.step(1 / 60, "x")) fired++;
+      if (gate.step(1 / 60, NETHER_HERE)) fired++;
       gate.step(1 / 60, null); // 1 フレームごとに出入りする（走り抜ける）
     }
     console.log(`      走り抜けた 20 回: ${fired} 回移った  途中の進み ${gate.progress.toFixed(2)}`);

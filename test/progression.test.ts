@@ -39,7 +39,7 @@ import {
 } from "../src/blocks";
 import { CHUNK_LAYERS, CHUNK_SIZE, CHUNK_VOLUME } from "../src/constants";
 import { findRecipe } from "../src/crafting";
-import { Dimensions, NETHER, OVERWORLD, type DimensionState } from "../src/dimensions";
+import { Dimensions, END, NETHER, OVERWORLD, type DimensionState } from "../src/dimensions";
 import { Arena, Slab, seeded, sourceOf } from "./arena";
 import { MOBS, Mobs, PLAYER_ATTACK_COOLDOWN } from "../src/mobs";
 import { check, describe } from "./harness";
@@ -48,7 +48,16 @@ import { NO_ITEM, dropOf, isFireStarter, itemName, itemStackLimit, rollDrop } fr
 import { quenchAround } from "../src/liquids";
 import { canHarvest } from "../src/mining";
 import { ignite } from "../src/portals";
-import { arrive, buildPortal, linkScale, linkedSpot, standable } from "../src/portaltravel";
+import {
+  arrive,
+  arriveThrough,
+  buildPortal,
+  linkScale,
+  linkedSpot,
+  planTravel,
+  portalAt,
+  standable,
+} from "../src/portaltravel";
 import { Projectiles, projectileDef } from "../src/projectiles";
 import { STRONGHOLD, STRONGHOLD_SITE, eyeShot, nearestStronghold } from "../src/stronghold";
 import { fitEye } from "../src/endportal";
@@ -61,7 +70,7 @@ import { Scene } from "three";
  * **達成済みの件数。項目を達成したときだけ 1 つ上げること。**
  * これより減ったら `npm test` が赤くなる（達成の後戻りを退行として捕まえる）。
  */
-const ACHIEVED_BASELINE = 11;
+const ACHIEVED_BASELINE = 12;
 
 /** ネザー要塞を探す範囲（列）。**広げると `npm test` がそのぶん遅くなります。** */
 const RADIUS = 4;
@@ -272,7 +281,7 @@ const MILESTONES: readonly Milestone[] = [
       if (returned.built) return { done: false, detail: "戻るたびに新しい枠が建つ" };
 
       // ここだけは配線の確認（`main.ts` はヘッドレスでは動かせない）。
-      const wired = sourceHas("src/main.ts", "switchTo", "arrive", "portalAxis");
+      const wired = sourceHas("src/main.ts", "switchTo", "arriveThrough", "portalAt", "planTravel");
       if (!wired.done) return { done: false, detail: `main.ts に移る配線が無い（${wired.detail}）` };
       return { done: true, detail: `往復できる（ネザーの出口 ${there.y}）` };
     },
@@ -574,8 +583,74 @@ const MILESTONES: readonly Milestone[] = [
   },
   {
     name: "エンドへ行ける",
-    kind: "仮",
-    probe: () => ({ done: !!block("エンドストーン") }),
+    kind: "本物",
+    // **ブロックがあるかを見ないこと。** 前は `block("エンドストーン")` の存在だけで、
+    // **`blocks.ts` に 1 行足した瞬間に達成へ化けました**（`structures.ts` /
+    // `dimensions.ts` / `projectiles.ts` / ブレイズ / エンダーアイのレシピ /
+    // 要塞の方角 / エンドポータルのブロックと、同じ形で 7 度踏んでいます）。
+    //
+    // ここは**要塞が実際に起動した面を踏んで、エンドの地形を作って降ります**。
+    // 深い検証は `test/endgen.test.ts`（島の形）と `test/portaltravel.test.ts`
+    // （種類の見分け・行き先・降ろし方）にあります。
+    probe: () => {
+      const stone = block("エンドストーン");
+      if (!stone) return { done: false, detail: "エンドストーンのブロックが無い" };
+
+      const dims = new Dimensions();
+      if (!dims.known(END)) {
+        return { done: false, detail: "エンドがまだ次元の表に無い（生成器待ち）" };
+      }
+
+      // **踏むのは要塞が起動した面。** 手で置いた面だと、建てる側・起動する側と
+      // 食い違っていても通ってしまう。
+      const slab = new Slab();
+      const y = 40;
+      STRONGHOLD.build({ def: STRONGHOLD, x: 0, y, z: 0 }, (px, py, pz, id) => {
+        slab.setVoxel(px, py, pz, id);
+      });
+      for (let dz = -6; dz <= 6; dz++) {
+        for (let dx = -6; dx <= 6; dx++) {
+          if (isEndPortalFrame(slab.getVoxel(dx, y + 1, dz))) fitEye(slab, dx, y + 1, dz);
+        }
+      }
+      const here = portalAt(slab.getVoxel(0, y + 1, 0));
+      if (here?.kind !== "end") {
+        return { done: false, detail: "起動した面がエンドポータルとして見分けられない" };
+      }
+
+      // **遠くの要塞から入っても島を目指すこと。** 座標を掛け算で移す形だと、
+      // ここで島の外（虚空）を指して、出た瞬間に落ちて死ぬ。
+      const trip = planTravel(OVERWORLD, here, 5312.5, y + 1, -4096.5);
+      if (trip.to !== END) return { done: false, detail: `行き先が ${trip.to}` };
+
+      // **実際にエンドの地形を作って降りる。**
+      const source = dims.sourceFor(END, 424242);
+      if (!source) return { done: false, detail: "エンドの生成器が無い" };
+      const world = new World(new Scene(), source);
+      world.primeAround(trip.x, trip.z, 1);
+      const landing = arriveThrough(world, trip);
+      const lx = Math.floor(landing.x);
+      const lz = Math.floor(landing.z);
+      if (!standable(world, lx, landing.y, lz)) {
+        return { done: false, detail: `出た場所 (${lx}, ${landing.y}, ${lz}) に立てない` };
+      }
+      if (world.getVoxel(lx, landing.y - 1, lz) !== stone.id) {
+        return { done: false, detail: "足元がエンドストーンでない" };
+      }
+
+      // **島が有限であること。** 遠くまで地面が続くなら、それはエンドではなく平原。
+      const far = new Uint8Array(CHUNK_VOLUME);
+      source.generateChunk(40, 3, 40, far);
+      if (far.some((id) => id !== AIR)) return { done: false, detail: "640 マス先にも地面がある" };
+
+      // ここだけは配線の確認（`main.ts` はヘッドレスでは動かせない）。
+      const wired = sourceHas("src/main.ts", "portalAt", "planTravel", "arriveThrough");
+      if (!wired.done) return { done: false, detail: `main.ts に配線が無い（${wired.detail}）` };
+      return {
+        done: true,
+        detail: `要塞の面 → エンドの島 (${lx}, ${landing.y}, ${lz}) に立てる`,
+      };
+    },
   },
   {
     name: "エンダードラゴンを倒せる",

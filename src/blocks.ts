@@ -172,6 +172,15 @@ export const NETHER_BRICK = 48;
 export const NETHER_PORTAL = 49;
 
 /**
+ * エンドストーン。**エンドの島の地面**（`endgen.ts`）で、オーバーワールドにもネザーにも湧かない。
+ *
+ * 硬さは Minecraft と同じ 3.0 で、**石（1.5）の倍**。ツルハシが要る（`minTier: TIER_WOOD`）。
+ * 島は虚空に浮いているので、**ここが柔らかいと足元を掘り抜いて奈落に落ちる**のが
+ * あっけなくなる —— 硬さそのものが「気軽に掘る場所ではない」という合図になっている。
+ */
+export const END_STONE = 50;
+
+/**
  * エンドポータルの枠。**12 個を輪にして並べ、全部にエンダーアイを嵌めると起動する**
  * （嵌める操作そのものは TASKS 2-9。ここが持つのは形と状態だけ）。
  *
@@ -1025,6 +1034,16 @@ export const BLOCKS: readonly BlockDef[] = [
   // **すぐ壊せる（hardness 0）が、何も落ちない**（`items.ts` の `DROPS`）——
   // 枠を壊したら消える仕組みはまだ無いので、消す手段をひとつ残しておく。
   ...portalPair(),
+
+  // エンドの島の地面（`endgen.ts`）。**普通の立方体**で、特別なのは硬さだけ。
+  def(
+    END_STONE,
+    "エンドストーン",
+    { top: 0xdfe1a4, side: 0xd6d89b, bottom: 0xc8ca8d },
+    // Minecraft と同じ 3.0（石の倍）。**虚空に浮いた島の床**なので、
+    // 掘り抜いて落ちるまでに手間が掛かるほうがよい。
+    { hardness: 3, tool: "pickaxe", minTier: TIER_WOOD },
+  ),
 
   // 要塞（`stronghold.ts`）の材料。**地形には湧かない**（ネザーレンガと同じ扱い）。
   def(

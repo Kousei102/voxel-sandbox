@@ -254,10 +254,12 @@ export function run(): void {
     // 表に無い次元は `skyStyleFor()` がオーバーワールドの**同じオブジェクト**を返すので、
     // 参照の一致で「落ちている」ことが分かる。
     const overworldStyle = skyStyleFor(OVERWORLD);
-    const known = [...DIMENSIONS.map((d) => d.id), END];
+    // エンドは `DIMENSIONS` に載ったので重複する。**`Set` で均すこと** ——
+    // 素で並べると、下の見え方の一覧にエンドが 2 度出る。
+    const known = [...new Set([...DIMENSIONS.map((d) => d.id), END])];
     const missing = known.filter((id) => id !== OVERWORLD && skyStyleFor(id) === overworldStyle);
     check(
-      "遊べる次元（+ まだ行けないエンド）に全部 空がある",
+      "遊べる次元に全部 空がある",
       missing.length === 0,
       missing.length > 0 ? `表に無い: ${missing.join(" ")}` : known.join(" / "),
     );

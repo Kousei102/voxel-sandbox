@@ -83,9 +83,17 @@ export function run(): void {
     );
 
     check("表に無い次元の生成器は null", dims.sourceFor("どちら", 1) === null);
-    check("いま遊べるのは 2 つ（オーバーワールドとネザー）", dims.ids.length === 2, dims.ids.join(" "));
+    check(
+      "いま遊べるのは 3 つ（オーバーワールド・ネザー・エンド）",
+      dims.ids.length === 3,
+      dims.ids.join(" "),
+    );
     check("ネザーが表にある", dims.known(NETHER));
-    check("エンドはまだ表に無い", !dims.known(END));
+    check("エンドが表にある", dims.known(END));
+    // **`salt` は次元ごとに違うこと。** 同じにすると、ネザーの床とエンドの島が
+    // 同じノイズから出て、同じ癖の形になる。
+    const salts = new Set(DIMENSIONS.map((d) => d.salt));
+    check("次元ごとに `salt` が違う", salts.size === DIMENSIONS.length, [...salts].join(" "));
     // **オーバーワールドの `salt` は 0 のまま。** 変えると既存のワールドが別物になる。
     const netherSource = dims.sourceFor(NETHER, 12345);
     check(
@@ -213,19 +221,22 @@ export function run(): void {
   {
     // **まだ実装していない次元に居るセーブ**（別のブランチで作ったもの）。
     // 立たせると生成器が無くて世界が空になるので、オーバーワールドに落とす。
-    // **エンドで試すこと**（ネザーは表に載ったので、もう「知らない次元」ではない）。
+    // **表に無い名前で試すこと** —— エンドも表に載ったので、いまは
+    // 「まだ実装されていない、この先の次元」を名乗らせている。
+    const FUTURE = "むこう";
     const dims = new Dimensions();
+    check("試すのは本当に表に無い次元", !dims.known(FUTURE));
     const here = dims.fromSave({
-      dim: END,
+      dim: FUTURE,
       top: state(1),
-      others: { [END]: state(2) },
+      others: { [FUTURE]: state(2) },
     });
     check("知らない次元に居るセーブはオーバーワールドに落とす", dims.current === OVERWORLD);
     check("落とした先の持ち物は上の階層のぶん", here.edits["0,2,0"]?.[0] === 1);
     // **捨てないこと。** 次元が実装された周に、そのまま続きが遊べる。
-    check("行けない次元の預かりは捨てない", dims.stateOf(END).edits["0,2,0"]?.[0] === 2);
+    check("行けない次元の預かりは捨てない", dims.stateOf(FUTURE).edits["0,2,0"]?.[0] === 2);
     const shape = dims.forSave(here);
-    check("書き出すと預かりもそのまま出る", shape.others?.[END]?.edits["0,2,0"]?.[0] === 2);
+    check("書き出すと預かりもそのまま出る", shape.others?.[FUTURE]?.edits["0,2,0"]?.[0] === 2);
   }
 
   {
