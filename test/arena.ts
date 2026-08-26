@@ -85,6 +85,15 @@ export class Slab {
     return true;
   }
 
+  /**
+   * その列が読み込まれているか。**`frozenColumns` と同じ集合を見ること** ——
+   * 「書き込みが黙って失敗する列」と「読むと AIR が返る列」は、本物の `World` では
+   * どちらも「未読み込みの列」1 つのことなので、2 つに分けると本物と食い違う。
+   */
+  hasColumn(cx: number, cz: number): boolean {
+    return !this.frozenColumns.has(`${cx},${cz}`);
+  }
+
   /** 直方体を埋める（両端を含む）。 */
   fill(x0: number, x1: number, y0: number, y1: number, z0: number, z1: number, id: number): void {
     for (let x = x0; x <= x1; x++) {

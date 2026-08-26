@@ -1,17 +1,20 @@
-import { AIR, BEDROCK, END_STONE, OBSIDIAN, isSolid } from "../src/blocks";
+import { AIR, BEDROCK, END_CRYSTAL, END_STONE, OBSIDIAN, isSolid } from "../src/blocks";
 import { CHUNK_LAYERS, CHUNK_SIZE, CHUNK_VOLUME, WORLD_HEIGHT } from "../src/constants";
 import {
+  CRYSTAL_SPOTS,
   EDGE_MIN_REACH,
   END_SPAWN,
   EndGen,
   ISLAND_RADIUS,
   ISLAND_SURFACE,
   LANDING_RADIUS,
+  NO_CRYSTAL,
   NO_PILLAR,
   PILLARS,
   PILLAR_COUNT,
   PILLAR_MAX_RADIUS,
   PILLAR_RING,
+  crystalTopAt,
   pillarTopAt,
 } from "../src/endgen";
 import { WorldGen } from "../src/worldgen";
@@ -39,22 +42,32 @@ const at = (all: Uint8Array, lx: number, wy: number, lz: number) =>
 /** その (x, z) の 1 マスを直に作って返す（列をまるごと作らずに 1 点だけ見たいとき）。 */
 function voxel(gen: EndGen, wx: number, wy: number, wz: number): number {
   const shape = gen.shapeAt(wx, wz);
-  return gen.blockAt(wy, shape.top, shape.bottom, shape.pillar);
+  return gen.blockAt(wy, shape.top, shape.bottom, shape.pillar, shape.crystal);
 }
 
 /** その列の一番上の地面（無ければ -1）。**柱は数えない**（島の上面が欲しいので）。 */
 function surfaceOf(gen: EndGen, wx: number, wz: number): number {
   const shape = gen.shapeAt(wx, wz);
   for (let y = WORLD_HEIGHT - 1; y >= 0; y--) {
-    if (gen.blockAt(y, shape.top, shape.bottom, shape.pillar) === END_STONE) return y;
+    if (gen.blockAt(y, shape.top, shape.bottom, shape.pillar, shape.crystal) === END_STONE) {
+      return y;
+    }
   }
   return -1;
 }
 
-/** その列の一番上の**固いもの**（柱も数える。無ければ -1）。 */
+/** その列の一番上の**固いもの**（柱もクリスタルも数える。無ければ -1）。 */
 function topSolidOf(gen: EndGen, wx: number, wz: number): number {
   for (let y = WORLD_HEIGHT - 1; y >= 0; y--) {
     if (voxel(gen, wx, y, wz) !== AIR) return y;
+  }
+  return -1;
+}
+
+/** その列の一番上の**黒曜石**（＝柱の上面。無ければ -1）。 */
+function topObsidianOf(gen: EndGen, wx: number, wz: number): number {
+  for (let y = WORLD_HEIGHT - 1; y >= 0; y--) {
+    if (voxel(gen, wx, y, wz) === OBSIDIAN) return y;
   }
   return -1;
 }
@@ -74,7 +87,7 @@ export function run(): void {
     const gen = new EndGen(12345);
     const top = 48;
     const bottom = 31;
-    const cut = (y: number) => gen.blockAt(y, top, bottom, NO_PILLAR);
+    const cut = (y: number) => gen.blockAt(y, top, bottom, NO_PILLAR, NO_CRYSTAL);
     console.log(
       `      上面 ${top} / 下面 ${bottom} の断面: ` +
         `y0 ${cut(0)}  y${bottom - 1} ${cut(bottom - 1)}  y${bottom} ${cut(bottom)}  ` +
@@ -89,15 +102,22 @@ export function run(): void {
     // 虚空の列は上から下まで空。
     check(
       "虚空の列は全部空",
-      gen.blockAt(0, -1, 0, NO_PILLAR) === AIR && gen.blockAt(64, -1, 0, NO_PILLAR) === AIR,
+      gen.blockAt(0, -1, 0, NO_PILLAR, NO_CRYSTAL) === AIR &&
+        gen.blockAt(64, -1, 0, NO_PILLAR, NO_CRYSTAL) === AIR,
     );
     // **虚空の列には柱も置かない。** `pillarTopAt()` は島の形を知らないので、
     // 「柱が立っていることになっている虚空の列」を渡されても何も置いてはいけない
     // （置くと、島の外に黒曜石の柱が浮く）。
     check(
       "虚空の列には柱も立たない",
-      gen.blockAt(70, -1, 0, ISLAND_SURFACE + 20) === AIR &&
-        gen.blockAt(50, -1, 0, ISLAND_SURFACE + 20) === AIR,
+      gen.blockAt(70, -1, 0, ISLAND_SURFACE + 20, NO_CRYSTAL) === AIR &&
+        gen.blockAt(50, -1, 0, ISLAND_SURFACE + 20, NO_CRYSTAL) === AIR,
+    );
+    // **クリスタルも同じ**（`crystalTopAt()` も島の形を知らない）。虚空の列に
+    // 置くと、島の外の空中にクリスタルだけが浮く。
+    check(
+      "虚空の列にはクリスタルも載らない",
+      gen.blockAt(ISLAND_SURFACE + 21, -1, 0, ISLAND_SURFACE + 20, ISLAND_SURFACE + 21) === AIR,
     );
   }
 
@@ -345,16 +365,20 @@ export function run(): void {
             worstBase = Math.min(worstBase, shape.top);
             // 根元（島の上面の 1 つ上）から上面まで隙間なく黒曜石。
             for (let y = shape.top + 1; y <= pillar.top; y++) {
-              if (gen.blockAt(y, shape.top, shape.bottom, shape.pillar) !== OBSIDIAN) gaps++;
+              if (
+                gen.blockAt(y, shape.top, shape.bottom, shape.pillar, shape.crystal) !== OBSIDIAN
+              ) {
+                gaps++;
+              }
             }
-            if (topSolidOf(gen, x, z) !== pillar.top) uneven++;
-            // クリスタル（2-11b）を載せるので、上に 2 マス空いていること。
-            if (
-              voxel(gen, x, pillar.top + 1, z) !== AIR ||
-              voxel(gen, x, pillar.top + 2, z) !== AIR
-            ) {
-              noHeadroom++;
-            }
+            // **黒曜石の上面**で見ること（`topSolidOf` は中心の列でクリスタルを拾う）。
+            if (topObsidianOf(gen, x, z) !== pillar.top) uneven++;
+            // 上に 2 マス空いていること。**真ん中の 1 マスだけはクリスタルが載る**
+            // （そこも空だと、載せる場所が無いのに空いていることになる）。
+            const centre = x === pillar.x && z === pillar.z;
+            const above = voxel(gen, x, pillar.top + 1, z);
+            const wanted = centre ? END_CRYSTAL : AIR;
+            if (above !== wanted || voxel(gen, x, pillar.top + 2, z) !== AIR) noHeadroom++;
           }
         }
       }
@@ -368,7 +392,74 @@ export function run(): void {
     check("どの種でも柱が虚空に浮かない", floatingBase === 0, `${floatingBase} マス`);
     check("根元から上面まで隙間が無い", gaps === 0, `${gaps} マス`);
     check("柱の上面が平ら", uneven === 0, `${uneven} マス`);
-    check("柱の上が 2 マス空いている", noHeadroom === 0, `${noHeadroom} マス`);
+    check("柱の上が空いていて、真ん中にだけクリスタルが載る", noHeadroom === 0, `${noHeadroom} マス`);
+  }
+
+  // --- エンドクリスタル ---------------------------------------------------
+
+  {
+    // **居場所は柱から引いていること。** 写して 2 か所に持つと、柱を動かしたときに
+    // 柱の無い所にクリスタルが浮く（空中なので、下から見上げるまで気付けない）。
+    let offPillar = 0;
+    let wrongHeight = 0;
+    for (const spot of CRYSTAL_SPOTS) {
+      const pillar = PILLARS.find((p) => p.x === spot.x && p.z === spot.z);
+      if (!pillar) offPillar++;
+      else if (spot.y !== pillar.top + 1) wrongHeight++;
+    }
+    console.log(
+      `      クリスタル ${CRYSTAL_SPOTS.length} 個 / 柱 ${PILLAR_COUNT} 本: ` +
+        `柱の上に無い ${offPillar} / 高さ違い ${wrongHeight}  ` +
+        `y ${Math.min(...CRYSTAL_SPOTS.map((s) => s.y))}〜${Math.max(
+          ...CRYSTAL_SPOTS.map((s) => s.y),
+        )}`,
+    );
+    check("柱 1 本につきクリスタル 1 個", CRYSTAL_SPOTS.length === PILLAR_COUNT);
+    check("どれも柱の中心に載っている", offPillar === 0, `${offPillar} 個`);
+    check("どれも柱の上面のすぐ上", wrongHeight === 0, `${wrongHeight} 個`);
+  }
+
+  {
+    // `crystalTopAt()` と表が食い違わないこと。**柱の中心の 1 列だけ**が返る
+    // （太い柱でも、上に載るのは 1 個）。
+    let differs = 0;
+    let hits = 0;
+    const span = PILLAR_RING + PILLAR_MAX_RADIUS + 2;
+    for (let z = -span; z <= span; z++) {
+      for (let x = -span; x <= span; x++) {
+        const spot = CRYSTAL_SPOTS.find((s) => s.x === x && s.z === z);
+        const want = spot ? spot.y : NO_CRYSTAL;
+        if (spot) hits++;
+        if (crystalTopAt(x, z) !== want) differs++;
+      }
+    }
+    console.log(
+      `      ${(span * 2 + 1) ** 2} マスを表と突き合わせ: 載る列 ${hits} / 食い違い ${differs}`,
+    );
+    check("クリスタルの載る列は柱の本数ぶんだけ", hits === PILLAR_COUNT, `${hits} 列`);
+    check("crystalTopAt が表と一致する", differs === 0, `${differs} マス`);
+  }
+
+  {
+    // **実際に建てて確かめる。** 5 種とも 10 個が載り、種を変えても同じ場所。
+    let missing = 0;
+    let checked = 0;
+    let strays = 0;
+    for (const seed of [12345, 4242, 999, 777, 31337]) {
+      const gen = new EndGen(seed);
+      for (const spot of CRYSTAL_SPOTS) {
+        checked++;
+        if (voxel(gen, spot.x, spot.y, spot.z) !== END_CRYSTAL) missing++;
+        // 真下は柱（黒曜石）であること —— 空中に浮いていない。
+        if (voxel(gen, spot.x, spot.y - 1, spot.z) !== OBSIDIAN) strays++;
+      }
+    }
+    console.log(
+      `      5 種 x ${PILLAR_COUNT} 個 = ${checked} 個: 載っていない ${missing} / ` +
+        `真下が柱でない ${strays}`,
+    );
+    check("どの種でもクリスタルが載る", missing === 0, `${missing} 個`);
+    check("どれも柱の上に載っている（浮いていない）", strays === 0, `${strays} 個`);
   }
 
   {
@@ -402,6 +493,7 @@ export function run(): void {
     let others = 0;
     let stone = 0;
     let obsidian = 0;
+    let crystals = 0;
     let floating = 0;
     for (const all of columns) {
       for (let lz = 0; lz < CHUNK_SIZE; lz++) {
@@ -415,6 +507,7 @@ export function run(): void {
             const id = at(all, lx, y, lz);
             if (id === END_STONE) stone++;
             else if (id === OBSIDIAN) obsidian++;
+            else if (id === END_CRYSTAL) crystals++;
             else if (id !== AIR) others++;
             if (isSolid(id) && !isSolid(prev)) runs++;
             prev = id;
@@ -425,9 +518,10 @@ export function run(): void {
     }
     console.log(
       `      原点まわり 9 列: エンドストーン ${stone} マス / 黒曜石 ${obsidian} マス / ` +
-        `それ以外の地面 ${others} マス / 2 段になった列 ${floating}`,
+        `クリスタル ${crystals} マス / それ以外の地面 ${others} マス / ` +
+        `2 段になった列 ${floating}`,
     );
-    check("エンドストーンと黒曜石以外の地面が無い", others === 0, `${others} マス`);
+    check("エンドストーン・黒曜石・クリスタル以外の地面が無い", others === 0, `${others} マス`);
     check("地面が生成される", stone > 0);
     check("柱が実際に生成される", obsidian > 0, `${obsidian} マス`);
     check("島は 1 枚（浮いた板が無い）", floating === 0, `${floating} 列`);

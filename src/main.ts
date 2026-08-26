@@ -45,6 +45,7 @@ import {
 import { Chests } from "./chests";
 import { CrackOverlay } from "./crack";
 import { CraftScreen } from "./craftscreen";
+import { shatterCrystal } from "./crystals";
 import { DayNight, WAKE_TIME, canSleep, environmentFor } from "./daynight";
 import { eyeMessage, fitEye } from "./endportal";
 import { Dimensions, OVERWORLD, emptyState, type DimensionState } from "./dimensions";
@@ -287,6 +288,21 @@ mobs.onSound = (sfx, pitch) => audio.play(sfx, "none", pitch);
  * （ダメージの数値も無敵時間も死因も、あちらが決める）。
  */
 projectiles.onHitTarget = (shot, target) => mobs.hitByProjectile(shot, target, mobContext());
+
+/**
+ * 飛んでいるものがブロックに当たった。**いまのところ効くのはエンドクリスタルだけ**
+ * （砕けるかどうかも、そのマスに何があるかも `crystals.ts` が見る）。
+ *
+ * 砕いた弾はその場から消す —— 矢は本来ブロックに刺さって止まるので、
+ * 消さないと**当てた相手だけが消えて、矢が空中に浮いたまま残る。**
+ */
+projectiles.onHitBlock = (shot, x, y, z) => {
+  const broken = shatterCrystal(world, x, y, z);
+  if (broken === AIR) return;
+  projectiles.remove(shot);
+  audio.play("break", blockSound(broken));
+  saveDirty = true;
+};
 
 function setCreative(on: boolean): void {
   creative = on;
@@ -1146,7 +1162,8 @@ window.addEventListener("keydown", (event) => {
     }
     case "KeyN":
       // 飛び道具を 1 つ、視線の向きへ。**種類は押すたびに順ぐり**（`debugspawn.ts`）。
-      // 撃つ相手も当たったときの効果もまだ無い（火球はブレイズ、矢は弓と一緒に入る）。
+      // 撃つ手段はまだ本物ではない（火球はブレイズ、矢は弓と一緒に入る）が、
+      // **当てればエンドクリスタルは砕ける**（下の `onHitBlock`）。
       debugShot = nextShot(debugShot);
       projectiles.launch(
         PROJECTILE_KINDS[debugShot].kind,

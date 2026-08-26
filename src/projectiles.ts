@@ -376,6 +376,24 @@ export class Projectiles {
     );
   }
 
+  /**
+   * 1 つ取り除く。**当たった先が消えたときに使う**（エンドクリスタルを砕いた矢）。
+   *
+   * 無かったら false。**`onExpire` は呼ばない** —— 寿命でも上限でもなく、
+   * 当たって役目を終えたぶんなので（当たって消えるものが `onExpire` を
+   * 通らないのと同じ扱い）。
+   *
+   * **`onHitBlock` の中から呼んでよい。** `update()` の走査は後ろから回るので、
+   * いま見ている番号を抜いても、まだ見ていない前側の並びは動かない
+   * （`vanish` がその場で `splice` しているのとまったく同じ理屈）。
+   */
+  remove(projectile: Projectile): boolean {
+    const at = this.list.indexOf(projectile);
+    if (at < 0) return false;
+    this.list.splice(at, 1);
+    return true;
+  }
+
   clear(): void {
     this.list.length = 0;
   }

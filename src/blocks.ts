@@ -221,6 +221,27 @@ export const END_PORTAL = 52;
 export const STONE_BRICK = 53;
 
 /**
+ * エンドクリスタル。**エンドの黒曜石の柱の上に 1 個ずつ載る**
+ * （居場所は `endgen.ts` の `CRYSTAL_SPOTS`、生き死には `crystals.ts`）。
+ *
+ * **モブでも独立した器でもなく、ブロックにしてある。** 理由は 2 つとも
+ * 「壊せる」という一点に効く:
+ *
+ * - **壊した記録が `edits` に乗る** —— モブは保存しないので、モブ側に載せると
+ *   壊したクリスタルが読み込み直しで生き返る（ドラゴンの回復がそのぶん戻る）
+ * - **当たり判定が要らない** —— 掘るのも飛び道具（`projectiles.onHitBlock`）も
+ *   もともとブロックに当たる。新しい `*render.ts` も 1 つも増えない
+ *
+ * **`solid: true` でなければ飛び道具が素通りする**（`collisionBoxes()` が
+ * `solid` でないブロックに空の箱を返す）。矢で壊せることが要るので、ここは真。
+ *
+ * **すぐ壊せる（硬さ 0.2・素手）が、何も落ちない**（`items.ts` の `DROPS`）。
+ * Minecraft では当たった瞬間に爆発して消えるので、それに寄せてある
+ * （爆発そのものはまだ無い）。
+ */
+export const END_CRYSTAL = 54;
+
+/**
  * ブロック ID の枠は 2 段に分けてある。
  *
  * - **1..63**: 立方体と、**アイテムとして持てる**ブロック（ハーフや階段の「大元」も含む）。
@@ -693,6 +714,19 @@ const FRAME_EYE_BOX: BoxList = [
   [0.25, FRAME_HEIGHT, 0.25, 0.75, 1, 0.75],
 ];
 
+/**
+ * エンドクリスタルの形。**下すぼまり → 太い胴 → 細い頭**の 3 段で、
+ * 軸に平行な箱だけで八面体の輪郭に寄せてある（`model: "boxes"` は箱をそのまま積む）。
+ *
+ * **1x1x1 にしないこと。** 柱の上面と同じ太さだと、上に何か載っているのか
+ * 柱がもう 1 段伸びているのかが遠目に分からない。
+ */
+const END_CRYSTAL_BOX: BoxList = [
+  [0.375, 0, 0.375, 0.625, 0.3125, 0.625],
+  [0.1875, 0.3125, 0.1875, 0.8125, 0.6875, 0.8125],
+  [0.375, 0.6875, 0.375, 0.625, 1, 0.625],
+];
+
 /** 枠の状態の数（向き 4 x アイの有無 2）。番号は `向きの添字 * 2 + (アイ ? 1 : 0)`。 */
 const FRAME_STATES = HORIZONTAL_FACINGS.length * 2;
 /** `[状態]` -> 実際のブロック ID。大元が 1 個で、残り 7 個は 64 以降。 */
@@ -1072,6 +1106,25 @@ export const BLOCKS: readonly BlockDef[] = [
       sound: "glass",
       model: "boxes",
       boxes: END_PORTAL_BOX,
+    },
+  ),
+
+  // エンドの柱の上に載るクリスタル（居場所は `endgen.ts` の `CRYSTAL_SPOTS`、
+  // 生き死には `crystals.ts`）。**`solid: true` でないと飛び道具が素通りする。**
+  // すぐ壊せて何も落ちない（`items.ts` の `DROPS`）。
+  def(
+    END_CRYSTAL,
+    "エンドクリスタル",
+    { top: 0xf0e6ff, side: 0xc27ae0, bottom: 0x8a4fb0 },
+    {
+      opaque: false,
+      // 柱の上に載るだけなので、屋根としては数えない（真下は柱そのもの）。
+      blocksSky: false,
+      hardness: 0.2,
+      emission: END_PORTAL_LIGHT,
+      sound: "glass",
+      model: "boxes",
+      boxes: END_CRYSTAL_BOX,
     },
   ),
 ];

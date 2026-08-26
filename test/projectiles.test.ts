@@ -323,6 +323,31 @@ export function run(): void {
   }
 
   {
+    // **当たった先が消えたら、弾もその場から消せること**（エンドクリスタルを砕いた矢）。
+    // 消せないと、砕けた相手だけが消えて**矢が空中に浮いたまま残る。**
+    // `onHitBlock` の中から呼んでよい（走査が後ろから回るので、いま見ている番号を
+    // 抜いてもまだ見ていない前側の並びは動かない）。
+    const arena = walled();
+    const p = new Projectiles();
+    let expired = 0;
+    p.onExpire = () => expired++;
+    p.onHitBlock = (shot) => {
+      p.remove(shot);
+    };
+    p.launch("arrow", 0.5, 20, 0.5, 0, 0);
+    p.launch("arrow", -0.5, 20, 0.5, 0, 0);
+    advance(p, arena, 0.5);
+    console.log(`      当てた 2 本を消したあと: 残り ${p.count} 本 / 寿命の合図 ${expired} 回`);
+    check("当たった弾を onHitBlock の中から消せる", p.count === 0, `${p.count} 本`);
+    // **寿命でも上限でもないので `onExpire` は呼ばない**（当たって消える火球と同じ扱い）。
+    check("当たって消えたぶんは寿命の合図を出さない", expired === 0, `${expired} 回`);
+    // 無いものを渡しても落ちない（2 度呼ばれても 2 本消えない）。
+    const ghost = new Projectiles();
+    const stray = ghost.launch("arrow", 0, 20, 0, 0, 0);
+    check("同じ弾を 2 度消しても 2 度は効かない", ghost.remove(stray!) && !ghost.remove(stray!));
+  }
+
+  {
     // **フレームが重くても抜けない。** 矢は 40m/s なので、1/20 秒だと 2m 進む ——
     // 刻まずに動かすと厚さ 1 マスの壁を飛び越える。
     const arena = walled();

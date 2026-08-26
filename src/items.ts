@@ -5,6 +5,7 @@ import {
   COBBLE,
   DIAMOND_ORE,
   DIRT,
+  END_CRYSTAL,
   GLASS,
   GRASS,
   GRAVEL,
@@ -318,6 +319,9 @@ const DROPS = new Map<number, Drop>([
   [GRAVEL, { item: FLINT, count: 1, chance: 0.1, otherwise: GRAVEL }],
   // ポータルの面は壊せる（硬さ 0）が、何も落ちない。**持ち帰れると枠が要らなくなる。**
   [NETHER_PORTAL, { item: NO_ITEM, count: 0, chance: 0 }],
+  // エンドクリスタルは砕けて消える（Minecraft では爆発する）。**拾えると、
+  // 柱の上へ運び直してドラゴンの回復を復活させられる。**
+  [END_CRYSTAL, { item: NO_ITEM, count: 0, chance: 0 }],
 ]);
 
 /**

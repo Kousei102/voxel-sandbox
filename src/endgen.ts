@@ -16,11 +16,12 @@
  * ここが崩れると**ポータルを通った人が虚空に出て即死する**（出る場所は
  * `portaltravel.ts` の `END_ARRIVAL` で原点に固定してある）。
  *
- * 島の上には**黒曜石の柱が 10 本**立つ（下の `PILLARS`）。**位置も高さも種に依らず固定**で、
+ * 島の上には**黒曜石の柱が 10 本**立ち、その 1 本ずつの上に**エンドクリスタルが 1 個**
+ * 載る（下の `PILLARS` と `CRYSTAL_SPOTS`）。**位置も高さも種に依らず固定**で、
  * ドラゴンの戦場（2-13）は誰のワールドでも同じ形になる。
  */
 
-import { AIR, END_STONE, OBSIDIAN } from "./blocks";
+import { AIR, END_CRYSTAL, END_STONE, OBSIDIAN } from "./blocks";
 import { CHUNK_SIZE } from "./constants";
 import { Noise } from "./noise";
 import type { ChunkSource } from "./world";
@@ -104,7 +105,7 @@ export interface Pillar {
   readonly radius: number;
   /** 島の上面（`ISLAND_SURFACE`）からの高さ。 */
   readonly height: number;
-  /** 上面の絶対 y。**エンドクリスタル（2-11b）はこの 1 つ上に載る。** */
+  /** 上面の絶対 y。**エンドクリスタルはこの 1 つ上に載る**（`CRYSTAL_SPOTS`）。 */
   readonly top: number;
 }
 
@@ -128,6 +129,44 @@ export const PILLARS: readonly Pillar[] = PILLAR_HEIGHTS.map((height, i) => {
 
 /** その列に柱が立っていないことを表す値。 */
 export const NO_PILLAR = -1;
+
+/** エンドクリスタルが 1 個載る場所（マスの座標）。 */
+export interface CrystalSpot {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+}
+
+/**
+ * エンドクリスタルの居場所。**柱 1 本につき 1 個、上面のすぐ上**（柱の上は 2 マス空けてある）。
+ *
+ * **`PILLARS` から引いていること自体が肝心。** 座標を写して 2 か所に持つと、
+ * 柱の並びを動かしたときに**柱の無い所にクリスタルが浮く**という形で静かに壊れる
+ * （しかも空中なので、下から見上げるまで気付けない）。生き死にを見る側
+ * （`crystals.ts`）もここを読むこと。
+ */
+export const CRYSTAL_SPOTS: readonly CrystalSpot[] = PILLARS.map((pillar) => ({
+  x: pillar.x,
+  y: pillar.top + 1,
+  z: pillar.z,
+}));
+
+/** その列にクリスタルが載っていないことを表す値。 */
+export const NO_CRYSTAL = -1;
+
+/**
+ * その (x, z) にクリスタルが載っていれば**その絶対 y**、無ければ `NO_CRYSTAL`。
+ *
+ * **柱の中心の 1 列だけ**が返る（柱は太さ 2〜3 あるが、載るのは真ん中の 1 マス）。
+ * `pillarTopAt()` と同じで種を受け取らないので、島の形は知らない ——
+ * 虚空に浮かないのは `blockAt()` が `VOID_COLUMN` を先に見るからで、そこだけが保険。
+ */
+export function crystalTopAt(wx: number, wz: number): number {
+  for (const spot of CRYSTAL_SPOTS) {
+    if (spot.x === wx && spot.z === wz) return spot.y;
+  }
+  return NO_CRYSTAL;
+}
 
 /**
  * 走査を早めに切るための帯。**`PILLAR_RING ± PILLAR_MAX_RADIUS` で決め打ちにしないこと** ——
@@ -174,6 +213,8 @@ interface EndColumn {
   readonly bottom: Int16Array;
   /** 16x16 の柱の上面（絶対 y）。柱の無い列は `NO_PILLAR`。 */
   readonly pillar: Int16Array;
+  /** 16x16 のクリスタルの高さ（絶対 y）。載っていない列は `NO_CRYSTAL`。 */
+  readonly crystal: Int16Array;
 }
 
 function clamp01(v: number): number {
@@ -208,10 +249,15 @@ export class EndGen implements ChunkSource {
    * その 1 マスの上面と下面。**虚空なら `top` が `VOID_COLUMN`。**
    * 列のキャッシュを通さないので、テストと計測から直に呼べる。
    */
-  shapeAt(wx: number, wz: number): { top: number; bottom: number; pillar: number } {
+  shapeAt(
+    wx: number,
+    wz: number,
+  ): { top: number; bottom: number; pillar: number; crystal: number } {
     const d = Math.hypot(wx, wz);
     const reach = this.reachAt(wx, wz);
-    if (d >= reach) return { top: VOID_COLUMN, bottom: 0, pillar: NO_PILLAR };
+    if (d >= reach) {
+      return { top: VOID_COLUMN, bottom: 0, pillar: NO_PILLAR, crystal: NO_CRYSTAL };
+    }
 
     // 中心 1 / ふち 0。**`sqrt` で寄せる**と、ふちが崖にならずに薄く伸びる。
     const fall = Math.sqrt(clamp01(1 - d / reach));
@@ -222,7 +268,12 @@ export class EndGen implements ChunkSource {
     const ramp = clamp01((d - LANDING_RADIUS) / LANDING_RAMP);
     const n = this.surfaceNoise.fbm2(wx * SURFACE_SCALE, wz * SURFACE_SCALE, 3);
     const top = ISLAND_SURFACE + Math.round((n / 1.2) * 2 * SURFACE_WOBBLE * ramp);
-    return { top, bottom: top - thickness + 1, pillar: pillarTopAt(wx, wz) };
+    return {
+      top,
+      bottom: top - thickness + 1,
+      pillar: pillarTopAt(wx, wz),
+      crystal: crystalTopAt(wx, wz),
+    };
   }
 
   private column(cx: number, cz: number): EndColumn {
@@ -233,6 +284,7 @@ export class EndGen implements ChunkSource {
     const top = new Int16Array(CHUNK_SIZE * CHUNK_SIZE);
     const bottom = new Int16Array(CHUNK_SIZE * CHUNK_SIZE);
     const pillar = new Int16Array(CHUNK_SIZE * CHUNK_SIZE);
+    const crystal = new Int16Array(CHUNK_SIZE * CHUNK_SIZE);
     for (let lz = 0; lz < CHUNK_SIZE; lz++) {
       const wz = cz * CHUNK_SIZE + lz;
       for (let lx = 0; lx < CHUNK_SIZE; lx++) {
@@ -242,10 +294,11 @@ export class EndGen implements ChunkSource {
         top[at] = shape.top;
         bottom[at] = shape.bottom;
         pillar[at] = shape.pillar;
+        crystal[at] = shape.crystal;
       }
     }
 
-    const data: EndColumn = { top, bottom, pillar };
+    const data: EndColumn = { top, bottom, pillar, crystal };
     if (this.columns.size >= COLUMN_CACHE_LIMIT) {
       const oldest = this.columns.keys().next().value;
       if (oldest !== undefined) this.columns.delete(oldest);
@@ -256,7 +309,7 @@ export class EndGen implements ChunkSource {
 
   /** チャンク 1 個分のボクセルを `data` に書き込む。 */
   generateChunk(cx: number, cy: number, cz: number, data: Uint8Array): void {
-    const { top, bottom, pillar } = this.column(cx, cz);
+    const { top, bottom, pillar, crystal } = this.column(cx, cz);
     const baseY = cy * CHUNK_SIZE;
 
     for (let lz = 0; lz < CHUNK_SIZE; lz++) {
@@ -265,9 +318,10 @@ export class EndGen implements ChunkSource {
         const hi = top[at];
         const lo = bottom[at];
         const post = pillar[at];
+        const gem = crystal[at];
         for (let ly = 0; ly < CHUNK_SIZE; ly++) {
           const index = (ly * CHUNK_SIZE + lz) * CHUNK_SIZE + lx;
-          data[index] = this.blockAt(baseY + ly, hi, lo, post);
+          data[index] = this.blockAt(baseY + ly, hi, lo, post, gem);
         }
       }
     }
@@ -284,11 +338,16 @@ export class EndGen implements ChunkSource {
    * 上面は平ら**になり、島のうねりのぶんは根元で吸収される（＝根元に隙間ができない）。
    * **島の無い列（`VOID_COLUMN`）には何も置かない** —— 虚空に柱が浮かないのは
    * この 1 行だけが保険で、`pillarTopAt()` は島の形を知らない。
+   *
+   * クリスタルは**柱の上面のすぐ上に 1 マス**（`crystal`）。柱の中心の列にしか
+   * 来ないので、太い柱でも上に載るのは 1 個だけになる。**壊すと `edits` に乗る**ので、
+   * 一度砕けば読み込み直しても戻らない（`crystals.ts`）。
    */
-  blockAt(wy: number, top: number, bottom: number, pillar: number): number {
+  blockAt(wy: number, top: number, bottom: number, pillar: number, crystal: number): number {
     if (top === VOID_COLUMN) return AIR;
     if (wy >= bottom && wy <= top) return END_STONE;
     if (pillar !== NO_PILLAR && wy > top && wy <= pillar) return OBSIDIAN;
+    if (crystal !== NO_CRYSTAL && wy === crystal) return END_CRYSTAL;
     return AIR;
   }
 }
