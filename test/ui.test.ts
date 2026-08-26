@@ -134,6 +134,11 @@ function mainStaysWiring(): void {
     // フレームから外しても・マウスから外しても緑のまま通る（実際に通った）。
     ["弓を毎フレーム引き進める", "updateDrawing(dt)"],
     ["離したら放つ", "loose();"],
+    // 右クリックで何が起きるかの振り分け（11 通り）。**並び順そのものが判断**なので、
+    // `main.ts` に `if` の列を書き戻すと、順番の食い違いが「枠を狙ってもアイが
+    // 飛んでいく」形でしか出ない（枠は地下 18 マス）。
+    ["右クリックの振り分け", "decideUse("],
+    ["右クリックで呼ぶ", "useOrPlace();"],
   ];
   const inlined = routed.filter(([, call]) => !source.includes(call));
   check(

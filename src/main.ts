@@ -12,7 +12,6 @@ import {
 import {
   AIR,
   CHEST,
-  CRAFTING_TABLE,
   END_PORTAL,
   END_PORTAL_FRAME,
   FURNACE,
@@ -22,10 +21,9 @@ import {
   blockName,
   blockSound,
   bedPartner,
-  isBed,
   isBedHead,
-  isEndPortalFrame,
   shapeBounds,
+  type PlaceAim,
 } from "./blocks";
 import { AudioEngine } from "./audio";
 import { biomeName } from "./biomes";
@@ -55,18 +53,7 @@ import { DropRenderer } from "./droprender";
 import { Furnaces } from "./furnaces";
 import { Inventory, bulkDiscard } from "./inventory";
 import { InventoryScreen } from "./inventoryui";
-import {
-  ARROW,
-  ENDER_EYE,
-  NO_ITEM,
-  foodOf,
-  isBow,
-  isBucket,
-  isFireStarter,
-  itemName,
-  placedBlock,
-  rollDrop,
-} from "./items";
+import { ARROW, NO_ITEM, foodOf, itemName, rollDrop } from "./items";
 import { debugMob, nextShot } from "./debugspawn";
 import { debugText } from "./debugtext";
 import { Mining, canHarvest } from "./mining";
@@ -90,6 +77,7 @@ import { Sky } from "./sky";
 import { buildSave, collectState, restoredValues, savedShape } from "./session";
 import { clearSave, countEdits, deserializeEdits, load, save, type SaveData } from "./storage";
 import { Hud } from "./ui";
+import { decideUse } from "./use";
 import { Eating, VOID_Y, Vitals, deathMessage } from "./vitals";
 import { World } from "./world";
 import { WorldGen } from "./worldgen";
@@ -894,98 +882,56 @@ function fitHighlight(target: RaycastHit): void {
 /** 形を囲む箱の控え。毎フレーム使うので配列は使い回す。 */
 const bounds = [0, 0, 0, 1, 1, 1];
 
-/** 右クリック: 作業台なら開く、食べ物なら食べ始める、それ以外は持っているブロックを置く。 */
+/**
+ * 右クリック。**何が起きるかの振り分けは `use.ts` の `decideUse()`**（11 通りの
+ * 並び順そのものが判断なので、ここに戻さないこと）。ここは注文を受けて貼るだけ。
+ */
 function useOrPlace(): void {
-  // **`hit` が無くても食べられること。** 空を向いたまま食べられないのはおかしい。
-  if (hit?.id === CRAFTING_TABLE) {
-    openInventory(3);
-    return;
+  const held = inventory.selectedItem;
+  const hasArrow = creative || inventory.has(ARROW);
+  const act = decideUse(hit, { held, creative, canEat: vitals.canEat, hasArrow });
+  switch (act.kind) {
+    case "flash": hud.flash(act.message); return;
+    case "craft": openInventory(3); return;
+    case "furnace": openFurnace(act.at.x, act.at.y, act.at.z); return;
+    case "chest": openChest(act.at.x, act.at.y, act.at.z); return;
+    case "bed": sleepOrSetSpawn(act.at.x, act.at.y, act.at.z, act.id); return;
+    case "bucket": useBucket(act.item); return;
+    case "fitEye": fitEndPortalEye(act.at.x, act.at.y, act.at.z); return;
+    case "throwEye": throwEye(); return;
+    case "ignite": igniteAt(act.aim); return;
+    case "draw": drawing.begin(act.item); return;
+    case "eat": eating.begin(act.item); return;
+    case "place": placeHeld(act.aim, act.base); return;
+    default: return;
   }
+}
 
-  // かまど。点火中も同じ 1 台なので、大元の ID で見る。
-  if (hit && baseBlock(hit.id) === FURNACE) {
-    openFurnace(hit.block.x, hit.block.y, hit.block.z);
-    return;
-  }
+/**
+ * 投げたエンダーアイ。向きは `stronghold.ts` の `eyeShot()`。**種は `worldSeed`** ——
+ * `world.seed` はネザーだと塩を混ぜたあとの値で、渡すと別の場所を指す。
+ */
+function throwEye(): void {
+  const shot = eyeShot(worldSeed, camera.position.x, camera.position.y, camera.position.z);
+  if (shot) projectiles.fire(shot);
+  else hud.flash("要塞の見当が付きません");
+}
 
-  if (hit && hit.id === CHEST) {
-    openChest(hit.block.x, hit.block.y, hit.block.z);
-    return;
-  }
+/** 火種で火を点ける。**どのマスに点くかも枠の判定も `placing.ts` / `portals.ts`。** */
+function igniteAt(aim: PlaceAim): void {
+  const lit = tryIgnite(world, aim);
+  if (lit.kind === "blocked") hud.flash(lit.message);
+  if (lit.kind !== "placed") return;
+  audio.play("place", "stone");
+  saveDirty = true;
+}
 
-  // ベッド。足側でも枕側でも同じ 1 台なので、どちらを叩いても同じ扱い。
-  if (hit && isBed(hit.id)) {
-    sleepOrSetSpawn(hit.block.x, hit.block.y, hit.block.z, hit.id);
-    return;
-  }
-
-  // バケツ。**汲めるか流せるかの判断は `items.ts` の `bucketUse()`**（ここは
-  // どのマスに効くかを決めるだけ）。食べ物より先に見る —— どちらも右クリックだが、
-  // バケツは押しっぱなしではなく 1 回で終わる。
-  if (isBucket(inventory.selectedItem)) {
-    useBucket(inventory.selectedItem);
-    return;
-  }
-
-  // エンドポータルの枠にエンダーアイを嵌める。**投げる側より先に見ること** ——
-  // 逆にすると、枠を狙っても手からアイが飛んでいって永久に嵌まらない。
-  if (hit && inventory.selectedItem === ENDER_EYE && isEndPortalFrame(hit.id)) {
-    fitEndPortalEye(hit.block.x, hit.block.y, hit.block.z);
-    return;
-  }
-
-  // エンダーアイ。**どこへ向けて飛ぶかは `stronghold.ts` の `eyeShot()`**
-  // （視線ではなく要塞のほうを向く案内役なので、`hit` は要らない）。
-  // **種は `worldSeed`** —— `world.seed` はネザーだと塩を混ぜたあとの値で、
-  // 渡すとオーバーワールドと別の場所を指す（`rules/dimensions.md`）。
-  if (inventory.selectedItem === ENDER_EYE) {
-    const shot = eyeShot(worldSeed, camera.position.x, camera.position.y, camera.position.z);
-    if (shot) projectiles.fire(shot);
-    else hud.flash("要塞の見当が付きません");
-    return;
-  }
-
-  // 火打石と打ち金。**どのマスに火を点けるかも枠の判定も `placing.ts` / `portals.ts`。**
-  if (hit && isFireStarter(inventory.selectedItem)) {
-    const lit = tryIgnite(world, hit);
-    if (lit.kind === "blocked") hud.flash(lit.message);
-    if (lit.kind === "placed") {
-      audio.play("place", "stone");
-      saveDirty = true;
-    }
-    return;
-  }
-
-  // 弓。**引き始めるだけ**で、放つのは離したとき（`loose()`）。長さも下限も `bow.ts`。
-  if (isBow(inventory.selectedItem)) {
-    if (creative || inventory.has(ARROW)) drawing.begin(inventory.selectedItem);
-    else hud.flash("矢がありません");
-    return;
-  }
-
-  // 食べ物。**何がどれだけ戻るかは `items.ts`、食べられるかは `vitals.ts`**。
-  // ここは「押しっぱなしが始まった」ことだけを持つ。
-  const food = foodOf(inventory.selectedItem);
-  if (food) {
-    if (creative) return;
-    if (!vitals.canEat) {
-      hud.flash("お腹は空いていません");
-      return;
-    }
-    eating.begin(inventory.selectedItem);
-    return;
-  }
-
-  if (!hit) return;
-  // 置けるかどうかと書き込みは `placing.ts`（**判断はあちら**。ここは結果を貼るだけ）。
-  const placed = tryPlace(world, player, hit, player.yaw, placedBlock(inventory.selectedItem));
-  if (placed.kind === "blocked") {
-    hud.flash(placed.message);
-    return;
-  }
+/** 手に持っているものを置く。**置けるかどうかと書き込みは `placing.ts`。** */
+function placeHeld(aim: PlaceAim, base: number): void {
+  const placed = tryPlace(world, player, aim, player.yaw, base);
+  if (placed.kind === "blocked") return hud.flash(placed.message);
   if (placed.kind !== "placed") return;
   audio.play("place", blockSound(placed.id));
-
   if (!creative) inventory.consumeSelected(1);
   hud.refresh();
   saveDirty = true;
