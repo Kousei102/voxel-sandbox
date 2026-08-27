@@ -145,6 +145,11 @@ function mainStaysWiring(): void {
     // ドラゴンの回復のもと（生きているエンドクリスタル）を数えて渡すところ。
     // 外すと**倒せてしまう**ので、柱を落とす意味が黙って消える。
     ["回復のもとを数える", "liveCrystals("],
+    // 倒した印（エンドの出口ポータル）。**`main.ts` が自分でブロックを置き始めると、
+    // 「倒したのに帰れない」も「入り直したら湧き直す」も、エンドへ行って
+    // ドラゴンを倒すまで確かめられない**場所に判断が戻る。
+    ["倒した印を建てる", "syncExitPortal("],
+    ["ボスを倒したか", "mobs.bossDefeated("],
   ];
   const inlined = routed.filter(([, call]) => !source.includes(call));
   check(

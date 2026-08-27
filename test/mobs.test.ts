@@ -687,7 +687,8 @@ export function run(): void {
 
   /** 召喚して 1 体返す。**null なら試験場が壊れている**ので、そこで落とす。 */
   function summonDragon(boss: Mobs, world: ReturnType<Arena["asWorld"]>) {
-    const mob = boss.ensureBoss(END, world);
+    // 倒した印はまだ立っていない（印そのものは `test/exitportal.test.ts`）。
+    const mob = boss.ensureBoss(END, world, false);
     if (!mob) throw new Error("試験場でボスが湧かない");
     return mob;
   }
@@ -701,16 +702,19 @@ export function run(): void {
     const world = arena.asWorld();
     const boss = new Mobs();
 
-    check("ボスの居ない次元では湧かない", boss.ensureBoss(OVERWORLD, world) === null);
-    check("表に無い名前でも落ちない", boss.ensureBoss("なんとか", world) === null);
+    check("ボスの居ない次元では湧かない", boss.ensureBoss(OVERWORLD, world, false) === null);
+    check("表に無い名前でも落ちない", boss.ensureBoss("なんとか", world, false) === null);
 
     // **未読み込みの列では見送ること**（`getVoxel` は AIR を返すので、そのまま
     // 湧かせると虚空に置いて落とす）。次のフレームに持ち越せるよう、印も立てない。
     const dark = islandArena();
     dark.missingColumns.add(`${columnOf(orbit.radius)},0`);
-    check("中心の列が未読み込みなら湧かせない", new Mobs().ensureBoss(END, dark.asWorld()) === null);
+    check(
+      "中心の列が未読み込みなら湧かせない",
+      new Mobs().ensureBoss(END, dark.asWorld(), false) === null,
+    );
 
-    const dragon = boss.ensureBoss(END, world);
+    const dragon = boss.ensureBoss(END, world, false);
     const homeDistance = dragon ? Math.hypot(dragon.position.x - dragon.homeX, dragon.position.z - dragon.homeZ) : -1;
     console.log(
       `      召喚: ${dragon ? `(${dragon.position.x}, ${dragon.position.y}, ${dragon.position.z})` : "湧かない"}` +
@@ -727,19 +731,36 @@ export function run(): void {
     );
     check("中心は表の点（湧いた場所ではない）", dragon?.homeX === 0.5 && dragon?.homeZ === 0.5);
 
-    boss.ensureBoss(END, world);
-    boss.ensureBoss(END, world);
+    boss.ensureBoss(END, world, false);
+    boss.ensureBoss(END, world, false);
     check("何度呼んでも 1 体しか湧かない", boss.count === 1, `${boss.count} 体`);
+
+    // --- 倒したかどうか（この読み込みのあいだの記憶） -------------------------
+
+    // **先に「まだ倒していない」ことを確かめる**（`rules/testing.md`）。これが無いと、
+    // 下の「倒した」が「そもそも常に true」と見分けが付かない。
+    check("生きているあいだは倒したことにならない", !boss.bossDefeated(END));
+    check("ボスの居ない次元は倒しようがない", !boss.bossDefeated(OVERWORLD));
 
     // **倒したら湧き直さないこと。** 毎フレーム呼ぶので、湧き直すと倒せなくなる。
     if (dragon) boss.attack(dragon, NO_ITEM, ctx(), () => 0);
     boss.list.length = 0;
-    boss.ensureBoss(END, world);
+    console.log(`      倒したあと: bossDefeated ${boss.bossDefeated(END)} / ${boss.count} 体`);
+    check("倒したら「倒した」になる", boss.bossDefeated(END));
+    boss.ensureBoss(END, world, false);
     check("倒したあとは湧き直さない", boss.count === 0, `${boss.count} 体`);
-    // 読み込み直し（`startWorld()` の `clear()`）では戻る。**いまはこれが仕様** ——
-    // 倒した印をワールドに持たせるのは出口ポータルの周（2-13b）。
+
+    // 読み込み直し（`startWorld()` の `clear()`）で記憶は消える。**そこから先を
+    // 支えるのがワールドに建つ印**（`exitportal.ts` の出口ポータル）で、
+    // `main.ts` はそれを `defeated` として渡す。
     boss.clear();
-    check("作り直せば（clear）また湧く", !!boss.ensureBoss(END, world), `${boss.count} 体`);
+    check("作り直すと記憶は消える", !boss.bossDefeated(END));
+    check(
+      "印が立っていれば、作り直しても湧かない",
+      boss.ensureBoss(END, world, true) === null && boss.count === 0,
+      `${boss.count} 体`,
+    );
+    check("印が無ければまた湧く", !!boss.ensureBoss(END, world, false), `${boss.count} 体`);
   }
 
   {

@@ -206,6 +206,24 @@ export function pillarTopAt(wx: number, wz: number): number {
  */
 export const END_SPAWN = { x: 0, z: 0, y: ISLAND_SURFACE + 1 };
 
+/**
+ * 出口ポータル（**ドラゴンを倒した印**）の中心のマス。面は 3x3 で、
+ * 並べるのは `exitportal.ts` の `EXIT_PORTAL_CELLS`。
+ *
+ * **点をここに置いてあるのは `END_SPAWN` とまったく同じ理由** —— そこが平らな地面だと
+ * 保証しているのがこのファイルだから（`LANDING_RADIUS` の内側は上面が `ISLAND_SURFACE`
+ * ちょうど）。**3x3 が丸ごとその内側に収まること**をテストが見ている。
+ *
+ * `y` は**面の高さ**（地面の 1 つ上＝立つ人の足元と同じ段）。地面に埋めると、
+ * 上を歩いても踏んだことにならない（`main.ts` は足元のマスを見る）。
+ *
+ * **`END_SPAWN` と重ねないこと。** 重ねると、オーバーワールドから降りた人が
+ * 着いた瞬間に面の中に立つ —— 掛け金（`PortalGate.latch`）が外れた次の一歩で
+ * 引き返されて、島に立てない。離してあるので、降りた所から見えていて、
+ * 戻るには歩く必要がある（`TUNING.md`）。
+ */
+export const EXIT_PORTAL_SPOT = { x: 3, y: ISLAND_SURFACE + 1, z: 0 };
+
 interface EndColumn {
   /** 16x16 の上面（この高さのマスまでが地面）。虚空の列は `VOID_COLUMN`。 */
   readonly top: Int16Array;

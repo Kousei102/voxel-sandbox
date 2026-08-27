@@ -4,6 +4,7 @@ import {
   CRYSTAL_SPOTS,
   EDGE_MIN_REACH,
   END_SPAWN,
+  EXIT_PORTAL_SPOT,
   EndGen,
   ISLAND_RADIUS,
   ISLAND_SURFACE,
@@ -164,6 +165,48 @@ export function run(): void {
     );
     check("出る所のまわりが平ら", uneven === 0, `${uneven} マス`);
     check("出る所のまわりが全部立てる", standable === spots, `${standable} / ${spots}`);
+  }
+
+  {
+    // **出口ポータル（倒した印）の場所も、この平らな所に収まっていること。**
+    // 面は 3x3 なので、中心が内側でも角がはみ出せば段差の上に建つ。
+    // 面を並べるのは `exitportal.ts` だが、**平らだと保証しているのはこのファイル**。
+    const corners = 1; // 3x3 の中心から角までの距離（`EXIT_PORTAL_RADIUS`）
+    const rows: string[] = [];
+    let bad = 0;
+    for (const seed of [12345, 4242, 999, 777, 31337]) {
+      const gen = new EndGen(seed);
+      let uneven = 0;
+      for (let dz = -corners; dz <= corners; dz++) {
+        for (let dx = -corners; dx <= corners; dx++) {
+          const x = EXIT_PORTAL_SPOT.x + dx;
+          const z = EXIT_PORTAL_SPOT.z + dz;
+          const surface = surfaceOf(gen, x, z);
+          if (surface !== ISLAND_SURFACE) uneven++;
+          if (voxel(gen, x, surface + 1, z) !== AIR) uneven++;
+        }
+      }
+      if (uneven > 0) bad++;
+      rows.push(`${seed}:${uneven === 0 ? "平ら" : `${uneven} マスずれ`}`);
+    }
+    const reach = Math.hypot(
+      Math.abs(EXIT_PORTAL_SPOT.x) + corners,
+      Math.abs(EXIT_PORTAL_SPOT.z) + corners,
+    );
+    console.log(
+      `      出口ポータル (${EXIT_PORTAL_SPOT.x}, ${EXIT_PORTAL_SPOT.z}) の 3x3: ${rows.join(" / ")}` +
+        `（いちばん遠い角 ${reach.toFixed(2)} / 平らなのは ${LANDING_RADIUS} まで）`,
+    );
+    check("出口ポータルの 3x3 が平らな所に収まる", reach < LANDING_RADIUS, `${reach.toFixed(2)}`);
+    check("どの種でも 3x3 が平らで空いている", bad === 0, `${bad} / 5 種`);
+    // **降りる場所と別のマスであること**（重なると、着いた瞬間に引き返される）。
+    check(
+      "降りる場所と重なっていない",
+      Math.abs(EXIT_PORTAL_SPOT.x - END_SPAWN.x) > corners ||
+        Math.abs(EXIT_PORTAL_SPOT.z - END_SPAWN.z) > corners,
+    );
+    // 柱（`PILLAR_RING` = 28）とも重ならないこと。
+    check("柱の輪に掛からない", pillarTopAt(EXIT_PORTAL_SPOT.x, EXIT_PORTAL_SPOT.z) === NO_PILLAR);
   }
 
   {

@@ -47,6 +47,7 @@ import { CraftScreen } from "./craftscreen";
 import { liveCrystals, shatterCrystal } from "./crystals";
 import { DayNight, WAKE_TIME, canSleep, environmentFor } from "./daynight";
 import { eyeMessage, fitEye } from "./endportal";
+import { syncExitPortal } from "./exitportal";
 import { Dimensions, OVERWORLD, emptyState, type DimensionState } from "./dimensions";
 import { Drops, type DropContext } from "./drops";
 import { DropRenderer } from "./droprender";
@@ -1219,7 +1220,15 @@ function frame(now: number): void {
   // その次元にボスが居るなら 1 体だけ湧かせる。**どの次元に何が居るかは
   // `mobs.ts` の表**（`BOSSES`）で、ここは名前を渡すだけ（次元の分岐は増えない）。
   // 中心の列がまだ読み込まれていなければ黙って見送るので、毎フレーム呼んでよい。
-  if (playing) mobs.ensureBoss(dims.nameOf(dims.current), world);
+  //
+  // 倒したかどうかは 2 段。**この読み込みのあいだの記憶**は `mobs.bossDefeated()`、
+  // **世界をまたぐ印**は出口ポータル（`exitportal.ts`）で、`syncExitPortal()` が
+  // 倒したフレームにそれを建てて「印が立っているか」を返す。だから
+  // **エンドに入り直してもドラゴンは湧き直さない**（`rules/dimensions.md`）。
+  if (playing) {
+    const dim = dims.nameOf(dims.current);
+    mobs.ensureBoss(dim, world, syncExitPortal(world, mobs.bossDefeated(dim)));
+  }
   if (playing) mobs.update(dt, world, mobContext());
   mobRender.sync(mobs.list, world);
   // 落ちたアイテム。**モブと同じく `world.update()` の外**（`test/world.test.ts` の

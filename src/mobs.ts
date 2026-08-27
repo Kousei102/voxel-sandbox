@@ -1211,20 +1211,24 @@ export class Mobs {
   /**
    * その次元のボスを 1 体だけ置く。置いたら `Mob`、置かなかったら null。
    *
-   * **毎フレーム呼んでよい**（`main.ts` がそうしている）。置かないのは 3 通り:
+   * **毎フレーム呼んでよい**（`main.ts` がそうしている）。置かないのは 4 通り:
    *
    * 1. その次元にボスが居ない（`BOSSES` に無い）
-   * 2. **もう召喚した**（倒したあとに湧き直させないための印。`clear()` で消える）
-   * 3. **中心の列がまだ読み込まれていない／地面が無い** —— `getVoxel` は未読み込みで
+   * 2. **もう召喚した**（この読み込みのあいだの印。`clear()` で消える）
+   * 3. **倒した印が立っている**（`defeated`）—— **世界をまたぐのはこちら。**
+   *    印そのもの（エンドの出口ポータル）は `exitportal.ts` が持ち、**ここは
+   *    立っているかどうかを受け取るだけ**（`MobContext.healers` と同じ形で、
+   *    `mobs.ts` がエンドの地形を知らずに済む）
+   * 4. **中心の列がまだ読み込まれていない／地面が無い** —— `getVoxel` は未読み込みで
    *    AIR を返すので、そのまま湧かせると虚空に置いて落としてしまう
    *    （かまどの `syncLit()` / クリスタルの `crystalState()` と同じ罠）
    *
    * **湧かせる場所は輪の上**（中心から `orbit.radius` だけ離れた所）。中心に置くと、
    * ポータルから降りた人の頭の上に湧いて、輪に出る前に殴りかかることになる。
    */
-  ensureBoss(dimension: string, world: World): Mob | null {
+  ensureBoss(dimension: string, world: World, defeated: boolean): Mob | null {
     const plan = BOSSES[dimension];
-    if (!plan || this.summoned.has(dimension)) return null;
+    if (!plan || defeated || this.summoned.has(dimension)) return null;
 
     const def = MOBS[plan.kind];
     const x = plan.x + (def.orbit?.radius ?? 0) + 0.5;
@@ -1245,6 +1249,24 @@ export class Mobs {
     mob.homeY = y;
     this.summoned.add(dimension);
     return mob;
+  }
+
+  /**
+   * その次元のボスを**倒したか**（この読み込みのあいだだけの記憶）。
+   *
+   * **「召喚したのに、もう居ない」で決める。** `boss: true` のモブは遠くても消えず、
+   * 数の上限でも間引かれないので（`update()` の 2 か所）、`list` から抜ける理由は
+   * 倒された以外に無い。**別の印を足さないこと** —— `summoned` と 2 つに分かれると、
+   * `clear()` で片方だけ消える形を作れる。
+   *
+   * **これは世界をまたぐ印ではない**（`clear()` で消える）。倒したことを次の
+   * 読み込みへ伝えるのは、ワールドに建つ出口ポータル（`exitportal.ts`）の役目で、
+   * `main.ts` がこの返り値を渡して建てさせる。
+   */
+  bossDefeated(dimension: string): boolean {
+    const plan = BOSSES[dimension];
+    if (!plan || !this.summoned.has(dimension)) return false;
+    return !this.list.some((mob) => mob.kind === plan.kind);
   }
 
   /**

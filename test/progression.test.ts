@@ -690,7 +690,9 @@ const MILESTONES: readonly Milestone[] = [
       world.primeAround(0.5, 0.5, 3);
 
       const mobs = new Mobs();
-      const dragon = mobs.ensureBoss(END, world);
+      // 倒した印（出口ポータル）はまだ立っていない。**`false` を渡すのがふつうの道**で、
+      // 立っているときに湧かないことは `test/exitportal.test.ts` が見ている。
+      const dragon = mobs.ensureBoss(END, world, false);
       if (!dragon) return { done: false, detail: "エンドに降りてもボスが居ない" };
 
       const guards = liveCrystals(world).length;
