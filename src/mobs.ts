@@ -12,7 +12,7 @@
 import { Color, Vector3 } from "three";
 import { AIR, GRASS, NETHER_BRICK, WOOL, isHotLiquid, isLiquid, isSolid } from "./blocks";
 import { MAX_LIGHT, WORLD_HEIGHT, columnOf } from "./constants";
-import { BLAZE_ROD, ENDER_PEARL, RAW_PORK, ROTTEN_FLESH, toolOf } from "./items";
+import { BLAZE_ROD, ENDER_PEARL, NO_ITEM, RAW_PORK, ROTTEN_FLESH, toolOf } from "./items";
 import { BLOCK_LIGHT, SKY_LIGHT } from "./lighting";
 import { PLAYER_SIZE, type BodySize, boxBlocked, groundBelow, moveBody } from "./physics";
 import {
@@ -29,7 +29,7 @@ import type { World } from "./world";
 
 // --- 種類の表 -----------------------------------------------------------
 
-export type MobKind = "pig" | "sheep" | "zombie" | "blaze" | "enderman";
+export type MobKind = "pig" | "sheep" | "zombie" | "blaze" | "enderman" | "dragon";
 
 /** 部位の動き方。 */
 export type MobMotion =
@@ -124,6 +124,26 @@ export interface TeleportRule {
   readonly chaseAt: number;
 }
 
+/**
+ * 決まった点のまわりを回り続ける決まり。**持っているモブだけが回る**（無ければ `null`）。
+ *
+ * **中心は表に書かない。** 湧かせた側が決めた点（`Mob.homeX` / `homeZ`）のまわりを回るので、
+ * `mobs.ts` はエンドの島の座標を知らずに済む（`spawnOn` が地面の ID しか持たないのと同じ筋）。
+ */
+export interface OrbitRule {
+  /** 中心からこの距離を保って回る。 */
+  readonly radius: number;
+  /** 中心の地面からこの高さを保つ。**`hover` より高いこと**（低いと歩く相手に殴られる）。 */
+  readonly height: number;
+  /** 1 回の判断（5Hz）で何 rad 先の点を狙うか。**0 にすると回らずその場に留まる。** */
+  readonly turn: number;
+  /**
+   * この距離まで近づかれたら輪を離れて詰める。**`radius` より小さいこと** ——
+   * 大きいと、中心に立っているだけの相手にも always 突っ込んでいって輪が 1 度も見えない。
+   */
+  readonly diveAt: number;
+}
+
 export interface MobDef {
   readonly kind: MobKind;
   readonly name: string;
@@ -165,6 +185,15 @@ export interface MobDef {
    */
   readonly flying: boolean;
   /**
+   * 飛ぶモブが床からどれだけ浮くか（飛ばないモブでは使わない。0 でよい）。
+   *
+   * **`ATTACK_HEIGHT`(1.5) より高いと、平地に立つ相手には近接が届かない。**
+   * ブレイズ（2.5）はそれで正しい（**火球のほうが本体**という取り決め）が、
+   * 近接しか持たないボスに同じ値を使うと、**降りてきても一度も殴れない**。
+   * **1 つの定数を全員で分け合わないこと** —— `MobDef.damage` とまったく同じ話。
+   */
+  readonly hover: number;
+  /**
    * 火で焼けない（溶岩も日光も効かない）。**ネザーのモブにはこれが要る** ——
    * 溶岩の海の上を飛ぶブレイズが、かすっただけで 2.5 秒で焼け死ぬ。
    */
@@ -174,6 +203,24 @@ export interface MobDef {
    * 指定のあるモブはその地面で「どこでも」のモブに勝つ（`hostileFor()`）。
    */
   readonly spawnOn: readonly number[] | null;
+  /**
+   * ボス。**自然には湧かず（`hostileFor()` の候補に入らない）、遠くても消えず、
+   * 数の上限で間引かれもしない。** 置くのは `ensureBoss()` だけ。
+   *
+   * **この 3 つを別々の印にしないこと** —— 「湧かない」だけを足すと、遠ざかった
+   * 瞬間にデスポーンして戦いが終わる。1 つの印で 3 か所とも外れるようにしてある。
+   */
+  readonly boss: boolean;
+  /** 決まった点のまわりを回るか。**回らないモブは `null`。** */
+  readonly orbit: OrbitRule | null;
+  /**
+   * 回復のもと 1 つにつき、毎秒どれだけ体力が戻るか。**0 なら回復しない。**
+   *
+   * **もとを何個数えるかは呼ぶ側**（`MobContext.healers`）。ここが
+   * エンドクリスタルを知り始めると、モブの判断が次元の地形に縛られる
+   * （`onDrop` が `drops.ts` を知らないのとまったく同じ筋）。
+   */
+  readonly regen: number;
   /** 倒したときのドロップ。倒れた場所に落ちる（`onDrop` → `main.ts` → `drops.ts`）。 */
   readonly drop: MobDrop;
   /**
@@ -219,8 +266,12 @@ const PIG: MobDef = {
   teleport: null,
   spawnWeight: 10,
   flying: false,
+  hover: 0,
   fireproof: false,
   spawnOn: null,
+  boss: false,
+  orbit: null,
+  regen: 0,
   drop: { item: RAW_PORK, count: 1, chance: 1 },
   voice: 1.4,
   groups: [
@@ -269,8 +320,12 @@ const SHEEP: MobDef = {
   teleport: null,
   spawnWeight: 12,
   flying: false,
+  hover: 0,
   fireproof: false,
   spawnOn: null,
+  boss: false,
+  orbit: null,
+  regen: 0,
   drop: { item: WOOL, count: 1, chance: 1 },
   voice: 1.25,
   groups: [
@@ -331,8 +386,12 @@ const ZOMBIE: MobDef = {
   // エンダーマン（10）はときどき混じる程度（Minecraft と同じ比）。
   spawnWeight: 100,
   flying: false,
+  hover: 0,
   fireproof: false,
   spawnOn: null,
+  boss: false,
+  orbit: null,
+  regen: 0,
   drop: { item: ROTTEN_FLESH, count: 1, chance: 0.6 },
   voice: 0.7,
   groups: [
@@ -404,8 +463,14 @@ const BLAZE: MobDef = {
   // （**それでも書いておくこと** —— 地面を指定しないモブが増えたときに効き始める）。
   spawnWeight: 10,
   flying: true,
+  // 床から 2.5 浮く。**`ATTACK_HEIGHT`(1.5) より高いので、平地に立つ相手には
+  // 近接がめったに届かない** —— 火球のほうが本体という取り決め（`rules/mobs.md`）。
+  hover: 2.5,
   fireproof: true,
   spawnOn: [NETHER_BRICK],
+  boss: false,
+  orbit: null,
+  regen: 0,
   drop: { item: BLAZE_ROD, count: 1, chance: 0.5 },
   voice: 1.15,
   groups: [
@@ -474,8 +539,12 @@ const ENDERMAN: MobDef = {
     chaseAt: 8,
   },
   flying: false,
+  hover: 0,
   fireproof: false,
   spawnOn: null,
+  boss: false,
+  orbit: null,
+  regen: 0,
   drop: { item: ENDER_PEARL, count: 1, chance: 0.5 },
   // 本家の湧きの重み。ゾンビ (100) の 1/10 なので、夜に出会うのはたまに。
   spawnWeight: 10,
@@ -504,18 +573,142 @@ const ENDERMAN: MobDef = {
   ],
 };
 
+const DRAGON_SKIN = 0x1b1424;
+const DRAGON_WING = 0x2f2340;
+const DRAGON_EYE = 0xd07bfa;
+
+/**
+ * エンダードラゴン。**初めてのボス**（`boss: true`）で、初めて回るモブ（`orbit`）。
+ *
+ * 3 つの「ふつうのモブと違うところ」は**全部表の値**で、`update()` にも `step()` にも
+ * 「ドラゴンなら」は 1 行も無い:
+ *
+ * 1. **`boss`** —— 自然には湧かず・遠くても消えず・数の上限でも間引かれない
+ * 2. **`orbit`** —— 決まった点のまわりを回り、近づかれたときだけ離れて詰める
+ * 3. **`regen`** —— 回復のもと（生きているエンドクリスタル）1 つにつき毎秒 2 戻る
+ *
+ * **回復のもとを数えるのは呼ぶ側**（`MobContext.healers` ← `crystals.ts` の
+ * `liveCrystals()`）。ここが柱やクリスタルの居場所を知り始めると、モブの表が
+ * エンドの地形に縛られる。
+ *
+ * 当たり判定は 4 x 1.8。**モデルは翼の端まで含めてこの箱に収まる**
+ * （`test/mobs.test.ts` が全種類ぶん突き合わせている）。
+ * 段差は 0 —— 飛ぶので登る必要がなく、ブレイズと同じ理由。
+ *
+ * グループの並び: 0 = 胴（固定）、1 = 頭、2..3 = 翼、4..5 = 脚、6 = 尾。
+ */
+const DRAGON: MobDef = {
+  kind: "dragon",
+  name: "エンダードラゴン",
+  size: { half: 2, height: 1.8, step: 0 },
+  // 本家と同じ 200。ダイヤの弓矢（最大 9）で 23 本ぶん。
+  maxHealth: 200,
+  // プレイヤーの走り (8.4) より遅い。**速くすると、輪を離れて詰めてきたときに
+  // 走っても振り切れない**（壁も崖も関係なく飛んでくる）。
+  speed: 7,
+  hostile: true,
+  // 本家のノーマルと同じ 10（ゾンビ 2 / ブレイズ 6 / エンダーマン 7 より重い）。
+  // **満タンから 2 発で半分**なので、輪の下に居続けられない。
+  damage: 10,
+  // **まだ撃たない。** ブレス（`projectiles.ts` の `breath`）は当たり判定も表もあるが、
+  // 撃たせると「撃つのはブレイズだけ」の前提が変わる。ここは近接だけの最小で通す。
+  ranged: null,
+  teleport: null,
+  // 自然には湧かないので抽選には出てこない（`hostileFor()` が `boss` を外す）。
+  // **それでも書いておくこと** —— 値が無いと、ボスを湧かせる道を足したときに 0 で割る。
+  spawnWeight: 1,
+  flying: true,
+  // **ブレイズ（2.5）より低いこと。** 近接しか持たないので、2.5 のままだと
+  // 降りてきても `ATTACK_HEIGHT`(1.5) に届かず、一度も殴れないボスになる。
+  hover: 1.2,
+  // エンドに溶岩は無いが、**日光では燃えないこと**が要る（エンドの空は
+  // 明るさ 0.7 固定なので、`sunlightBurns()` の線を超える所がある）。
+  fireproof: true,
+  spawnOn: null,
+  boss: true,
+  // 柱の輪（半径 28）の内側を回る。**外側にすると柱に体当たりし続ける。**
+  // 高さは柱の低いほう（12）と同じくらいで、**矢が届く**こと。
+  orbit: { radius: 20, height: 12, turn: 0.35, diveAt: 16 },
+  // 生きているクリスタル 1 個につき毎秒 2。10 個そろっていると毎秒 20 戻るので、
+  // **矢（最大 9）をどれだけ当てても削り切れない** —— 先に柱の上を落とすことになる。
+  regen: 2,
+  // **何も落とさない**（本家は経験値と卵。どちらもまだ無い）。倒した合図は
+  // 体力バーとクリア画面（2-13b）の仕事で、地面に湧く物ではない。
+  drop: { item: NO_ITEM, count: 0, chance: 0 },
+  voice: 0.5,
+  groups: [
+    { motion: "fixed", pivot: [0, 0, 0], phase: 0 },
+    { motion: "head", pivot: [0, px(20), px(-10)], phase: 0 },
+    // 翼は左右で逆位相（そろえると羽ばたきに見えない）。
+    { motion: "swing", pivot: [px(-8), px(24), 0], phase: 0 },
+    { motion: "swing", pivot: [px(8), px(24), 0], phase: Math.PI },
+    { motion: "swing", pivot: [px(-5), px(14), px(6)], phase: Math.PI },
+    { motion: "swing", pivot: [px(5), px(14), px(6)], phase: 0 },
+    { motion: "swing", pivot: [0, px(20), px(14)], phase: Math.PI / 2 },
+  ],
+  boxes: [
+    // 胴（前後 24px）
+    { group: 0, box: [px(-8), px(14), px(-10), px(8), px(26), px(14)], color: DRAGON_SKIN },
+    // 頭（軸は首の付け根。箱は軸からの相対）
+    { group: 1, box: [px(-5), px(-2), px(-12), px(5), px(6), px(0)], color: DRAGON_SKIN },
+    { group: 1, box: [px(-3), px(-3), px(-16), px(3), px(1), px(-12)], color: DRAGON_SKIN },
+    // 目。**体が真っ黒なので、ここだけが暗いエンドで見えるもの**になる
+    { group: 1, box: [px(-4), px(1), px(-12.1), px(-1.5), px(3), px(-12)], color: DRAGON_EYE },
+    { group: 1, box: [px(1.5), px(1), px(-12.1), px(4), px(3), px(-12)], color: DRAGON_EYE },
+    // 翼（**軸からぶら下げる = y1 が 0**。0 でないと翼の真ん中で折れて回る）
+    { group: 2, box: [px(-24), px(-2), px(-8), 0, 0, px(8)], color: DRAGON_WING },
+    { group: 3, box: [0, px(-2), px(-8), px(24), 0, px(8)], color: DRAGON_WING },
+    // 脚
+    { group: 4, box: [px(-2), px(-8), px(-2), px(2), 0, px(2)], color: DRAGON_SKIN },
+    { group: 5, box: [px(-2), px(-8), px(-2), px(2), 0, px(2)], color: DRAGON_SKIN },
+    // 尾（後ろへ 18px。**当たり判定 ±2 に収める**）
+    { group: 6, box: [px(-3), px(-3), 0, px(3), 0, px(18)], color: DRAGON_SKIN },
+  ],
+};
+
 export const MOBS: Record<MobKind, MobDef> = {
   pig: PIG,
   sheep: SHEEP,
   zombie: ZOMBIE,
   blaze: BLAZE,
   enderman: ENDERMAN,
+  dragon: DRAGON,
 };
-export const MOB_KINDS: readonly MobKind[] = ["pig", "sheep", "zombie", "blaze", "enderman"];
+export const MOB_KINDS: readonly MobKind[] = [
+  "pig",
+  "sheep",
+  "zombie",
+  "blaze",
+  "enderman",
+  "dragon",
+];
 /** 湧きの抽選に使う受動モブ。**敵対と混ぜないこと**（湧く条件も上限も別）。 */
 const PASSIVE_KINDS: readonly MobKind[] = ["pig", "sheep"];
-/** 湧きの抽選に使う敵対モブ。**表から作ること**（足したときに書き忘れる）。 */
-const HOSTILE_KINDS: readonly MobKind[] = MOB_KINDS.filter((kind) => MOBS[kind].hostile);
+/**
+ * 湧きの抽選に使う敵対モブ。**表から作ること**（足したときに書き忘れる）。
+ * **ボスは外す** —— 抽選に残すと、夜のオーバーワールドにドラゴンが湧く。
+ */
+const HOSTILE_KINDS: readonly MobKind[] = MOB_KINDS.filter(
+  (kind) => MOBS[kind].hostile && !MOBS[kind].boss,
+);
+
+/**
+ * 次元ごとのボス。**キーは次元の名前**（`dimensions.ts` の `DimensionId`）で、
+ * `daynight.ts` の `SKY_STYLES` や `beds.ts` の `BedPoint.dim` と同じ作法 ——
+ * **`mobs.ts` は `dimensions.ts` を import しない**（生成器を引き連れてくる）。
+ * 綴りのずれは `test/mobs.test.ts` が `DIMENSIONS` と突き合わせている。
+ *
+ * **表に無い次元にはボスが居ない**（`ensureBoss()` が何もしない）。
+ */
+export interface BossPlan {
+  readonly kind: MobKind;
+  /** 回る中心（＝島の中心）。**湧く場所ではない**（下の `ensureBoss()`）。 */
+  readonly x: number;
+  readonly z: number;
+}
+export const BOSSES: Record<string, BossPlan> = {
+  end: { kind: "dragon", x: 0, z: 0 },
+};
 
 /**
  * その地面に湧く敵対モブ。誰も湧けないなら null。
@@ -618,10 +811,11 @@ const JUMP_SPEED = 8.6;
 const HOP_TIME = 0.7;
 
 /**
- * 飛ぶモブが床から浮いていたい高さ。**1 より大きいこと** ——
+ * 飛ぶモブが床から浮いていたい高さ。**種類ごとの値は `MobDef.hover`** で、
+ * ここはその既定（ブレイズの値）。**1 より大きいこと** ——
  * 1 以下だと、床に置いた松明や手すりに引っかかって前へ進めなくなる。
  */
-const FLY_HOVER = 2.5;
+export const FLY_HOVER = BLAZE.hover;
 /** 追いかけているとき、プレイヤーの足元からどれだけ上に居たいか。 */
 const FLY_ABOVE = 1.2;
 /** 床を探しに下へ見る深さ。**溶岩の海の上では見つからない**ので、その場の高さを保つ。 */
@@ -634,6 +828,16 @@ export interface Mob {
   readonly id: number;
   readonly kind: MobKind;
   readonly position: Vector3;
+  /**
+   * 回る中心（`MobDef.orbit` を持つモブだけが使う）。**湧いた場所が既定**で、
+   * ボスは `ensureBoss()` が表の中心を貼り直す。
+   *
+   * **中心を表（`MobDef`）に持たせないこと** —— 持たせた瞬間、`mobs.ts` が
+   * エンドの島の座標を知ることになる。
+   */
+  homeX: number;
+  homeY: number;
+  homeZ: number;
   readonly velocity: Vector3;
   onGround: boolean;
   /**
@@ -901,6 +1105,15 @@ export interface MobContext {
    * 何を・どこから・どれだけの重みで撃つかは**この中**で決めて、注文だけ渡す。
    */
   readonly shoot?: (shot: Shot) => void;
+  /**
+   * 回復のもとの数（いまは生きているエンドクリスタル）。**数えるのは呼ぶ側**で、
+   * **1 つにつきどれだけ戻るかは表**（`MobDef.regen`）。
+   *
+   * **`mobs.ts` から `crystals.ts` を見に行かないこと** —— `onDrop` が `drops.ts` を
+   * 知らないのと同じ筋で、知り始めるとモブの判断が次元の地形に縛られる。
+   * 渡さなければ 1 も回復しない（テストと、遊んでいない間）。
+   */
+  readonly healers?: number;
   /** 乱数。テストで固定できるように差し替えられる形にしておく。 */
   readonly random?: () => number;
 }
@@ -918,6 +1131,14 @@ export class Mobs {
   private attackTimer = 0;
   /** 当たり先の控え。**毎フレーム作り直すので使い回す**（`projectileTargets()`）。 */
   private readonly targets: ProjectileTarget[] = [];
+  /**
+   * もうボスを召喚した次元。**倒したあとに湧き直させないための印。**
+   *
+   * **モブと同じで保存しません**（`clear()` で消える）ので、いまはワールドを
+   * 読み直すとボスが戻ります。倒した印をワールド側に持たせるのは出口ポータルの周
+   * （2-13b）の仕事 —— あれが建っていれば「倒した」と読める。
+   */
+  private readonly summoned = new Set<string>();
 
   /**
    * 倒したときの受け取り口。`screen.onChange` と同じ形で `main.ts` から繋ぐ。
@@ -944,6 +1165,10 @@ export class Mobs {
       id: this.nextId++,
       kind,
       position: new Vector3(x, y, z),
+      // 回る中心の既定は湧いた場所（ボスだけ `ensureBoss()` が貼り直す）。
+      homeX: x,
+      homeY: y,
+      homeZ: z,
       velocity: new Vector3(0, 0, 0),
       onGround: false,
       liquid: AIR,
@@ -967,7 +1192,7 @@ export class Mobs {
       shootTimer: MOBS[kind].ranged?.cooldown ?? 0,
       hopTimer: 0,
       // 湧いた瞬間から浮き始める（0 にすると、最初の判断まで床に落ちようとする）。
-      flyTarget: y + (MOBS[kind].flying ? FLY_HOVER : 0),
+      flyTarget: y + (MOBS[kind].flying ? MOBS[kind].hover : 0),
       // 湧いた瞬間に跳ばせない（`shootTimer` と同じ理屈。目の前に湧いて即詰められると避けられない）。
       teleportTimer: MOBS[kind].teleport?.cooldown ?? 0,
       teleportUrge: false,
@@ -980,6 +1205,46 @@ export class Mobs {
     this.list.length = 0;
     this.spawnTimer = 0;
     this.attackTimer = 0;
+    this.summoned.clear();
+  }
+
+  /**
+   * その次元のボスを 1 体だけ置く。置いたら `Mob`、置かなかったら null。
+   *
+   * **毎フレーム呼んでよい**（`main.ts` がそうしている）。置かないのは 3 通り:
+   *
+   * 1. その次元にボスが居ない（`BOSSES` に無い）
+   * 2. **もう召喚した**（倒したあとに湧き直させないための印。`clear()` で消える）
+   * 3. **中心の列がまだ読み込まれていない／地面が無い** —— `getVoxel` は未読み込みで
+   *    AIR を返すので、そのまま湧かせると虚空に置いて落としてしまう
+   *    （かまどの `syncLit()` / クリスタルの `crystalState()` と同じ罠）
+   *
+   * **湧かせる場所は輪の上**（中心から `orbit.radius` だけ離れた所）。中心に置くと、
+   * ポータルから降りた人の頭の上に湧いて、輪に出る前に殴りかかることになる。
+   */
+  ensureBoss(dimension: string, world: World): Mob | null {
+    const plan = BOSSES[dimension];
+    if (!plan || this.summoned.has(dimension)) return null;
+
+    const def = MOBS[plan.kind];
+    const x = plan.x + (def.orbit?.radius ?? 0) + 0.5;
+    const z = plan.z + 0.5;
+    const ix = Math.floor(x);
+    const iz = Math.floor(z);
+    if (!world.hasColumn(columnOf(ix), columnOf(iz))) return null;
+    // **世界の高さぶん探すこと。** 湧きの既定（24 段）は「プレイヤーの近くの地面」を
+    // 探す値で、島の高さを知らないここでは足りない（1 フレームに 1 回なので費用は問題ない）。
+    const y = findGround(world, ix, WORLD_HEIGHT - 1, iz, WORLD_HEIGHT);
+    if (y < 0) return null;
+
+    const mob = this.spawn(plan.kind, x, y, z, 0);
+    // **中心は表の点**（湧いた場所ではない）。ここを貼り直さないと、
+    // 輪が島の中心ではなく「湧いた所」のまわりになる。
+    mob.homeX = plan.x + 0.5;
+    mob.homeZ = plan.z + 0.5;
+    mob.homeY = y;
+    this.summoned.add(dimension);
+    return mob;
   }
 
   /**
@@ -1027,6 +1292,9 @@ export class Mobs {
       }
       // 焼け死んだらここで list から消えているので、続きに触らない
       if (this.burn(mob, def, dt, ctx)) continue;
+      // **回復は焼けたあと。** 先に回すと、燃えているぶんを打ち消してから減らす形になり、
+      // 「燃えているのに体力が動かない」1 フレームができる。
+      this.regenerate(mob, def, dt, ctx);
       // **跳ぶのは焼けたあと。** 燃えているエンダーマンが日陰へ逃げられるのはここ。
       this.teleport(mob, def, world, dt, ctx, random);
       if (!def.hostile) continue;
@@ -1048,6 +1316,9 @@ export class Mobs {
 
     // 飛ぶモブは高さを自分で決める（`step` はそこへ寄せるだけ）。
     if (def.flying) this.aimAltitude(mob, def, world, ctx);
+    // 回るモブは、詰めていないあいだの向きと高さをここで上書きする。
+    // **`aimAltitude` のあとに置くこと**（輪の高さのほうが優先）。
+    if (def.orbit) this.aimOrbit(mob, def, ctx);
 
     // 進む先が崖なら引き返す。**これが無いと、そのうち全部が穴に落ちる。**
     // 追いかけている最中も同じ（プレイヤーを追って谷へ飛び込まない）。
@@ -1098,7 +1369,7 @@ export class Mobs {
     }
 
     const distance = distanceTo(mob, ctx);
-    if (!ctx.invulnerable && distance <= HOSTILE_SIGHT) {
+    if (this.chasing(mob, def, ctx)) {
       mob.targetYaw = toward(mob, ctx);
       // 目の前まで来たら止まって殴る（歩き続けるとプレイヤーに重なって見える）
       mob.walking = distance > ATTACK_STOP;
@@ -1150,9 +1421,54 @@ export class Mobs {
    */
   private aimAltitude(mob: Mob, def: MobDef, world: World, ctx: MobContext): void {
     const floor = groundBelow(world, mob.position.x, mob.position.y, mob.position.z, def.size, FLY_SCAN);
-    const overFloor = floor === -Infinity ? mob.position.y : floor + FLY_HOVER;
-    const chasing = !ctx.invulnerable && distanceTo(mob, ctx) <= HOSTILE_SIGHT;
-    mob.flyTarget = chasing ? Math.max(overFloor, ctx.playerY + FLY_ABOVE) : overFloor;
+    // 床が届かない所（溶岩の海・虚空の上）では、その場の高さを保つ。
+    if (!this.chasing(mob, def, ctx)) {
+      mob.flyTarget = floor === -Infinity ? mob.position.y : floor + def.hover;
+      return;
+    }
+    // 追いかけているあいだは相手の少し上。**床が見つかったときだけ抑えること** ——
+    // 「その場の高さ」を下限に混ぜると、**`FLY_SCAN`(8) より高い所から降りられない**
+    // （輪を 12 マス上で回るドラゴンが、詰めに来ても高いまま素通りしていた）。
+    const chaseY = ctx.playerY + FLY_ABOVE;
+    mob.flyTarget = floor === -Infinity ? chaseY : Math.max(floor + def.hover, chaseY);
+  }
+
+  /**
+   * その相手を追いかけているか。**間合いは表しだい** ——
+   * 回るモブは自分の `diveAt`、それ以外は `HOSTILE_SIGHT`。
+   *
+   * **1 本にまとめてあるのが肝心。** 追う・高さを合わせる・輪へ戻るの 3 か所が
+   * 別々の式を持つと、「追ってはいるが高さは輪のまま」のような噛み合わない状態ができる。
+   * クリエイティブは狙われない（`Vitals` 側では弾けないので、判断の側で切る）。
+   */
+  private chasing(mob: Mob, def: MobDef, ctx: MobContext): boolean {
+    if (ctx.invulnerable) return false;
+    return distanceTo(mob, ctx) <= (def.orbit ? def.orbit.diveAt : HOSTILE_SIGHT);
+  }
+
+  /**
+   * 回るモブの向きと高さ（5Hz）。**詰めているあいだは何もしない**（`chasing()`）。
+   *
+   * 狙うのは「いまの角度から `turn` だけ先の、輪の上の点」。**輪の上の 1 点を
+   * 決め打ちにしないこと** —— そこへ着いたら止まってしまう。角度で先を狙えば、
+   * 位置から毎回計算し直すだけで回り続ける（回った角度を覚えずに済む）。
+   *
+   * 高さは**中心の地面から**（`homeY`）。自分の足元から測ると、輪が島のふちに
+   * 掛かったときだけ高さが跳ね上がる（下が虚空だと `groundBelow` が見つけられない）。
+   */
+  private aimOrbit(mob: Mob, def: MobDef, ctx: MobContext): void {
+    const rule = def.orbit;
+    if (!rule || this.chasing(mob, def, ctx)) return;
+
+    const angle = Math.atan2(mob.position.z - mob.homeZ, mob.position.x - mob.homeX) + rule.turn;
+    const tx = mob.homeX + Math.cos(angle) * rule.radius;
+    const tz = mob.homeZ + Math.sin(angle) * rule.radius;
+    // yaw 0 = -Z の規約（`forwardOf` の裏返し。`toward()` と同じ形）。
+    mob.targetYaw = Math.atan2(mob.position.x - tx, mob.position.z - tz);
+    mob.walking = true;
+    // 徘徊の抽選に戻らないよう、状態の残りは持たせない（敵対の追跡と同じ扱い）。
+    mob.stateTimer = 0;
+    mob.flyTarget = mob.homeY + rule.height;
   }
 
   /**
@@ -1277,6 +1593,18 @@ export class Mobs {
       return true;
     }
     return false;
+  }
+
+  /**
+   * 回復（毎フレーム）。**回復のもとの数は呼ぶ側が数える**（`MobContext.healers`）。
+   *
+   * **上限を超えて溜めないこと** —— 超えて溜まると、もとを全部落としたあとも
+   * しばらく減らない「見えない体力」ができる。
+   */
+  private regenerate(mob: Mob, def: MobDef, dt: number, ctx: MobContext): void {
+    const healers = ctx.healers ?? 0;
+    if (def.regen <= 0 || healers <= 0) return;
+    mob.health = Math.min(def.maxHealth, mob.health + def.regen * healers * dt);
   }
 
   /**
@@ -1509,18 +1837,24 @@ export class Mobs {
   private despawnFar(ctx: MobContext): void {
     for (let i = this.list.length - 1; i >= 0; i--) {
       const mob = this.list[i];
+      // **ボスは消さないこと。** 消えると、輪の反対側へ回った拍子に戦いが終わる
+      // （しかも `ensureBoss()` は召喚済みなので二度と戻らない）。
+      if (MOBS[mob.kind].boss) continue;
       if (distanceTo(mob, ctx) > DESPAWN_DISTANCE) this.list.splice(i, 1);
     }
     while (this.list.length > MAX_MOBS) {
-      let far = 0;
+      let far = -1;
       let best = -1;
       for (let i = 0; i < this.list.length; i++) {
+        if (MOBS[this.list[i].kind].boss) continue;
         const d = distanceTo(this.list[i], ctx);
         if (d > best) {
           best = d;
           far = i;
         }
       }
+      // ボスしか居なければ間引くものが無い（上限を割れないまま抜ける）。
+      if (far < 0) break;
       this.list.splice(far, 1);
     }
   }

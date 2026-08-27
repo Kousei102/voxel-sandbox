@@ -41,10 +41,11 @@ import { CHUNK_LAYERS, CHUNK_SIZE, CHUNK_VOLUME } from "../src/constants";
 import { findRecipe } from "../src/crafting";
 import { Dimensions, END, NETHER, OVERWORLD, type DimensionState } from "../src/dimensions";
 import { Arena, Slab, seeded, sourceOf } from "./arena";
-import { MOBS, Mobs, PLAYER_ATTACK_COOLDOWN } from "../src/mobs";
+import { BOSSES, MOBS, Mobs, PLAYER_ATTACK_COOLDOWN, hostileFor } from "../src/mobs";
 import { check, describe } from "./harness";
 import { type Slot } from "../src/inventory";
 import { NO_ITEM, dropOf, isFireStarter, itemName, itemStackLimit, rollDrop } from "../src/items";
+import { liveCrystals, shatterCrystal } from "../src/crystals";
 import { quenchAround } from "../src/liquids";
 import { canHarvest } from "../src/mining";
 import { ignite } from "../src/portals";
@@ -70,7 +71,7 @@ import { Scene } from "three";
  * **達成済みの件数。項目を達成したときだけ 1 つ上げること。**
  * これより減ったら `npm test` が赤くなる（達成の後戻りを退行として捕まえる）。
  */
-const ACHIEVED_BASELINE = 12;
+const ACHIEVED_BASELINE = 13;
 
 /** ネザー要塞を探す範囲（列）。**広げると `npm test` がそのぶん遅くなります。** */
 const RADIUS = 4;
@@ -654,8 +655,91 @@ const MILESTONES: readonly Milestone[] = [
   },
   {
     name: "エンダードラゴンを倒せる",
-    kind: "仮",
-    probe: () => sourceHas("src/mobs.ts", "dragon"),
+    kind: "本物",
+    // **`mobs.ts` に `dragon` という語があるかを見ないこと。** 前はそれだけで、
+    // **表に 1 行足した瞬間に達成へ化けました**（`structures.ts` / `dimensions.ts` /
+    // `projectiles.ts` / ブレイズ / エンダーアイのレシピ / 要塞の方角 /
+    // エンドポータルのブロック / エンドストーンと、同じ形で 8 度踏んでいます）。
+    //
+    // ここは**エンドの島を実際に作って、そこに湧いたボスと戦います** ——
+    // (1) 自然には湧かないこと（湧くなら夜の地表にも出る）
+    // (2) エンドに降りれば居ること
+    // (3) **生きているクリスタルがあるうちは倒せないこと**（＝柱を落とす意味）
+    // (4) 落としきれば倒せること
+    // 飛び方・輪・回復の深い検証は `test/mobs.test.ts` の「ボス」にあります。
+    probe: () => {
+      const plan = BOSSES[END];
+      if (!plan) return { done: false, detail: "エンドにボスが居ない" };
+      const def = MOBS[plan.kind];
+      if (!def?.boss) return { done: false, detail: `${plan.kind} がボスとして置かれていない` };
+
+      // **自然には湧かないこと。** 抽選に残っていると、夜のオーバーワールドに出る。
+      const roll = seeded(4242);
+      for (let i = 0; i < 500; i++) {
+        if (hostileFor(STONE, roll) === plan.kind) {
+          return { done: false, detail: "自然な湧きの抽選に出てくる" };
+        }
+      }
+
+      const dims = new Dimensions();
+      const source = dims.sourceFor(END, 424242);
+      if (!source) return { done: false, detail: "エンドの生成器が無い" };
+      const world = new World(new Scene(), source);
+      // 柱（半径 28）まで読み込む。**読めていない列のクリスタルは数えない**ので、
+      // 狭いと「最初から 0 個」になって (3) が意味を失う。
+      world.primeAround(0.5, 0.5, 3);
+
+      const mobs = new Mobs();
+      const dragon = mobs.ensureBoss(END, world);
+      if (!dragon) return { done: false, detail: "エンドに降りてもボスが居ない" };
+
+      const guards = liveCrystals(world).length;
+      if (guards < 2) return { done: false, detail: `生きているクリスタルが ${guards} 個しか無い` };
+
+      const axe = item("ダイヤの斧");
+      /** 倒れるまで殴る（最大 `limit` 回）。**回復のもとは毎回ワールドから数え直す。** */
+      const fight = (limit: number): number => {
+        let hits = 0;
+        while (hits < limit && mobs.list.includes(dragon)) {
+          const ctx = {
+            playerX: dragon.position.x,
+            playerY: dragon.position.y,
+            playerZ: dragon.position.z,
+            brightness: 1,
+            // **`main.ts` とまったく同じ数え方**（生きていると確かめられたものだけ）。
+            healers: liveCrystals(world).length,
+            random: seeded(77),
+          };
+          if (mobs.attack(dragon, axe, ctx, () => 0)) hits++;
+          mobs.update(PLAYER_ATTACK_COOLDOWN, world, ctx);
+        }
+        return hits;
+      };
+
+      // (3) クリスタルが生きているうちは倒せない。**回復が無ければ死んでいる回数**を
+      // 振ってから見る（体力 200 / 1 発 4.5 なら 45 回で足りる）。
+      const guarded = fight(60);
+      if (!mobs.list.includes(dragon)) {
+        return { done: false, detail: `クリスタル ${guards} 個が生きていても ${guarded} 回で倒せる` };
+      }
+
+      // (4) 落としきれば倒せる。**掘るのと同じ経路**（`shatterCrystal`）で砕く。
+      for (const spot of liveCrystals(world)) shatterCrystal(world, spot.x, spot.y, spot.z);
+      const left = liveCrystals(world).length;
+      if (left > 0) return { done: false, detail: `砕いても ${left} 個残る` };
+      const hits = fight(200);
+      if (mobs.list.includes(dragon)) {
+        return { done: false, detail: `クリスタルが 0 個でも ${hits} 回で倒せない` };
+      }
+
+      // ここだけは配線の確認（`main.ts` はヘッドレスでは動かせない）。
+      const wired = sourceHas("src/main.ts", "ensureBoss(", "healers");
+      if (!wired.done) return { done: false, detail: `main.ts に配線が無い（${wired.detail}）` };
+      return {
+        done: true,
+        detail: `クリスタル ${guards} 個の間は ${guarded} 回振っても倒れず、0 個なら ${hits} 回で倒せる`,
+      };
+    },
   },
 ];
 
