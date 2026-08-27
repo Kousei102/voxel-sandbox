@@ -139,6 +139,12 @@ function mainStaysWiring(): void {
     // 飛んでいく」形でしか出ない（枠は地下 18 マス）。
     ["右クリックの振り分け", "decideUse("],
     ["右クリックで呼ぶ", "useOrPlace();"],
+    // **どの次元にボスが居るか**は `mobs.ts` の表（`BOSSES`）。`main.ts` が
+    // 「エンドならドラゴンを湧かせる」と書き始めると、次元の分岐がここに戻る。
+    ["ボスを湧かせる", "mobs.ensureBoss("],
+    // ドラゴンの回復のもと（生きているエンドクリスタル）を数えて渡すところ。
+    // 外すと**倒せてしまう**ので、柱を落とす意味が黙って消える。
+    ["回復のもとを数える", "liveCrystals("],
   ];
   const inlined = routed.filter(([, call]) => !source.includes(call));
   check(

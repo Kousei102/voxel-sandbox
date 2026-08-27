@@ -1,12 +1,25 @@
 import { readFileSync } from "node:fs";
 import { Vector3 } from "three";
-import { AIR, GRASS, LAVA, NETHER_BRICK, SAND, STONE, STONE_SLAB, WATER, WOOL, isLiquid } from "../src/blocks";
+import {
+  AIR,
+  END_STONE,
+  GRASS,
+  LAVA,
+  NETHER_BRICK,
+  SAND,
+  STONE,
+  STONE_SLAB,
+  WATER,
+  WOOL,
+  isLiquid,
+} from "../src/blocks";
 import { MAX_LIGHT, columnOf } from "../src/constants";
 import { DayNight } from "../src/daynight";
 import { ENDER_PEARL, NO_ITEM, RAW_PORK, ROTTEN_FLESH, STONE_AXE, WOOD_PICKAXE, itemName } from "../src/items";
 import { buildMobMesh } from "../src/mobmesh";
 import {
   ATTACK_RANGE,
+  BOSSES,
   DESPAWN_DISTANCE,
   HOSTILE_LIGHT_MAX,
   HOSTILE_SIGHT,
@@ -35,8 +48,10 @@ import {
   type MobDef,
   type MobKind,
   type MobTarget,
+  type OrbitRule,
   type TeleportRule,
 } from "../src/mobs";
+import { DIMENSIONS, END, OVERWORLD } from "../src/dimensions";
 import { PLAYER_OWNER, Projectiles, type Shot } from "../src/projectiles";
 import { boxBlocked } from "../src/physics";
 import { raycastVoxels } from "../src/raycast";
@@ -118,6 +133,13 @@ export function run(): void {
     // 「エンダーマンだけ跳んだ先が見えない」類がブラウザを開くまで分からなくなる。
     "teleport",
     "spawnWeight",
+    // **ボスの扱い（湧かない・消えない・回る・回復する）もここに足すこと。**
+    // 描画側に生えると「ドラゴンだけ輪から外れて見える」類が
+    // ブラウザを開くまで分からなくなる。
+    "boss",
+    "orbit",
+    "regen",
+    "healers",
   ].filter((name) => renderSource.includes(name));
   check("mobrender.ts に判断が漏れていない", decisions.length === 0, decisions.join(" "));
 
@@ -619,6 +641,319 @@ export function run(): void {
     check("跳ばないモブは歩いてしか近づけない", zombie > TP.chaseAt, `ゾンビ ${zombie.toFixed(1)}`);
   }
 
+  describe("ボス（エンダードラゴン）");
+
+  // **ボスの違いは 3 つとも表の値**（`boss` / `orbit` / `regen`）。ここは
+  // 「表がそうなっている」ではなく「実際にそう動く」まで見る。
+  {
+    const dragon = MOBS.dragon;
+    const orbit = dragon.orbit as OrbitRule;
+    const bosses = MOB_KINDS.filter((k) => MOBS[k].boss);
+    console.log(
+      `      ${dragon.name}: 体力 ${dragon.maxHealth} / 一撃 ${dragon.damage} /` +
+        ` 輪 半径 ${orbit.radius} 高さ ${orbit.height} 詰める ${orbit.diveAt}m /` +
+        ` 回復 毎秒 ${dragon.regen} x もとの数`,
+    );
+    check(
+      "ボスは 1 種類だけ（増やしたら数値を TUNING.md へ）",
+      bosses.join(" ") === "dragon",
+      bosses.join(" "),
+    );
+    check("ボスは飛んで、火では焼けない", dragon.flying && dragon.fireproof);
+    // **輪より内側で詰め始めること。** 外側だと、中心に立っているだけの相手にも
+    // いつも突っ込んでいって、輪が 1 度も見えない。
+    check(
+      "詰める間合いは輪の半径より内側",
+      orbit.diveAt < orbit.radius && orbit.turn > 0,
+      `${orbit.diveAt} < ${orbit.radius} / 1 判断あたり ${orbit.turn} rad`,
+    );
+    // **何も落とさない。** 倒した合図は体力バーとクリア画面（2-13b）の仕事。
+    check("ボスは地面に何も落とさない", dragon.drop.count === 0 && dragon.drop.item === NO_ITEM);
+
+    // 綴りの突き合わせ（`daynight.ts` の `SKY_STYLES` と同じ作法）。
+    // **`mobs.ts` は `dimensions.ts` を import しない**ので、ここでしか気付けない。
+    const ids = new Set(DIMENSIONS.map((d) => d.id));
+    const unknown = Object.keys(BOSSES).filter((key) => !ids.has(key as (typeof DIMENSIONS)[number]["id"]));
+    console.log(`      ボスの居る次元: ${Object.keys(BOSSES).join(" ")} / 次元の表 ${[...ids].join(" ")}`);
+    check("ボスの表のキーが次元の表にある", unknown.length === 0, unknown.join(" "));
+  }
+
+  /** エンドの島に見立てた台（上面 y=48）。**外周より先は虚空。** */
+  function islandArena(): Arena {
+    const arena = new Arena();
+    arena.fill(-40, 40, 40, 48, -40, 40, END_STONE);
+    return quiet(arena);
+  }
+
+  /** 召喚して 1 体返す。**null なら試験場が壊れている**ので、そこで落とす。 */
+  function summonDragon(boss: Mobs, world: ReturnType<Arena["asWorld"]>) {
+    const mob = boss.ensureBoss(END, world);
+    if (!mob) throw new Error("試験場でボスが湧かない");
+    return mob;
+  }
+
+  /** プレイヤーが次に殴れるまでのフレーム数（下の戦闘の節と同じ値）。 */
+  const BOSS_SWING_FRAMES = Math.ceil(PLAYER_ATTACK_COOLDOWN * 60) + 1;
+
+  {
+    const orbit = MOBS.dragon.orbit as OrbitRule;
+    const arena = islandArena();
+    const world = arena.asWorld();
+    const boss = new Mobs();
+
+    check("ボスの居ない次元では湧かない", boss.ensureBoss(OVERWORLD, world) === null);
+    check("表に無い名前でも落ちない", boss.ensureBoss("なんとか", world) === null);
+
+    // **未読み込みの列では見送ること**（`getVoxel` は AIR を返すので、そのまま
+    // 湧かせると虚空に置いて落とす）。次のフレームに持ち越せるよう、印も立てない。
+    const dark = islandArena();
+    dark.missingColumns.add(`${columnOf(orbit.radius)},0`);
+    check("中心の列が未読み込みなら湧かせない", new Mobs().ensureBoss(END, dark.asWorld()) === null);
+
+    const dragon = boss.ensureBoss(END, world);
+    const homeDistance = dragon ? Math.hypot(dragon.position.x - dragon.homeX, dragon.position.z - dragon.homeZ) : -1;
+    console.log(
+      `      召喚: ${dragon ? `(${dragon.position.x}, ${dragon.position.y}, ${dragon.position.z})` : "湧かない"}` +
+        ` / 中心 (${dragon?.homeX}, ${dragon?.homeZ}) から ${homeDistance.toFixed(1)}m`,
+    );
+    check("エンドではボスが 1 体湧く", !!dragon && dragon.kind === "dragon" && boss.count === 1);
+    check("地面の上に湧く（虚空でも埋まってもいない）", !!dragon && dragon.position.y === 49, `y=${dragon?.position.y}`);
+    // **中心ではなく輪の上に湧くこと。** 中心に湧かせると、ポータルから降りた人の
+    // 真上に出て、輪に出る前に殴りかかることになる。
+    check(
+      "湧くのは輪の上（中心ではない）",
+      Math.abs(homeDistance - orbit.radius) < 1,
+      `${homeDistance.toFixed(1)} / 半径 ${orbit.radius}`,
+    );
+    check("中心は表の点（湧いた場所ではない）", dragon?.homeX === 0.5 && dragon?.homeZ === 0.5);
+
+    boss.ensureBoss(END, world);
+    boss.ensureBoss(END, world);
+    check("何度呼んでも 1 体しか湧かない", boss.count === 1, `${boss.count} 体`);
+
+    // **倒したら湧き直さないこと。** 毎フレーム呼ぶので、湧き直すと倒せなくなる。
+    if (dragon) boss.attack(dragon, NO_ITEM, ctx(), () => 0);
+    boss.list.length = 0;
+    boss.ensureBoss(END, world);
+    check("倒したあとは湧き直さない", boss.count === 0, `${boss.count} 体`);
+    // 読み込み直し（`startWorld()` の `clear()`）では戻る。**いまはこれが仕様** ——
+    // 倒した印をワールドに持たせるのは出口ポータルの周（2-13b）。
+    boss.clear();
+    check("作り直せば（clear）また湧く", !!boss.ensureBoss(END, world), `${boss.count} 体`);
+  }
+
+  {
+    // **ボスは遠くても消えない。** 消えると、輪の反対側へ回った拍子に戦いが終わる。
+    const arena = islandArena();
+    const world = arena.asWorld();
+    const boss = new Mobs();
+    const dragon = summonDragon(boss, world);
+    const far = ctx({ playerX: 300.5, playerY: 49, playerZ: 300.5 });
+    const zombie = boss.spawn("zombie", 0.5, 49, 0.5, 0, seeded(71));
+    boss.update(1 / 60, world, far);
+    console.log(
+      `      ${DESPAWN_DISTANCE}m より遠くのプレイヤー: ボス ${boss.list.includes(dragon) ? "残る" : "消えた"}` +
+        ` / ゾンビ ${boss.list.includes(zombie) ? "残る" : "消えた"}`,
+    );
+    check("遠くてもボスは消えない", boss.list.includes(dragon));
+    check("ふつうのモブは消える（試験場が効いている）", !boss.list.includes(zombie));
+
+    // 数の上限で間引かれもしないこと（上限は遠いものから捨てる）。
+    for (let i = 0; i < MAX_MOBS + 4; i++) {
+      boss.spawn("zombie", 0.5 + i * 0.1, 49, 0.5, 0, seeded(80 + i));
+    }
+    boss.update(1 / 60, world, ctx({ playerX: 0.5, playerY: 49, playerZ: 0.5 }));
+    check(
+      "数の上限でもボスは間引かれない",
+      boss.list.includes(dragon) && boss.count <= MAX_MOBS,
+      `${boss.count} 体 / 上限 ${MAX_MOBS}`,
+    );
+  }
+
+  {
+    // **実際に回るところまで見る。** 表の値だけを見ると、`aimOrbit` を呼び忘れても通る。
+    const orbit = MOBS.dragon.orbit as OrbitRule;
+    const arena = islandArena();
+    const world = arena.asWorld();
+    const boss = new Mobs();
+    const dragon = summonDragon(boss, world);
+    // プレイヤーは輪の外（`diveAt` より遠く）に置く。目の前に置くと詰めに来て回らない。
+    const away = ctx({ playerX: 200.5, playerY: 49, playerZ: 200.5 });
+
+    let turned = 0;
+    let last = Math.atan2(dragon.position.z - dragon.homeZ, dragon.position.x - dragon.homeX);
+    let minRadius = Infinity;
+    let maxRadius = 0;
+    const samples: string[] = [];
+    for (let f = 0; f < 60 * 30; f++) {
+      boss.update(1 / 60, world, away);
+      const angle = Math.atan2(dragon.position.z - dragon.homeZ, dragon.position.x - dragon.homeX);
+      let step = angle - last;
+      while (step > Math.PI) step -= Math.PI * 2;
+      while (step < -Math.PI) step += Math.PI * 2;
+      turned += step;
+      last = angle;
+      // 最初の 5 秒は輪へ寄せる時間なので測らない（湧くのは輪の上だが、高さは地面）。
+      if (f > 60 * 5) {
+        const r = Math.hypot(dragon.position.x - dragon.homeX, dragon.position.z - dragon.homeZ);
+        minRadius = Math.min(minRadius, r);
+        maxRadius = Math.max(maxRadius, r);
+      }
+      if (f % (60 * 6) === 0) samples.push(`${(turned / Math.PI).toFixed(2)}π`);
+    }
+    console.log(
+      `      30 秒回して ${(turned / Math.PI).toFixed(2)}π 周（${samples.join(" → ")}）/` +
+        ` 半径 ${minRadius.toFixed(1)}〜${maxRadius.toFixed(1)}（表は ${orbit.radius}）/` +
+        ` 高さ ${dragon.position.y.toFixed(1)}（中心の地面 ${dragon.homeY} + ${orbit.height}）`,
+    );
+    check("30 秒で 1 周以上まわる", Math.abs(turned) > Math.PI * 2, `${(turned / Math.PI).toFixed(2)}π`);
+    check(
+      "輪の半径を保つ（中心へ落ちも、飛び去りもしない）",
+      minRadius > orbit.radius - 4 && maxRadius < orbit.radius + 4,
+      `${minRadius.toFixed(1)}〜${maxRadius.toFixed(1)} / ${orbit.radius}`,
+    );
+    // **高さは中心の地面から測ること。** 自分の足元から測ると、輪が島のふちに
+    // 掛かったときだけ（下が虚空で `groundBelow` が見つけられず）高さが跳ねる。
+    check(
+      "輪の高さを保つ",
+      Math.abs(dragon.position.y - (dragon.homeY + orbit.height)) < 2,
+      `y=${dragon.position.y.toFixed(1)} / 目標 ${dragon.homeY + orbit.height}`,
+    );
+    check("虚空へは出ない（島の上に居る）", Math.hypot(dragon.position.x, dragon.position.z) < 40);
+  }
+
+  {
+    // **近づかれたら輪を離れて詰めること。** 回るだけなら、輪の下から矢を撃つだけの
+    // 一方的な作業になる（本家のドラゴンも、近づくと突っ込んでくる）。
+    const orbit = MOBS.dragon.orbit as OrbitRule;
+    const arena = islandArena();
+    const world = arena.asWorld();
+    const boss = new Mobs();
+    const dragon = summonDragon(boss, world);
+    // **先に輪へ上げてから近づくこと。** 湧いた直後は地面の上に居るので、
+    // フレーム 0 から測ると「降りてきた」も「詰めてきた」も最初から満たしてしまう
+    // （実際そう書いて、`aimOrbit` を止めても緑のままだった）。
+    const away = ctx({ playerX: 200.5, playerY: 49, playerZ: 200.5 });
+    for (let f = 0; f < 60 * 12; f++) boss.update(1 / 60, world, away);
+    const ringY = dragon.position.y;
+    // 輪の内側（`diveAt` の内側）の地面に立つ。**輪の真下に立たないこと** ——
+    // 距離 0 から始まると「近づいた」が測れない。
+    const near = ctx({ playerX: 8.5, playerY: 49, playerZ: 0.5, random: seeded(97) });
+    const before = Math.hypot(dragon.position.x - near.playerX, dragon.position.z - near.playerZ);
+    let closest = before;
+    let lowest = ringY;
+    for (let f = 0; f < 60 * 8; f++) {
+      boss.update(1 / 60, world, near);
+      closest = Math.min(closest, Math.hypot(dragon.position.x - near.playerX, dragon.position.z - near.playerZ));
+      lowest = Math.min(lowest, dragon.position.y);
+    }
+    console.log(
+      `      12 秒で輪（y=${ringY.toFixed(1)}）へ上がってから、内側に立って 8 秒:` +
+        ` 最短 ${closest.toFixed(1)}m（開始 ${before.toFixed(1)}m）/` +
+        ` いちばん低い所 y=${lowest.toFixed(1)}`,
+    );
+    check("輪へ上がってから測っている（試験場が効いている）", ringY > 49 + orbit.height - 2, `y=${ringY.toFixed(1)}`);
+    check("近づかれたら詰めてくる", closest < ATTACK_RANGE + 1 && closest < before - 3, `${before.toFixed(1)} → ${closest.toFixed(1)}m`);
+    check(
+      "詰めるときは輪の高さを離れて降りてくる",
+      lowest < ringY - 4,
+      `y=${lowest.toFixed(1)} / 輪 ${ringY.toFixed(1)}`,
+    );
+
+    // **降りてきたら実際に届くこと。** ブレイズの浮き（2.5）をそのまま使っていた頃は、
+    // 目の前まで来ても `ATTACK_HEIGHT`(1.5) に届かず**一度も殴れないボス**だった。
+    const taken: number[] = [];
+    const armed = ctx({
+      playerX: near.playerX,
+      playerY: near.playerY,
+      playerZ: near.playerZ,
+      random: seeded(98),
+      vitals: {
+        damage: (amount) => {
+          taken.push(amount);
+          return true;
+        },
+      },
+    });
+    for (let f = 0; f < 60 * 6; f++) boss.update(1 / 60, world, armed);
+    console.log(
+      `      そのあと 6 秒で ${taken.length} 発 x ${taken[0] ?? 0}（表は ${MOBS.dragon.damage}）/` +
+        ` 浮く高さ ${MOBS.dragon.hover}（ブレイズは ${MOBS.blaze.hover}）`,
+    );
+    check(
+      "降りてきたら近接が届く",
+      taken.length > 0 && taken.every((n) => n === MOBS.dragon.damage),
+      `${taken.length} 発 / 1 発 ${taken[0]}`,
+    );
+  }
+
+  {
+    // **回復のもとの数は呼ぶ側が渡す**（`MobContext.healers`）。ここは
+    // 「渡した数だけ速く戻る」「上限を超えない」「渡さなければ戻らない」の 3 つ。
+    const arena = islandArena();
+    const world = arena.asWorld();
+    const dragon = MOBS.dragon;
+
+    /** 体力を `hurt` だけ削ってから、もとが `healers` 個ある状態で 1 秒回す。 */
+    function recover(healers: number, hurt: number): number {
+      const boss = new Mobs();
+      const mob = summonDragon(boss, world);
+      mob.health = dragon.maxHealth - hurt;
+      const c = ctx({ playerX: 200.5, playerY: 49, playerZ: 200.5, healers });
+      for (let f = 0; f < 60; f++) boss.update(1 / 60, world, c);
+      return mob.health - (dragon.maxHealth - hurt);
+    }
+
+    const none = recover(0, 100);
+    const one = recover(1, 100);
+    const all = recover(10, 100);
+    console.log(
+      `      1 秒あたりの回復: もと 0 個 ${none.toFixed(1)} / 1 個 ${one.toFixed(1)} /` +
+        ` 10 個 ${all.toFixed(1)}（表は 1 個につき ${dragon.regen}）`,
+    );
+    check("もとが無ければ回復しない", none === 0, `${none.toFixed(2)}`);
+    check("もと 1 個で表どおり戻る", Math.abs(one - dragon.regen) < 0.2, `${one.toFixed(2)} / ${dragon.regen}`);
+    check("もとの数だけ速く戻る", Math.abs(all - dragon.regen * 10) < 0.5, `${all.toFixed(2)}`);
+    // **上限を超えて溜めないこと。** 溜まると、もとを全部落としたあとも
+    // しばらく減らない「見えない体力」ができる。
+    const over = recover(10, 1);
+    check("満タンを超えて溜めない", Math.abs(over - 1) < 1e-6, `${(dragon.maxHealth - 1 + over).toFixed(1)}`);
+  }
+
+  {
+    // **クリア導線そのもの。** クリスタルが生きているうちは倒せず、
+    // 落としきると倒せる —— ここが崩れると柱を落とす意味が消える。
+    const arena = islandArena();
+    const world = arena.asWorld();
+    const weapon = STONE_AXE;
+
+    /** もとが `healers` 個ある状態で、`swings` 回まで殴ってみる。 */
+    function duel(healers: number, swings: number): { hits: number; alive: boolean; health: number } {
+      const boss = new Mobs();
+      const mob = summonDragon(boss, world);
+      const c = ctx({ playerX: mob.position.x, playerY: 49, playerZ: mob.position.z, healers });
+      let hits = 0;
+      while (hits < swings && boss.count > 0) {
+        if (boss.attack(mob, weapon, c)) hits++;
+        for (let f = 0; f < BOSS_SWING_FRAMES; f++) boss.update(1 / 60, world, c);
+      }
+      return { hits, alive: boss.count > 0, health: mob.health };
+    }
+
+    const guarded = duel(10, 80);
+    const alone = duel(0, 80);
+    console.log(
+      `      石の斧で殴り続ける: クリスタル 10 個 → ${guarded.hits} 回で体力 ${guarded.health.toFixed(0)}` +
+        ` / 0 個 → ${alone.hits} 回で ${alone.alive ? "生存" : "撃破"}`,
+    );
+    check(
+      "クリスタルが生きているうちは倒せない",
+      guarded.alive && guarded.health > MOBS.dragon.maxHealth / 2,
+      `体力 ${guarded.health.toFixed(0)} / ${MOBS.dragon.maxHealth}`,
+    );
+    check("クリスタルを落としきれば倒せる", !alone.alive, `${alone.hits} 回で体力 ${alone.health.toFixed(0)}`);
+  }
+
   describe("湧く地面（どの敵対モブになるか）");
 
   // **地面を指定したモブが勝つ。** 同じ土俵で抽選すると、要塞の半分がゾンビになって
@@ -642,7 +977,10 @@ export function run(): void {
   // **地面を指定しない敵対は重み（`spawnWeight`）で分ける。** 均等割りだったころ、
   // エンダーマン（体力 40・一撃 7）を足した瞬間に夜の敵対の半分がエンダーマンになった。
   {
-    const anywhere = MOB_KINDS.filter((k) => MOBS[k].hostile && !MOBS[k].spawnOn);
+    // **ボスは抽選に出てこない**（`HOSTILE_KINDS` が外している）。ここで外し忘れると
+    // 「表の重みどおり」が永久に合わなくなる ——
+    // 下の「ボスは自然に湧かない」で、実際に 1 度も出ないことを見ている。
+    const anywhere = MOB_KINDS.filter((k) => MOBS[k].hostile && !MOBS[k].boss && !MOBS[k].spawnOn);
     const total = anywhere.reduce((sum, k) => sum + MOBS[k].spawnWeight, 0);
     const off = anywhere.map((k) => Math.abs((onStone[k] ?? 0) / ROLLS - MOBS[k].spawnWeight / total));
     console.log(
@@ -665,6 +1003,23 @@ export function run(): void {
     MOB_KINDS.every((kind) => !MOBS[kind].spawnOn || MOBS[kind].hostile),
     "受動モブに spawnOn を付けるなら trySpawn 側も直すこと",
   );
+  // **ボスは抽選のどの土俵にも出てこないこと。** 出ると、夜のオーバーワールドや
+  // 要塞の床にドラゴンが湧く（体力 200・一撃 10）。
+  {
+    const bosses = MOB_KINDS.filter((k) => MOBS[k].boss);
+    const drawn = new Set<string>();
+    const roll = seeded(313);
+    for (let i = 0; i < 4000; i++) {
+      drawn.add(String(hostileFor(STONE, roll)));
+      drawn.add(String(hostileFor(NETHER_BRICK, roll)));
+    }
+    console.log(`      ボス ${bosses.map((k) => MOBS[k].name).join(" ")} / 8000 回の抽選 → ${[...drawn].join(" ")}`);
+    check(
+      "ボスは抽選に出てこない（自然には湧かない）",
+      bosses.length > 0 && bosses.every((k) => !drawn.has(k)),
+      `ボス ${bosses.length} 種類 / 抽選に出たのは ${[...drawn].join(" ")}`,
+    );
+  }
 
   // 実際に湧かせる。**要塞の床（ネザーレンガ）を暗くした試験場**で、
   // 出てくるのがブレイズだけであること。
@@ -999,7 +1354,9 @@ export function run(): void {
     const perHit = attackDamage(weapon);
     const expected = Math.ceil(MOBS[kind].maxHealth / perHit);
     let hits = 0;
-    while (fight.count > 0 && hits < 50) {
+    // **上限は表から作ること。** 決め打ちの回数にすると、体力 200 のボスを足したときに
+    // 「倒しきる前に打ち切った」のか「倒せない」のかが区別できなくなる。
+    while (fight.count > 0 && hits < expected + 2) {
       if (fight.attack(victim, weapon, fightCtx)) hits++;
       advance(fight, arena, fightCtx, COOLDOWN_FRAMES);
     }

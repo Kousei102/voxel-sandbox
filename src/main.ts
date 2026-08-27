@@ -44,7 +44,7 @@ import { Drawing, FULL_DRAW_PITCH, SHOOT_HEIGHT } from "./bow";
 import { Chests } from "./chests";
 import { CrackOverlay } from "./crack";
 import { CraftScreen } from "./craftscreen";
-import { shatterCrystal } from "./crystals";
+import { liveCrystals, shatterCrystal } from "./crystals";
 import { DayNight, WAKE_TIME, canSleep, environmentFor } from "./daynight";
 import { eyeMessage, fitEye } from "./endportal";
 import { Dimensions, OVERWORLD, emptyState, type DimensionState } from "./dimensions";
@@ -401,6 +401,10 @@ function mobContext(): MobContext {
     shoot: (shot) => {
       projectiles.fire(shot);
     },
+    // 回復のもと。**生きていると確かめられたクリスタルだけ**を数える
+    // （`unknown` を数えると、エンドに降りた直後にドラゴンが回復し続ける）。
+    // **1 個につきどれだけ戻るかは `mobs.ts` の表**（`MobDef.regen`）。
+    healers: liveCrystals(world).length,
   };
 }
 
@@ -1212,6 +1216,10 @@ function frame(now: number): void {
   // vitals.takeDamage() で拾うので、モブ用のダメージ処理は書かずに済む
   // （拾い方が「前後の体力の比較」だった頃は、ここが先に走るせいで
   //   ゾンビに殺されても死亡画面が出なかった。vitals.ts のコメント参照）。
+  // その次元にボスが居るなら 1 体だけ湧かせる。**どの次元に何が居るかは
+  // `mobs.ts` の表**（`BOSSES`）で、ここは名前を渡すだけ（次元の分岐は増えない）。
+  // 中心の列がまだ読み込まれていなければ黙って見送るので、毎フレーム呼んでよい。
+  if (playing) mobs.ensureBoss(dims.nameOf(dims.current), world);
   if (playing) mobs.update(dt, world, mobContext());
   mobRender.sync(mobs.list, world);
   // 落ちたアイテム。**モブと同じく `world.update()` の外**（`test/world.test.ts` の
