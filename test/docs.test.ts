@@ -42,6 +42,26 @@ export function run(): void {
     check(`${file} がある`, there, there ? "" : "退避先を消さないこと（参照が宙に浮きます）");
   }
 
+  // **直した不具合を `REVIEW.md` に残さないこと。** 移すのは `npm run archive` の
+  // 仕事で（`scripts/archive-review.mjs`）、忘れるとここが溜まって上限に当たる。
+  // **`[ ]`（未着手）と `[!]`（直せない）は残ってよい** —— 動かすのは `[x]` だけ。
+  //
+  // **見本のコードブロックを数えないこと。** 「## 見つかった不具合」だけの行より下が
+  // 本物の並びで、それより上は書き方の説明（`## [ ] ネザーから戻ると…` という見本が
+  // 置いてある）。生の `indexOf` で目印を探すと**説明文中の言及**に当たるので、
+  // ここもスクリプトと同じく**行そのもの**で探す（実際に踏んだ）。
+  const review = readFileSync("REVIEW.md", "utf8").split("\n");
+  const at = review.findIndex((line) => line.trimEnd() === "# 見つかった不具合");
+  const listed = at < 0 ? [] : review.slice(at).filter((line) => /^## \[/.test(line));
+  const done = listed.filter((line) => /^## \[x\]/.test(line));
+  console.log(`      REVIEW.md の不具合 ${listed.length} 件（うち直した [x] ${done.length} 件）`);
+  check("目印の行がある（`npm run archive` の足場）", at >= 0, at < 0 ? "「# 見つかった不具合」だけの行" : "");
+  check(
+    "直した不具合は REVIEW.md に残っていない",
+    done.length === 0,
+    done.length ? "`npm run archive` を走らせること" : "",
+  );
+
   // 「本文は docs/… にある」と書いた先が実在するか。
   // 退避のときに綴りを間違えても、読む人が居ないので誰も気付けない。
   const missing: string[] = [];
