@@ -27,7 +27,7 @@ export interface DebugSources {
   readonly edits: number;
   readonly dayNight: { clock(): string; readonly brightness: number };
   readonly creative: boolean;
-  /** いま居る次元の名前（`dims.nameOf()`）。 */
+  /** いま居る次元の名前（`dims.displayNameOf()`）。 */
   readonly dimension: string;
   /**
    * バイオームの名前。**オーバーワールドの値**（種だけ同じ生成器から引く）なので、

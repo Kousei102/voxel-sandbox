@@ -101,8 +101,8 @@ export function run(): void {
       netherSource !== null && netherSource.seed !== 12345,
       `${netherSource?.seed}`,
     );
-    check("名前が引ける", dims.nameOf(OVERWORLD) === "オーバーワールド" && dims.nameOf(NETHER) === "ネザー");
-    check("知らない次元の名前は id そのまま", dims.nameOf("どちら") === "どちら");
+    check("名前が引ける", dims.displayNameOf(OVERWORLD) === "オーバーワールド" && dims.displayNameOf(NETHER) === "ネザー");
+    check("知らない次元の名前は id そのまま", dims.displayNameOf("どちら") === "どちら");
   }
 
   // --- 往復（ここが本題） -------------------------------------------------

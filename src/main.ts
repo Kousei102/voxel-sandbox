@@ -524,7 +524,7 @@ function travelThrough(here: PortalHere): void {
   // 出た先は枠の中。**いったん出るまで戻らない。**
   portalGate.latch();
   world.update(player.position.x, player.position.z);
-  hud.flash(`${dims.nameOf(trip.to)}へ`);
+  hud.flash(`${dims.displayNameOf(trip.to)}へ`);
   saveDirty = true;
 }
 
@@ -1242,7 +1242,10 @@ function frame(now: number): void {
   // 体力バーとクリア画面は**倒したことが画面で伝わる**ぶん。どちらも判断は
   // `boss.ts` で、ここは値を集めて貼るだけ（`deathMessage()` とまったく同じ形）。
   if (playing) {
-    const dim = dims.nameOf(dims.current);
+    // **`displayNameOf()` を渡さないこと**（下の F3 の行とは別物）。表示名を渡すと
+    // `BOSSES["エンド"]` が undefined になり、**エンドに入ってもドラゴンが湧かず、
+    // 体力バーもクリア画面も出ません**（`dimensions.ts` の `displayNameOf()` 参照）。
+    const dim = dims.current;
     const defeated = mobs.bossDefeated(dim);
     mobs.ensureBoss(dim, world, syncExitPortal(world, defeated));
     hud.setBoss(bossBarState(mobs.activeBoss(dim)));
@@ -1292,7 +1295,7 @@ function frame(now: number): void {
       edits: countEdits(world.editsForSave()),
       dayNight,
       creative,
-      dimension: dims.nameOf(dims.current),
+      dimension: dims.displayNameOf(dims.current),
       biome: biomeName(overworld.biomeAt(Math.floor(player.position.x), Math.floor(player.position.z))),
       counts: {
         mobs: mobs.count,

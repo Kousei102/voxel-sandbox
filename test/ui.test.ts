@@ -168,6 +168,11 @@ function mainStaysWiring(): void {
     // クリア画面の裏でメインメニューを出さない（死亡画面の `vitals.dead` と同じ役目）。
     // 外しても型は通り、**ドラゴンを倒した人だけが**メニューの重なった画面を見る。
     ["クリア画面の裏にメニューを出さない", "!hud.victoryOpen"],
+    // **ボスに渡すのは id（`dims.current`）で、表示名ではない。**
+    // ここが `dims.displayNameOf(dims.current)` だったせいで、`BOSSES["エンド"]` が
+    // undefined になり、**エンドに入ってもドラゴンが 1 体も湧かず、体力バーも
+    // クリア画面も出ませんでした**（`DimensionId` は `string` なので型では止まらない）。
+    ["ボスに渡す次元", "const dim = dims.current;"],
   ];
   const inlined = routed.filter(([, call]) => !source.includes(call));
   check(
@@ -175,6 +180,21 @@ function mainStaysWiring(): void {
     inlined.length === 0,
     inlined.map(([name]) => name).join(" / "),
   );
+
+  // **次元を引数に取る判断へ、画面に出す名前を渡さないこと。**
+  // `DimensionId` は `string`（セーブに知らない次元名が入りうるため、狭められない）で、
+  // 表を引くのも `Record<string, …>` なので、**取り違えても型では止まりません。**
+  // 止まらないと何が起きるかは実測済み: `ensureBoss("エンド")` は黙って null を返し、
+  // **エンドに入ってもドラゴンが湧かず、体力バーもクリア画面も出ません。**
+  const byId = ["ensureBoss", "bossDefeated", "activeBoss", "bossName", "setDimension"];
+  const misrouted: string[] = [];
+  for (const fn of byId) {
+    for (const call of source.matchAll(new RegExp(`\\b${fn}\\(([^)]*)\\)`, "g"))) {
+      if (/displayName|\.name\b/.test(call[1])) misrouted.push(`${fn}(${call[1]})`);
+    }
+  }
+  console.log(`      次元を id で受ける呼び出し ${byId.length} 種類を検査`);
+  check("次元の判断には id を渡している（表示名でない）", misrouted.length === 0, misrouted.join(" / "));
 
   // **何が落ちるかは `items.ts` の `rollDrop()`** で、`main.ts` は乱数を 1 個渡すだけ。
   // ここに確率の比較を書くと、砂利のように「外したら別のものが落ちる」を足したときに、

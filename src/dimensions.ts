@@ -146,8 +146,20 @@ export class Dimensions {
     return this.defs.some((d) => d.id === id);
   }
 
-  /** 画面に出す名前。知らない次元なら id をそのまま返す。 */
-  nameOf(id: DimensionId): string {
+  /**
+   * **画面に出す名前**（「エンド」）。知らない次元なら id をそのまま返す。
+   *
+   * **返り値を判断へ渡さないこと。** `DimensionId` は `string` なので、
+   * 表示名を次元の id として渡しても型では止まりません（`BOSSES` の
+   * `Record<string, …>` も同じ）。**`ensureBoss()` に「エンド」を渡すと
+   * `BOSSES["エンド"]` が undefined になり、エンドに入ってもドラゴンが
+   * 1 体も湧かないまま、体力バーもクリア画面も出ません**（実際にそうなっていて、
+   * ユーザーが通しで遊ぶまで誰も気付けませんでした）。
+   *
+   * `nameOf` という名前がその取り違えを誘っていたので **`displayNameOf` に
+   * 改名しました。戻さないこと。** 判断へ渡すのは `dims.current` です。
+   */
+  displayNameOf(id: DimensionId): string {
     return this.defs.find((d) => d.id === id)?.name ?? id;
   }
 
