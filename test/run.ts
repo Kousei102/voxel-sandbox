@@ -1,6 +1,7 @@
 import { run as audio } from "./audio.test";
 import { run as beds } from "./beds.test";
 import { run as blocks } from "./blocks.test";
+import { run as boss } from "./boss.test";
 import { run as bow } from "./bow.test";
 import { run as chests } from "./chests.test";
 import { run as crafting } from "./crafting.test";
@@ -68,6 +69,7 @@ craftscreen();
 bow();
 vitals();
 mobs();
+boss();
 drops();
 projectiles();
 smelting();

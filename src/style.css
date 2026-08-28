@@ -266,6 +266,45 @@ body {
   transition: opacity 90ms linear;
 }
 
+/* --- ボスの体力バー --- */
+/*
+ * #hud の中なので、プレイ中だけ出る（メニュー・死亡画面の裏には残らない）。
+ * 出す・消すは boss.ts の bossBarState() が決めて、ui.ts が .hidden を付け外しする。
+ */
+#bossbar {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+}
+
+#bosslabel {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: #e6d7ff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
+}
+
+#bosstrack {
+  width: min(46vw, 360px);
+  height: 9px;
+  border-radius: 5px;
+  border: 1px solid rgba(206, 168, 255, 0.5);
+  background: rgba(10, 6, 18, 0.7);
+  overflow: hidden;
+}
+
+/* 幅だけが変わる（色は変えない）。ui.ts が style.width に % を入れる。 */
+#bossfill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #7b4bd0, #c98bff);
+  transition: width 120ms linear;
+}
+
 /* --- 死亡画面 --- */
 #death {
   position: fixed;
@@ -285,6 +324,27 @@ body {
   font-size: 34px;
   letter-spacing: 0.16em;
   color: #ffd7d3;
+}
+
+/* --- クリア画面（死亡画面と同じ作り。色だけ違う） --- */
+#victory {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 14px;
+  z-index: 7;
+  background: rgba(26, 12, 48, 0.6);
+  backdrop-filter: blur(2px);
+  text-align: center;
+}
+
+#victory h1 {
+  margin: 0;
+  font-size: 34px;
+  letter-spacing: 0.16em;
+  color: #e8d5ff;
 }
 
 .slot .count {

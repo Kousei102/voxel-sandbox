@@ -1,3 +1,4 @@
+import type { BossBar } from "./boss";
 import { HOTBAR_SIZE, isEmpty, type Inventory, type Slot } from "./inventory";
 import { itemCssColor, itemName } from "./items";
 
@@ -77,6 +78,11 @@ export class Hud {
   private readonly hungerRow = document.getElementById("hunger") as HTMLElement;
   private readonly bubbleRow = document.getElementById("bubbles") as HTMLElement;
   private readonly hurt = document.getElementById("hurt") as HTMLElement;
+  private readonly bossBar = document.getElementById("bossbar") as HTMLElement;
+  private readonly bossLabel = document.getElementById("bosslabel") as HTMLElement;
+  private readonly bossFill = document.getElementById("bossfill") as HTMLElement;
+  private readonly victory = document.getElementById("victory") as HTMLElement;
+  private readonly victoryText = document.getElementById("victorytext") as HTMLElement;
   private statusTimer = 0;
 
   constructor(private readonly inventory: Inventory) {
@@ -135,6 +141,38 @@ export class Hud {
       this.bubbles[i].classList.toggle("empty", i >= left);
     }
     this.hurt.style.opacity = show ? String(flash * 0.55) : "0";
+  }
+
+  /**
+   * ボスの体力バー。**null で消える。**
+   *
+   * **ここに判断を書かないこと**（`boss.ts` の `bossBarState()` が決める）。
+   * 「体力が 0 なら消す」「割合はいくつか」をこちらに書くと、
+   * **ドラゴンを倒しに行くまで確かめられない**場所に判断が戻る。
+   */
+  setBoss(bar: BossBar | null): void {
+    this.bossBar.classList.toggle("hidden", bar === null);
+    if (!bar) return;
+    this.bossLabel.textContent = bar.label;
+    this.bossFill.style.width = `${bar.fraction * 100}%`;
+  }
+
+  /** クリア画面を出す。**1 行は `boss.ts` の `victoryMessage()`**（ここは貼るだけ）。 */
+  showVictory(message: string): void {
+    this.victoryText.textContent = message;
+    this.victory.classList.remove("hidden");
+  }
+
+  hideVictory(): void {
+    this.victory.classList.add("hidden");
+  }
+
+  /**
+   * クリア画面が出ているか。**メインメニューを出さないための判定に使う**
+   * （死亡画面の `vitals.dead` と同じ役目。両方出ると重なって読めない）。
+   */
+  get victoryOpen(): boolean {
+    return !this.victory.classList.contains("hidden");
   }
 
   /** インベントリの中身が変わったら呼ぶ。 */

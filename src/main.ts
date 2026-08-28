@@ -40,6 +40,7 @@ import {
   clearBedPartner,
   sleepDecision,
 } from "./beds";
+import { VictoryWatch, bossBarState, victoryMessage } from "./boss";
 import { Drawing, FULL_DRAW_PITCH, SHOOT_HEIGHT } from "./bow";
 import { Chests } from "./chests";
 import { CrackOverlay } from "./crack";
@@ -135,6 +136,12 @@ const digCadence = new DigCadence();
 const eating = new Eating();
 /** 弓を引いている最中。**引きの長さも放つかどうかも `bow.ts`**（掘る・食べると同じ形）。 */
 const drawing = new Drawing();
+/**
+ * クリア画面を**倒した瞬間だけ**出すための見張り（判断は `boss.ts`）。
+ * **「印が立っているか」で出さないこと** —— 出口ポータルは残るので、
+ * 入り直すたびにクリア画面が出る。
+ */
+const victory = new VictoryWatch();
 /**
  * 空腹の消耗と足音に使う、前のフレームの位置。
  * **飛ばしたら（リスポーン・ワールド作り直し）必ず `resetFootprint()` を呼ぶこと** ——
@@ -737,6 +744,12 @@ modeButton.addEventListener("click", () => {
   hud.flash(creative ? "クリエイティブ: 即掘り・E で全アイテム" : "サバイバル: 掘って集めます");
 });
 
+// クリア画面を閉じて続きを遊ぶ（死亡画面の「リスポーン」と同じ形）。
+document.getElementById("victoryclose")?.addEventListener("click", () => {
+  hud.hideVictory();
+  requestLock();
+});
+
 document.getElementById("respawn")?.addEventListener("click", () => {
   vitals.respawn();
   moveToSpawn();
@@ -749,8 +762,8 @@ document.addEventListener("pointerlockchange", () => {
   playing = document.pointerLockElement === canvas;
   // ここから先はタイトル画面ではない（見回しを二度と始めない）。
   if (playing) everPlayed = true;
-  // インベントリや死亡画面でロックが外れたときは、メインメニューを出さない
-  hud.setPlaying(playing, !playing && !screen.isOpen && !vitals.dead);
+  // インベントリ・死亡画面・クリア画面でロックが外れたときは、メインメニューを出さない
+  hud.setPlaying(playing, !playing && !screen.isOpen && !vitals.dead && !hud.victoryOpen);
   if (!playing) {
     player.clearKeys();
     breaking = false;
@@ -1225,9 +1238,18 @@ function frame(now: number): void {
   // **世界をまたぐ印**は出口ポータル（`exitportal.ts`）で、`syncExitPortal()` が
   // 倒したフレームにそれを建てて「印が立っているか」を返す。だから
   // **エンドに入り直してもドラゴンは湧き直さない**（`rules/dimensions.md`）。
+  //
+  // 体力バーとクリア画面は**倒したことが画面で伝わる**ぶん。どちらも判断は
+  // `boss.ts` で、ここは値を集めて貼るだけ（`deathMessage()` とまったく同じ形）。
   if (playing) {
     const dim = dims.nameOf(dims.current);
-    mobs.ensureBoss(dim, world, syncExitPortal(world, mobs.bossDefeated(dim)));
+    const defeated = mobs.bossDefeated(dim);
+    mobs.ensureBoss(dim, world, syncExitPortal(world, defeated));
+    hud.setBoss(bossBarState(mobs.activeBoss(dim)));
+    // **倒した瞬間だけ。** 開けるときに手を止めるのは `openPanel()` に集めてある。
+    if (victory.update(defeated)) {
+      openPanel(() => hud.showVictory(victoryMessage(mobs.bossName(dim))));
+    }
   }
   if (playing) mobs.update(dt, world, mobContext());
   mobRender.sync(mobs.list, world);
