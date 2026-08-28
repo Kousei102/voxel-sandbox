@@ -29,8 +29,8 @@ npm run build      # typecheck + dist/ に静的ファイル一式
 いまの状況（未コミットのもの・push の有無・どこまでブラウザで確認済みか）は `HANDOFF.md`。
 
 **クリア導線（ネザー → エンド → エンダードラゴン）はループで進めています。**
-1 周の手順と禁じ手は `LOOP.md`、タスクの並びは `TASKS.md`、ブラウザ確認の積み残しは
-`REVIEW.md`、**あとで決める手触りの数値は `TUNING.md`**、
+1 周の手順と禁じ手は `LOOP.md`、タスクの並びは `TASKS.md`、**ユーザーが通しで遊んで
+見つけた不具合は `REVIEW.md`**、**あとで決める手触りの数値は `TUNING.md`**、
 **無人の周が書いた決まりごとの更新待ちは `RULES-INBOX.md`**（`.claude/rules/` を
 直接編集すると確認待ちで止まるため。取り込むのは人が居る周）。進み具合は `npm test` の「進行（クリア導線）」が「達成 N / 13」で出します
 （`test/progression.test.ts`）。**ブロック ID とアイテム ID は `ROADMAP.md` の予約表から取ること。**
@@ -77,6 +77,10 @@ npm run build      # typecheck + dist/ に静的ファイル一式
   関わるファイルは削らないこと。
 - **このファイルが 200 行を超えたら、分割ではなくまず層 2 へ動かすこと。**
   `/context` で実際の読み込み量を確かめられます。
+- **毎周読まれる文書には行数の上限があります**（`CLAUDE.md` / `LOOP.md` 200・
+  `TASKS.md` 150・`REVIEW.md` 200。`test/docs.test.ts`）。**上限を上げず、
+  済んだぶんを `docs/tasks-done.md` と `docs/review-archive.md` へ退避すること**
+  （`main.ts` の 1500 行と同じ扱い。**`docs/` は誰も読まない置き場**です）。
 
 ## この環境では WebGL が動かない
 

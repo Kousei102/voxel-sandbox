@@ -11,6 +11,7 @@ import { run as daynight } from "./daynight.test";
 import { run as debugspawn } from "./debugspawn.test";
 import { run as debugtext } from "./debugtext.test";
 import { run as dimensions } from "./dimensions.test";
+import { run as docs } from "./docs.test";
 import { run as drops } from "./drops.test";
 import { run as fortress } from "./fortress.test";
 import { summary } from "./harness";
@@ -83,6 +84,7 @@ sfx();
 debugtext();
 debugspawn();
 ui();
+docs();
 // **音だけは非同期。** `OfflineAudioContext` の書き出しを待つ必要があるので、
 // ここで await する（`summary()` より前に終わらせること）。
 await audio();

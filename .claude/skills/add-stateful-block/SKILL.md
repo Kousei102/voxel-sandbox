@@ -70,4 +70,5 @@ npm test
 ```
 
 `test/storage.test.ts` に往復（保存 → 読み込み）を、器の規則に `test/craftscreen.test.ts` を
-足すこと。見た目に触れたら `REVIEW.md` へ。
+足すこと。見た目に触れたら、`REVIEW.md` ではなく `HANDOFF.md` に
+「何が見た目に出るか」を 2〜3 行残すこと（`REVIEW.md` はユーザーが不具合を書く場所です）。
