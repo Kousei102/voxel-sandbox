@@ -17,6 +17,15 @@
 
     <div id="hud" class="hidden">
       <div id="debug"></div>
+      <!--
+        ボスの体力バー。**#hud の中で正しい** —— プレイ中しか意味がなく、
+        メニューや死亡画面の裏に残ってはいけない（通知の #status とはそこが違う）。
+        出す・消す・何割かを決めるのは boss.ts の bossBarState()。
+      -->
+      <div id="bossbar" class="hidden">
+        <span id="bosslabel"></span>
+        <div id="bosstrack"><div id="bossfill"></div></div>
+      </div>
       <div id="vitals">
         <div id="hearts"></div>
         <div id="hunger"></div>
@@ -31,6 +40,16 @@
       <h1>死んでしまった</h1>
       <p id="deathcause" class="lead"></p>
       <button id="respawn" type="button" class="primary">リスポーン</button>
+    </div>
+
+    <!--
+      クリア画面。**死亡画面（#death）と同じ作り**で、出す条件だけが違う
+      （倒した瞬間だけ。判断は boss.ts の VictoryWatch）。
+    -->
+    <div id="victory" class="hidden">
+      <h1>クリア</h1>
+      <p id="victorytext" class="lead"></p>
+      <button id="victoryclose" type="button" class="primary">続ける</button>
     </div>
 
     <div id="inventory" class="hidden">

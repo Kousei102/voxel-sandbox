@@ -1252,6 +1252,35 @@ export class Mobs {
   }
 
   /**
+   * その次元でいま生きているボス。居なければ null。**体力バーの材料。**
+   *
+   * **1 体だけを前提にしない**（`BOSSES` は次元ごとの表なので、次元を足せば
+   * ボスも増える）。返すのは `Mob` そのものではなく**画面に要る値だけ**で、
+   * `boss.ts` の `BossFacts` と構造で合わせてある —— `mobs.ts` が
+   * 画面の都合を知らずに済み、あちらも `mobs.ts` を import せずに済む
+   * （食い違えば `test/boss.test.ts` の型検査で止まる）。
+   */
+  activeBoss(dimension: string): { name: string; health: number; maxHealth: number } | null {
+    const plan = BOSSES[dimension];
+    if (!plan) return null;
+    const mob = this.list.find((m) => m.kind === plan.kind);
+    if (!mob) return null;
+    const def = MOBS[mob.kind];
+    return { name: def.name, health: mob.health, maxHealth: def.maxHealth };
+  }
+
+  /**
+   * その次元のボスの名前。表に無ければ null。
+   *
+   * **倒したあとに要る**（クリア画面の 1 行）。倒れたモブはもう `list` に
+   * 居ないので、`activeBoss()` では名前が取れない。
+   */
+  bossName(dimension: string): string | null {
+    const plan = BOSSES[dimension];
+    return plan ? MOBS[plan.kind].name : null;
+  }
+
+  /**
    * その次元のボスを**倒したか**（この読み込みのあいだだけの記憶）。
    *
    * **「召喚したのに、もう居ない」で決める。** `boss: true` のモブは遠くても消えず、

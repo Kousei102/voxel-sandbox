@@ -150,6 +150,24 @@ function mainStaysWiring(): void {
     // ドラゴンを倒すまで確かめられない**場所に判断が戻る。
     ["倒した印を建てる", "syncExitPortal("],
     ["ボスを倒したか", "mobs.bossDefeated("],
+    // 体力バー（いつ出す・いつ消す・何割か）とクリア画面（いつ出す・何と出す）。
+    // **`main.ts` が割合を計算し始めると、ドラゴンを倒しに行くまで確かめられない
+    // 場所に判断が戻る**（`deathMessage()` とまったく同じ理由）。
+    ["体力バーの中身", "bossBarState("],
+    ["いま居るボス", "mobs.activeBoss("],
+    ["クリア画面の 1 行", "victoryMessage("],
+    // **呼び出しの側も見ること**（2-12 / 2-12b で踏んだ偽陽性）。
+    // 判断を呼ぶ式がファイルにあるだけでは、フレームから外しても緑のまま通る。
+    //
+    // **渡すものまで見ること。** ここに渡してよいのは `mobs.bossDefeated()`
+    // （この読み込みのあいだの記憶）だけで、`syncExitPortal()` が返す
+    // **ワールドの印**を渡すと、倒したあとエンドへ入り直すたびにクリア画面が出る
+    // （`main.ts` はヘッドレスで import できないので、形で押さえるしかない）。
+    ["倒したかどうかの出どころ", "const defeated = mobs.bossDefeated("],
+    ["倒した瞬間を拾う", "victory.update(defeated)"],
+    // クリア画面の裏でメインメニューを出さない（死亡画面の `vitals.dead` と同じ役目）。
+    // 外しても型は通り、**ドラゴンを倒した人だけが**メニューの重なった画面を見る。
+    ["クリア画面の裏にメニューを出さない", "!hud.victoryOpen"],
   ];
   const inlined = routed.filter(([, call]) => !source.includes(call));
   check(
