@@ -23,6 +23,19 @@ const LIMITS: Array<[string, number, string]> = [
   ["REVIEW.md", 200, "直した節が溜まったら `docs/review-archive.md` へ移すこと"],
 ];
 
+/**
+ * 自動実装ループが周をまたいで引き継ぐ 2 つ（`AUTODEV.md` の「1. いまはどの周か」）。
+ * **まだ無いことがあるので、あるときだけ見ます。**
+ *
+ * **`AUTODEV-SPEC.md` の 120 行は「1 周で閉じない」の信号として使います。**
+ * 収まらない仕様は 2 件に割ってキューへ書き戻す、という判断がここに掛かっているので、
+ * **上限を上げないこと**（上げると、1 周で終わらないタスクが C の周に流れ込みます）。
+ */
+const LOOP_STATE: Array<[string, number, string]> = [
+  ["AUTODEV-QUEUE.md", 150, "済んだ行は消すこと（記録は `docs/autodev-log.md`）"],
+  ["AUTODEV-SPEC.md", 120, "1 周で閉じない大きさ。2 件に割って `AUTODEV-QUEUE.md` へ書き戻すこと"],
+];
+
 // 退避先。ここは読まれないので大きさを見ない。
 const ARCHIVES = ["docs/tasks-done.md", "docs/review-archive.md"];
 
@@ -30,6 +43,16 @@ export function run(): void {
   describe("毎周読まれる文書の大きさ");
 
   for (const [file, limit, advice] of LIMITS) {
+    const lines = readFileSync(file, "utf8").split("\n").length;
+    console.log(`      ${file} ${lines} 行 / 上限 ${limit}`);
+    check(`${file} が上限に収まっている`, lines <= limit, lines > limit ? advice : "");
+  }
+
+  for (const [file, limit, advice] of LOOP_STATE) {
+    if (!existsSync(file)) {
+      console.log(`      ${file} まだ無い（ループが作る）`);
+      continue;
+    }
     const lines = readFileSync(file, "utf8").split("\n").length;
     console.log(`      ${file} ${lines} 行 / 上限 ${limit}`);
     check(`${file} が上限に収まっている`, lines <= limit, lines > limit ? advice : "");
