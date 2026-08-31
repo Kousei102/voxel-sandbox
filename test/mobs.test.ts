@@ -982,14 +982,23 @@ export function run(): void {
     );
 
     /**
-     * 輪へ上げてから `phase` の番に入れ、**その番の長さぶんだけ**回して注文を集める。
+     * 輪へ上げてから `phase` の番に入れ、**その番のあいだだけ**回して注文を集める。
      *
      * **番の長さを超えて回さないこと** —— 超えたぶんは次の番なので、
      * 「近接の番では撃たない」を測っているつもりでブレスの番の初弾を数える
      * （実際にそれで 1 発数えた）。
+     *
+     * **`秒 * 60` フレームは「超えて」に当たります。** `advancePhase()` は残りが 0 に
+     * なったフレームで次の番へ進めるので、ちょうど回すと**最後の 1 フレームは次の番**。
+     * そのフレームで判断（5Hz）が回るかどうかは、湧いたときの `thinkTimer`
+     * （`Math.random() * AI_TICK`）次第です —— 回れば `aimOrbit()` が `flyTarget` を
+     * 次の番の高さに書き直すので、**「ブレスの番はプレイヤーの真上を狙う」が
+     * 6 回に 1 回ほど落ちていました**（61.0 / 59 = 輪の高さ）。1 フレーム手前で止めます。
      */
     function flyPhase(phase: string) {
-      const seconds = (MOBS.dragon.phases as readonly MobPhase[]).find((p) => p.name === phase)!.seconds;
+      const table = MOBS.dragon.phases as readonly MobPhase[];
+      const index = table.findIndex((p) => p.name === phase);
+      const seconds = table[index].seconds;
       const arena = islandArena();
       const world = arena.asWorld();
       const boss = new Mobs();
@@ -1014,11 +1023,14 @@ export function run(): void {
       const ringY = dragon.position.y;
       const ringTarget = dragon.flyTarget;
       enterPhase(dragon, phase);
-      for (frames = 0; frames < Math.round(seconds * 60); frames++) boss.update(1 / 60, world, player);
-      return { shots, at, dragon, ringY, ringTarget, player };
+      for (frames = 0; frames < Math.round(seconds * 60) - 1; frames++) boss.update(1 / 60, world, player);
+      // **測り終えた時点でまだその番に居ること。** これを出しておかないと、
+      // 上の 1 フレームがまた入り込んでも「別の番の値を測っている」と気付けません。
+      return { shots, at, dragon, ringY, ringTarget, player, stillIn: dragon.phase === index };
     }
 
     const breath = flyPhase("ブレス");
+    check("測っているあいだ「ブレス」の番から出ていない", breath.stillIn, `phase ${breath.dragon.phase}`);
     const gaps = breath.at.slice(1).map((t, i) => t - breath.at[i]);
     const mean = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : 0;
     console.log(
@@ -1074,8 +1086,8 @@ export function run(): void {
       `      同じ間合いで: 近接の番（${MOBS.dragon.phases![0].seconds} 秒）${melee.shots.length} 発 /` +
         ` 旋回の番（${MOBS.dragon.phases![2].seconds} 秒）${idle.shots.length} 発`,
     );
-    check("近接の番では撃たない", melee.shots.length === 0, `${melee.shots.length} 発`);
-    check("旋回の番では撃たない", idle.shots.length === 0, `${idle.shots.length} 発`);
+    check("近接の番では撃たない", melee.shots.length === 0 && melee.stillIn, `${melee.shots.length} 発`);
+    check("旋回の番では撃たない", idle.shots.length === 0 && idle.stillIn, `${idle.shots.length} 発`);
     // 旋回の番は輪の高さのまま（プレイヤー基準にしない）。
     check(
       "旋回の番は輪の高さを保つ",
