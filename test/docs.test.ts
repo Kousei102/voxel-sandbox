@@ -17,6 +17,8 @@ import { check, describe } from "./harness";
 const LIMITS: Array<[string, number, string]> = [
   ["CLAUDE.md", 200, "領域別の話は `.claude/rules/` へ（`paths` を書くこと）"],
   ["LOOP.md", 200, "恒久的な決まりごとは `CLAUDE.md` か `.claude/rules/` へ"],
+  // 自動実装ループ（`loop/devgame`）の手順書。**あちらも毎周これを読みます。**
+  ["AUTODEV.md", 200, "恒久的な決まりごとは `CLAUDE.md` へ、記録は `docs/` へ"],
   ["TASKS.md", 150, "`[x]` の本文を `docs/tasks-done.md` へ移し、1 行だけ残すこと"],
   ["REVIEW.md", 200, "直した節が溜まったら `docs/review-archive.md` へ移すこと"],
 ];
