@@ -48,6 +48,7 @@ import {
   type MobDef,
   type MobKind,
   type MobTarget,
+  type MobPhase,
   type OrbitRule,
   type TeleportRule,
 } from "../src/mobs";
@@ -696,6 +697,22 @@ export function run(): void {
   /** プレイヤーが次に殴れるまでのフレーム数（下の戦闘の節と同じ値）。 */
   const BOSS_SWING_FRAMES = Math.ceil(PLAYER_ATTACK_COOLDOWN * 60) + 1;
 
+  /**
+   * ドラゴンを名前で指した攻め方の番に入れ直す（残り時間も満タンにする）。
+   *
+   * **番を止める仕掛けは足していない。** 測りたい動き（詰める・撃つ）は番が
+   * 回ってくるあいだしか出ないので、**測る直前にここへ入れてから回すこと** ——
+   * 入れずに長く回すと、たまたま別の番に入っていて「動かない」と読める。
+   */
+  function enterPhase(mob: { kind: MobKind; phase: number; phaseTimer: number }, name: string): MobPhase {
+    const phases = MOBS[mob.kind].phases;
+    const index = phases?.findIndex((p) => p.name === name) ?? -1;
+    if (!phases || index < 0) throw new Error(`${mob.kind} に「${name}」の番が無い`);
+    mob.phase = index;
+    mob.phaseTimer = phases[index].seconds;
+    return phases[index];
+  }
+
   {
     const orbit = MOBS.dragon.orbit as OrbitRule;
     const arena = islandArena();
@@ -860,6 +877,9 @@ export function run(): void {
     // 輪の内側（`diveAt` の内側）の地面に立つ。**輪の真下に立たないこと** ——
     // 距離 0 から始まると「近づいた」が測れない。
     const near = ctx({ playerX: 8.5, playerY: 49, playerZ: 0.5, random: seeded(97) });
+    // **詰める番に入れてから測ること。** 攻め方は順ぐりに回るので、12 秒回した
+    // あとはブレスの番に入っている（そこでは近づかれても輪を離れない）。
+    enterPhase(dragon, "近接");
     const before = Math.hypot(dragon.position.x - near.playerX, dragon.position.z - near.playerZ);
     let closest = before;
     let lowest = ringY;
@@ -896,6 +916,8 @@ export function run(): void {
         },
       },
     });
+    // 8 秒回したぶんで「近接」の番（10 秒）が尽きかけているので入れ直す。
+    enterPhase(dragon, "近接");
     for (let f = 0; f < 60 * 6; f++) boss.update(1 / 60, world, armed);
     console.log(
       `      そのあと 6 秒で ${taken.length} 発 x ${taken[0] ?? 0}（表は ${MOBS.dragon.damage}）/` +
@@ -905,6 +927,160 @@ export function run(): void {
       "降りてきたら近接が届く",
       taken.length > 0 && taken.every((n) => n === MOBS.dragon.damage),
       `${taken.length} 発 / 1 発 ${taken[0]}`,
+    );
+  }
+
+  {
+    // **攻め方が順ぐりに入れ替わること**（`MobDef.phases`）。表だけ見ても、
+    // `advancePhase()` を呼び忘れれば 1 つ目の番のまま固まる（近接しかしない
+    // ボスに戻る。**それが `REVIEW.md` に上がった症状**）。
+    const phases = MOBS.dragon.phases as readonly MobPhase[];
+    const cycle = phases.reduce((sum, p) => sum + p.seconds, 0);
+    console.log(
+      `      番: ${phases.map((p) => `${p.name} ${p.seconds}秒` + (p.chase ? "・詰める" : "") + (p.shoot ? `・撃つ(${p.above} 上)` : "")).join(" / ")}` +
+        `（1 周 ${cycle} 秒）`,
+    );
+    check("番が 3 つある", phases.length === 3, `${phases.length} つ`);
+    check("詰めるのは 1 つの番だけ", phases.filter((p) => p.chase).length === 1);
+    check("撃つのは 1 つの番だけ", phases.filter((p) => p.shoot).length === 1);
+    // **隙が要る。** どちらかを always 仕掛けていると、柱のクリスタルを割りに行けない。
+    check("何も仕掛けない番がある", phases.some((p) => !p.chase && !p.shoot));
+    const shooting = phases.find((p) => p.shoot) as MobPhase;
+    check("撃つ番はプレイヤーの上を飛ぶ", shooting.above >= 10, `${shooting.above} マス上`);
+    check("撃つ番では詰めない（撃ちながら殴りに来ない）", !shooting.chase);
+
+    const arena = islandArena();
+    const world = arena.asWorld();
+    const boss = new Mobs();
+    const dragon = summonDragon(boss, world);
+    const away = ctx({ playerX: 200.5, playerY: 49, playerZ: 200.5 });
+    const order: string[] = [];
+    for (let f = 0; f < Math.round((cycle + 1) * 60); f++) {
+      const name = phases[dragon.phase].name;
+      if (order[order.length - 1] !== name) order.push(name);
+      boss.update(1 / 60, world, away);
+    }
+    console.log(`      ${cycle + 1} 秒回して: ${order.join(" → ")}`);
+    check(
+      "表の並びどおりに回って先頭へ戻る",
+      order.length === phases.length + 1 &&
+        order.every((name, i) => name === phases[i % phases.length].name),
+      order.join(" → "),
+    );
+  }
+
+  {
+    // **ブレスを実際に撃つところまで見る。** 表に `ranged` を足しただけでは、
+    // 番の判定（`fire()`）を書き忘れても通る。
+    const ranged = MOBS.dragon.ranged;
+    const shooting = (MOBS.dragon.phases as readonly MobPhase[]).find((p) => p.shoot) as MobPhase;
+    const orbit = MOBS.dragon.orbit as OrbitRule;
+    check(
+      "撃つ間合いは輪の半径より長い（輪の上から中心へ届く）",
+      !!ranged && ranged.range > orbit.radius,
+      `${ranged?.range}m / 輪 ${orbit.radius}`,
+    );
+
+    /**
+     * 輪へ上げてから `phase` の番に入れ、**その番の長さぶんだけ**回して注文を集める。
+     *
+     * **番の長さを超えて回さないこと** —— 超えたぶんは次の番なので、
+     * 「近接の番では撃たない」を測っているつもりでブレスの番の初弾を数える
+     * （実際にそれで 1 発数えた）。
+     */
+    function flyPhase(phase: string) {
+      const seconds = (MOBS.dragon.phases as readonly MobPhase[]).find((p) => p.name === phase)!.seconds;
+      const arena = islandArena();
+      const world = arena.asWorld();
+      const boss = new Mobs();
+      const dragon = summonDragon(boss, world);
+      const shots: Shot[] = [];
+      const at: number[] = [];
+      // プレイヤーは島の中心（輪の内側だが `diveAt`(16) の外）。
+      const player = ctx({
+        playerX: 0.5,
+        playerY: 49,
+        playerZ: 0.5,
+        random: seeded(41),
+        shoot: (shot) => {
+          shots.push(shot);
+          at.push(frames / 60);
+        },
+      });
+      let frames = 0;
+      // **先に輪へ上げること**（湧いた直後は地面の上）。上げるあいだは撃たない番で回す。
+      enterPhase(dragon, "旋回");
+      for (let f = 0; f < 60 * 12; f++) boss.update(1 / 60, world, player);
+      const ringY = dragon.position.y;
+      const ringTarget = dragon.flyTarget;
+      enterPhase(dragon, phase);
+      for (frames = 0; frames < Math.round(seconds * 60); frames++) boss.update(1 / 60, world, player);
+      return { shots, at, dragon, ringY, ringTarget, player };
+    }
+
+    const breath = flyPhase("ブレス");
+    const gaps = breath.at.slice(1).map((t, i) => t - breath.at[i]);
+    const mean = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : 0;
+    console.log(
+      `      ブレスの番 ${shooting.seconds} 秒で ${breath.shots.length} 発` +
+        `（初弾 ${breath.at[0]?.toFixed(2)} 秒・間隔 ${mean.toFixed(2)} 秒 / 表は ${ranged?.cooldown} 秒）`,
+    );
+    check(
+      "ブレスの番では撃つ",
+      breath.shots.length > 0 && breath.shots.every((s) => s.kind === "breath"),
+      `${breath.shots.length} 発`,
+    );
+    check(
+      "表の間隔どおりに撃つ",
+      !!ranged && gaps.length > 3 && Math.abs(mean - ranged.cooldown) < 0.2,
+      `${mean.toFixed(2)} 秒 / ${ranged?.cooldown} 秒`,
+    );
+    // **番に入った瞬間の初弾を待たせること**（湧いた直後と同じ理屈）。
+    check("番に入った瞬間には撃たない", (breath.at[0] ?? 0) >= (ranged?.cooldown ?? 0) - 0.05, `${breath.at[0]?.toFixed(2)} 秒`);
+    check(
+      "撃った本人の印はドラゴン（自分のブレスで焼けない）",
+      breath.shots.every((s) => s.owner === breath.dragon.id),
+      `${breath.shots[0]?.owner}`,
+    );
+    check(
+      "重みは表どおり",
+      !!ranged && breath.shots.every((s) => s.damage === ranged.damage),
+      `${breath.shots[0]?.damage}`,
+    );
+    // 10 マス上から撃ち下ろすので、向きは必ず下を向く。
+    check("上から撃ち下ろす", breath.shots.every((s) => s.dy < 0), `${breath.shots[0]?.dy.toFixed(1)}`);
+
+    // **高さはプレイヤー基準**（輪の高さのままだと、柱の上に登られると頭を取れない）。
+    console.log(
+      `      高さ: 旋回の番 y=${breath.ringY.toFixed(1)}（目標 ${breath.ringTarget.toFixed(1)}）→` +
+        ` ブレスの番 y=${breath.dragon.position.y.toFixed(1)}（目標 ${breath.dragon.flyTarget.toFixed(1)}` +
+        ` = プレイヤー ${breath.player.playerY} + ${shooting.above}）`,
+    );
+    check(
+      "ブレスの番はプレイヤーの真上の高さを狙う",
+      Math.abs(breath.dragon.flyTarget - (breath.player.playerY + shooting.above)) < 1e-6,
+      `${breath.dragon.flyTarget.toFixed(1)} / ${breath.player.playerY + shooting.above}`,
+    );
+    check(
+      "狙った高さまで実際に上がり下がりする",
+      Math.abs(breath.dragon.position.y - breath.dragon.flyTarget) < 2,
+      `y=${breath.dragon.position.y.toFixed(1)} / 目標 ${breath.dragon.flyTarget.toFixed(1)}`,
+    );
+
+    // **撃たない番では 1 発も撃たないこと。** 撃つ番と同じ間合い・同じ視界で回す。
+    const melee = flyPhase("近接");
+    const idle = flyPhase("旋回");
+    console.log(
+      `      同じ間合いで: 近接の番（${MOBS.dragon.phases![0].seconds} 秒）${melee.shots.length} 発 /` +
+        ` 旋回の番（${MOBS.dragon.phases![2].seconds} 秒）${idle.shots.length} 発`,
+    );
+    check("近接の番では撃たない", melee.shots.length === 0, `${melee.shots.length} 発`);
+    check("旋回の番では撃たない", idle.shots.length === 0, `${idle.shots.length} 発`);
+    // 旋回の番は輪の高さのまま（プレイヤー基準にしない）。
+    check(
+      "旋回の番は輪の高さを保つ",
+      Math.abs(idle.dragon.flyTarget - (idle.dragon.homeY + orbit.height)) < 1e-6,
+      `${idle.dragon.flyTarget.toFixed(1)} / ${idle.dragon.homeY + orbit.height}`,
     );
   }
 
@@ -1763,7 +1939,13 @@ export function run(): void {
       );
     }
     const shooters = MOB_KINDS.filter((kind) => MOBS[kind].ranged);
-    check("撃つのはブレイズだけ", shooters.length === 1 && shooters[0] === "blaze", shooters.join(" "));
+    // **撃つモブが増えたらここを書き換えること**（`TUNING.md` の表と対）。
+    // ドラゴンはブレスを撃つが、**撃つのは「ブレス」の番だけ**（下の攻め方の節）。
+    check(
+      "撃つのはブレイズとドラゴンだけ",
+      shooters.length === 2 && shooters.includes("blaze") && shooters.includes("dragon"),
+      shooters.join(" "),
+    );
     // **重みを 1 つの定数で分け合わないこと。** 分け合っていた頃、ブレイズの一撃は
     // ゾンビと同じ 2 だった（本家は 6）。
     check(
@@ -1773,6 +1955,8 @@ export function run(): void {
     );
     check("受動モブは殴らない", MOBS.pig.damage === 0 && MOBS.sheep.damage === 0);
     const ranged = MOBS.blaze.ranged;
+    // **回るモブには当てはまらない線**（下でドラゴンぶんを別に見ている）。
+    // ブレイズは自分から寄っていくので、見えた瞬間に撃たれないことが要る。
     check(
       "撃ち始める間合いは追い始める距離より短い",
       !!ranged && ranged.range < HOSTILE_SIGHT,

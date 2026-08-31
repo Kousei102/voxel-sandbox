@@ -144,6 +144,38 @@ export interface OrbitRule {
   readonly diveAt: number;
 }
 
+/**
+ * 一定時間ごとに入れ替わる「攻め方」1 つぶん。**持っているモブだけが入れ替える**（無ければ `null`）。
+ *
+ * **`update()` に「ドラゴンなら」を書かないための表**です（`orbit` / `teleport` と同じ作法）。
+ * 中身は**既にある 3 つの判断を切り替える印だけ**で、新しい動き方は 1 つも足していません:
+ *
+ * - `chase` —— `Mobs.chasing()` が見る。false のあいだは**近づかれても輪を離れない**
+ * - `shoot` —— `Mobs.fire()` が見る。false のあいだは 1 発も撃たない
+ * - `above` —— `aimOrbit()` が見る。0 より大きいと、輪の高さの代わりに
+ *   **プレイヤーのこれだけ上**を飛ぶ（撃ち下ろすため）
+ *
+ * **「何もしない番」を必ず 1 つ入れること。** 近接とブレスだけを回すと、
+ * ボスが常にどちらかを仕掛けている状態になり、**柱のクリスタルを割りに行く隙が消える**。
+ */
+export interface MobPhase {
+  /** 何をしている番か（`TUNING.md` とテストの出力に出るだけ）。 */
+  readonly name: string;
+  /** この番でいる長さ (秒)。 */
+  readonly seconds: number;
+  /** 近づかれたら輪を離れて詰めるか（`chasing()`）。 */
+  readonly chase: boolean;
+  /** 遠くから撃つか（`fire()`）。**`MobDef.ranged` が無ければどのみち撃たない。** */
+  readonly shoot: boolean;
+  /**
+   * プレイヤーの何ブロック上を飛ぶか。**0 なら輪の高さ（`orbit.height`）のまま。**
+   *
+   * ここだけ**中心の地面ではなくプレイヤー基準**なのは、撃ち下ろす番だからです
+   * （相手が柱の上に登っていても、頭の上を取れる）。
+   */
+  readonly above: number;
+}
+
 export interface MobDef {
   readonly kind: MobKind;
   readonly name: string;
@@ -214,6 +246,11 @@ export interface MobDef {
   /** 決まった点のまわりを回るか。**回らないモブは `null`。** */
   readonly orbit: OrbitRule | null;
   /**
+   * 攻め方を順ぐりに入れ替えるか。**入れ替えないモブは `null`**（ずっと同じ動き）。
+   * 並びのとおりに回り、最後まで行ったら先頭へ戻る。
+   */
+  readonly phases: readonly MobPhase[] | null;
+  /**
    * 回復のもと 1 つにつき、毎秒どれだけ体力が戻るか。**0 なら回復しない。**
    *
    * **もとを何個数えるかは呼ぶ側**（`MobContext.healers`）。ここが
@@ -271,6 +308,7 @@ const PIG: MobDef = {
   spawnOn: null,
   boss: false,
   orbit: null,
+  phases: null,
   regen: 0,
   drop: { item: RAW_PORK, count: 1, chance: 1 },
   voice: 1.4,
@@ -325,6 +363,7 @@ const SHEEP: MobDef = {
   spawnOn: null,
   boss: false,
   orbit: null,
+  phases: null,
   regen: 0,
   drop: { item: WOOL, count: 1, chance: 1 },
   voice: 1.25,
@@ -391,6 +430,7 @@ const ZOMBIE: MobDef = {
   spawnOn: null,
   boss: false,
   orbit: null,
+  phases: null,
   regen: 0,
   drop: { item: ROTTEN_FLESH, count: 1, chance: 0.6 },
   voice: 0.7,
@@ -470,6 +510,7 @@ const BLAZE: MobDef = {
   spawnOn: [NETHER_BRICK],
   boss: false,
   orbit: null,
+  phases: null,
   regen: 0,
   drop: { item: BLAZE_ROD, count: 1, chance: 0.5 },
   voice: 1.15,
@@ -544,6 +585,7 @@ const ENDERMAN: MobDef = {
   spawnOn: null,
   boss: false,
   orbit: null,
+  phases: null,
   regen: 0,
   drop: { item: ENDER_PEARL, count: 1, chance: 0.5 },
   // 本家の湧きの重み。ゾンビ (100) の 1/10 なので、夜に出会うのはたまに。
@@ -610,9 +652,21 @@ const DRAGON: MobDef = {
   // 本家のノーマルと同じ 10（ゾンビ 2 / ブレイズ 6 / エンダーマン 7 より重い）。
   // **満タンから 2 発で半分**なので、輪の下に居続けられない。
   damage: 10,
-  // **まだ撃たない。** ブレス（`projectiles.ts` の `breath`）は当たり判定も表もあるが、
-  // 撃たせると「撃つのはブレイズだけ」の前提が変わる。ここは近接だけの最小で通す。
-  ranged: null,
+  // ブレス。**撃つのは `phases` の「ブレス」の番だけ**（`fire()` が見る）。
+  // **`range` が輪の半径 (20) より長いこと** —— 輪を回りながら撃つので、
+  // ブレイズの「見えた距離より短く」（16 < `HOSTILE_SIGHT` 18）は当てはまらない。
+  // 短いと、中心に立つ相手にすら 1 発も届かない番ができる。
+  ranged: {
+    kind: "breath",
+    damage: 6,
+    range: 40,
+    near: 4,
+    // 1.5 秒に 1 発。**番の長さ (12 秒) で 8 発**まで。
+    cooldown: 1.5,
+    // 口元（当たり判定 1.8 の上のほう）。**撃った本人には当たらない**ので、
+    // ここは見た目の出どころを合わせるだけの値（ブレイズの 1.1 と同じ役目）。
+    height: 1.4,
+  },
   teleport: null,
   // 自然には湧かないので抽選には出てこない（`hostileFor()` が `boss` を外す）。
   // **それでも書いておくこと** —— 値が無いと、ボスを湧かせる道を足したときに 0 で割る。
@@ -629,6 +683,15 @@ const DRAGON: MobDef = {
   // 柱の輪（半径 28）の内側を回る。**外側にすると柱に体当たりし続ける。**
   // 高さは柱の低いほう（12）と同じくらいで、**矢が届く**こと。
   orbit: { radius: 20, height: 12, turn: 0.35, diveAt: 16 },
+  // 3 つの番を順ぐりに（本家の「突っ込む・ブレス・旋回」に倣った 3 つ）。
+  // **並びが手触りそのもの** —— 近接のあとにブレスが来るので、殴られて逃げた先に
+  // 撃ち下ろされる。最後の「旋回」が**クリスタルを割りに行ける唯一の隙**。
+  phases: [
+    { name: "近接", seconds: 10, chase: true, shoot: false, above: 0 },
+    // 輪を回ったまま、プレイヤーの 10 マス上から 1.5 秒に 1 発。
+    { name: "ブレス", seconds: 12, chase: false, shoot: true, above: 10 },
+    { name: "旋回", seconds: 8, chase: false, shoot: false, above: 0 },
+  ],
   // 生きているクリスタル 1 個につき毎秒 2。10 個そろっていると毎秒 20 戻るので、
   // **矢（最大 9）をどれだけ当てても削り切れない** —— 先に柱の上を落とすことになる。
   regen: 2,
@@ -880,6 +943,13 @@ export interface Mob {
    * 撃ちながら殴れるようになる、のどちらかに転ぶ。
    */
   shootTimer: number;
+  /**
+   * いまの攻め方（`MobDef.phases` の添字）。**表を持たないモブでは 0 のまま**で、
+   * どこからも読まれない（`phaseOf()` が null を返す）。
+   */
+  phase: number;
+  /** いまの攻め方があと何秒続くか。0 を切ると次の番へ回る。 */
+  phaseTimer: number;
   /**
    * 壁を跳び越えている残り (秒)。このあいだは加速を待たずに前へ出す。
    * **飛ぶモブでは「上がっている残り」**（跳ぶ代わりに壁を越える手立て）。
@@ -1190,6 +1260,9 @@ export class Mobs {
       attackTimer: 0,
       // 湧いた瞬間に撃たせない（目の前に湧いたときの初弾を待たせる）。
       shootTimer: MOBS[kind].ranged?.cooldown ?? 0,
+      // **先頭の番から始める**（ドラゴンなら近接）。表を持たないモブでは読まれない。
+      phase: 0,
+      phaseTimer: MOBS[kind].phases?.[0].seconds ?? 0,
       hopTimer: 0,
       // 湧いた瞬間から浮き始める（0 にすると、最初の判断まで床に落ちようとする）。
       flyTarget: y + (MOBS[kind].flying ? MOBS[kind].hover : 0),
@@ -1326,6 +1399,10 @@ export class Mobs {
       // そのまま物理を回すと世界を突き抜けて落ちていく。
       if (!world.hasColumn(columnOf(mob.position.x), columnOf(mob.position.z))) continue;
 
+      // **判断より前に回すこと。** あとに置くと、番が替わったフレームだけ
+      // 1 つ前の攻め方で向きと高さを決めることになる（5Hz なので 0.2 秒引きずる）。
+      this.advancePhase(mob, def, dt);
+
       mob.thinkTimer -= dt;
       if (mob.thinkTimer <= 0) {
         mob.thinkTimer += AI_TICK;
@@ -1352,6 +1429,34 @@ export class Mobs {
       this.strike(mob, def, dt, ctx);
       this.fire(mob, def, world, dt, ctx);
     }
+  }
+
+  /**
+   * 攻め方を順ぐりに入れ替える（毎フレーム）。**表を持たないモブは何もしない。**
+   *
+   * **新しい動き方は 1 つも足していない。** ここが替えるのは印だけで、
+   * 実際の動きは `chasing()` / `aimOrbit()` / `fire()` が既に持っているものを
+   * 出したり引っ込めたりしているだけ（だから `step()` は番を知らない）。
+   */
+  private advancePhase(mob: Mob, def: MobDef, dt: number): void {
+    const phases = def.phases;
+    if (!phases || phases.length === 0) return;
+
+    mob.phaseTimer -= dt;
+    if (mob.phaseTimer > 0) return;
+
+    mob.phase = (mob.phase + 1) % phases.length;
+    mob.phaseTimer = phases[mob.phase].seconds;
+    // **撃つ番に入った瞬間の初弾を待たせること**（湧いた直後と同じ理屈）。
+    // 待たせないと、前の番のあいだに溜まった間隔で 1 発目がいきなり飛ぶ。
+    if (phases[mob.phase].shoot && def.ranged) mob.shootTimer = def.ranged.cooldown;
+  }
+
+  /** いまの攻め方。**表を持たないモブは null**（＝どの判断も今までどおり）。 */
+  private phaseOf(mob: Mob, def: MobDef): MobPhase | null {
+    const phases = def.phases;
+    if (!phases || phases.length === 0) return null;
+    return phases[mob.phase] ?? phases[0];
   }
 
   /** 判断（5Hz）。**進む向き・止まる・頭の向きはここだけで決める。** */
@@ -1494,6 +1599,9 @@ export class Mobs {
    */
   private chasing(mob: Mob, def: MobDef, ctx: MobContext): boolean {
     if (ctx.invulnerable) return false;
+    // **詰めない番のあいだは、目の前に立たれても輪を離れない**（`MobPhase.chase`）。
+    // ここ 1 本で「追う・高さ・輪へ戻る」の 3 か所が同時に切り替わる。
+    if (this.phaseOf(mob, def)?.chase === false) return false;
     return distanceTo(mob, ctx) <= (def.orbit ? def.orbit.diveAt : HOSTILE_SIGHT);
   }
 
@@ -1519,7 +1627,11 @@ export class Mobs {
     mob.walking = true;
     // 徘徊の抽選に戻らないよう、状態の残りは持たせない（敵対の追跡と同じ扱い）。
     mob.stateTimer = 0;
-    mob.flyTarget = mob.homeY + rule.height;
+    // 高さだけは番で上書きする（`above` が 0 なら輪の高さのまま）。**撃ち下ろす番は
+    // プレイヤー基準** —— 中心の地面から測ったままだと、柱の上に登られたときに
+    // 頭を取れず、ブレスが柱の腹に当たって終わる。
+    const above = this.phaseOf(mob, def)?.above ?? 0;
+    mob.flyTarget = above > 0 ? ctx.playerY + above : mob.homeY + rule.height;
   }
 
   /**
@@ -1705,6 +1817,9 @@ export class Mobs {
   private fire(mob: Mob, def: MobDef, world: World, dt: number, ctx: MobContext): void {
     const ranged = def.ranged;
     if (!ranged) return;
+    // **撃たない番のあいだは間隔も進めないこと。** 進めると、撃つ番に入った
+    // 瞬間に溜まったぶんが 1 発出る（`advancePhase()` の待たせが効かない）。
+    if (this.phaseOf(mob, def)?.shoot === false) return;
     if (mob.shootTimer > 0) {
       mob.shootTimer = Math.max(0, mob.shootTimer - dt);
       return;

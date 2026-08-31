@@ -222,6 +222,28 @@ export function run(): void {
   }
 
   {
+    // **ブレスは火球とまったく同じ飛び方**（落ちない・勢いも落ちない）で、
+    // 速さだけが 2.5 倍。**上から撃ち下ろすものなので、少しでも落ちると
+    // 狙った所より手前へ着く**（山なりの弾だった頃はドラゴンが撃てなかった）。
+    const arena = field();
+    const p = new Projectiles();
+    p.launch("breath", 0.5, 40, 0.5, 0, 0);
+    advance(p, arena, 0.5);
+    const shot = p.list[0];
+    const fireball = projectileDef("fireball");
+    const breath = projectileDef("breath");
+    console.log(
+      `      ブレス 0.5 秒: z ${shot.position.z.toFixed(3)}（想定 ${(0.5 - breath.speed * 0.5).toFixed(1)}）` +
+        `  y ${shot.position.y.toFixed(3)}  速さ ${breath.speed}m/s（火球 ${fireball.speed} の` +
+        ` ${(breath.speed / fireball.speed).toFixed(1)} 倍）`,
+    );
+    check("落ちない（火球と同じまっすぐな弾道）", Math.abs(shot.position.y - 40) < 1e-6);
+    check("勢いも落ちない", breath.gravityScale === 0 && breath.drag === 0);
+    check("速さは火球の 2.5 倍", Math.abs(breath.speed - fireball.speed * 2.5) < 1e-6);
+    check("速さのぶんだけ進む", Math.abs(shot.position.z - (0.5 - breath.speed * 0.5)) < 1e-3);
+  }
+
+  {
     // ボクセルの無い列では動かさない。無いと `getVoxel` が AIR を返して壁を抜ける。
     const arena = field();
     arena.missingColumns.add("0,0");

@@ -193,10 +193,14 @@ export const PROJECTILE_KINDS: readonly ProjectileDef[] = [
     name: "ブレス",
     half: 0.35,
     color: 0xb05ce6,
-    // わずかに落ちる。まっすぐ飛ばすと、地面に届かず頭上を素通りする。
-    gravityScale: 0.12,
-    drag: 1.5,
-    speed: 6,
+    // **火球とまったく同じ飛び方**（落ちない・勢いも落ちない）。撃つのは
+    // プレイヤーの 10 マス上を回るドラゴンなので、少しでも落ちると狙った所より
+    // 手前へ落ちる（**上から撃ち下ろすものに山なりは要らない**）。
+    gravityScale: 0,
+    drag: 0,
+    // **火球 (12) の 2.5 倍。** 見上げて避けるものなので、火球と同じ速さだと
+    // 落ちてくるまでのあいだに歩いて外れる。
+    speed: 30,
     life: 3,
     onBlock: "vanish",
     glows: true,
