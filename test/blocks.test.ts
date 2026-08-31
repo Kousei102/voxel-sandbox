@@ -16,18 +16,20 @@ import {
   FRAME_HEIGHT,
   GRASS,
   LAVA,
+  LOW_BAND_MAX,
   MAX_BLOCK_ID,
-  MAX_VARIANT_ID,
   PLANK_SLAB,
   PLANK_SLAB_TOP,
   PLANK_STAIRS,
   SANDSTONE_SLAB,
+  SHARED_ID_START,
   STONE,
   STONE_SLAB,
   STONE_SLAB_TOP,
   STONE_STAIRS,
   TALL_GRASS,
   TORCH,
+  VARIANT_BAND_MAX,
   WALL_TORCH_ZN,
   WATER,
   baseBlock,
@@ -77,46 +79,62 @@ import { check, describe } from "./harness";
 export function run(): void {
   describe("ブロック ID の枠");
 
-  // 1..63 は greedy meshing の統合キー（encodeFace は id に 6 ビットしかない）と
-  // アイテム ID を兼ねる。64 以降は面マスクに載らない向き違いだけ。
+  // 3 帯（`blocks.ts` の「ブロック ID の枠」）。1..63 と 64..110 は**凍結**で、
+  // 新しい番号は 111 以降の**ブロックとアイテムで 1 本の列**から取る。
   const cubes = BLOCKS.filter((b) => b.model === "cube");
   const props = BLOCKS.filter((b) => b.model !== "cube");
-  const high = BLOCKS.filter((b) => b.id > MAX_BLOCK_ID);
+  const variantBand = BLOCKS.filter((b) => b.id > LOW_BAND_MAX && b.id <= VARIANT_BAND_MAX);
+  const shared = BLOCKS.filter((b) => b.id >= SHARED_ID_START);
+
+  // **空きは 2 つとも出すこと。** 1..63 が尽きても 111 以降で続けられる、という
+  // 一点がこの枠の全部なので、片方だけ出すと「もう置けない」に見える。
+  const lowFree = LOW_BAND_MAX - BLOCKS.filter((b) => b.id <= LOW_BAND_MAX).length + 1;
+  const sharedUsed = new Set([...shared.map((b) => b.id), ...allItemIds().filter((i) => i >= SHARED_ID_START)]);
+  const sharedFree = MAX_BLOCK_ID - SHARED_ID_START + 1 - sharedUsed.size;
   console.log(
-    `      立方体 ${cubes.length} / 非立方体 ${props.length}` +
-      `（うち 64 以降 ${high.length}）  1..63 の空き ${
-        MAX_BLOCK_ID - BLOCKS.filter((b) => b.id <= MAX_BLOCK_ID).length + 1
-      }`,
+    `      立方体 ${cubes.length} / 非立方体 ${props.length}（うち向き違いの帯 ${variantBand.length}）` +
+      `  1..63 の空き ${lowFree}  111..255 の空き ${sharedFree}`,
   );
 
   check(
-    "立方体はすべて 63 以下（encodeFace の 6 ビットに収まる）",
-    cubes.every((b) => b.id <= MAX_BLOCK_ID),
-    cubes
-      .filter((b) => b.id > MAX_BLOCK_ID)
+    "ID は上限 255 に収まる（ボクセルが Uint8Array）",
+    BLOCKS.every((b) => b.id <= MAX_BLOCK_ID),
+    BLOCKS.filter((b) => b.id > MAX_BLOCK_ID)
       .map((b) => b.name)
-      .join(" ") || "",
+      .join(" "),
   );
   check(
-    "64 以降は立方体でない向き違いだけ",
-    high.every((b) => isProp(b.id) && b.variantOf !== AIR),
-    high.map((b) => `${b.id}:${b.name}`).join(" "),
+    "64..110 は立方体でない向き違いだけ（凍結した帯）",
+    variantBand.every((b) => isProp(b.id) && b.variantOf !== AIR),
+    variantBand.map((b) => `${b.id}:${b.name}`).join(" "),
   );
-  check("ID は上限 255 に収まる", BLOCKS.every((b) => b.id <= MAX_VARIANT_ID));
   check(
     "ID が重複していない",
     new Set(BLOCKS.map((b) => b.id)).size === BLOCKS.length,
     `${BLOCKS.length} 個`,
   );
 
-  // 64 以降の「アイテム」ID は棒・鉱物・道具のもの。**ブロックの 64 以降とは別の空間**で、
-  // 向き違いはアイテムを持たないので衝突しない。ここが崩れると、
-  // 上付きハーフを置いたつもりで棒が消えるような壊れ方をする。
+  // **111 以降はブロックとアイテムで 1 本の番号列。** 片側だけ見て空き番号を取ると、
+  // 「ブロック側では空きなのにアイテム側では埋まっている」番号を掴む。
+  // その番号のブロックを置いてから壊すと、まったく別のアイテムが手に入る。
+  const collisions = shared
+    .filter((b) => itemName(b.id) !== "" && placedBlock(b.id) !== b.id)
+    .map((b) => `${b.id}:${b.name} ↔ アイテム ${itemName(b.id)}`);
+  check(
+    "111 以降で 1 つの番号を 2 つのものが取っていない",
+    collisions.length === 0,
+    collisions.join(" / ") || `共有帯の使用済み ${sharedUsed.size} 個`,
+  );
+
+  // **向き違いはアイテムを持たない**（`items.ts` が `variantOf` のあるものを飛ばす）。
+  // だから 64..110 の帯は、同じ番号のアイテム（棒 64・鉱物・道具）と数字が重なっていても
+  // 衝突しない。ここが崩れると、上付きハーフを置いたつもりで棒が消えるような壊れ方をする。
   const items = new Set(allItemIds());
+  const variants = BLOCKS.filter((b) => b.variantOf !== AIR);
   check(
     "向き違いの ID にアイテムを作っていない",
-    high.every((b) => placedBlock(b.id) !== b.id),
-    `${high.length} 個（例: ${high
+    variants.every((b) => placedBlock(b.id) !== b.id),
+    `${variants.length} 個（例: ${variants
       .slice(0, 3)
       .map((b) => `${b.id}:${b.name} ↔ アイテム ${itemName(b.id) || "なし"}`)
       .join(" / ")}）`,
@@ -369,7 +387,7 @@ export function run(): void {
   check("向き 4 × 上下 2 で 8 通りある", states.size === 8, `${states.size} 通り`);
   check(
     "大元以外はすべて 64 以降",
-    [...states].filter((id) => id !== STONE_STAIRS).every((id) => id > MAX_BLOCK_ID),
+    [...states].filter((id) => id !== STONE_STAIRS).every((id) => id > LOW_BAND_MAX),
     [...states].join(","),
   );
   check(
@@ -493,7 +511,7 @@ export function run(): void {
 
   describe("草むら");
 
-  check("草むらは 63 以下（アイテムとして持てる）", TALL_GRASS <= MAX_BLOCK_ID, `ID ${TALL_GRASS}`);
+  check("草むらは 63 以下（アイテムとして持てる）", TALL_GRASS <= LOW_BAND_MAX, `ID ${TALL_GRASS}`);
   check("草むらにはアイテムがある", items.has(TALL_GRASS) && placedBlock(TALL_GRASS) === TALL_GRASS);
   // 地面の「草」ブロックと名前で見分けが付くこと（アイテム欄で並ぶので、同名だと選べない）
   check(
@@ -725,7 +743,7 @@ function endPortalFrames(): void {
   );
   check(
     "大元以外は 64 以降",
-    all.filter((id) => id !== END_PORTAL_FRAME).every((id) => id > MAX_BLOCK_ID),
+    all.filter((id) => id !== END_PORTAL_FRAME).every((id) => id > LOW_BAND_MAX),
     all.join(" "),
   );
   check("上下の向きでは枠にならない", endPortalFrame(FACE_YP, false) === AIR && endPortalFrame(FACE_YN, true) === AIR);

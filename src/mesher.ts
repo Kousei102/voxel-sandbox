@@ -70,8 +70,9 @@ const maskBlock = new Int32Array(CHUNK_SIZE * CHUNK_SIZE);
  * greedy meshing。3 軸それぞれについてスライスごとの面マスクを作り、
  * 同一の面（ブロック・向き・AO・光量がすべて一致）を長方形に統合する。
  *
- * 光は 2 系統あって合計 47 ビットになり Int32 1 本には収まらないので、
- * マスクを 2 枚に分けて**両方が一致したときだけ**統合する。
+ * 統合キーは合計 49 ビットあって Int32 1 本には収まらないので、
+ * マスクを 2 枚に分けて**両方が一致したときだけ**統合する
+ * （1 枚目 = id 8 + 向き 1 + スカイ 16、2 枚目 = ブロックライト 16 + AO 8）。
  */
 export function buildChunkMesh(
   pad: Uint8Array,
@@ -124,12 +125,12 @@ export function buildChunkMesh(
           // 立方体でないブロックは専用パスが描くので、ここでは面を作らない
           if (inA && a !== AIR && !isProp(a) && !isOpaque(b) && b !== a) {
             faceCorners(skyPad, blockPad, anyBlockLight, solid, x, q, 1, u, v, ao, sky, block);
-            mask[n] = encodeFace(a, 1, ao, sky);
-            maskBlock[n] = anyBlockLight ? encodeLight(block) : 0;
+            mask[n] = encodeFace(a, 1, sky);
+            maskBlock[n] = encodeLight(block, ao);
           } else if (inB && b !== AIR && !isProp(b) && !isOpaque(a) && a !== b) {
             faceCorners(skyPad, blockPad, anyBlockLight, solid, x, q, -1, u, v, ao, sky, block);
-            mask[n] = encodeFace(b, -1, ao, sky);
-            maskBlock[n] = anyBlockLight ? encodeLight(block) : 0;
+            mask[n] = encodeFace(b, -1, sky);
+            maskBlock[n] = encodeLight(block, ao);
           } else {
             mask[n] = 0;
           }
@@ -162,20 +163,20 @@ export function buildChunkMesh(
             h++;
           }
 
-          const id = value & 0x3f;
-          const dir = (value >> 6) & 1 ? -1 : 1;
-          ao[0] = (value >> 7) & 3;
-          ao[1] = (value >> 9) & 3;
-          ao[2] = (value >> 11) & 3;
-          ao[3] = (value >> 13) & 3;
-          sky[0] = (value >> 15) & 15;
-          sky[1] = (value >> 19) & 15;
-          sky[2] = (value >> 23) & 15;
-          sky[3] = (value >> 27) & 15;
+          const id = value & 0xff;
+          const dir = (value >> 8) & 1 ? -1 : 1;
+          sky[0] = (value >> 9) & 15;
+          sky[1] = (value >> 13) & 15;
+          sky[2] = (value >> 17) & 15;
+          sky[3] = (value >> 21) & 15;
           block[0] = lightValue & 15;
           block[1] = (lightValue >> 4) & 15;
           block[2] = (lightValue >> 8) & 15;
           block[3] = (lightValue >> 12) & 15;
+          ao[0] = (lightValue >> 16) & 3;
+          ao[1] = (lightValue >> 18) & 3;
+          ao[2] = (lightValue >> 20) & 3;
+          ao[3] = (lightValue >> 22) & 3;
 
           x[u] = i;
           x[v] = j;
@@ -451,27 +452,48 @@ function cross(
 
 /**
  * 面の情報を 1 つの整数に詰める。ここと encodeLight の**両方**が一致する面だけが
- * greedy に統合される。ビット配置: id 0-5 / 向き 6 / AO 7-14 (2bit x4) / スカイ 15-30 (4bit x4)。
- * 31 ビット目は Int32Array の符号ビットなので使えない。
+ * greedy に統合される。ビット配置: **id 0-7** / 向き 8 / スカイ 9-24 (4bit x4) で 25 ビット。
+ * 31 ビット目は Int32Array の符号ビットなので使えない（残りは 6 ビット）。
+ *
+ * **id は必ず 1 枚目の下位に置くこと。** `mask[n] === 0` が「面が無い」の目印で、
+ * id 0（AIR）は面を作らないので衝突しない。id を上位へ動かすと、
+ * **id 以外が全部 0 の面**（AO もスカイも 0 の、洞窟の奥の壁）が「面が無い」と
+ * 読まれて丸ごと消える。
+ *
+ * **AO を 2 枚目へ移して id を 6 → 8 ビットに広げてあります**（立方体の ID の枠が
+ * 63 で尽きたため。`blocks.ts` の「ブロック ID の枠」）。ボクセルが `Uint8Array` なので
+ * 8 ビットで天井に届いていますが、さらに要るなら**スカイを 2 枚目へ移せば 14 ビットまで**
+ * 広げられます（そちらは `Uint16Array` の話が先に来ます）。
  */
-function encodeFace(id: number, dir: number, ao: number[], sky: number[]): number {
+function encodeFace(id: number, dir: number, sky: number[]): number {
   return (
-    (id & 0x3f) |
-    (dir < 0 ? 1 << 6 : 0) |
-    (ao[0] << 7) |
-    (ao[1] << 9) |
-    (ao[2] << 11) |
-    (ao[3] << 13) |
-    (sky[0] << 15) |
-    (sky[1] << 19) |
-    (sky[2] << 23) |
-    (sky[3] << 27)
+    (id & 0xff) |
+    (dir < 0 ? 1 << 8 : 0) |
+    (sky[0] << 9) |
+    (sky[1] << 13) |
+    (sky[2] << 17) |
+    (sky[3] << 21)
   );
 }
 
-/** 四隅のブロックライトだけを詰めた 2 枚目のマスク（16 ビット）。 */
-function encodeLight(level: number[]): number {
-  return level[0] | (level[1] << 4) | (level[2] << 8) | (level[3] << 12);
+/**
+ * 2 枚目のマスク。四隅のブロックライト 0-15 (4bit x4) と **AO 16-23 (2bit x4)** で 24 ビット。
+ *
+ * **ブロックライトが 1 つも無いチャンクでも呼ぶこと**（AO がこちらに乗ったので、
+ * 昔のように `anyBlockLight` が false なら 0、とはできません）。`faceCorners()` が
+ * `block[]` に 0 を書くので、読みに行く費用は掛かりません。
+ */
+function encodeLight(level: number[], ao: number[]): number {
+  return (
+    level[0] |
+    (level[1] << 4) |
+    (level[2] << 8) |
+    (level[3] << 12) |
+    (ao[0] << 16) |
+    (ao[1] << 18) |
+    (ao[2] << 20) |
+    (ao[3] << 22)
+  );
 }
 
 /**

@@ -79,6 +79,51 @@ export function run(): void {
   check("遮蔽物があると上面に AO の明暗が出る", tones.size > 1, `明度 ${tones.size} 段階`);
   check("AO のせいで統合が過剰に崩れない", shaded.indices.length / 3 < 40, `${shaded.indices.length / 3} 三角形`);
 
+  describe("面マスクの詰め方（ID は 8 ビット）");
+
+  // **63 を超えるブロック ID が下位 6 ビットに潰れていないか。**
+  // `encodeFace` は id を 6 → 8 ビットに広げてある（AO を 2 枚目のマスクへ移した）。
+  // 潰れても例外は出ず、**別のブロックとして描かれる**形でしか出ないので、
+  // 「水に潰れる ID」を置いて半透明側に回っていないことを見る。
+  // 6 ビットだった頃は、この ID が水と同じ扱いになって translucent 側に出た。
+  const WATER_ALIAS = WATER + 128;
+  pad.fill(AIR);
+  put(5, 5, 5, WATER_ALIAS);
+  const alias = buildChunkMesh(pad, lightPad, blockPad);
+  check(
+    `ID ${WATER_ALIAS} が水（${WATER}）に潰れていない`,
+    alias.translucent === null && alias.opaque !== null,
+    alias.translucent ? "半透明側に出た（下位 6 ビットで読まれている）" : "不透明側だけに出た",
+  );
+
+  // 統合キーそのもの。**下位 6 ビットが同じ別の ID**（+64 したもの）が 1 枚に混ざると、
+  // 隣り合う 2 種類のブロックが片方の色で塗られる。上面の枚数だけを数えれば、
+  // 側面（もともと別のスライスなので統合されない）に紛れずに見える。
+  const topQuads = (m: { normals: Float32Array }) => {
+    let n = 0;
+    for (let i = 0; i < m.normals.length; i += 3) if (m.normals[i + 1] === 1) n++;
+    return n / 4;
+  };
+  const HIGH_ID = 130;
+  pad.fill(AIR);
+  put(5, 5, 5, HIGH_ID);
+  put(6, 5, 5, HIGH_ID + 64);
+  const twoIds = buildChunkMesh(pad, lightPad, blockPad).opaque!;
+  pad.fill(AIR);
+  put(5, 5, 5, HIGH_ID);
+  put(6, 5, 5, HIGH_ID);
+  const sameId = buildChunkMesh(pad, lightPad, blockPad).opaque!;
+  console.log(
+    `      上面の枚数: ${HIGH_ID}+${HIGH_ID + 64} → ${topQuads(twoIds)} 枚 / ` +
+      `${HIGH_ID} を 2 つ → ${topQuads(sameId)} 枚`,
+  );
+  check(
+    "下位 6 ビットが同じでも、別の ID なら統合されない",
+    topQuads(twoIds) === 2,
+    `${topQuads(twoIds)} 枚`,
+  );
+  check("同じ ID なら 64 以降でも統合される", topQuads(sameId) === 1, `${topQuads(sameId)} 枚`);
+
   describe("立方体でないブロック（松明）");
 
   pad.fill(AIR);

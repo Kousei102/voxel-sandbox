@@ -10,7 +10,7 @@ import {
   GRASS,
   GRAVEL,
   LEAVES,
-  MAX_BLOCK_ID,
+  LOW_BAND_MAX,
   NETHER_PORTAL,
   SPRUCE_LEAVES,
   STONE,
@@ -24,13 +24,18 @@ import {
 } from "./blocks";
 
 /**
- * アイテム ID の空間。
+ * アイテム ID の空間。**ブロック ID と同じ番号列**（`blocks.ts` の「ブロック ID の枠」）。
  *
- * **1..63 はブロック ID とそのまま同じ番号**（置けるアイテム）。64 以降が棒・鉱物・道具。
- * ブロック ID は mesher の都合で 63 までなので、この境目は動かさないこと。
+ * - **1..63**: ブロック ID とそのまま同じ番号（置けるアイテム）。**凍結**
+ * - **64..94**: 棒・鉱物・道具・食べ物。ブロック側の 64..110（向き違い）と数字が
+ *   重なっているが、向き違いはアイテムを持たないので衝突しない。**凍結**
+ * - **111 以降（`SHARED_ID_START`）**: ブロックと 1 本の番号列。**新しいアイテムはここから。**
+ *   95..110 は空けたままにすること —— **ブロック側の向き違いが使っている番号**なので、
+ *   ここにアイテムを置くと「アイテム 96 とベッドの向き違い 96」が同じ番号を指す
  */
 export const NO_ITEM = 0;
-export const FIRST_NON_BLOCK = MAX_BLOCK_ID + 1;
+/** 1..63 の次（= 64）。**歴史的な区切り**なので、`MAX_BLOCK_ID` からは作らないこと。 */
+export const FIRST_NON_BLOCK = LOW_BAND_MAX + 1;
 
 export const STICK = 64;
 export const COAL = 65;
