@@ -1,6 +1,12 @@
 import { Color, Vector3 } from "three";
 import { WATER, liquidFog } from "./blocks";
-import { CHUNK_SIZE, DAY_LENGTH_SECONDS, NIGHT_BRIGHTNESS, RENDER_DISTANCE } from "./constants";
+import {
+  CHUNK_SIZE,
+  DAY_LENGTH_SECONDS,
+  DAY_MINUTES,
+  NIGHT_BRIGHTNESS,
+  RENDER_DISTANCE,
+} from "./constants";
 
 /**
  * 時刻から空の色・地形の明るさ・太陽と月の位置を決める。
@@ -243,7 +249,7 @@ export class DayNight {
 
   /** "06:00" 形式。t = 0 を 06:00 とする（Minecraft と同じ割り当て）。 */
   clock(): string {
-    const minutes = Math.floor(wrap01(this.t + 0.25) * 1440);
+    const minutes = Math.floor(wrap01(this.t + 0.25) * DAY_MINUTES);
     const h = Math.floor(minutes / 60);
     const m = minutes % 60;
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;

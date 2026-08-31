@@ -9,6 +9,7 @@ paths:
   - "index.html"
   - "test/ui.test.ts"
   - "src/style.css"
+  - "src/view.ts"
   - "src/boss.ts"
   - "test/boss.test.ts"
 ---
@@ -25,6 +26,13 @@ paths:
   **index.html には書きません。**
 - `class="hidden"` で丸ごと消えるのは `#hud` `#menu` `#inventory` `#death` です。
   ここに入れてよいのは、そのパネルを見ている間だけ意味がある表示だけです。
+- **メニュー（Esc の設定パネル）の DOM は `ui.ts` の `Menu`** です。`main.ts` が渡すのは
+  中身（`MenuHooks`）だけで、**種の読み方も新しいワールドの後始末も `session.ts`**
+  （`parseSeed()` / `forgetWorld()` / `forgetEverything()`）。ボタンを足すときも
+  「id を引くのは `ui.ts`、何が起きるかは `main.ts`、判断は判断のファイル」に揃えること。
+- **three の器（`renderer` / `scene` / `camera` / `fog` / `sky` / 選択枠 / ひび割れ）は
+  `view.ts`** です。作って置くだけの場所なので、**数値の判断を書かないこと**
+  （フォグの濃さは `daynight.ts`、選択枠の大きさは `shapeBounds()`）。
 
 ## ボスの合図（体力バーとクリア画面）
 

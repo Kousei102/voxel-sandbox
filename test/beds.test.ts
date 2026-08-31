@@ -22,6 +22,7 @@ import { Beds, clearBedPartner, placeBed, sleepDecision } from "../src/beds";
 import { DIMENSIONS, NETHER, OVERWORLD } from "../src/dimensions";
 import { World } from "../src/world";
 import { WorldGen } from "../src/worldgen";
+import { sourceOf } from "./arena";
 import { check, describe } from "./harness";
 
 /** 置く材料。`placeSpot()` が返すものと同じ形（ベッドは `facing` だけを見る）。 */
@@ -281,6 +282,33 @@ export function run(): void {
     world.setVoxel(1, floor, 1, AIR);
     check("ベッドが消えていたら使わない", beds.spawnPosition(world) === null);
     check("記録そのものは残る（知らせるため）", beds.spawnPoint !== null);
+  }
+
+  {
+    // **叩いたマスから足側を割り出すのは `beds.ts`**（`main.ts` に相方を辿らせない）。
+    // 枕側で覚えると、相方を辿らずに「ベッドがまだあるか」を見られなくなる。
+    const { world, floor } = flatWorld();
+    const foot = placedVariant(BED, spotAt(1, floor, 1, FACE_XP));
+    placeBed(world, spotAt(1, floor, 1, FACE_XP), foot);
+    const head = bedPartner(foot);
+
+    const fromFoot = new Beds(OVERWORLD);
+    fromFoot.setFrom(1, floor, 1, foot, OVERWORLD);
+    check("足側を叩いたらそのマス", JSON.stringify([fromFoot.spawnPoint?.x, fromFoot.spawnPoint?.z]) === "[1,1]");
+
+    const fromHead = new Beds(OVERWORLD);
+    if (head) fromHead.setFrom(1 + head.dx, floor, 1 + head.dz, head.id, OVERWORLD);
+    check(
+      "枕側を叩いても足側を覚える",
+      fromHead.spawnPoint?.x === 1 && fromHead.spawnPoint?.z === 1,
+      `${fromHead.spawnPoint?.x},${fromHead.spawnPoint?.z}`,
+    );
+    // 覚えた先がベッドとして読めること（**足側でなければ `spawnPosition()` が null になる**）。
+    check("枕側から覚えても使える地点になる", fromHead.spawnPosition(world) !== null);
+    check("次元も一緒に覚える", fromHead.spawnPoint?.dim === OVERWORLD);
+
+    const main = sourceOf("src/main.ts");
+    check("main.ts が相方を辿っていない", !main.includes("isBedHead("));
   }
 
   {

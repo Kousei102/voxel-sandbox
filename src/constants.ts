@@ -46,6 +46,11 @@ export const LIGHT_FALLOFF = 1.4;
 /** 昼夜 1 周にかかる実時間 (秒)。Minecraft と同じ 20 分。 */
 export const DAY_LENGTH_SECONDS = 1200;
 /**
+ * ゲーム内 1 日の分数。**時計の表示（`daynight.ts` の `clock()`）と
+ * メニューの時刻つまみが同じ刻みを使う**ので、1 か所に置く。
+ */
+export const DAY_MINUTES = 1440;
+/**
  * 真夜中の明るさ倍率。頂点カラーに焼いた光量にこれを掛ける。
  * 0 にすると夜が完全な暗闇になり、光源を持たないこのゲームでは何もできなくなる。
  */

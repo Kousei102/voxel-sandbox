@@ -1,0 +1,226 @@
+import {
+  AIR,
+  BED,
+  CHEST,
+  COBBLE,
+  DIRT,
+  FURNACE,
+  FURNACE_LIT,
+  GRAVEL,
+  STONE,
+  TORCH,
+  bedPartner,
+} from "../src/blocks";
+import { autoBreak, tryBreak, type BreakContainers } from "../src/breaking";
+import { FLINT, NO_ITEM, WOOD_PICKAXE, itemName } from "../src/items";
+import { Slab, sourceOf } from "./arena";
+import { check, describe } from "./harness";
+
+/** 中身を返す器の偽物。**取り除かれた回数も数える**（壊したのに呼ばれない、を見つける）。 */
+function container(held: { item: number; count: number }[] = []) {
+  const calls: string[] = [];
+  return {
+    calls,
+    remove(x: number, y: number, z: number) {
+      calls.push(`${x},${y},${z}`);
+      return held;
+    },
+  };
+}
+
+function containers(
+  furnaceHeld: { item: number; count: number }[] = [],
+  chestHeld: { item: number; count: number }[] = [],
+): BreakContainers & { furnaces: ReturnType<typeof container>; chests: ReturnType<typeof container> } {
+  return { furnaces: container(furnaceHeld), chests: container(chestHeld) };
+}
+
+/** 掘る注文（並はサバイバル・木のツルハシ・抽選は真ん中）。 */
+function order(id: number, over: Partial<Parameters<typeof tryBreak>[2]> = {}) {
+  return { x: 0, y: 11, z: 0, id, tool: WOOD_PICKAXE, creative: false, roll: 0.5, ...over };
+}
+
+export function run(): void {
+  describe("壊したときに何が落ちるか");
+
+  // --- 切り分け（`breaking.ts` は判断だけを持つ） ---
+  const source = sourceOf("src/breaking.ts");
+  const leaked = [
+    "document.",
+    "Mesh",
+    "AudioContext",
+    // **乱数は呼ぶ側が作る**（`rollDrop()` と同じ約束）。
+    "Math.random(",
+    // `World` を丸ごと受け取らない（`beds.ts` / `placing.ts` と同じ作法）。
+    'from "three"',
+    'from "./world"',
+    'from "./drops"',
+  ].filter((name) => source.includes(name));
+  check("breaking.ts は判断だけを持つ（乱数も作らない）", leaked.length === 0, leaked.join(" "));
+
+  // もとは `main.ts` の `breakBlock()` と `onAutoBreak`。**戻っていないこと**を語で見る
+  // （`test/ui.test.ts` の `.chance` と同じ作法）。
+  const main = sourceOf("src/main.ts");
+  const backInMain = ["rollDrop(", "canHarvest(", "clearBedPartner("].filter((name) => main.includes(name));
+  check("main.ts に落とす判断が戻っていない", backInMain.length === 0, backInMain.join(" "));
+
+  // --- 掘って壊す ---
+  {
+    const world = new Slab();
+    world.setVoxel(0, 11, 0, STONE);
+    const out = tryBreak(world, containers(), order(STONE));
+    check("掘ったマスは空になる", world.getVoxel(0, 11, 0) === AIR);
+    check("丸石が 1 個落ちる", out.drops.length === 1 && out.drops[0].item === COBBLE, describeDrops(out.drops));
+    check("落とす場所はマスの中心（少し上）", out.drops[0].x === 0.5 && out.drops[0].z === 0.5);
+    check("掘ったぶんの消耗を足す", out.exhaust);
+  }
+
+  // **書き込めない列では何もしない。** 未読み込みの列では `setVoxel` が黙って失敗するので、
+  // ここで落とすと「掘れていないのにアイテムだけ増える」ことになる。
+  {
+    const frozen = new Slab();
+    frozen.setVoxel(0, 11, 0, STONE);
+    frozen.frozenColumns.add("0,0");
+    const out = tryBreak(frozen, containers(), order(STONE));
+    check("書き込めなければ壊れていない", !out.broken);
+    check("書き込めなければ何も落ちない", out.drops.length === 0);
+    check("書き込めなければ消耗も足さない", !out.exhaust);
+  }
+
+  // **階層が足りない道具では何も落ちない。** それでも消耗は足す（掘った労力は同じ）。
+  {
+    const world = new Slab();
+    world.setVoxel(0, 11, 0, STONE);
+    const out = tryBreak(world, containers(), order(STONE, { tool: NO_ITEM }));
+    check("素手で石を掘っても何も落ちない", out.broken && out.drops.length === 0);
+    check("落ちなくても消耗は足す", out.exhaust);
+  }
+
+  // 素手で掘れるものは落ちる（`minTier` 0）。
+  {
+    const world = new Slab();
+    world.setVoxel(0, 11, 0, DIRT);
+    const out = tryBreak(world, containers(), order(DIRT, { tool: NO_ITEM }));
+    check("土は素手で落ちる", out.drops.length === 1 && out.drops[0].item === DIRT, describeDrops(out.drops));
+  }
+
+  // **確率は `items.ts` の `rollDrop()`。** ここは渡された値で分かれるだけ
+  // （砂利は 10% で火打石、外したら砂利そのもの）。
+  {
+    const world = new Slab();
+    world.setVoxel(0, 11, 0, GRAVEL);
+    const hit = tryBreak(world, containers(), order(GRAVEL, { tool: NO_ITEM, roll: 0.05 }));
+    world.setVoxel(0, 11, 0, GRAVEL);
+    const miss = tryBreak(world, containers(), order(GRAVEL, { tool: NO_ITEM, roll: 0.5 }));
+    check(
+      "抽選の値がそのまま効く（砂利 → 火打石 / 砂利）",
+      hit.drops[0]?.item === FLINT && miss.drops[0]?.item === GRAVEL,
+      `${describeDrops(hit.drops)} / ${describeDrops(miss.drops)}`,
+    );
+  }
+
+  // --- クリエイティブ ---
+  {
+    const world = new Slab();
+    world.setVoxel(0, 11, 0, STONE);
+    const out = tryBreak(world, containers(), order(STONE, { creative: true }));
+    check("クリエイティブでは何も落ちない", out.broken && out.drops.length === 0);
+    check("クリエイティブでは腹も減らない", !out.exhaust);
+  }
+
+  // --- 器の中身（**クリエイティブでも出す**） ---
+  {
+    const world = new Slab();
+    world.setVoxel(0, 11, 0, FURNACE_LIT);
+    const bag = containers([{ item: COBBLE, count: 7 }]);
+    const out = tryBreak(world, bag, order(FURNACE_LIT, { creative: true }));
+    check("点火中のかまども中身を出す（大元の ID で見る）", bag.furnaces.calls.length === 1, bag.furnaces.calls.join(" "));
+    check(
+      "かまどの中身はクリエイティブでも落ちる",
+      out.drops.length === 1 && out.drops[0].item === COBBLE && out.drops[0].count === 7,
+      describeDrops(out.drops),
+    );
+  }
+  {
+    const world = new Slab();
+    world.setVoxel(0, 11, 0, CHEST);
+    const bag = containers([], [{ item: STONE, count: 64 }]);
+    const out = tryBreak(world, bag, order(CHEST, { creative: true }));
+    check("チェストの中身もクリエイティブで落ちる", out.drops.length === 1, describeDrops(out.drops));
+    check("かまどの器は呼ばない", bag.furnaces.calls.length === 0);
+  }
+  // かまどでないものを壊したときに器を触らないこと（触ると、隣のかまどの中身が消えうる）。
+  {
+    const world = new Slab();
+    world.setVoxel(0, 11, 0, STONE);
+    const bag = containers([{ item: COBBLE, count: 1 }], [{ item: COBBLE, count: 1 }]);
+    tryBreak(world, bag, order(STONE));
+    check(
+      "器でないブロックでは器に触らない",
+      bag.furnaces.calls.length === 0 && bag.chests.calls.length === 0,
+    );
+  }
+
+  // --- ベッドは 2 マスで 1 台（**どちらを壊しても相方も消す**） ---
+  {
+    const partner = bedPartner(BED);
+    const world = new Slab();
+    world.setVoxel(0, 11, 0, BED);
+    if (partner) world.setVoxel(partner.dx, 11, partner.dz, partner.id);
+    const out = tryBreak(world, containers(), order(BED, { creative: true }));
+    check(
+      "クリエイティブでも相方が消える",
+      partner !== null && world.getVoxel(partner.dx, 11, partner.dz) === AIR,
+    );
+    check("相方のぶんは落とさない（出るベッドは 1 個）", out.drops.length === 0, describeDrops(out.drops));
+  }
+
+  // --- 支えを失って壊れたぶん（`World.onAutoBreak`） ---
+  {
+    const world = new Slab();
+    // **道具を見ない。** 松明は支えが消えて落ちたので、適正も何もない。
+    const dropped = autoBreak(world, 2, 12, 3, TORCH, false, 0.5);
+    check("支えを失った松明は落ちる", dropped.length === 1 && dropped[0].item === TORCH, describeDrops(dropped));
+    check("落とす場所はそのマスの中心", dropped[0].x === 2.5 && dropped[0].z === 3.5);
+    check("クリエイティブでは落ちない", autoBreak(world, 2, 12, 3, TORCH, true, 0.5).length === 0);
+  }
+  {
+    // **ベッドの相方はクリエイティブでも消す**（床を掘られた半分だけが消えると、
+    // 相方の居ないベッドが残る）。
+    const partner = bedPartner(BED);
+    const world = new Slab();
+    if (partner) world.setVoxel(partner.dx, 11, partner.dz, partner.id);
+    autoBreak(world, 0, 11, 0, BED, true, 0.5);
+    check(
+      "支えを失ったベッドも相方を連れていく（クリエイティブでも）",
+      partner !== null && world.getVoxel(partner.dx, 11, partner.dz) === AIR,
+    );
+  }
+
+  // 2 つの経路が**同じ規則**で落とすこと（片方だけ直すと静かにずれる）。
+  {
+    const world = new Slab();
+    world.setVoxel(0, 11, 0, GRAVEL);
+    const mined = tryBreak(world, containers(), order(GRAVEL, { tool: NO_ITEM, roll: 0.05 })).drops;
+    const fell = autoBreak(world, 0, 11, 0, GRAVEL, false, 0.05);
+    check(
+      "掘った経路と支えを失った経路で落ちるものが同じ",
+      mined[0]?.item === fell[0]?.item && mined[0]?.count === fell[0]?.count,
+      `${describeDrops(mined)} / ${describeDrops(fell)}`,
+    );
+  }
+
+  // かまどは大元の ID で見ているか（点火中と消えているのが同じ 1 台）。
+  {
+    const world = new Slab();
+    world.setVoxel(0, 11, 0, FURNACE);
+    const bag = containers([{ item: COBBLE, count: 1 }]);
+    tryBreak(world, bag, order(FURNACE));
+    check("消えているかまども中身を出す", bag.furnaces.calls.length === 1);
+  }
+}
+
+function describeDrops(drops: readonly { item: number; count: number }[]): string {
+  if (drops.length === 0) return "なし";
+  return drops.map((d) => `${itemName(d.item)} x${d.count}`).join(" / ");
+}

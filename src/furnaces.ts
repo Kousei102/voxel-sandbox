@@ -10,6 +10,7 @@
  * 渡すだけにしてある（`drops.ts` が `world` を書き換えないのと同じ筋）。
  */
 
+import { AIR, FURNACE, FURNACE_LIT, baseBlock } from "./blocks";
 import type { Slot } from "./inventory";
 import { isEmpty } from "./inventory";
 import {
@@ -21,6 +22,22 @@ import {
   tickFurnace,
   type FurnaceState,
 } from "./smelting";
+
+/**
+ * 点火の表示を合わせるために書くブロック ID。**書くものが無ければ `AIR`。**
+ *
+ * **どの ID を使うかはこのファイルの話**なので、`main.ts` に
+ * `lit ? FURNACE_LIT : FURNACE` を書かないこと（かまどの状態違いが増えたときに、
+ * 書く側だけ直し忘れて「火が消えているのに光ったまま」が戻る）。
+ *
+ * **もうかまどが無い**（掘られた・上書きされた）ときも `AIR` を返す —— 呼ぶ側は
+ * 「合わせるものが無い＝合った」として扱う（`main.ts` の `syncFurnaceBlocks()`）。
+ */
+export function litVoxel(current: number, lit: boolean): number {
+  if (baseBlock(current) !== FURNACE) return AIR;
+  const want = lit ? FURNACE_LIT : FURNACE;
+  return current === want ? AIR : want;
+}
 
 interface Entry {
   readonly state: FurnaceState;

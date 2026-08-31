@@ -13,6 +13,8 @@
  */
 
 import type { DimensionState, SaveShape } from "./dimensions";
+import { hashSeed } from "./noise";
+import { clampVolume } from "./sfx";
 import type { SaveData } from "./storage";
 import { serializeEdits } from "./storage";
 import { MAX_HEALTH, MAX_HUNGER } from "./vitals";
@@ -132,6 +134,108 @@ export function restoredValues(saved: SaveData | null | undefined): {
       ? Math.max(0, Math.min(MAX_HUNGER, saved.hunger))
       : null;
   return { time, health, hunger };
+}
+
+/**
+ * 読み込み直後に値を戻す先。**器そのものではなく必要な入口だけ**を受け取るので、
+ * テストは偽物を並べるだけで書ける（`StateSources` と同じ作法）。
+ */
+export interface RestoreTargets {
+  readonly dayNight: { setTime(t: number): void };
+  readonly inventory: { deserialize(data: number[] | undefined): void };
+  readonly craft: { deserialize(data: number[] | undefined): void; returnAll(): void };
+  readonly audio: { setVolume(volume: number): void };
+  /** 体力と空腹は代入で戻す（`Vitals` の持ち方に合わせてある）。 */
+  readonly vitals: { health: number; hunger: number };
+}
+
+export interface RestoreResult {
+  readonly creative: boolean;
+  /** 盤面に預かり物があったか。**あったなら次の保存で `craft` のキーごと消す。** */
+  readonly returned: boolean;
+}
+
+/**
+ * 読んだセーブを器へ戻す。**順番そのものが判断です:**
+ *
+ * 1. **盤面（`craft`）はインベントリを入れたあとで返すこと。** 掴んでいた山も盤面の中身も
+ *    「預かり物」なので、読んだらそのままインベントリへ返します（開いたままタブを閉じても
+ *    アイテムが消えない）。先に返すと、まだ空のインベントリに返してから
+ *    セーブぶんで上書きすることになり、**預かり物が丸ごと消えます。**
+ * 2. 返しきれなかったぶんは盤面に残り、次に空きができたときにまた返ります。
+ *
+ * **`main.ts` に `typeof saved?.health === "number"` のような均しを書き戻さないこと**
+ * （均しは `restoredValues()`。ここはそれを貼るだけ）。
+ */
+export function applyRestore(
+  saved: SaveData | null | undefined,
+  targets: RestoreTargets,
+): RestoreResult {
+  const restored = restoredValues(saved);
+  if (restored.time !== null) targets.dayNight.setTime(restored.time);
+
+  targets.inventory.deserialize(saved?.inventory);
+  // **必ずインベントリを入れたあとで**（上の 1.）。
+  targets.craft.deserialize(saved?.craft);
+  targets.craft.returnAll();
+
+  targets.audio.setVolume(clampVolume(saved?.volume));
+  if (restored.health !== null) targets.vitals.health = restored.health;
+  if (restored.hunger !== null) targets.vitals.hunger = restored.hunger;
+
+  return { creative: saved?.creative ?? false, returned: Boolean(saved?.craft) };
+}
+
+/**
+ * メニューに打ち込まれた種の解釈。数字ならその値、そうでなければ文字列から作る。
+ * **空欄なら `now`**（毎回違うワールドになる）。
+ */
+export function parseSeed(text: string, now: number): number {
+  const trimmed = text.trim();
+  if (/^\d+$/.test(trimmed)) return Number(trimmed) >>> 0;
+  return hashSeed(trimmed || String(now));
+}
+
+/**
+ * 別のワールドを始めるときに忘れるもの。**世界をまたいで持ち越すものだけ**が並ぶ
+ * （`edits` や落とし物は `startWorld()` が次元のぶんに差し替えるので、ここには要らない）。
+ */
+export interface WorldBelongings {
+  /** いま居ない次元の預かり物。**忘れないと、前のワールドの持ち物が新しい世界に出てくる。** */
+  readonly dims: { reset(): void };
+  /** リスポーン地点。**次元を移るときは消さない**ので、消すのはここと `forgetEverything()` だけ。 */
+  readonly beds: { clear(): void };
+}
+
+/** 保存データを消すときに空にするもの（上に加えて、集めた持ち物そのもの）。 */
+export interface SavedBelongings extends WorldBelongings {
+  readonly inventory: { clear(): void };
+  readonly craft: { discardAll(): void };
+  readonly drops: { clear(): void };
+  readonly furnaces: { clear(): void };
+  readonly chests: { clear(): void };
+}
+
+/**
+ * 「この種で作り直す」の後始末。**忘れると、前のワールドで別の次元に置いてきたものが
+ * 新しいワールドに出てきます**（`rules/dimensions.md`）。
+ */
+export function forgetWorld(bag: WorldBelongings): void {
+  bag.dims.reset();
+  bag.beds.clear();
+}
+
+/**
+ * 「保存データを削除」の後始末。**地面に落ちているぶんと器の中身まで消すこと** ——
+ * 残すと、消したはずの持ち物が拾い直せてしまいます。
+ */
+export function forgetEverything(bag: SavedBelongings): void {
+  forgetWorld(bag);
+  bag.inventory.clear();
+  bag.craft.discardAll();
+  bag.drops.clear();
+  bag.furnaces.clear();
+  bag.chests.clear();
 }
 
 /**

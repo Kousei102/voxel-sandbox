@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import {
+  AIR,
   COBBLE,
   FURNACE,
   FURNACE_LIT,
@@ -13,7 +14,7 @@ import {
 } from "../src/blocks";
 import { findRecipe } from "../src/crafting";
 import { CraftScreen } from "../src/craftscreen";
-import { Furnaces } from "../src/furnaces";
+import { Furnaces, litVoxel } from "../src/furnaces";
 import { INVENTORY_SIZE, Inventory, isEmpty, type Slot } from "../src/inventory";
 import {
   COAL,
@@ -309,6 +310,19 @@ export function run(): void {
       return true;
     });
     check("合っていれば頼まない", asked === 0, `${asked} 回`);
+  }
+
+  {
+    // **どの ID を書くかは `furnaces.ts` の `litVoxel()`**（`main.ts` に
+    // `lit ? FURNACE_LIT : FURNACE` を書き戻さないため）。`AIR` は「書くものが無い」。
+    check("消えているかまどを点ける", litVoxel(FURNACE, true) === FURNACE_LIT, blockName(litVoxel(FURNACE, true)));
+    check("点いているかまどを消す", litVoxel(FURNACE_LIT, false) === FURNACE);
+    check("もう合っていれば書かない", litVoxel(FURNACE_LIT, true) === AIR && litVoxel(FURNACE, false) === AIR);
+    // 掘られた・上書きされたマスを書き換えないこと（**関係のないブロックがかまどに化ける**）。
+    check("かまどでなければ書かない", litVoxel(STONE, true) === AIR, blockName(litVoxel(STONE, true)));
+    check("空気にも書かない", litVoxel(AIR, true) === AIR);
+    const main = sourceOf("src/main.ts");
+    check("main.ts が点火中の ID を選んでいない", !main.includes("FURNACE_LIT"));
   }
 
   describe("かまどの画面");

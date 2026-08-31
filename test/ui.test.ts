@@ -101,7 +101,24 @@ function mainStaysWiring(): void {
   const routed: [string, string][] = [
     ["F3 の組み立て", "debugText("],
     ["セーブの組み立て", "buildSave("],
-    ["読んだ値の均し", "restoredValues("],
+    // 読んだ値の均し（`restoredValues()`）と**戻す順番**（盤面の預かり物はインベントリの
+    // あとで返す）。`main.ts` に並べ直すと、順番が崩れても**開いたままタブを閉じた人**
+    // にしか出ない形で壊れる（`test/session.test.ts` が中身を見ている）。
+    ["読んだ値の均しと戻す順", "applyRestore("],
+    // 別のワールドを始めるときの後始末。**忘れると、前のワールドで別の次元に置いてきた
+    // ものが新しいワールドに出てくる**（`main.ts` に器の列を書き戻すと、器を足すたびに
+    // 1 つずつ抜ける）。
+    ["新しいワールドの後始末", "forgetWorld("],
+    ["保存データを消すときの後始末", "forgetEverything("],
+    ["打ち込まれた種の読み方", "parseSeed("],
+    // キー・マウスの振り分け（`use.ts` の右クリックと同じ形）。**`main.ts` に `if` の列を
+    // 書き戻すと、画面が開いている間に歩き出す・目の前のモブを殴れない、が戻る。**
+    ["キーの振り分け", "decideKey("],
+    ["クリックの振り分け", "decideClick("],
+    // 壊したときに何が落ちるか。**掘った経路と支えを失った経路の 2 つ**を同じ規則に
+    // 通すため（`test/breaking.test.ts` が両方を並べて見ている）。
+    ["掘って壊したとき", "tryBreak("],
+    ["支えを失って壊れたとき", "autoBreak("],
     ["空とフォグ", "environmentFor("],
     ["次元ごとの空", "setDimension("],
     ["足音・着地・水しぶき", "footsteps.update("],

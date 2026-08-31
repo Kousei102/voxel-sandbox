@@ -1,5 +1,14 @@
 import { emptyState, type DimensionState } from "../src/dimensions";
-import { buildSave, collectState, restoredValues, savedShape } from "../src/session";
+import {
+  applyRestore,
+  buildSave,
+  collectState,
+  forgetEverything,
+  forgetWorld,
+  parseSeed,
+  restoredValues,
+  savedShape,
+} from "../src/session";
 import type { SaveData } from "../src/storage";
 import { MAX_HEALTH, MAX_HUNGER } from "../src/vitals";
 import type { EditMap } from "../src/world";
@@ -122,6 +131,102 @@ export function run(): void {
     check("いま居る次元も渡る", shape.dim === "nether");
     const empty = savedShape(null);
     check("セーブが無くても形は返る", empty.dim === undefined && empty.top.edits === undefined);
+  }
+
+  // --- 読み込み直後に戻す（順番そのものが判断） -----------------------------
+
+  {
+    // `main.ts` が渡すものと同じ形の偽物。**何がどの順で呼ばれたか**を控える。
+    const order: string[] = [];
+    const targets = {
+      dayNight: { setTime: (t: number) => order.push(`setTime(${t})`) },
+      inventory: { deserialize: () => order.push("inventory") },
+      craft: {
+        deserialize: () => order.push("craft.deserialize"),
+        returnAll: () => order.push("craft.returnAll"),
+      },
+      audio: { setVolume: (v: number) => order.push(`volume(${v})`) },
+      vitals: { health: MAX_HEALTH, hunger: MAX_HUNGER },
+    };
+    const saved = {
+      time: 0.3,
+      health: 5,
+      hunger: 6,
+      creative: true,
+      volume: 0.25,
+      inventory: [1, 2],
+      craft: [3, 4],
+    } as unknown as SaveData;
+    const result = applyRestore(saved, targets);
+    console.log(`      戻した順: ${order.join(" → ")}`);
+    // **盤面はインベントリのあとで返すこと。** 先に返すと、空のインベントリへ返してから
+    // セーブぶんで上書きすることになり、開いたままタブを閉じた人の預かり物が消える。
+    check(
+      "盤面の預かり物はインベントリを入れたあとで返す",
+      order.indexOf("inventory") < order.indexOf("craft.deserialize") &&
+        order.indexOf("craft.deserialize") < order.indexOf("craft.returnAll"),
+      order.join(" → "),
+    );
+    check("体力と空腹はセーブの値に戻る", targets.vitals.health === 5 && targets.vitals.hunger === 6);
+    check("クリエイティブかどうかを返す（貼るのは main.ts）", result.creative);
+    // 返したぶんは次の保存で `craft` のキーごと消えるので、保存の印を立てる合図が要る。
+    check("預かり物があったことを返す", result.returned);
+    check("音量は均してから渡る", order.includes("volume(0.25)"), order.join(" "));
+  }
+
+  {
+    // セーブが無い（初回）。**体力も空腹も触らない**（満タンのまま）。
+    const targets = {
+      dayNight: { setTime: () => check("初回は時刻を触らない", false) },
+      inventory: { deserialize: () => {} },
+      craft: { deserialize: () => {}, returnAll: () => {} },
+      audio: { setVolume: () => {} },
+      vitals: { health: MAX_HEALTH, hunger: MAX_HUNGER },
+    };
+    const result = applyRestore(null, targets);
+    check("初回はサバイバルで始まる", !result.creative);
+    check("初回は預かり物なし", !result.returned);
+    check("初回でも体力は満タンのまま", targets.vitals.health === MAX_HEALTH);
+  }
+
+  // --- 打ち込まれた種の読み方 -----------------------------------------------
+
+  {
+    check("数字はそのまま種になる", parseSeed(" 4242 ", 1) === 4242, String(parseSeed("4242", 1)));
+    check("文字列は毎回同じ種になる", parseSeed("あ", 1) === parseSeed("あ", 2));
+    check("違う文字列は違う種になる", parseSeed("あ", 1) !== parseSeed("い", 1));
+    // **空欄なら時刻から**（押すたびに違うワールドになる）。
+    check("空欄は時刻から作る", parseSeed("", 1) !== parseSeed("", 2));
+    check("種は 32 ビットに収まる", parseSeed("99999999999", 1) >= 0);
+  }
+
+  // --- 別のワールドを始めるときの後始末 --------------------------------------
+
+  {
+    const called: string[] = [];
+    const bag = {
+      dims: { reset: () => called.push("dims") },
+      beds: { clear: () => called.push("beds") },
+      inventory: { clear: () => called.push("inventory") },
+      craft: { discardAll: () => called.push("craft") },
+      drops: { clear: () => called.push("drops") },
+      furnaces: { clear: () => called.push("furnaces") },
+      chests: { clear: () => called.push("chests") },
+    };
+    forgetWorld(bag);
+    // **預かり物とリスポーン地点は必ず忘れる** —— 忘れると、前のワールドで別の次元に
+    // 置いてきたものが新しいワールドに出てくる。
+    check("作り直しでは預かり物と地点を忘れる", called.join(",") === "dims,beds", called.join(","));
+    // **持ち物は消さない**（種を変えて作り直すだけで、集めたものは持ったまま）。
+    check("作り直しでは持ち物を消さない", !called.includes("inventory"));
+
+    called.length = 0;
+    forgetEverything(bag);
+    const missing = ["dims", "beds", "inventory", "craft", "drops", "furnaces", "chests"].filter(
+      (name) => !called.includes(name),
+    );
+    // 1 つでも残すと、消したはずの持ち物が拾い直せる／移った先に置いてある。
+    check("削除では器も地面も預かり物も全部空にする", missing.length === 0, missing.join(" "));
   }
 
   // --- 見張り ---------------------------------------------------------------

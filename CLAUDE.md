@@ -113,7 +113,7 @@ GLSL を触るときの制約は `.claude/rules/lighting.md`。
 | GLSL | `sky.ts` / `terrainshader.ts` | `daynight.ts` |
 | WebAudio | `audio.ts` | `sfx.ts`（**波形は `test/audio.test.ts` が実際に鳴らして見ます**） |
 | DOM | `ui.ts` / `inventoryui.ts` | `craftscreen.ts` / `inventory.ts` / `crafting.ts` / `smelting.ts` |
-| three（描画） | `mobrender.ts` / `droprender.ts` | `mobs.ts` / `mobmesh.ts` / `drops.ts` |
+| three（描画） | `mobrender.ts` / `droprender.ts` / `view.ts`（器） | `mobs.ts` / `mobmesh.ts` / `drops.ts` |
 
 **この対はテストがソースを読んで両方向に見張っています。** 閉じ込めた側に判断が漏れていないか
 （`mobrender.ts` に `Math.random(` / `spawn` / `damage` / `hostile` が無いか）と、

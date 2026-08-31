@@ -5,8 +5,10 @@ paths:
   - "src/crafting.ts"
   - "src/blocks.ts"
   - "src/main.ts"
+  - "src/breaking.ts"
   - "test/mining.test.ts"
   - "test/crafting.test.ts"
+  - "test/breaking.test.ts"
 ---
 
 ## アイテムとサバイバル
@@ -15,8 +17,12 @@ paths:
   ブロック ID が 6 ビット（63 まで）なのは mesher の `encodeFace` の都合なので、この境目は動かせません。
   ただし**この制限が掛かるのは立方体だけ**です（`CLAUDE.md` の「ブロック ID の枠」を参照）。
 - **何が落ちるかを決めるのは `rollDrop(blockId, roll)`**（純粋。乱数は呼ぶ側が作ります）。
+  **呼ぶのは `breaking.ts` の 1 か所**（掘って壊す `tryBreak()` と、支えを失って壊れる
+  `autoBreak()` が同じ `harvest()` を通ります）。**2 つの経路を別々に書かないこと** ——
+  片方だけ直すと、掘ったときと床を抜かれたときで落ちるものが食い違います。
   **`main.ts` に確率の比較を書かないこと** —— `test/ui.test.ts` が `main.ts` に
-  `.chance` が出てこないことを見張っています。`Drop.chance` を外したときに何が落ちるかは
+  `.chance` が、`test/breaking.test.ts` が `rollDrop(` / `canHarvest(` が
+  出てこないことを見張っています。`Drop.chance` を外したときに何が落ちるかは
   **`Drop.otherwise`**（省略すると何も落ちない）。**砂利がこれのためにあります** ——
   10% で火打石、外したら砂利そのもの。`otherwise` を落とすと、**掘ると 90% で消えるブロック**
   になります（葉は逆に、外したら何も出ないのが正しい）。

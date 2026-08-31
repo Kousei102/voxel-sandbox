@@ -16,6 +16,7 @@ import {
   BED_HEIGHT,
   bedPartner,
   isBed,
+  isBedHead,
   isLiquid,
   isReplaceable,
   isSolid,
@@ -94,7 +95,15 @@ export function placeBed(world: BedWorld, spot: PlaceSpot, id: number): boolean 
  * **相方のマスが期待した ID でなければ何もしない** —— 揃っていない状況で
  * 関係のないブロックを消さないため。
  */
-export function clearBedPartner(world: BedWorld, x: number, y: number, z: number, id: number): number {
+export function clearBedPartner(
+  // 読み書きしかしない（支えは見ない）ので、**入口も 2 つだけ**受け取る。
+  // `breaking.ts` が壊れる 2 経路からここを呼ぶ。
+  world: Pick<BedWorld, "getVoxel" | "setVoxel">,
+  x: number,
+  y: number,
+  z: number,
+  id: number,
+): number {
   const partner = bedPartner(id);
   if (!partner) return 0;
   const px = x + partner.dx;
@@ -172,6 +181,18 @@ export class Beds {
     if (at && at.x === x && at.y === y && at.z === z && at.dim === dim) return;
     this.point = { x, y, z, dim };
     this.onChange?.();
+  }
+
+  /**
+   * **叩いたマスから足側を割り出して覚える。** 枕側を叩いてもここで相方へ寄せるので、
+   * 呼ぶ側は「どちらを叩いたか」を気にしなくてよい。
+   *
+   * **枕側で覚えないこと** —— 相方を辿らずに「ベッドがまだあるか」を見られなくなる
+   * （`respawnPlan()` は足側のマスを読む）。
+   */
+  setFrom(x: number, y: number, z: number, id: number, dim: string): void {
+    const partner = isBedHead(id) ? bedPartner(id) : null;
+    this.set(x + (partner?.dx ?? 0), y, z + (partner?.dz ?? 0), dim);
   }
 
   clear(): void {

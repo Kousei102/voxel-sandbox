@@ -83,6 +83,8 @@ export class Hud {
   private readonly bossFill = document.getElementById("bossfill") as HTMLElement;
   private readonly victory = document.getElementById("victory") as HTMLElement;
   private readonly victoryText = document.getElementById("victorytext") as HTMLElement;
+  private readonly death = document.getElementById("death") as HTMLElement;
+  private readonly deathCause = document.getElementById("deathcause") as HTMLElement;
   private statusTimer = 0;
 
   constructor(private readonly inventory: Inventory) {
@@ -157,6 +159,16 @@ export class Hud {
     this.bossFill.style.width = `${bar.fraction * 100}%`;
   }
 
+  /** 死亡画面を出す。**1 行は `vitals.ts` の `deathMessage()`**（ここは貼るだけ）。 */
+  showDeath(message: string): void {
+    this.deathCause.textContent = message;
+    this.death.classList.remove("hidden");
+  }
+
+  hideDeath(): void {
+    this.death.classList.add("hidden");
+  }
+
   /** クリア画面を出す。**1 行は `boss.ts` の `victoryMessage()`**（ここは貼るだけ）。 */
   showVictory(message: string): void {
     this.victoryText.textContent = message;
@@ -214,6 +226,76 @@ export class Hud {
       // 文字は残したまま透明にする（消してから薄れると途中で空になる）
       if (this.statusTimer <= 0) this.status.classList.remove("on");
     }
+  }
+}
+
+/**
+ * メニュー（Esc の設定パネル）と死亡・クリア画面のボタンから呼ばれるもの。
+ * **`main.ts` が中身を書きます** —— ここに書くと、種の読み方やワールドの
+ * 後始末が DOM 込みでしか確かめられなくなります（判断は `session.ts`）。
+ */
+export interface MenuHooks {
+  play(): void;
+  save(): void;
+  wipe(): void;
+  /** 打ち込まれた文字列をそのまま渡す（**読み方は `session.ts` の `parseSeed()`**）。 */
+  regen(seedText: string): void;
+  /** 時刻のつまみ。渡すのはスライダーの目盛り（分）そのもの。 */
+  setMinutes(minutes: number): void;
+  setVolumePercent(percent: number): void;
+  /** つまみを離したところ。いまの音量で 1 回鳴らすため。 */
+  previewVolume(): void;
+  toggleMode(): void;
+  respawn(): void;
+  closeVictory(): void;
+}
+
+/**
+ * メニューの入れ物。**DOM だけ**で、判断は 1 つも持ちません（`Hud` と同じ役目）。
+ *
+ * `index.html` の id を引くところをここに集めてあるので、**綴りの間違いは
+ * `test/ui.test.ts` が突き合わせます**（`main.ts` に散らすと同じ検査には乗りますが、
+ * 配線と設定パネルが混ざって「main.ts は配線だけ」の線が引けなくなります）。
+ */
+export class Menu {
+  private readonly seed = document.getElementById("seed") as HTMLInputElement;
+  private readonly mode = document.getElementById("mode") as HTMLButtonElement;
+  private readonly time = document.getElementById("time") as HTMLInputElement;
+  private readonly timeLabel = document.getElementById("timelabel") as HTMLElement;
+  private readonly volume = document.getElementById("volume") as HTMLInputElement;
+  private readonly volumeLabel = document.getElementById("volumelabel") as HTMLElement;
+
+  constructor(hooks: MenuHooks) {
+    document.getElementById("play")?.addEventListener("click", () => hooks.play());
+    document.getElementById("save")?.addEventListener("click", () => hooks.save());
+    document.getElementById("wipe")?.addEventListener("click", () => hooks.wipe());
+    document.getElementById("regen")?.addEventListener("click", () => hooks.regen(this.seed.value));
+    this.time.addEventListener("input", () => hooks.setMinutes(Number(this.time.value)));
+    this.volume.addEventListener("input", () => hooks.setVolumePercent(Number(this.volume.value)));
+    this.volume.addEventListener("change", () => hooks.previewVolume());
+    this.mode.addEventListener("click", () => hooks.toggleMode());
+    document.getElementById("respawn")?.addEventListener("click", () => hooks.respawn());
+    document.getElementById("victoryclose")?.addEventListener("click", () => hooks.closeVictory());
+  }
+
+  showSeed(seed: number): void {
+    this.seed.value = String(seed);
+  }
+
+  /** 時刻。**目盛り（分）と時計の文字は呼ぶ側が作る**（`daynight.ts` が持っている）。 */
+  showTime(minutes: number, clock: string): void {
+    this.time.value = String(minutes);
+    this.timeLabel.textContent = clock;
+  }
+
+  showVolume(percent: number): void {
+    this.volume.value = String(percent);
+    this.volumeLabel.textContent = `${percent}%`;
+  }
+
+  /** サバイバル／クリエイティブの札。**どちらを出すかは `main.ts`。** */
+  showMode(label: string): void {
+    this.mode.textContent = label;
   }
 }
 
