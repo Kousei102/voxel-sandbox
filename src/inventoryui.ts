@@ -58,8 +58,11 @@ export class InventoryScreen {
   onChange: () => void = () => {};
   /** クラフトが成立して 1 回ぶん取り出したとき（音を鳴らすのに使う）。 */
   onCraft: () => void = () => {};
-  /** アイテムを捨てたとき（地面に落とし、通知を出すのに使う）。 */
-  onDiscard: (item: number, count: number) => void = () => {};
+  /**
+   * アイテムを捨てたとき（地面に落とし、通知を出すのに使う）。
+   * `damage` は `CraftScreen` が読んだ傷を**そのまま素通し**する（ここで読み直さない）。
+   */
+  onDiscard: (item: number, count: number, damage: number) => void = () => {};
 
   constructor(private readonly craft: CraftScreen) {
     this.build(this.gridEl, this.gridSlots, GRID_SLOTS, "grid", 0);
@@ -208,7 +211,9 @@ export class InventoryScreen {
   /** 判断の結果を画面・音・通知に反映するだけ。 */
   private apply(result: ScreenResult): void {
     if (result.crafted) this.onCraft();
-    if (result.discarded) this.onDiscard(result.discarded.item, result.discarded.count);
+    if (result.discarded) {
+      this.onDiscard(result.discarded.item, result.discarded.count, result.discarded.damage);
+    }
     if (result.changed) this.refresh();
   }
 

@@ -19,7 +19,8 @@ import { check, describe } from "./harness";
 function sources(edits: EditMap = new Map()) {
   return {
     world: { editsForSave: () => edits },
-    drops: { serialize: () => [7, 3, 1, 2, 3] },
+    // 傷は別のキー（`dropWear`）。**全部新品なら undefined** でキーごと消える。
+    drops: { serialize: () => [7, 3, 1, 2, 3], serializeWear: () => undefined },
     furnaces: { serialize: () => ({ "1,2,3": [1] }) },
     chests: { serialize: () => undefined },
   };

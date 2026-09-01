@@ -193,15 +193,19 @@ export class Inventory {
    * **呼ぶ側は必ず何を落としたか画面に出すこと**（画面外へ飛ぶことがあるため）。
    * 引数を `all: boolean` にしてあるのは `CraftScreen.discardHeld()` と揃えるためで、
    * **個数を渡す形に戻さないこと**（「1 個」と「山ごと」以外の中間は要りません）。
+   *
+   * **傷は減らす前に読むこと** —— `clearSlot()` が 0 に戻すので、あとに回すと
+   * 山ごと捨てたときだけ新品になって落ちます。
    */
-  discardSelected(all = false): { item: number; count: number } | null {
+  discardSelected(all = false): { item: number; count: number; damage: number } | null {
     const slot = this.selectedSlot;
     if (isEmpty(slot)) return null;
     const item = slot.item;
+    const damage = damageOf(slot);
     const taken = all ? slot.count : 1;
     slot.count -= taken;
     if (slot.count <= 0) clearSlot(slot);
-    return { item, count: taken };
+    return { item, count: taken, damage };
   }
 
   /**
@@ -210,12 +214,15 @@ export class Inventory {
    * **不変条件: 返した合計 = 取り出す前の総数。** 呼ぶ側はこれを 1 山ずつ地面に落とすので、
    * ここで数を丸めると持ち物が黙って増減します。
    * 空のスロットは返しません（`drops.burst()` に空の山を渡さないため）。
+   *
+   * **傷も一緒に返します**（`clearSlot()` より前に読むこと）—— 返さないと、
+   * 死んで落とした道具を拾い直したときだけ新品に戻ります。
    */
-  takeAll(): { item: number; count: number }[] {
-    const out: { item: number; count: number }[] = [];
+  takeAll(): { item: number; count: number; damage: number }[] {
+    const out: { item: number; count: number; damage: number }[] = [];
     for (const slot of this.slots) {
       if (isEmpty(slot)) continue;
-      out.push({ item: slot.item, count: slot.count });
+      out.push({ item: slot.item, count: slot.count, damage: damageOf(slot) });
       clearSlot(slot);
     }
     return out;

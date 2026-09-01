@@ -41,6 +41,8 @@ export interface DimensionState {
   /** チャンクキー -> [localIndex, blockId, ...]。 */
   readonly edits: Record<string, number[]>;
   readonly drops?: number[];
+  /** 落ちている道具の傷（1 山 1 要素。並びは `drops` と同じ）。**全部新品なら無し**。 */
+  readonly dropWear?: number[];
   readonly furnaces?: Record<string, number[]>;
   readonly chests?: Record<string, number[]>;
 }
@@ -58,6 +60,7 @@ function normalize(raw: Partial<DimensionState> | undefined): DimensionState {
   return {
     edits: raw?.edits ?? {},
     drops: raw?.drops,
+    dropWear: raw?.dropWear,
     furnaces: raw?.furnaces,
     chests: raw?.chests,
   };

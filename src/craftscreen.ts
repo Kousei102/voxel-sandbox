@@ -84,8 +84,11 @@ export type MouseButton = 0 | 2;
 export interface ScreenResult {
   changed: boolean;
   crafted: boolean;
-  /** 捨てたもの（通知に出す）。捨てていなければ null。 */
-  discarded: { item: number; count: number } | null;
+  /**
+   * 捨てたもの（通知に出す）。捨てていなければ null。
+   * `damage` は捨てた道具の傷（**新品なら 0**）—— 地面に落ちても残るように運ぶ。
+   */
+  discarded: { item: number; count: number; damage: number } | null;
 }
 
 const NOTHING: ScreenResult = { changed: false, crafted: false, discarded: null };
@@ -614,10 +617,12 @@ export class CraftScreen {
     if (this.dragButton !== null) return NOTHING;
     if (isEmpty(this.heldSlot)) return NOTHING;
     const item = this.heldSlot.item;
+    // **減らす前に読むこと**（`clearSlot()` が 0 に戻す。`Inventory.discardSelected()` と同じ）。
+    const damage = damageOf(this.heldSlot);
     const count = all ? this.heldSlot.count : 1;
     this.heldSlot.count -= count;
     if (this.heldSlot.count <= 0) clearSlot(this.heldSlot);
-    return { changed: true, crafted: false, discarded: { item, count } };
+    return { changed: true, crafted: false, discarded: { item, count, damage } };
   }
 
   private dragPlan(): number[] {

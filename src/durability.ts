@@ -9,9 +9,10 @@
  * **`inventory.ts` からは `import type { Slot }` だけを取ります。**
  * 逆向き（`inventory.ts` → ここ）は普通の import なので、値を取ると読み込みの輪ができます。
  *
- * **傷が残るのはインベントリと画面の中だけです**（36 枠 + 盤面 9 + 掴んだ山 1）。
- * 落とし物・チェスト・かまどの中身は `[item, count, ...]` のままなので、傷んだ道具を
- * 地面に落として拾い直すと新品で戻ります（`TUNING.md`。塞ぐのは `AUTODEV-QUEUE.md` の 3c）。
+ * **傷が残るのはインベントリ・画面・地面の落とし物です**（36 枠 + 盤面 9 + 掴んだ山 1 +
+ * 落ちている山。落とし物の傷は `SaveData.dropWear`）。**チェストとかまどの中身は
+ * まだ `[item, count, ...]` のまま**なので、入れ直すと新品で戻ります
+ * （`TUNING.md`。塞ぐのは `AUTODEV-QUEUE.md` の 3c-2）。
  */
 
 import { blockHardness, isBreakable } from "./blocks";
@@ -145,23 +146,33 @@ export function serializeWear(slots: readonly Slot[]): number[] | undefined {
 }
 
 /**
+ * **読んだ 1 個の値をどこまで信じるか。** 信じない値が 4 つあります:
+ * 数でない（欠けている・文字列）/ 負 / 0 以下 /
+ * **最大以上**（そのまま入れると「壊れているのに手に残っている道具」になるので、
+ * `最大 - 1` に丸めます）。道具でないものの傷は捨てます（0）。
+ *
+ * **丸め方を 2 か所に書かないための 1 本**です —— セーブから戻す道は
+ * インベントリ（`deserializeWear()`）と落とし物（`drops.deserialize()`）の 2 つあり、
+ * どちらもここを通します。片方だけ直すと「地面から拾った道具だけ壊れている」が作れます。
+ */
+export function wornValue(item: number, raw: unknown): number {
+  const max = maxUses(item);
+  if (max <= 0) return 0;
+  if (typeof raw !== "number" || !Number.isFinite(raw) || raw <= 0) return 0;
+  return Math.min(Math.floor(raw), max - 1);
+}
+
+/**
  * 読み戻す。**`inventory.deserialize()` のあとで呼ぶこと**（アイテムが入っていないと
  * 「その枠の道具は何回使えるか」が分かりません）。
  *
- * 信じない値が 4 つあります: 数でない / 長さが足りない・多い / 負 /
- * **最大以上**（そのまま入れると「壊れているのに手に残っている道具」になるので、
- * `最大 - 1` に丸めます）。道具でない枠の傷は捨てます。
+ * 値ごとの判断は `wornValue()` 1 本に委ねます（**ここに丸めを書き戻さないこと**）。
+ * 長さが足りない・多いぶんは `list[i]` が `undefined` になって落ちます。
  */
 export function deserializeWear(slots: readonly Slot[], flat: number[] | undefined): void {
   const list = Array.isArray(flat) ? flat : [];
   for (let i = 0; i < slots.length; i++) {
     const slot = slots[i];
-    const max = maxUses(slot.item);
-    const raw = list[i];
-    if (max <= 0 || slot.count <= 0 || typeof raw !== "number" || !Number.isFinite(raw) || raw <= 0) {
-      slot.damage = 0;
-      continue;
-    }
-    slot.damage = Math.min(Math.floor(raw), max - 1);
+    slot.damage = slot.count > 0 ? wornValue(slot.item, list[i]) : 0;
   }
 }

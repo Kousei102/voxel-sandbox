@@ -17,6 +17,7 @@
 import { Vector3 } from "three";
 import { isLiquid } from "./blocks";
 import { columnOf } from "./constants";
+import { carryWear, damageOf, wornValue } from "./durability";
 import type { Inventory } from "./inventory";
 import { NO_ITEM, itemStackLimit } from "./items";
 import { PLAYER_SIZE, moveBody, type BodySize } from "./physics";
@@ -142,6 +143,14 @@ export interface Drop {
   pickupDelay: number;
   /** 生まれてからの秒数。`DESPAWN_AGE` で消える。 */
   age: number;
+  /**
+   * 道具の傷（使った回数）。**新品は 0。**
+   *
+   * `item` / `count` と並べてあるので、この山は `Slot` としてそのまま
+   * `damageOf()` / `carryWear()` に渡せる（`durability.ts`）。**ここで
+   * `?? 0` を書かないこと** —— 「道具でなければ 0」の判断が散ります。
+   */
+  damage?: number;
   /** 見た目の回転位相。**描画が読むだけ**（`droprender.ts`）。 */
   spin: number;
 }
@@ -184,6 +193,10 @@ export class Drops {
   /**
    * 1 山置く。位置は足元の中心。
    * **`count` は上限を超えていてもそのまま持つ**（拾うときにインベントリ側で分かれる）。
+   *
+   * **傷を載せる唯一の入口がここ**（`options.damage`）。`burst()` も `throwOut()` も
+   * セーブの読み戻しもここを通るので、**別の場所で `drop.damage` に代入しないこと** ——
+   * 道具でないものに傷が付く経路がその場ごとに増えます。
    */
   spawn(
     item: number,
@@ -191,7 +204,7 @@ export class Drops {
     x: number,
     y: number,
     z: number,
-    options: { vx?: number; vy?: number; vz?: number; delay?: number } = {},
+    options: { vx?: number; vy?: number; vz?: number; delay?: number; damage?: number } = {},
   ): Drop | null {
     if (item === NO_ITEM || count <= 0) return null;
     // 上限に達していたら、いちばん古いものから消す。**新しいほうを捨てないこと**
@@ -211,6 +224,9 @@ export class Drops {
       // 位相を個体ごとに散らす。そろえると、並んだアイテムが軍隊のように同時に揺れる。
       spin: (this.nextId * 1.31) % (Math.PI * 2),
     };
+    // **`item` を入れたあとで載せること**（何の道具かで載るかどうかが決まる）。
+    // 道具でないものには載りません（棒の山に傷が付かない）。
+    carryWear(drop, options.damage ?? 0);
     this.list.push(drop);
     this.onChange?.();
     return drop;
@@ -219,14 +235,27 @@ export class Drops {
   /**
    * 掘ったブロック・倒したモブから飛び出す 1 山。**マスの中心から少しだけ跳ねる。**
    * 真下に置くと、掘った本人の足元に埋まって見えない。
+   *
+   * `damage` は運んできた傷（**既定は新品**）。死んで落とすぶんがここを通る。
+   * **`random` より前に置いてあるのは、傷を渡す側が乱数の差し替えを知らなくてよいため**
+   * （乱数はテストのための差し替え口で、遊んでいる側は誰も渡さない）。
    */
-  burst(item: number, count: number, x: number, y: number, z: number, random = Math.random): Drop | null {
+  burst(
+    item: number,
+    count: number,
+    x: number,
+    y: number,
+    z: number,
+    damage = 0,
+    random = Math.random,
+  ): Drop | null {
     const angle = random() * Math.PI * 2;
     const speed = BURST_SPEED * (0.4 + random() * 0.6);
     return this.spawn(item, count, x, y, z, {
       vx: Math.cos(angle) * speed,
       vy: BURST_LIFT,
       vz: Math.sin(angle) * speed,
+      damage,
     });
   }
 
@@ -234,6 +263,8 @@ export class Drops {
    * プレイヤーが捨てた 1 山を視線の向きへ投げる。
    * **猶予（`THROW_DELAY`）をここで決めるのが肝心** —— 呼ぶ側に選ばせると、
    * 捨てた瞬間に拾い直す経路がいつか混ざる。
+   *
+   * `damage` は捨てた道具の傷（**既定は新品**）。プレイ中の Q と画面の Q が通る。
    */
   throwOut(
     item: number,
@@ -243,6 +274,7 @@ export class Drops {
     z: number,
     yaw: number,
     pitch: number,
+    damage = 0,
   ): Drop | null {
     // 向きの規約は `player.ts` の forward と同じ（yaw 0 のとき前は -Z）。
     const horizontal = Math.cos(pitch);
@@ -251,6 +283,7 @@ export class Drops {
       vy: Math.sin(pitch) * THROW_SPEED + THROW_LIFT,
       vz: -Math.cos(yaw) * horizontal * THROW_SPEED,
       delay: THROW_DELAY,
+      damage,
     });
   }
 
@@ -350,7 +383,8 @@ export class Drops {
     if (drop.position.y + DROP_SIZE.height < ctx.playerY - PICKUP_MARGIN) return false;
     if (drop.position.y > ctx.playerY + PLAYER_SIZE.height + PICKUP_MARGIN) return false;
 
-    const left = inventory.add(drop.item, drop.count);
+    // **傷も一緒に渡すこと** —— 渡さないと、傷んだ道具が拾った瞬間に新品へ戻る。
+    const left = inventory.add(drop.item, drop.count, damageOf(drop));
     if (left >= drop.count) {
       // 1 個も入らなかった。次に試すまで少し待つ（毎フレーム聞き直さない）。
       drop.pickupDelay = PICKUP_RETRY;
@@ -433,14 +467,39 @@ export class Drops {
     return flat;
   }
 
-  /** セーブから戻す。**壊れた値は黙って飛ばす**（読めないより、欠けるほうがまし）。 */
-  deserialize(flat: number[] | undefined): void {
+  /**
+   * 落ちている道具の傷。**1 山につき 1 要素**で、並びは `serialize()` と同じ
+   * （`count <= 0` の山を飛ばすところまで揃えること）。
+   *
+   * **`serialize()` を 6 要素にしないこと** —— あちらは `[item, count, x, y, z]` x 山数で、
+   * 増やすと既存のセーブが丸ごとずれる（`wear` を `inventory` と分けたのと同じ理由）。
+   * **全部新品なら `undefined`** を返すので、道具を落としていない人のセーブは
+   * `dropWear` のキーごと消えて、耐久値が入る前と 1 バイトも変わらない。
+   */
+  serializeWear(): number[] | undefined {
+    const flat: number[] = [];
+    for (const drop of this.list) {
+      if (drop.count <= 0) continue;
+      flat.push(damageOf(drop));
+    }
+    return flat.some((damage) => damage > 0) ? flat : undefined;
+  }
+
+  /**
+   * セーブから戻す。**壊れた値は黙って飛ばす**（読めないより、欠けるほうがまし）。
+   *
+   * 傷（`wear`）は**平坦配列の位置（`i / 5`）から引くこと。** 山を 1 つ飛ばしたときに
+   * `list` の並びから引くと、そこから先の傷が 1 つずつずれる。
+   * 読んだ値をどこまで信じるかは `wornValue()`（**ここに丸めを書かないこと**）。
+   */
+  deserialize(flat: number[] | undefined, wear?: number[]): void {
     this.clear();
     if (!Array.isArray(flat)) return;
+    const worn = Array.isArray(wear) ? wear : [];
     for (let i = 0; i + 4 < flat.length; i += 5) {
       const [item, count, x, y, z] = flat.slice(i, i + 5);
       if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
-      this.spawn(item, count, x, y, z);
+      this.spawn(item, count, x, y, z, { damage: wornValue(item, worn[i / 5]) });
     }
   }
 }

@@ -23,7 +23,8 @@ import type { EditMap } from "./world";
 /** いま居る次元の「位置ごとの持ち物」を持っているもの。 */
 export interface StateSources {
   readonly world: { editsForSave(): EditMap };
-  readonly drops: { serialize(): number[] };
+  /** 傷は**別のキー**で持つ（`serialize()` の 5 要素は変えない。`storage.ts` の `dropWear`）。 */
+  readonly drops: { serialize(): number[]; serializeWear(): number[] | undefined };
   readonly furnaces: { serialize(): Record<string, number[]> | undefined };
   readonly chests: { serialize(): Record<string, number[]> | undefined };
 }
@@ -38,6 +39,7 @@ export function collectState(from: StateSources): DimensionState {
   return {
     edits: serializeEdits(from.world.editsForSave()),
     drops: from.drops.serialize(),
+    dropWear: from.drops.serializeWear(),
     furnaces: from.furnaces.serialize(),
     chests: from.chests.serialize(),
   };
@@ -106,6 +108,7 @@ export function buildSave(parts: SaveParts): SaveData {
     craftWear: parts.craftWear,
     volume: parts.volume,
     drops: parts.shape.top.drops,
+    dropWear: parts.shape.top.dropWear,
     furnaces: parts.shape.top.furnaces,
     chests: parts.shape.top.chests,
     bed: parts.bed,
@@ -273,6 +276,7 @@ export function savedShape(saved: SaveData | null | undefined): {
     top: {
       edits: saved?.edits,
       drops: saved?.drops,
+      dropWear: saved?.dropWear,
       furnaces: saved?.furnaces,
       chests: saved?.chests,
     },

@@ -196,8 +196,8 @@ screen.onChange = () => {
 screen.onCraft = () => audio.play("craft");
 
 // インベントリ画面で捨てたぶんは足元に落ちる（拾い直せる）。
-screen.onDiscard = (item, count) => {
-  drops.throwOut(item, count, player.position.x, player.position.y + 1.2, player.position.z, player.yaw, player.pitch);
+screen.onDiscard = (item, count, damage) => {
+  drops.throwOut(item, count, player.position.x, player.position.y + 1.2, player.position.z, player.yaw, player.pitch, damage);
   hud.flash(`${itemName(item)} x${count} を落としました`);
   saveDirty = true;
 };
@@ -301,7 +301,7 @@ function startWorld(
   // かまど・チェスト・落ちたアイテムは次元ごとに持つ。**入れ替えはここだけ。**
   furnaces.deserialize(state.furnaces);
   chests.deserialize(state.chests);
-  drops.deserialize(state.drops);
+  drops.deserialize(state.drops, state.dropWear);
   dropRender?.dispose();
   dropRender = new DropRenderer(scene, world.daylightUniform());
   // 飛んでいるものは保存しないので、ここで空にするだけでよい。
@@ -1064,6 +1064,7 @@ function discardSelected(bulk: boolean): void {
     player.position.z,
     player.yaw,
     player.pitch,
+    thrown.damage,
   );
   hud.flash(`${itemName(thrown.item)} x${thrown.count} を落としました`);
   hud.refresh();
@@ -1304,7 +1305,7 @@ function dropOnDeath(): number {
   const lost = inventory.takeAll();
   for (const stack of lost) {
     // 死体の位置から少し上に散らす（足元に埋まると拾いにくい）
-    drops.burst(stack.item, stack.count, player.position.x, player.position.y + 0.6, player.position.z);
+    drops.burst(stack.item, stack.count, player.position.x, player.position.y + 0.6, player.position.z, stack.damage);
   }
   if (lost.length > 0) hud.refresh();
   return lost.length;

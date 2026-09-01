@@ -55,6 +55,14 @@ export interface SaveData {
    */
   drops?: number[];
   /**
+   * 落ちている道具の傷を 1 山につき 1 要素で（並びは `drops` と同じ）。**全部新品なら省略**。
+   *
+   * **`drops` を 6 要素にしない**ための別キー —— あちらは `[item, count, x, y, z]` x 山数で、
+   * 増やすと既存のセーブが丸ごとずれる（`wear` を `inventory` と分けたのと同じ理由）。
+   * 形と丸め方は `durability.ts` の `wornValue()`。
+   */
+  dropWear?: number[];
+  /**
    * 置いてあるかまど。`"x,y,z"` -> 中身 3 枠 x 2 + タイマー 3 の 9 要素。空なら省略。
    *
    * **地形の差分（`edits`）とは別に持つ。** `edits` はブロック ID だけの表で、
