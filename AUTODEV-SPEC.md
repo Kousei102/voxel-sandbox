@@ -1,113 +1,117 @@
-# 仕様: 砂と砂利が落ちる（重力ブロック）
+# 仕様: 大きいチェスト（隣り合った 2 個で 54 枠）
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-`AUTODEV-QUEUE.md` の 1 番。**C の周はこの 1 枚を全文サブエージェントに渡すこと**
+`AUTODEV-QUEUE.md` の 2 番。**C の周はこの 1 枚を全文サブエージェントに渡すこと**
 （要約すると 2 と 6 が真っ先に落ちます）。**`src/**` と `test/**` は `Read` / `Edit` で開くこと**
 （`cat` / `sed` だと `.claude/rules/*.md` が読み込まれません）。
+使うスキル: **`add-stateful-block`**（器の型）。読むもの: **`.claude/rules/stateful-blocks.md`**（チェストの節）と
+**`.claude/rules/beds.md`**（**1 個のブロックが 2 マスにまたがる先例**）と `.claude/rules/inventory-screen.md`。
 
-**2026-09-01 にコードで数え直しました**（B の決まり）: `blocks.ts` の `GRAVEL`（44）の説明に
-**「落ちません。落ちるブロックの仕組みがまだ無い」**と書いてあり、`src/` に `fall` / 重力で
-ブロックを動かす経路はありません（重力は `player.ts` / `mobs.ts` / `drops.ts` /
-`projectiles.ts` の速度だけ）。**まだ入っていません。**
+**2026-09-01 にコードで数え直しました**（B の決まり）: `chests.ts` の `CHEST_SIZE` は 27 固定、
+`addToChest` は `0..CHEST_SIZE` 決め打ち、`src/` に隣り合ったチェストを見る経路はありません
+（`chestKey` は 1 マス 1 台）。**まだ入っていません。**
 
 ## 1. 何を足すか / 完了の判定
 
-**支えを失った砂・砂利が、その場で下まで落ちて積み直す。**
+**横に隣り合った 2 個のチェストを、1 つの 54 枠として開ける。**
 
-判定: `npm test` に **「重力ブロック（砂と砂利が落ちる）」** の節が増えて、全部緑
-（いま 2285 件。増えた件数がそのまま乗ること）。最低限これらを**値を出してから**判定する:
+判定: `npm test` に **「大きいチェスト（隣り合った 2 個で 54 枠）」** の節が増えて、全部緑
+（**いま 2307 件**。増えた件数がそのまま乗ること）。最低限これらを**値を出してから**判定する:
 
-- 砂の真下を掘ると、砂が 1 マス下がる（掘る前後の `getVoxel` を出す）
-- 5 段積んだ砂の下を掘ると 5 段とも 1 つずつ下がり、**間に穴が残らない**
-- 空中に砂を置くと地面まで落ちる（落ちた先の y と落差を出す）
-- 石は落ちない・砂の**横**を掘っても落ちない
-- 水の中を落ちて底に着く（水は上書きされて消える = 埋め立て）
-- 世界の底（`y = 1`）より下へは落ちない
-- 砂の上に載っていた松明は、砂が下がると**支えを失って壊れる**
-  （既存の `breakUnsupported` の経路。重力の側は松明を運ばない）
+- 隣り合った 2 個を開くと枠が 54（`craft.chestSize` を出す）。1 個だけなら 27
+- **どちらの半分を開いても中身の並びが同じ**（両方に印を入れて、開く側を変えて並びを比べる）
+- **相方の相方は自分**（4 向きとも。`beds.ts` の不変条件と同じ）
+- **3 個を横一列に並べると 3 つとも 27 枠に戻る**（中身は 1 個も消えない）。2x2 の 4 個も全部 27
+- 縦に積んだ 2 個（y ± 1）と斜めは組にならない
+- 54 枠ぶん入れられる（`addToChest` が 54 枠使い切ってから余りを返す）
+- **片方を壊すと、そのマスのぶんだけ落ちる**。残った側は 27 枠のチェストとして中身を保つ
+- セーブは **1 マスにつき 54 要素のまま 2 キー**（54 枠を 1 キーにまとめない）
 
 ## 2. 触るファイル / 触らないファイル
 
 | 触る | 何を |
 | --- | --- |
-| `src/gravity.ts` | **新規。判断はここ 1 か所**（どこまで落ちるか・何個動いたか） |
-| `src/blocks.ts` | `falls` フラグと `fallsDown(id)` だけ。`SAND` と `GRAVEL` に `falls: true` |
-| `src/breaking.ts` | `tryBreak()` が消したあとに 1 行呼ぶ |
-| `src/placing.ts` | `tryPlace()` が置いたあとに 1 行呼ぶ |
-| `test/gravity.test.ts` | 新規（`test/run.ts` に登録） |
+| `src/chests.ts` | **判断は全部ここ。** 相方を決める規則・54 枠の見え方・`addToChest` の枠数 |
+| `src/craftscreen.ts` | `chestSize` を出す・`LARGE_CHEST_SIZE` の再輸出だけ（**規則を書かない**） |
+| `src/inventoryui.ts` | **DOM だけ。** 枠を 54 個作り、`craft.chestSize` を超えたぶんに `hidden` を付ける |
+| `src/main.ts` | **`openChest()` の 1 行だけ**（`chests.at(...)` → `chests.open(world, ...)`） |
+| `test/chests.test.ts` | 節を 1 つ足す（`test/run.ts` は登録済み） |
 
 **触らないもの**（1 行も）:
 
-- **`main.ts`** —— 配線も要りません（`breaking.ts` / `placing.ts` の中で閉じます）
-- **`world.ts`** —— ストリーミングのファイル。判断を置かない。`world.update()` にも足さない
-- **`worldgen.ts` / `nethergen.ts` / `endgen.ts` / `structures.ts` / `fortress.ts`** ——
-  生成した地形はそのまま（既存の見え方を変えない）
-- `drops.ts` / `items.ts` / `crafting.ts` / `mobs.ts` / `ui.ts` / `inventoryui.ts` / `storage.ts`
+- **`blocks.ts`** —— **新しいブロック ID を作りません**（本家も同じ 1 個の ID です）
+- **`breaking.ts` / `placing.ts` / `use.ts` / `world.ts` / `storage.ts` / `session.ts` / `dimensions.ts`**
+  —— 壊す・置く・右クリックの振り分け・セーブの形は**そのまま効きます**
+- **`index.html` / `style.css`** —— 枠は `build()` が作るので追加の id は要りません
+- `inventory.ts` / `items.ts` / `crafting.ts` / `smelting.ts` / `furnaces.ts` / `beds.ts`
 
 ## 3. 使う ID
 
-**0 個。** 新しいブロックもアイテムも足しません（`AUTODEV-QUEUE.md` の 1 番のとおり）。
-**番号を取りたくなったら設計を間違えた合図**なので、止めて人を呼ぶこと
-（`AUTODEV.md` の停止条件 1。落下中の姿を別 ID で表す実装は下の 6 で禁じ手）。
+**0 個。** ブロックもアイテムも足しません（`AUTODEV-QUEUE.md` の 2 番のとおり）。
+**番号を取りたくなったら設計を間違えた合図**なので、止めて人を呼ぶこと（`AUTODEV.md` の停止条件 1）。
+**「大きいチェスト」というブロックを作らないこと** —— 組かどうかは**そのつど voxel から決めます。**
 
 ## 4. 判断をどこに置くか
 
-**`liquids.ts` と `blocks.ts` の `quenched()` の対がそのまま手本**（`CLAUDE.md` の対の表）。
+**`beds.ts` の `bedPartner()` と `gravity.ts` の作法をそのまま写します**（`CLAUDE.md` の対の表）。
 
 | 層 | 置き場 |
 | --- | --- |
-| 規則（座標を知らない） | `blocks.ts` の `fallsDown(id)` —— `LIQUID` / `HOT` と同じ `Uint8Array` の表 1 本 |
-| どのマスに効くか | `gravity.ts` —— **`World` を丸ごと受け取らず `getVoxel` / `setVoxel` の 2 つだけ** |
-| 呼ぶ側 | `breaking.ts` と `placing.ts` が 1 行ずつ |
+| 相方を決める規則 | `chests.ts` の `chestPartner(getVoxel, x, y, z)` —— **`World` を丸ごと受け取らず `getVoxel` 1 つだけ**受ける |
+| 54 枠の見え方 | `chests.ts` の `Chests.open(getVoxel, x, y, z): ChestState` |
+| 枠数を画面に伝える | `craftscreen.ts` の `get chestSize()`（= `chestState?.slots.length ?? 0`） |
+| 見た目 | `inventoryui.ts`（**数を決めない。`craft.chestSize` を貼るだけ**） |
+
+**相方の規則（ここが仕様の中心）**: 水平 4 マス（±X / ±Z・同じ y）のうち `CHEST` は
+**ちょうど 1 個**で、**その相手から見ても `CHEST` がちょうど 1 個**のときだけ組になる。
+どちらでもなければ `null`。**これで「相方の相方は自分」が必ず成り立ち**、3 個並びや 2x2 でも
+半端な組ができません（`beds.ts` が守っている不変条件と同じもの）。
+
+**54 枠は「参照を並べた見え方」であって、新しい入れ物ではありません。**
+`Chests.open()` は `{ slots: [...根の 27 枠, ...相方の 27 枠] }` を**そのつど作って**返します
+（**`Slot` をコピーしないこと** —— `craftscreen.ts` の `activeGrid()` と同じ理由で、
+コピーすると入れたものが消えます）。**根は x が小さいほう、同じなら z が小さいほう**
+（決めないと、開く側によって並びが変わります）。**この見え方を `Chests` の Map に入れないこと**
+—— セーブは今までどおり Map の中の 27 枠だけを見ます。
 
 **確かめられないもの（three / DOM / GLSL / 音）は 1 つも増えません** → `unverifiable-pair` は不要。
-使うスキルはありません（`add-block` も不要 —— ID を足さないので）。
-
-形の目安（同じである必要はないが、**判断の置き場は変えないこと**）:
-
-- `landingY(getVoxel, x, y, z): number` —— そこから下へ、`isReplaceable()` の間だけ下がった先の y
-  （空気・水・溶岩・草むらは通り抜ける。**下限は y = 1**）
-- `settleColumn(world, x, y, z): number` —— (x,y,z) を底として、真上に積まれた `fallsDown` を
-  **下から順に**詰め直し、動かした個数を返す。**上へ走査するのは `fallsDown` でないものに当たるまで**
-- **先に落ちる先へ書き、成功したときだけ元のマスを消すこと。** 逆にすると、未読み込みの列で
-  `setVoxel` が false を返したときに砂が消えます（`liquids.ts` の「書き込みが失敗しても」の裏返し）
 
 ## 5. 書くテスト
 
-`test/gravity.test.ts`。`test/liquids.test.ts` と同じ組み立てにすること:
+`test/chests.test.ts` に節を 1 つ。**いまある 27 枠ぶんの判定は 1 つも書き換えないこと。**
 
-- **規則（`fallsDown`）と効く場所（`settleColumn`）を別々に見る**
-- **本物の `World` を使う**（`setVoxel` の戻り値を数えるので `Arena` では肝心の経路が通らない）。
-  試験場は `liquids.test.ts` の `stage()` と同じ作り方
-- **先に「試験場が効いている」判定を置く**（置けていなければ以下が全部素通りします）
-- 見張り 1: **`gravity.ts` に `SAND` / `GRAVEL` / `WATER` / `LAVA` が出てこないこと**
+- 試験場は**偽の `getVoxel`**（`Map<"x,y,z", id>`）で足ります。**先に「試験場が効いている」判定を置く**
+  こと（隣に `CHEST` を置いていない状態で 27 枠なのを先に出す）
+- 上の 1. の 8 項目を、**値を出してから**判定する
+- 見張り 1: **`main.ts` に `chestPartner` / `LARGE_CHEST_SIZE` / `CHEST_SIZE` が出てこないこと**
   （`arena.ts` の `sourceOf()` を通す。生で読むとコメントが引っかかります）
-- 見張り 2: **`main.ts` に `settleColumn` / `landingY` / `fallsDown` が出てこないこと**
+- 見張り 2: **`inventoryui.ts` が `chests` を import しないこと**（既存の判定と同じ形で、
+  **`craftscreen.ts` 経由の再輸出**だけを使う）
 
 ## 6. このタスク固有の禁じ手
 
-- **落下エンティティ（アニメーション）を作らないこと。** 落ちるのは即時（1 フレームで下まで）。
-  `droprender.ts` のような描画も、落下中を表すブロック ID も足さない ——
-  **この環境では見た目を確かめられません**（`CLAUDE.md`）
-- **`world.update()` や生成器から呼ばないこと。** 毎フレーム走らせるとフレーム予算に乗って
-  `test/world.test.ts` の p99 が動き、生成直後の地形（砂漠の砂・洞窟の天井の砂利）が
-  勝手に崩れて `test/worldgen.test.ts` の見え方まで変わります
-- **`breaking.ts` の `autoBreak()` からは呼ばないこと** —— あそこは `world.ts` がそのマスを
-  消している**途中**で、ブロックがまだ残っています（`world.ts` の `breakUnsupported`）。
-  空振りするだけなので、**呼ばない理由をコメント 1 行で残すこと**
-- **既存の支え（`supportFace` / `canSupport`）とドロップ表を書き換えないこと。**
-  重力は「支えを失って壊れる」とは別の仕掛けで、松明の経路は今のまま
-- **テストの判定をゆるめない**（とくに `test/world.test.ts` の p99 と `test/progression.test.ts`）。
-  **`SaveData.version` は 1 のまま**（セーブの形は 1 バイトも変えない）
+- **新しいブロック ID を作らないこと**（左半分・右半分のような向き違いも）。組かどうかは voxel から毎回決めます
+- **中身を移し替えないこと。** 組になった瞬間に 54 枠の器へ写す実装は禁止 ——
+  組が解けたとき（片方を壊す・3 個目を置く）に**中身の行き先が無くなります**
+- **`SaveData` の形を変えないこと**（`version` は 1 のまま）。**1 マス = 54 要素のキー**のままで、
+  「大きいチェストで 1 キー」にしないこと。**`edits` にも混ぜない**
+- **`breaking.ts` に相方を消す経路を足さないこと** —— ベッドと違い、**片方だけ壊れてよい**
+  （残った側は 27 枠に戻るだけ）。`clearBedPartner()` の形を写さないこと
+- **`placing.ts` に「3 個目を置けない」制限を足さないこと**（本家と違いますが、
+  規則が voxel だけで決まるという一点を崩さないため）
+- **`inventoryui.ts` に 27 / 54 を書かないこと**（`craft.chestSize` を見る）。
+  **`main.ts` に `=== CHEST` や隣接の判断を書かないこと**
+- **未読み込みの列では `getVoxel` が AIR を返します。** そこで落ちず、**組にならない（27 枠）**
+  で通すこと（`furnaces.ts` の `hasColumn()` の罠と同じ場所です）
+- **テストの判定をゆるめない**（とくに `test/world.test.ts` の p99 と `test/progression.test.ts`）
 
 ## 7. 終了条件
 
-- `npm run typecheck` 緑 / **`npm test` 全部緑**（2285 件 + 増えたぶん）/ `npm run build` が通る
+- `npm run typecheck` 緑 / **`npm test` 全部緑**（2307 件 + 増えたぶん）/ `npm run build` が通る
 - **コミット 1 つ**（`loop/devgame` へ push。`master` へは押さない）
-- **`TUNING.md` に 1 行**: 砂・砂利は即時に落ちる（本家は落下エンティティ。落ちる速さと
-  落下ダメージは未実装）
-- `HANDOFF.md` の**「ブラウザで見てほしいところ」に 2〜3 行**（砂を掘ったときに上の砂が
-  詰まって見えるか・穴や浮いた砂が残らないか・砂を水に落として埋め立てられるか）
-- `docs/autodev-log.md` に 1 節、`AUTODEV-QUEUE.md` の 1 番の行を消し、**この仕様書を `状態: 済` に**
+- **`TUNING.md` に 1 行**: 3 個以上並べると全部 27 枠に戻る（本家は先に組になった 2 個が大きいまま）
+- `HANDOFF.md` の**「ブラウザで見てほしいところ」に 2〜3 行**（54 枠が 6 段で出るか・
+  下 3 段が単体のときに消えているか・3 個並べたときの見え方）
+- `docs/autodev-log.md` に 1 節、`AUTODEV-QUEUE.md` の 2 番の行を消し、**この仕様書を `状態: 済` に**
