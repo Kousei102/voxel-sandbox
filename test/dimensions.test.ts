@@ -42,7 +42,10 @@ function state(mark: number): DimensionState {
     edits: { "0,2,0": [mark, mark + 1] },
     drops: [mark, 1, 0.5, 40, 0.5],
     furnaces: { [`${mark},2,0`]: [mark, 1, 0, 0, 0, 0, 0, 0, 0] },
+    // 器の中身の傷。**キーは `furnaces` / `chests` と同じ**（ずれると別の台の傷が載る）。
+    furnaceWear: { [`${mark},2,0`]: [mark, 0, 0] },
     chests: { [`${mark},3,0`]: [mark, 64] },
+    chestWear: { [`${mark},3,0`]: [mark] },
   };
 }
 
@@ -127,6 +130,12 @@ export function run(): void {
     check("落とし物も残っている", back?.drops?.[0] === 11);
     check("かまども残っている", !!back?.furnaces?.["11,2,0"]);
     check("チェストも残っている", !!back?.chests?.["11,3,0"]);
+    // **器の中身の傷も次元をまたいで残ること。** 落ちると、ネザーへ行って戻った人の
+    // チェストの道具だけが新品に化ける（型では防げない。どちらも `DimensionState`）。
+    console.log(
+      `      戻ってきた傷: furnaceWear ${JSON.stringify(back?.furnaceWear)} / chestWear ${JSON.stringify(back?.chestWear)}`,
+    );
+    check("器の中身の傷も残っている", back?.furnaceWear?.["11,2,0"]?.[0] === 11 && back?.chestWear?.["11,3,0"]?.[0] === 11, JSON.stringify(back?.chestWear));
 
     // もう一度行くと、置いてきたものがある。
     const again = dims.switchTo("あちら", back ?? emptyState());

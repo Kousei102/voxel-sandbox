@@ -71,10 +71,26 @@ export interface SaveData {
    */
   furnaces?: Record<string, number[]>;
   /**
+   * かまどの中に入っている道具の傷。`"x,y,z"` -> 3 要素（`input` / `fuel` / `output`）。
+   * **キーは `furnaces` と同じで、傷が 1 つも無い台は載せない**（1 台も無ければキーごと省略）。
+   *
+   * **`furnaces` の 9 要素を増やさない**ための別キー —— 増やすと既存のセーブが
+   * 丸ごとずれる（`wear` を `inventory` と分けたのと同じ理由）。
+   * 形と丸め方は `durability.ts` の `wornValue()`。
+   */
+  furnaceWear?: Record<string, number[]>;
+  /**
    * 置いてあるチェスト。`"x,y,z"` -> 中身 27 枠 x 2 の 54 要素。空なら省略。
    * **かまどとまったく同じ形**（「位置ごとに状態を持つブロック」を足すときはここに並べる）。
    */
   chests?: Record<string, number[]>;
+  /**
+   * チェストの中に入っている道具の傷。`"x,y,z"` -> 27 要素（位置は `chests` の枠の並びそのまま）。
+   * **キーは `chests` と同じで、傷が 1 つも無い箱は載せない**（1 台も無ければキーごと省略）。
+   *
+   * **`chests` の 54 要素を増やさない**ための別キー（`furnaceWear` と同じ作法）。
+   */
+  chestWear?: Record<string, number[]>;
   /**
    * リスポーン地点にしたベッドの**足側**のマス `[x, y, z]`。無ければ省略。
    *

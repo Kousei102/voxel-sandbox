@@ -13,7 +13,7 @@ import {
 import { findRecipe } from "../src/crafting";
 import { CraftScreen } from "../src/craftscreen";
 import { HOTBAR_SIZE, Inventory, isEmpty, type Slot } from "../src/inventory";
-import { MAX_STACK, NO_ITEM, itemName } from "../src/items";
+import { MAX_STACK, NO_ITEM, WOOD_PICKAXE, itemName } from "../src/items";
 import { sourceOf } from "./arena";
 import { check, describe } from "./harness";
 
@@ -499,5 +499,122 @@ export function run(): void {
       ui.includes("craft.chestSize") && !ui.includes('from "./chests"'),
       "UI が枠数を自分で決めている",
     );
+  }
+
+  // --- チェストが傷を運ぶ ---------------------------------------------------
+
+  describe("チェストが傷を運ぶ");
+
+  {
+    // **先に試験場が効いていることを出す。** 傷 30 の木のツルハシを枠に入れて、
+    // その枠の `damage` が 30 だと見えていなければ、この下の判定は全部素通りする。
+    const state = createChest();
+    const left = addToChest(state, WOOD_PICKAXE, 1, 30);
+    console.log(
+      `      試験場: ${itemName(WOOD_PICKAXE)} を傷 30 で入れる → 枠 0 は ${state.slots[0].item} / 傷 ${state.slots[0].damage}`,
+    );
+    check(
+      "傷ごと入る（試験場が効いている）",
+      left === 0 && state.slots[0].item === WOOD_PICKAXE && state.slots[0].damage === 30,
+      `残り ${left} / 傷 ${state.slots[0].damage}`,
+    );
+    // **山（`count > 1`）に傷は載らない** —— 傷が付く道具は全部 `stack: 1` なので、
+    // 素通しした `damage` が石の山に付く経路を作らないこと。
+    const bulk = createChest();
+    addToChest(bulk, STONE, 10, 30);
+    check("道具でない山には載らない", (bulk.slots[0].damage ?? 0) === 0, String(bulk.slots[0].damage));
+  }
+
+  {
+    // シフトクリックで入れて、シフトクリックで戻す。**両方向とも傷が残ること。**
+    const { craft } = opened();
+    craft.inventory.add(WOOD_PICKAXE, 1, 42);
+    const before = craft.inventory.slots[0].damage ?? 0;
+    craft.quickMove("inv", 0);
+    const inChest = craft.chest?.slots[0].damage ?? 0;
+    console.log(`      シフトクリック: 手元 傷 ${before} → チェスト 傷 ${inChest}`);
+    check("シフトクリックでチェストへ入れても傷が残る", before === 42 && inChest === 42, `${inChest}`);
+
+    craft.quickMove("chest", 0);
+    const back = craft.inventory.slots[0].damage ?? 0;
+    check("シフトクリックで戻しても傷が残る", back === 42, `${back}`);
+  }
+
+  {
+    // **壊すと中身が傷ごと地面に出る**（`breaking.ts` が素通しする値）。
+    const chests = new Chests();
+    addToChest(chests.at(4, 5, 6), WOOD_PICKAXE, 1, 17);
+    addToChest(chests.at(4, 5, 6), STONE, 3);
+    const spilled = chests.remove(4, 5, 6);
+    console.log(`      壊した中身: ${spilled.map((s) => `${itemName(s.item)} x${s.count} 傷 ${s.damage}`).join(" / ")}`);
+    const tool = spilled.find((s) => s.item === WOOD_PICKAXE);
+    const rock = spilled.find((s) => s.item === STONE);
+    check("壊すと傷ごと落ちる", tool?.damage === 17, String(tool?.damage));
+    check("道具でないものの傷は 0", rock?.damage === 0, String(rock?.damage));
+  }
+
+  {
+    // **セーブの往復で残る**（27 枠とも位置がずれないこと）。
+    const chests = new Chests();
+    const state = chests.at(2, 3, 4);
+    state.slots[0].item = WOOD_PICKAXE;
+    state.slots[0].count = 1;
+    state.slots[0].damage = 5;
+    state.slots[26].item = WOOD_PICKAXE;
+    state.slots[26].count = 1;
+    state.slots[26].damage = 58;
+    const saved = chests.serialize() as Record<string, number[]>;
+    const wear = chests.serializeWear() as Record<string, number[]>;
+    console.log(`      セーブ: chests ${saved["2,3,4"].length} 要素 / chestWear ${wear["2,3,4"].length} 要素`);
+    check("chests の 54 要素は増えていない", saved["2,3,4"].length === CHEST_SIZE * 2, String(saved["2,3,4"].length));
+    check("chestWear は 27 要素（枠の並びそのまま）", wear["2,3,4"].length === CHEST_SIZE, String(wear["2,3,4"].length));
+
+    const restored = new Chests();
+    restored.deserialize(saved, wear);
+    const back = restored.at(2, 3, 4);
+    check(
+      "往復しても両端の傷が位置ごと残る",
+      back.slots[0].damage === 5 && back.slots[26].damage === 58,
+      `枠 0 ${back.slots[0].damage} / 枠 26 ${back.slots[26].damage}`,
+    );
+  }
+
+  {
+    // **全部新品なら `chestWear` のキーが出ない**（減らない物だけでも出ない）。
+    const chests = new Chests();
+    addToChest(chests.at(0, 0, 0), STONE, 10);
+    addToChest(chests.at(0, 0, 1), WOOD_PICKAXE, 1);
+    const wear = chests.serializeWear();
+    check("全部新品ならキーごと出ない", wear === undefined, JSON.stringify(wear));
+  }
+
+  {
+    // **キーが無い古いセーブは全部新品。** 壊れた値でも落ちず、最大以上は `最大 - 1` に
+    // 丸まる（丸めているのは `durability.ts` の `wornValue()`。ここに写さないこと）。
+    const old = new Chests();
+    old.deserialize({ "1,1,1": [WOOD_PICKAXE, 1] });
+    check("古いセーブは全部新品", (old.at(1, 1, 1).slots[0].damage ?? 0) === 0, String(old.at(1, 1, 1).slots[0].damage));
+
+    const broken = new Chests();
+    broken.deserialize({ "1,1,1": [WOOD_PICKAXE, 1, WOOD_PICKAXE, 1, WOOD_PICKAXE, 1] }, {
+      // 長さ違い（3 要素）・数でない値・負・最大以上を 1 度に通す。
+      "1,1,1": ["x" as unknown as number, -4, 9999],
+    });
+    const worn = broken.at(1, 1, 1).slots.slice(0, 3).map((s) => s.damage ?? 0);
+    console.log(`      壊れた値 ["x", -4, 9999] → ${worn.join(" / ")}`);
+    check("数でない値・負は新品に落ちる", worn[0] === 0 && worn[1] === 0, worn.join(" / "));
+    check("最大以上は 最大 - 1 に丸まる", worn[2] === 58, String(worn[2]));
+  }
+
+  {
+    // 見張り。**器が「何回で尽きるか」を知らないこと**（知っていたら、器が耐久値を
+    // 減らす設計になっている合図）。
+    for (const path of ["src/chests.ts", "src/furnaces.ts", "src/smelting.ts"]) {
+      const src = stripComments(path);
+      const leaked = ["59", "131", "250", "1561", "maxUses(", "wearSlot("].filter((name) =>
+        src.includes(name),
+      );
+      check(`${path} は回数を知らない`, leaked.length === 0, leaked.join(" "));
+    }
   }
 }

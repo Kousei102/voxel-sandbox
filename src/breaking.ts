@@ -30,8 +30,12 @@ export interface BreakWorld {
  * テストは偽物を並べるだけで書けます（`session.ts` と同じ作法）。
  */
 export interface BreakContainers {
-  readonly furnaces: { remove(x: number, y: number, z: number): { item: number; count: number }[] };
-  readonly chests: { remove(x: number, y: number, z: number): { item: number; count: number }[] };
+  readonly furnaces: {
+    remove(x: number, y: number, z: number): { item: number; count: number; damage?: number }[];
+  };
+  readonly chests: {
+    remove(x: number, y: number, z: number): { item: number; count: number; damage?: number }[];
+  };
 }
 
 /** 地面に出す 1 山。**場所までここで決めます**（足元に埋まると拾いにくい）。 */
@@ -41,6 +45,12 @@ export interface Burst {
   readonly x: number;
   readonly y: number;
   readonly z: number;
+  /**
+   * 器から出た道具の傷。**掘って出たものは必ず新品**なので、`harvest()` の側では
+   * 付きません（省略 = 0）。**ここは器が返した値を素通しするだけ**で、
+   * 何回で尽きるかも「道具かどうか」も知りません（決めるのは `durability.ts`）。
+   */
+  readonly damage?: number;
 }
 
 /** 掘るときの注文。 */
@@ -94,13 +104,27 @@ export function tryBreak(
   // かまどを壊したら中身も出す。点火中も同じ 1 台なので、大元の ID で見る。
   if (baseBlock(id) === FURNACE) {
     for (const held of containers.furnaces.remove(x, y, z)) {
-      drops.push({ item: held.item, count: held.count, x: x + 0.5, y: y + 0.5, z: z + 0.5 });
+      drops.push({
+        item: held.item,
+        count: held.count,
+        damage: held.damage,
+        x: x + 0.5,
+        y: y + 0.5,
+        z: z + 0.5,
+      });
     }
   }
   // チェストも同じ。
   if (id === CHEST) {
     for (const held of containers.chests.remove(x, y, z)) {
-      drops.push({ item: held.item, count: held.count, x: x + 0.5, y: y + 0.5, z: z + 0.5 });
+      drops.push({
+        item: held.item,
+        count: held.count,
+        damage: held.damage,
+        x: x + 0.5,
+        y: y + 0.5,
+        z: z + 0.5,
+      });
     }
   }
 

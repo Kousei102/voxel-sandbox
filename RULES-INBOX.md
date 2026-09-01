@@ -142,9 +142,11 @@
   （**30 要素にすると既存のセーブが丸ごとずれます**。`wear` を `inventory` と分けたのと同じ理由）。
   読む順は **`craft.deserialize()` → `craft.deserializeWear()` → `craft.returnAll()`** ——
   **`returnAll()` より後に傷を戻すと、返した先（インベントリ）に載りません。**
-- **落とし物・チェスト・かまどの中身はまだ傷を持ちません**（`TUNING.md`。塞ぐのは
-  `AUTODEV-QUEUE.md` の 3c）。**チェストを開いてシフトクリックすると新品に戻ります** ——
-  `addToChest()` は `chests.ts` の仕事なので、画面の側で塞ごうとしないこと。
+- **落とし物も器の中身も傷ごと動くようになりました**（3c-1 / 3c-2・2026-09-01）。
+  ただし**塞いだのは画面の側ではありません** —— シフトクリックで器へ入れる 2 本は
+  `addToChest()`（`chests.ts`）と `moveInto()` に傷を渡すだけで、**何要素で持つか・
+  どう丸めるかは器と `durability.ts` の仕事**です（`rules/stateful-blocks.md`）。
+  画面の側で塞ごうとしないこと。
 
 ## `.claude/rules/drops.md` — 「落ちたアイテム」の節の、保存の項を差し替え
 
@@ -169,9 +171,10 @@
     設計になっている合図（減らすのは掘る側だけ）。`test/drops.test.ts` が見張っています
   - **傷んだ道具は 1 山になりません**（`stack: 1` なので統合の余地が 0）。
     `mergeAll()` に「傷が違えば統合しない」を書き足さないこと —— 半端に傷んだ山を割る話が始まります
-  - **チェストとかまどの中身はまだ傷を運びません**（`AUTODEV-QUEUE.md` の 3c-2）。
-    壊したときに出る中身は `breaking.ts` の `BreakDrop` を通って落とし物になるので、
-    塞ぐのはそちらに省略可キーを足す周です
+  - **器（チェスト・かまど）を壊して出た中身も傷ごと落ちます**（3c-2・2026-09-01）。
+    `breaking.ts` の **`Burst.damage`** が器の返した値を素通しするだけで、
+    `breaking.ts` は「道具かどうか」も「何回で尽きるか」も知りません。
+    `main.ts` は `drops.burst(..., out.damage)` と貼るだけです
 
 ## `.claude/rules/items-survival.md` — 末尾の「道具の耐久値はまだありません」の 1 行を差し替え
 
@@ -180,8 +183,50 @@
 （セーブは `wear` / `craftWear` / `dropWear` の 3 つの省略可キー）。
 **読んだ値をどこまで信じるかは `wornValue()` 1 本**で、最大以上は `最大 - 1` に丸めます
 （そのまま入れると「壊れているのに手に残っている道具」になります）。
-**チェストとかまどの中身はまだ新品に戻ります**（`TUNING.md`）。
+**チェストとかまどの中身にも付いて回ります**（`chestWear` / `furnaceWear`。
+`rules/stateful-blocks.md`）。**傷が消える経路はもう 1 つも残っていません。**
+まだ無いのは「使うと減る道具」のほうで、火打石と打ち金・弓は無限に使えます。
 
 （この節を当てるときは `items-survival.md` の `paths` に `src/durability.ts` を足すこと。
-`drops.md` の `paths` にも `src/durability.ts` を足してください —— 落とし物が傷を運ぶように
-なったので、`durability.ts` を触ったときに上の 3 本の決まりが目に入る必要があります。）
+`drops.md` と `stateful-blocks.md` の `paths` にも `src/durability.ts` を足してください ——
+落とし物と器が傷を運ぶようになったので、`durability.ts` を触ったときに
+上の決まりが目に入る必要があります。）
+
+## `.claude/rules/stateful-blocks.md` — 末尾に新しい節（`paths` に `src/durability.ts` を足すこと）
+
+## 器の中身は傷ごと持つ
+
+**かまどもチェストも、中に入っている道具の傷を持ちます**（3c-2・2026-09-01）。
+**傷が消える経路はもう残っていません** —— つまんで置く・シフトクリック・器を壊す・
+読み込み直す・次元をまたぐ、のどれを通っても付いて回ります。
+
+- **セーブは中身の配列を増やさず、省略可キーを別に足す形です**（`SaveData.chestWear` /
+  `SaveData.furnaceWear`）。**`serializeChest()` の 54 要素と `serializeFurnace()` の
+  9 要素は増やさないこと** —— 増やすと既存のセーブが丸ごとずれます
+  （`wear` を `inventory` と分けたのとまったく同じ理由）。`version` は 1 のままです。
+  - **キーは `chests` / `furnaces` と同じ `"x,y,z"`**、値の位置は**枠の並びそのまま**
+    （チェストは 27 要素、かまどは `input` / `fuel` / `output` の 3 要素）
+  - **省く条件も `serialize()` と揃えること**（`isChestEmpty()` / `isIdle()`）。
+    ずらすと、**別の台の傷が載ります**
+  - **全部新品なら `serializeWear()` が `undefined` を返してキーごと消えます。**
+    道具を器に入れていない人のセーブは、耐久値が入る前と 1 バイトも変わりません
+- **`deserialize(raw, wear)` を 2 本に分けないこと。** ここが `map` を作り直すので、
+  別呼び出しにすると順番を間違えた瞬間に傷だけ消えます（`drops.deserialize()` と同じ形）。
+- **`chests.ts` / `furnaces.ts` / `smelting.ts` が `durability.ts` から取ってよいのは
+  `damageOf` / `carryWear` / `serializeWear` / `deserializeWear` の 4 本だけ**です。
+  `maxUses` / `TOOL_USES` / `wearSlot` が要ったら「**器が耐久値を減らす**」設計に
+  なっている合図（減るのは掘ったときだけで、焼いても入れても減りません）。
+  `test/chests.test.ts` が 3 ファイルとも見張っています。
+- **器の側に `?? 0` を書かないこと。** 傷を読むのは `damageOf()`、載せるのは
+  `carryWear()`、丸めるのは `wornValue()` の 1 本ずつです。写した瞬間に
+  「棒の山に傷が付く」経路がその場ごとに増えます。
+- **壊したときは中身を傷ごと返します**（`remove()` の `{ item, count, damage }`）。
+  落とす側（`breaking.ts` の `Burst.damage`）は素通しするだけで、
+  「道具かどうか」も「何回で尽きるか」も知りません。
+- **山（`count > 1`）に傷を載せる経路を作らないこと。** `addToChest()` の第 4 引数は
+  `addToSlots()` へ素通しするだけで、載るのは**空き枠へ入れた 1 個ぶん**です
+  （傷が付く物は全部 `stack: 1`）。
+- **かまどへのシフトクリック（`craftscreen.ts` の `moveInto()`）にも傷を載せてあります**
+  が、**いまの表では道具で届きません** —— 焼けるものにも燃料にも道具が 1 本も
+  無いためです。本家のように鉄の道具が焼けるようになった日に黙って新品へ戻らないよう、
+  `test/smelting.test.ts` が**呼び出しの形**を見張っています。

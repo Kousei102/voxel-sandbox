@@ -20,6 +20,7 @@ import {
   STONE,
   WOOD,
 } from "./blocks";
+import { deserializeWear, serializeWear } from "./durability";
 import { clearSlot, isEmpty, type Slot } from "./inventory";
 import {
   COAL,
@@ -236,7 +237,23 @@ export function serializeFurnace(state: FurnaceState): number[] {
   ];
 }
 
-export function deserializeFurnace(flat: readonly number[]): FurnaceState {
+/**
+ * 中に入っている道具の傷を 3 枠ぶん（並びは `input` / `fuel` / `output`）。
+ * **全部新品なら `undefined`** を返して `SaveData.furnaceWear` のキーごと消す。
+ *
+ * **`serializeFurnace()` の 9 要素を増やさないこと** —— 増やすと既存のセーブが
+ * 丸ごとずれる（`dropWear` を `drops` と分けたのと同じ理由）。
+ * 形も丸め方も `durability.ts` に委ねる（ここに `?? 0` を書かない）。
+ */
+export function serializeFurnaceWear(state: FurnaceState): number[] | undefined {
+  return serializeWear([state.input, state.fuel, state.output]);
+}
+
+/**
+ * セーブから戻す。**傷は同じ呼び出しで渡すこと** —— 中身を入れてからでないと
+ * 「その枠の道具は何回使えるか」が決まらない（`durability.ts` の `deserializeWear()`）。
+ */
+export function deserializeFurnace(flat: readonly number[], wear?: number[]): FurnaceState {
   const state = createFurnace();
   const slots = [state.input, state.fuel, state.output];
   for (let i = 0; i < slots.length; i++) {
@@ -246,6 +263,7 @@ export function deserializeFurnace(flat: readonly number[]): FurnaceState {
     slots[i].item = item;
     slots[i].count = Math.min(count, itemStackLimit(item));
   }
+  deserializeWear(slots, wear);
   state.burnLeft = finite(flat[6], 0);
   state.burnTotal = finite(flat[7], 0);
   // 壊れた値で「焼き上がりまで残り -100 秒」にならないよう、範囲に収める。

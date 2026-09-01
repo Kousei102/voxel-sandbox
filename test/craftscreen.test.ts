@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import { DIRT, LAVA, PLANK, STONE, WATER, WOOD } from "../src/blocks";
+import { DIRT, IRON_ORE, LAVA, PLANK, STONE, WATER, WOOD } from "../src/blocks";
+import { createChest } from "../src/chests";
 import {
   CREATIVE_ITEMS,
   CREATIVE_SIZE,
@@ -20,6 +21,7 @@ import {
   allItemIds,
   itemName,
 } from "../src/items";
+import { createFurnace } from "../src/smelting";
 import { sourceOf } from "./arena";
 import { check, describe } from "./harness";
 
@@ -703,6 +705,32 @@ export function run(): void {
     "入りきらなくなったら止まる",
     bulkFull.inventory.slots[35].count === MAX_STACK - 1 && bulkFull.grid[0].count === 3,
     `板 ${bulkFull.inventory.slots[35].count} / 原木 ${bulkFull.grid[0].count} 個残り`,
+  );
+
+  // 器へのシフトクリックも傷ごと動く（`addToChest()` の第 4 引数と `moveInto()`）。
+  // **判断は `damageOf()` 1 本**で、ここに `?? 0` を書き足さないこと。
+  const wornToChest = screen();
+  wornToChest.openChest(createChest());
+  wornToChest.inventory.add(WOOD_PICKAXE, 1, 24);
+  console.log(`      シフトクリック前: 手元の傷 ${wornToChest.inventory.slots[0].damage}`);
+  wornToChest.press("inv", 0, 0, SHIFT);
+  check(
+    "チェストへのシフトクリックは傷ごと動く",
+    wornToChest.chest?.slots[0].item === WOOD_PICKAXE && wornToChest.chest.slots[0].damage === 24,
+    String(wornToChest.chest?.slots[0].damage),
+  );
+
+  // 焼くものは道具ではないので、材料の枠に傷が湧かないこと（`carryWear()` が
+  // 「道具でなければ 0」を持つ。器の側に判断を写していれば、ここが 24 に化ける）。
+  const oreToFurnace = screen();
+  const furnace = createFurnace();
+  oreToFurnace.openFurnace(furnace);
+  oreToFurnace.inventory.add(IRON_ORE, 4);
+  oreToFurnace.press("inv", 0, 0, SHIFT);
+  check(
+    "焼くものの枠に傷は湧かない",
+    furnace.input.count === 4 && (furnace.input.damage ?? 0) === 0,
+    `${furnace.input.count} 個 / 傷 ${furnace.input.damage}`,
   );
 
   // --- ダブルクリックのかき集め ---

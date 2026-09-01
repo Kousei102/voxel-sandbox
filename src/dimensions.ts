@@ -44,7 +44,11 @@ export interface DimensionState {
   /** 落ちている道具の傷（1 山 1 要素。並びは `drops` と同じ）。**全部新品なら無し**。 */
   readonly dropWear?: number[];
   readonly furnaces?: Record<string, number[]>;
+  /** かまどの中身の傷（1 台 3 要素。キーは `furnaces` と同じ）。**全部新品なら無し**。 */
+  readonly furnaceWear?: Record<string, number[]>;
   readonly chests?: Record<string, number[]>;
+  /** チェストの中身の傷（1 台 27 要素。キーは `chests` と同じ）。**全部新品なら無し**。 */
+  readonly chestWear?: Record<string, number[]>;
 }
 
 /** まだ一度も行っていない次元の状態。 */
@@ -62,7 +66,9 @@ function normalize(raw: Partial<DimensionState> | undefined): DimensionState {
     drops: raw?.drops,
     dropWear: raw?.dropWear,
     furnaces: raw?.furnaces,
+    furnaceWear: raw?.furnaceWear,
     chests: raw?.chests,
+    chestWear: raw?.chestWear,
   };
 }
 

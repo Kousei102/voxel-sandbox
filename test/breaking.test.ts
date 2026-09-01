@@ -16,8 +16,14 @@ import { FLINT, NO_ITEM, WOOD_PICKAXE, itemName } from "../src/items";
 import { Slab, sourceOf } from "./arena";
 import { check, describe } from "./harness";
 
-/** 中身を返す器の偽物。**取り除かれた回数も数える**（壊したのに呼ばれない、を見つける）。 */
-function container(held: { item: number; count: number }[] = []) {
+/**
+ * 中身を返す器の偽物。**取り除かれた回数も数える**（壊したのに呼ばれない、を見つける）。
+ *
+ * **本物の `Chests` / `Furnaces` を持ち込まないこと** —— ここが見たいのは
+ * 「器が返した値を素通しするか」だけで、器の中身の持ち方は向こうのテストの仕事。
+ * `damage` は省略できる（傷が無い器も同じ形で並べられる）。
+ */
+function container(held: { item: number; count: number; damage?: number }[] = []) {
   const calls: string[] = [];
   return {
     calls,
@@ -29,8 +35,8 @@ function container(held: { item: number; count: number }[] = []) {
 }
 
 function containers(
-  furnaceHeld: { item: number; count: number }[] = [],
-  chestHeld: { item: number; count: number }[] = [],
+  furnaceHeld: { item: number; count: number; damage?: number }[] = [],
+  chestHeld: { item: number; count: number; damage?: number }[] = [],
 ): BreakContainers & { furnaces: ReturnType<typeof container>; chests: ReturnType<typeof container> } {
   return { furnaces: container(furnaceHeld), chests: container(chestHeld) };
 }
@@ -217,6 +223,45 @@ export function run(): void {
     const bag = containers([{ item: COBBLE, count: 1 }]);
     tryBreak(world, bag, order(FURNACE));
     check("消えているかまども中身を出す", bag.furnaces.calls.length === 1);
+  }
+
+  // --- 器の中身の傷は素通しするだけ -----------------------------------------
+
+  // **`Burst.damage` は器が返した値そのまま。** `breaking.ts` は「道具かどうか」も
+  // 「何回で尽きるか」も知らない（決めるのは `durability.ts`）。
+  {
+    const world = new Slab();
+    world.setVoxel(0, 11, 0, CHEST);
+    const bag = containers([], [
+      { item: WOOD_PICKAXE, count: 1, damage: 33 },
+      { item: COBBLE, count: 5 },
+    ]);
+    const out = tryBreak(world, bag, order(CHEST));
+    console.log(
+      `      チェストから出た山: ${out.drops.map((d) => `${itemName(d.item)} x${d.count} 傷 ${d.damage}`).join(" / ")}`,
+    );
+    const tool = out.drops.find((d) => d.item === WOOD_PICKAXE);
+    const rock = out.drops.find((d) => d.item === COBBLE);
+    check("チェストの傷が Burst に素通しされる", tool?.damage === 33, String(tool?.damage));
+    // **傷の無い山は `damage` を持たない**（`drops.burst()` の既定 0 に落ちる）。
+    check("器が傷を返さなければ持たない", rock !== undefined && rock.damage === undefined, String(rock?.damage));
+  }
+
+  {
+    const world = new Slab();
+    world.setVoxel(0, 11, 0, FURNACE_LIT);
+    const bag = containers([{ item: WOOD_PICKAXE, count: 1, damage: 7 }]);
+    const out = tryBreak(world, bag, order(FURNACE_LIT));
+    const tool = out.drops.find((d) => d.item === WOOD_PICKAXE);
+    check("点火中のかまどの傷も素通しされる", tool?.damage === 7, String(tool?.damage));
+  }
+
+  {
+    // 掘って出たものは**必ず新品**（器を通らない経路に傷は付かない）。
+    const world = new Slab();
+    world.setVoxel(0, 11, 0, STONE);
+    const out = tryBreak(world, containers(), order(STONE));
+    check("掘って出た山は傷を持たない", out.drops.every((d) => d.damage === undefined), describeDrops(out.drops));
   }
 }
 

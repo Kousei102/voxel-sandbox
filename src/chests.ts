@@ -14,6 +14,7 @@
  */
 
 import { CHEST } from "./blocks";
+import { damageOf, deserializeWear, serializeWear } from "./durability";
 import { addToSlots, clearSlot, isEmpty, type Slot } from "./inventory";
 import { itemStackLimit, NO_ITEM } from "./items";
 
@@ -54,7 +55,25 @@ export function serializeChest(state: ChestState): number[] {
   return flat;
 }
 
-export function deserializeChest(flat: readonly number[]): ChestState {
+/**
+ * 中に入っている道具の傷を 27 枠ぶん（位置は `serializeChest()` と同じ）。
+ * **全部新品なら `undefined`** を返すので、`SaveData.chestWear` のキーごと消える
+ * （`dropWear` / `craftWear` と同じ「省略可・無ければ既定」の作法）。
+ *
+ * **`serializeChest()` の 54 要素を増やさないこと** —— あちらは `[item, count]` x 27 で、
+ * 増やすと既存のセーブが丸ごとずれる。**形も丸め方も `durability.ts` に委ねる**
+ * （ここに `?? 0` を書くと、道具でないものに傷が付く経路が 1 つ増える）。
+ */
+export function serializeChestWear(state: ChestState): number[] | undefined {
+  return serializeWear(state.slots);
+}
+
+/**
+ * セーブから戻す。**傷は同じ呼び出しで渡すこと** —— 中身を入れてからでないと
+ * 「その枠の道具は何回使えるか」が決まらない（`durability.ts` の `deserializeWear()`）。
+ * 読んだ値をどこまで信じるかも向こうの `wornValue()` 1 本に委ねる（**丸めを写さないこと**）。
+ */
+export function deserializeChest(flat: readonly number[], wear?: number[]): ChestState {
   const state = createChest();
   for (let i = 0; i < CHEST_SIZE; i++) {
     const item = flat[i * 2] ?? 0;
@@ -63,6 +82,7 @@ export function deserializeChest(flat: readonly number[]): ChestState {
     state.slots[i].item = item;
     state.slots[i].count = Math.min(count, itemStackLimit(item));
   }
+  deserializeWear(state.slots, wear);
   return state;
 }
 
@@ -188,14 +208,16 @@ export class Chests {
    * 返さないと、中身が黙って消える。**クリエイティブでも落とすこと** ——
    * 中身は集めたアイテムで、壊し方によって消えてよいものではない。
    */
-  remove(x: number, y: number, z: number): { item: number; count: number }[] {
+  remove(x: number, y: number, z: number): { item: number; count: number; damage: number }[] {
     const key = chestKey(x, y, z);
     const state = this.map.get(key);
     if (!state) return [];
     this.map.delete(key);
-    const out: { item: number; count: number }[] = [];
+    const out: { item: number; count: number; damage: number }[] = [];
     for (const slot of state.slots) {
-      if (!isEmpty(slot)) out.push({ item: slot.item, count: slot.count });
+      // **傷も一緒に返すこと** —— 落とす側（`breaking.ts`）が素通しするので、
+      // 落とさないと壊した瞬間に中身が新品に戻る。読むのは `damageOf()` 1 本。
+      if (!isEmpty(slot)) out.push({ item: slot.item, count: slot.count, damage: damageOf(slot) });
     }
     if (out.length > 0) this.onChange?.();
     return out;
@@ -220,15 +242,42 @@ export class Chests {
     return any ? out : undefined;
   }
 
-  /** セーブから戻す。**壊れた値は黙って飛ばす**（読めないより、欠けるほうがまし）。 */
-  deserialize(raw: Record<string, number[]> | undefined): void {
+  /**
+   * 中身の傷を `serialize()` と**同じキーの表**で。空っぽのチェストを省くところまで
+   * 揃えること（ずれると別のチェストの傷が載る）。**全部新品なら `undefined`** を返して
+   * `chestWear` のキーごと消す（`drops.serializeWear()` と同じ作法）。
+   */
+  serializeWear(): Record<string, number[]> | undefined {
+    const out: Record<string, number[]> = {};
+    let any = false;
+    for (const [key, state] of this.map) {
+      if (isChestEmpty(state)) continue;
+      const flat = serializeChestWear(state);
+      if (!flat) continue;
+      out[key] = flat;
+      any = true;
+    }
+    return any ? out : undefined;
+  }
+
+  /**
+   * セーブから戻す。**壊れた値は黙って飛ばす**（読めないより、欠けるほうがまし）。
+   *
+   * **傷は第 2 引数で受けること（2 本に分けないこと）** —— ここが `map` を作り直すので、
+   * 別呼び出しにすると順番を間違えた瞬間に傷だけ消える（`drops.deserialize()` と同じ形）。
+   */
+  deserialize(
+    raw: Record<string, number[]> | undefined,
+    wear?: Record<string, number[]> | undefined,
+  ): void {
     this.clear();
     if (!raw || typeof raw !== "object") return;
+    const worn = wear && typeof wear === "object" ? wear : undefined;
     for (const [key, flat] of Object.entries(raw)) {
       if (!Array.isArray(flat)) continue;
       const parts = key.split(",");
       if (parts.length !== 3 || parts.some((p) => !Number.isFinite(Number(p)))) continue;
-      this.map.set(key, deserializeChest(flat));
+      this.map.set(key, deserializeChest(flat, worn?.[key]));
     }
   }
 }
@@ -241,9 +290,17 @@ export class Chests {
  * **枠数は `CHEST_SIZE` ではなく渡された器に聞くこと** —— 27 と書くと、
  * 組で開いた 54 枠のうち**後ろの 27 枠に 1 個も入らない**（シフトクリックも
  * かき集めもここを通る）。
+ *
+ * **`damage` は `addToSlots()` に素通しするだけ**（載るのは空き枠へ入れた 1 個ぶんで、
+ * 山に足したぶんには載らない）。傷を読むのは呼ぶ側の `damageOf()` 1 本。
  */
-export function addToChest(state: ChestState, item: number, count: number): number {
-  return addToSlots(state.slots, item, count, 0, state.slots.length);
+export function addToChest(
+  state: ChestState,
+  item: number,
+  count: number,
+  damage = 0,
+): number {
+  return addToSlots(state.slots, item, count, 0, state.slots.length, damage);
 }
 
 /** 中身を全部空にする（保存データの削除で使う）。 */

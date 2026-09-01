@@ -492,7 +492,7 @@ export class CraftScreen {
    */
   private quickMoveFromInventory(slot: Slot, index: number): number {
     // チェストは**入れ物なので中身を選ばない**（かまどのような枠ごとの意味が無い）。
-    if (this.chestState) return addToChest(this.chestState, slot.item, slot.count);
+    if (this.chestState) return addToChest(this.chestState, slot.item, slot.count, damageOf(slot));
     const furnace = this.furnaceState;
     if (furnace) {
       // 焼けるものと燃料の両方であるアイテム（板など）は**材料を優先**する。
@@ -504,9 +504,8 @@ export class CraftScreen {
           : null;
       if (target) return moveInto(target, slot);
     }
-    // **ホットバー ↔ 収納は傷ごと動かす。** かまど・チェストへ入れる上の 2 本は
-    // まだ傷を持てない（`[item, count]` のまま）ので、渡さないでおく
-    // （`TUNING.md`。塞ぐのは `AUTODEV-QUEUE.md` の 3c）。
+    // **どの行き先も傷ごと動かす。** かまど・チェストへ入れる上の 2 本も
+    // 傷を運ぶようになった（`addToChest()` の第 4 引数と `moveInto()`。`TUNING.md`）。
     const damage = damageOf(slot);
     return index < HOTBAR_SIZE
       ? this.inventory.addRange(slot.item, slot.count, HOTBAR_SIZE, INVENTORY_SIZE, damage)
@@ -888,6 +887,9 @@ export class CraftScreen {
  *
  * **`from` は減らさないこと。** 減らすのは呼ぶ側（`quickMove`）の仕事で、
  * あちらが「1 個も動かなかったら何もしない」を戻り値で判断している。
+ *
+ * **傷も一緒に移すこと**（`addToSlots()` の空き枠と同じ扱い）。傷が付く道具は全部
+ * `stack: 1` なので、山に足す側（`base > 0`）には届かず `put <= 0` で先に戻る。
  */
 function moveInto(into: Slot, from: Slot): number {
   if (!isEmpty(into) && into.item !== from.item) return from.count;
@@ -896,6 +898,7 @@ function moveInto(into: Slot, from: Slot): number {
   if (put <= 0) return from.count;
   into.item = from.item;
   into.count = base + put;
+  carryWear(into, damageOf(from));
   return from.count - put;
 }
 

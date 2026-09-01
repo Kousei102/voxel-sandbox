@@ -23,6 +23,7 @@ import {
   MAX_STACK,
   NO_ITEM,
   RAW_PORK,
+  WOOD_PICKAXE,
   dropOf,
   itemName,
 } from "../src/items";
@@ -31,9 +32,14 @@ import {
   SMELTING,
   SMELT_TIME,
   createFurnace,
+  deserializeFurnace,
   fuelTimeOf,
+  isFuel,
   isLit,
+  isSmeltable,
   pendingResult,
+  serializeFurnace,
+  serializeFurnaceWear,
   tickFurnace,
   type FurnaceState,
 } from "../src/smelting";
@@ -485,5 +491,133 @@ export function run(): void {
     screen.openFurnace(state);
     const result = screen.press("inv", 0, 0, { shift: true, double: false });
     check("焼けも燃えもしないものは動かない", result.changed === false && isEmpty(state.input));
+  }
+
+  // --- かまどが傷を運ぶ -----------------------------------------------------
+
+  describe("かまどが傷を運ぶ");
+
+  {
+    // **先に試験場が効いていることを出す。** 傷 30 の木のツルハシを材料の枠へ
+    // つまんで置いたときに `damage` が見えていなければ、この下は全部素通りする。
+    const inventory = new Inventory();
+    inventory.add(WOOD_PICKAXE, 1, 30);
+    const screen = new CraftScreen(inventory);
+    const state = createFurnace();
+    screen.openFurnace(state);
+    screen.press("inv", 0, 0);
+    screen.release();
+    screen.press("input", 0, 0);
+    screen.release();
+    console.log(
+      `      試験場: ${itemName(WOOD_PICKAXE)} をつまんで材料の枠へ → ${state.input.item} / 傷 ${state.input.damage}`,
+    );
+    check(
+      "つまんで置いたぶんは傷ごと入る（試験場が効いている）",
+      state.input.item === WOOD_PICKAXE && state.input.damage === 30,
+      String(state.input.damage),
+    );
+  }
+
+  {
+    // **壊すと中身が傷ごと地面に出る**（`breaking.ts` が素通しする値）。
+    const furnaces = new Furnaces();
+    const state = furnaces.at(7, 8, 9);
+    state.input.item = WOOD_PICKAXE;
+    state.input.count = 1;
+    state.input.damage = 21;
+    state.fuel.item = COAL;
+    state.fuel.count = 2;
+    const spilled = furnaces.remove(7, 8, 9);
+    console.log(`      壊した中身: ${spilled.map((s) => `${itemName(s.item)} x${s.count} 傷 ${s.damage}`).join(" / ")}`);
+    const tool = spilled.find((s) => s.item === WOOD_PICKAXE);
+    const coal = spilled.find((s) => s.item === COAL);
+    check("壊すと傷ごと落ちる", tool?.damage === 21, String(tool?.damage));
+    check("道具でないものの傷は 0", coal?.damage === 0, String(coal?.damage));
+  }
+
+  {
+    // **セーブの往復で残る**（3 枠とも位置がずれないこと）。9 要素は増やさない。
+    const state = createFurnace();
+    state.input.item = WOOD_PICKAXE;
+    state.input.count = 1;
+    state.input.damage = 4;
+    state.output.item = WOOD_PICKAXE;
+    state.output.count = 1;
+    state.output.damage = 58;
+    const flat = serializeFurnace(state);
+    const wear = serializeFurnaceWear(state) as number[];
+    console.log(`      セーブ: furnaces ${flat.length} 要素 / furnaceWear ${JSON.stringify(wear)}`);
+    check("furnaces の 9 要素は増えていない", flat.length === 9, String(flat.length));
+    check(
+      "furnaceWear は input / fuel / output の 3 要素",
+      wear.length === 3 && wear[0] === 4 && wear[1] === 0 && wear[2] === 58,
+      wear.join(" / "),
+    );
+
+    const back = deserializeFurnace(flat, wear);
+    check(
+      "往復しても位置ごと残る",
+      back.input.damage === 4 && back.fuel.damage === 0 && back.output.damage === 58,
+      `${back.input.damage} / ${back.fuel.damage} / ${back.output.damage}`,
+    );
+  }
+
+  {
+    // **全部新品なら `furnaceWear` のキーが出ない**（減らない物だけでも出ない）。
+    const furnaces = new Furnaces();
+    const plain = furnaces.at(0, 0, 0);
+    plain.input.item = IRON_ORE;
+    plain.input.count = 3;
+    const fresh = furnaces.at(0, 0, 1);
+    fresh.input.item = WOOD_PICKAXE;
+    fresh.input.count = 1;
+    check("全部新品ならキーごと出ない", furnaces.serializeWear() === undefined, JSON.stringify(furnaces.serializeWear()));
+
+    // 傷んだ台が 1 つでもあれば、その台だけが載る（空の台と新品の台は載らない）。
+    furnaces.at(0, 0, 2).input.item = WOOD_PICKAXE;
+    furnaces.peek(0, 0, 2)!.input.count = 1;
+    furnaces.peek(0, 0, 2)!.input.damage = 12;
+    const wear = furnaces.serializeWear() as Record<string, number[]>;
+    console.log(`      傷んだ台だけが載る: ${JSON.stringify(wear)}`);
+    check("キーは furnaces と同じで、傷んだ台だけ", Object.keys(wear).join(" ") === "0,0,2", Object.keys(wear).join(" "));
+
+    const restored = new Furnaces();
+    restored.deserialize(furnaces.serialize(), wear);
+    check("往復してもその台だけ傷が戻る", restored.peek(0, 0, 2)?.input.damage === 12, String(restored.peek(0, 0, 2)?.input.damage));
+  }
+
+  {
+    // **キーが無い古いセーブは全部新品。** 壊れた値でも落ちず、最大以上は
+    // `最大 - 1` に丸まる（丸めるのは `durability.ts` の `wornValue()`）。
+    const old = deserializeFurnace([WOOD_PICKAXE, 1, 0, 0, 0, 0, 0, 0, SMELT_TIME]);
+    check("古いセーブは全部新品", (old.input.damage ?? 0) === 0, String(old.input.damage));
+
+    const broken = deserializeFurnace(
+      [WOOD_PICKAXE, 1, WOOD_PICKAXE, 1, WOOD_PICKAXE, 1, 0, 0, SMELT_TIME],
+      // 数でない値・負・最大以上を 1 度に通す。
+      ["x" as unknown as number, -4, 9999],
+    );
+    const worn = [broken.input.damage ?? 0, broken.fuel.damage ?? 0, broken.output.damage ?? 0];
+    console.log(`      壊れた値 ["x", -4, 9999] → ${worn.join(" / ")}`);
+    check("数でない値・負は新品に落ちる", worn[0] === 0 && worn[1] === 0, worn.join(" / "));
+    check("最大以上は 最大 - 1 に丸まる", worn[2] === 58, String(worn[2]));
+  }
+
+  {
+    // **シフトクリックの経路（`moveInto`）も傷を運ぶ。** ただし**いまは道具で届きません** ——
+    // 焼けるものにも燃料にも道具が 1 本も無いので、`quickMove` はかまどを素通りします。
+    // 届く日（本家のように鉄の道具が焼けるようになった日）に黙って新品に戻らないよう、
+    // **呼び出しの形**を見張っておく（`rules/testing.md` の「呼び出しの側も見ること」）。
+    const tools = [WOOD_PICKAXE].filter((item) => isSmeltable(item) || isFuel(item));
+    console.log(`      焼ける／燃える道具: ${tools.length} 本（0 本なら道具はかまどを素通りする）`);
+    check("いまは道具が焼けも燃えもしない", tools.length === 0, tools.map(itemName).join(" "));
+
+    const screen = sourceOf("src/craftscreen.ts");
+    check(
+      "moveInto() が傷を載せている",
+      /function moveInto[\s\S]*?carryWear\(into, damageOf\(from\)\)/.test(screen),
+      "かまどへのシフトクリックが新品に戻す",
+    );
   }
 }

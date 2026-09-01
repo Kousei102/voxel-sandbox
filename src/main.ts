@@ -299,8 +299,8 @@ function startWorld(
   mobRender = new MobRenderer(scene, world.daylightUniform());
 
   // かまど・チェスト・落ちたアイテムは次元ごとに持つ。**入れ替えはここだけ。**
-  furnaces.deserialize(state.furnaces);
-  chests.deserialize(state.chests);
+  furnaces.deserialize(state.furnaces, state.furnaceWear);
+  chests.deserialize(state.chests, state.chestWear);
   drops.deserialize(state.drops, state.dropWear);
   dropRender?.dispose();
   dropRender = new DropRenderer(scene, world.daylightUniform());
@@ -973,7 +973,7 @@ function breakBlock(x: number, y: number, z: number, blockId: number, tool: numb
   saveDirty = true;
   audio.play("break", blockSound(blockId));
   digCadence.reset();
-  for (const out of result.drops) drops.burst(out.item, out.count, out.x, out.y, out.z);
+  for (const out of result.drops) drops.burst(out.item, out.count, out.x, out.y, out.z, out.damage);
   // 掘ると腹が減る。**どれだけ減るかは `vitals.ts`**（ここは種類を渡すだけ）。
   if (result.exhaust) vitals.exhaust("mine");
   // 道具に傷が付く。**いくつ付くか・壊れたかは `durability.ts`**（ここは戻り値を見るだけ）。

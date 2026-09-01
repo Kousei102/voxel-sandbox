@@ -21,8 +21,12 @@ function sources(edits: EditMap = new Map()) {
     world: { editsForSave: () => edits },
     // 傷は別のキー（`dropWear`）。**全部新品なら undefined** でキーごと消える。
     drops: { serialize: () => [7, 3, 1, 2, 3], serializeWear: () => undefined },
-    furnaces: { serialize: () => ({ "1,2,3": [1] }) },
-    chests: { serialize: () => undefined },
+    // 器の中身の傷も別のキー（`furnaceWear` / `chestWear`）。**キーは `serialize()` と同じ。**
+    furnaces: {
+      serialize: () => ({ "1,2,3": [1] }),
+      serializeWear: () => ({ "1,2,3": [0, 0, 30] }),
+    },
+    chests: { serialize: () => undefined, serializeWear: () => undefined },
   };
 }
 
@@ -61,6 +65,14 @@ export function run(): void {
     check("落とし物・かまど・チェストも同じ 1 か所で集まる", state.drops?.length === 5 && state.furnaces !== undefined);
     // **空のキーは省く**（`chests.serialize()` が undefined を返した場合）。
     check("空の器は undefined のまま", state.chests === undefined);
+    // --- 器の中身の傷も同じ 1 か所で集まる（`collectState()` を 2 か所に写さないため）---
+    console.log(`      器の傷: furnaceWear ${JSON.stringify(state.furnaceWear)} / chestWear ${JSON.stringify(state.chestWear)}`);
+    check(
+      "かまどの中身の傷も同じ 1 か所で集まる",
+      JSON.stringify(state.furnaceWear) === '{"1,2,3":[0,0,30]}',
+      JSON.stringify(state.furnaceWear),
+    );
+    check("全部新品の器は chestWear ごと出ない", state.chestWear === undefined, String(state.chestWear));
   }
 
   // --- 書き出す形 -----------------------------------------------------------
@@ -84,6 +96,32 @@ export function run(): void {
     // 傷が 1 つも無ければ `wear` も出ない（道具を傷めていない人のセーブは、
     // 耐久値が入る前と 1 バイトも変わらない）。
     check("空のキーは省かれる（wear）", !keys.includes("wear"), keys.join(" "));
+  }
+
+  {
+    // **器の中身の傷も上の階層に並ぶ**（`chests` / `furnaces` と同じ「省略可のキー」）。
+    // 全部新品のセーブは、耐久値が入る前と 1 バイトも変わらないこと。
+    const worn = buildSave(
+      parts({
+        top: {
+          edits: {},
+          furnaces: { "1,2,3": [1, 1, 0, 0, 0, 0, 0, 0, 10] },
+          furnaceWear: { "1,2,3": [30, 0, 0] },
+          chests: { "4,5,6": [69, 1] },
+          chestWear: { "4,5,6": [58] },
+        },
+      }),
+    );
+    console.log(`      セーブに載る器の傷: ${JSON.stringify(worn.furnaceWear)} / ${JSON.stringify(worn.chestWear)}`);
+    check(
+      "器の中身の傷も上の階層に載る",
+      worn.furnaceWear?.["1,2,3"]?.[0] === 30 && worn.chestWear?.["4,5,6"]?.[0] === 58,
+      JSON.stringify(worn.chestWear),
+    );
+
+    const plain = buildSave(parts({ top: { edits: {}, chests: { "4,5,6": [69, 1] } } }));
+    const plainKeys = Object.keys(plain).filter((k) => plain[k as keyof SaveData] !== undefined);
+    check("空のキーは省かれる（chestWear / furnaceWear）", !plainKeys.includes("chestWear") && !plainKeys.includes("furnaceWear"), plainKeys.join(" "));
   }
 
   {
@@ -138,6 +176,20 @@ export function run(): void {
     check("いま居る次元も渡る", shape.dim === "nether");
     const empty = savedShape(null);
     check("セーブが無くても形は返る", empty.dim === undefined && empty.top.edits === undefined);
+
+    // **器の中身の傷も上の階層から拾うこと** —— 落とすと、読み込んだ瞬間に
+    // オーバーワールドのチェストの道具だけが新品に戻る。
+    const withWear = savedShape({
+      edits: {},
+      furnaceWear: { "1,2,3": [30, 0, 0] },
+      chestWear: { "4,5,6": [58] },
+    } as unknown as SaveData);
+    console.log(`      読んだ器の傷: ${JSON.stringify(withWear.top.furnaceWear)} / ${JSON.stringify(withWear.top.chestWear)}`);
+    check(
+      "器の中身の傷も上の階層から拾う",
+      withWear.top.furnaceWear?.["1,2,3"]?.[0] === 30 && withWear.top.chestWear?.["4,5,6"]?.[0] === 58,
+      JSON.stringify(withWear.top.chestWear),
+    );
   }
 
   // --- 読み込み直後に戻す（順番そのものが判断） -----------------------------

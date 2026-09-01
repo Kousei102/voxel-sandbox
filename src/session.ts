@@ -25,8 +25,15 @@ export interface StateSources {
   readonly world: { editsForSave(): EditMap };
   /** 傷は**別のキー**で持つ（`serialize()` の 5 要素は変えない。`storage.ts` の `dropWear`）。 */
   readonly drops: { serialize(): number[]; serializeWear(): number[] | undefined };
-  readonly furnaces: { serialize(): Record<string, number[]> | undefined };
-  readonly chests: { serialize(): Record<string, number[]> | undefined };
+  /** 器の中身の傷も**別のキー**で（`serialize()` の 9 要素 / 54 要素は変えない）。 */
+  readonly furnaces: {
+    serialize(): Record<string, number[]> | undefined;
+    serializeWear(): Record<string, number[]> | undefined;
+  };
+  readonly chests: {
+    serialize(): Record<string, number[]> | undefined;
+    serializeWear(): Record<string, number[]> | undefined;
+  };
 }
 
 /**
@@ -41,7 +48,9 @@ export function collectState(from: StateSources): DimensionState {
     drops: from.drops.serialize(),
     dropWear: from.drops.serializeWear(),
     furnaces: from.furnaces.serialize(),
+    furnaceWear: from.furnaces.serializeWear(),
     chests: from.chests.serialize(),
+    chestWear: from.chests.serializeWear(),
   };
 }
 
@@ -110,7 +119,9 @@ export function buildSave(parts: SaveParts): SaveData {
     drops: parts.shape.top.drops,
     dropWear: parts.shape.top.dropWear,
     furnaces: parts.shape.top.furnaces,
+    furnaceWear: parts.shape.top.furnaceWear,
     chests: parts.shape.top.chests,
+    chestWear: parts.shape.top.chestWear,
     bed: parts.bed,
     bedDim: parts.bedDim,
     edits: parts.shape.top.edits,
@@ -278,7 +289,9 @@ export function savedShape(saved: SaveData | null | undefined): {
       drops: saved?.drops,
       dropWear: saved?.dropWear,
       furnaces: saved?.furnaces,
+      furnaceWear: saved?.furnaceWear,
       chests: saved?.chests,
+      chestWear: saved?.chestWear,
     },
     others: saved?.dims,
   };

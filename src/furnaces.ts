@@ -11,6 +11,7 @@
  */
 
 import { AIR, FURNACE, FURNACE_LIT, baseBlock } from "./blocks";
+import { damageOf } from "./durability";
 import type { Slot } from "./inventory";
 import { isEmpty } from "./inventory";
 import {
@@ -19,6 +20,7 @@ import {
   isIdle,
   isLit,
   serializeFurnace,
+  serializeFurnaceWear,
   tickFurnace,
   type FurnaceState,
 } from "./smelting";
@@ -83,14 +85,16 @@ export class Furnaces {
    * かまどを取り除いて、**中に入っていたものを返す**（壊したときに地面へ落とす）。
    * 返さないと、中身が黙って消える。
    */
-  remove(x: number, y: number, z: number): { item: number; count: number }[] {
+  remove(x: number, y: number, z: number): { item: number; count: number; damage: number }[] {
     const key = furnaceKey(x, y, z);
     const entry = this.map.get(key);
     if (!entry) return [];
     this.map.delete(key);
-    const out: { item: number; count: number }[] = [];
+    const out: { item: number; count: number; damage: number }[] = [];
     for (const slot of [entry.state.input, entry.state.fuel, entry.state.output] as Slot[]) {
-      if (!isEmpty(slot)) out.push({ item: slot.item, count: slot.count });
+      // **傷も一緒に返すこと**（`chests.ts` と同じ）。落とさないと、壊した瞬間に
+      // 中身が新品に戻る。読むのは `damageOf()` 1 本。
+      if (!isEmpty(slot)) out.push({ item: slot.item, count: slot.count, damage: damageOf(slot) });
     }
     if (out.length > 0) this.onChange?.();
     return out;
@@ -146,15 +150,42 @@ export class Furnaces {
     return any ? out : undefined;
   }
 
-  /** セーブから戻す。**壊れた値は黙って飛ばす**（読めないより、欠けるほうがまし）。 */
-  deserialize(raw: Record<string, number[]> | undefined): void {
+  /**
+   * 中身の傷を `serialize()` と**同じキーの表**で。空っぽで火も消えているかまどを
+   * 省くところまで揃えること（ずれると別のかまどの傷が載る）。
+   * **全部新品なら `undefined`** を返して `furnaceWear` のキーごと消す。
+   */
+  serializeWear(): Record<string, number[]> | undefined {
+    const out: Record<string, number[]> = {};
+    let any = false;
+    for (const [key, entry] of this.map) {
+      if (isIdle(entry.state)) continue;
+      const flat = serializeFurnaceWear(entry.state);
+      if (!flat) continue;
+      out[key] = flat;
+      any = true;
+    }
+    return any ? out : undefined;
+  }
+
+  /**
+   * セーブから戻す。**壊れた値は黙って飛ばす**（読めないより、欠けるほうがまし）。
+   *
+   * **傷は第 2 引数で受けること（2 本に分けないこと）** —— ここが `map` を作り直すので、
+   * 別呼び出しにすると順番を間違えた瞬間に傷だけ消える（`chests.ts` と同じ形）。
+   */
+  deserialize(
+    raw: Record<string, number[]> | undefined,
+    wear?: Record<string, number[]> | undefined,
+  ): void {
     this.clear();
     if (!raw || typeof raw !== "object") return;
+    const worn = wear && typeof wear === "object" ? wear : undefined;
     for (const [key, flat] of Object.entries(raw)) {
       if (!Array.isArray(flat)) continue;
       const parts = key.split(",");
       if (parts.length !== 3 || parts.some((p) => !Number.isFinite(Number(p)))) continue;
-      this.map.set(key, { state: deserializeFurnace(flat), syncedLit: null });
+      this.map.set(key, { state: deserializeFurnace(flat, worn?.[key]), syncedLit: null });
     }
   }
 }
