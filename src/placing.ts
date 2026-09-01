@@ -31,6 +31,7 @@ import {
   type PlaceAim,
 } from "./blocks";
 import { placeBed, type BedWorld } from "./beds";
+import { settleColumn } from "./gravity";
 import { bucketUse } from "./items";
 import { quenchAround } from "./liquids";
 import { ignite, portalBlock } from "./portals";
@@ -102,6 +103,9 @@ export function tryPlace(
     }
   } else if (!world.setVoxel(x, y, z, id)) {
     return NOTHING;
+  } else {
+    // 支えの無い所（空中・水の上）に砂・砂利を置いたら、地面か水底まで落ちる。
+    settleColumn(world, x, y, z);
   }
 
   return { kind: "placed", id };

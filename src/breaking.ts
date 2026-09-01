@@ -14,6 +14,7 @@
 
 import { AIR, CHEST, FURNACE, baseBlock } from "./blocks";
 import { clearBedPartner } from "./beds";
+import { settleColumn } from "./gravity";
 import { NO_ITEM, rollDrop } from "./items";
 import { canHarvest } from "./mining";
 
@@ -79,6 +80,8 @@ export function tryBreak(
 ): BreakOutcome {
   const { x, y, z, id, creative } = order;
   if (!world.setVoxel(x, y, z, AIR)) return NOTHING;
+  // 掘って空けたマスの真上に砂・砂利が積まれていたら、そのぶんだけ 1 つずつ下がる。
+  settleColumn(world, x, y, z);
 
   const drops: Burst[] = [];
 
@@ -125,6 +128,9 @@ export function autoBreak(
   creative: boolean,
   roll: number,
 ): readonly Burst[] {
+  // **ここでは settleColumn() を呼ばない。** 呼ばれる時点で `world.ts` の
+  // `breakUnsupported` はまだそのマスを消している途中（ブロックがまだ残っている）
+  // なので、上を見ても空振りするだけ。積み直しは元の `setVoxel` の側で片付く。
   // **ベッドの相方はクリエイティブでも消すこと**（下の return より前）。
   // 相方のぶんは落とさない —— 出るベッドは 1 台につき 1 個。
   clearBedPartner(world, x, y, z, id);

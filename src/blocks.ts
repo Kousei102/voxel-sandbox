@@ -130,9 +130,7 @@ export const OBSIDIAN = 43;
  * 火打石が要るのは**火打石と打ち金 = ネザーポータルの点火**だけなので、
  * これが無いと黒曜石の枠を組んでも火が付かない。
  *
- * **落ちません。** Minecraft の砂利は支えを失うと落下するが、この世界には
- * 落ちるブロックの仕組みがまだ無い（`supportFace` は「支えが消えたら壊れる」であって、
- * 落下ではない）。掘った下の砂利はその場に浮いたまま残る。
+ * **砂と同じく支えを失うと落ちる**（`falls: true`。どのマスに効くかは `gravity.ts`）。
  */
 export const GRAVEL = 44;
 
@@ -452,6 +450,12 @@ export interface BlockDef {
    * どれだけ焼けるかは持たない（数値は `vitals.ts` / `mobs.ts` のもの）。
    */
   readonly hot: boolean;
+  /**
+   * 支えを失うと下まで落ちて積み直す（砂・砂利）。**`id === SAND` と書かないこと** ——
+   * `liquid` / `hot` と同じ表 1 本（`fallsDown()`）に聞く。**どのマスに効くかは
+   * `gravity.ts`**（`breaking.ts` / `placing.ts` が書き込んだあとに 1 行呼ぶ）。
+   */
+  readonly falls: boolean;
   /** 頭が浸かったときのフォグ。液体だけが持つ。 */
   readonly fog: LiquidFog | null;
   /** 足音・破壊・設置の音の材質。既定は "stone"。 */
@@ -558,6 +562,7 @@ function def(
     minTier: opts.minTier ?? TIER_HAND,
     liquid: opts.liquid ?? false,
     hot: opts.hot ?? false,
+    falls: opts.falls ?? false,
     fog: opts.fog ?? null,
     emission: opts.emission ?? 0,
     sound: opts.sound ?? "stone",
@@ -812,7 +817,7 @@ export const BLOCKS: readonly BlockDef[] = [
   def(DIRT, "土", { top: 0x6b533a }, { hardness: 0.5, tool: "shovel", sound: "dirt" }),
   def(STONE, "石", { top: 0x8a8f96 }, { hardness: 1.5, tool: "pickaxe", minTier: TIER_WOOD }),
   def(COBBLE, "丸石", { top: 0x767b82 }, { hardness: 2, tool: "pickaxe", minTier: TIER_WOOD }),
-  def(SAND, "砂", { top: 0xd8c99a }, { hardness: 0.5, tool: "shovel", sound: "sand" }),
+  def(SAND, "砂", { top: 0xd8c99a }, { hardness: 0.5, tool: "shovel", sound: "sand", falls: true }),
   def(
     WATER,
     "水",
@@ -1040,7 +1045,7 @@ export const BLOCKS: readonly BlockDef[] = [
     GRAVEL,
     "砂利",
     { top: 0x8d8580, side: 0x847c77, bottom: 0x7b736e },
-    { hardness: 0.6, tool: "shovel", sound: "sand" },
+    { hardness: 0.6, tool: "shovel", sound: "sand", falls: true },
   ),
 
   // ネザーの 3 つ。**どれも普通の立方体**で、特別なのはグロウストーンが光ることだけ。
@@ -1209,6 +1214,8 @@ const REPLACEABLE = new Uint8Array(ID_LIMIT);
 const LIQUID = new Uint8Array(ID_LIMIT);
 /** 1 = 浸かると焼ける液体。プレイヤーもモブも毎フレーム引く。 */
 const HOT = new Uint8Array(ID_LIMIT);
+/** 1 = 支えを失うと下まで落ちる（砂・砂利）。どのマスに効くかは `gravity.ts`。 */
+const FALLS = new Uint8Array(ID_LIMIT);
 const VARIANT_OF = new Uint8Array(ID_LIMIT);
 /** ID から定義を引く表。ID が飛び飛びなので、BLOCKS の並びとは別に持つ。 */
 const BY_ID: BlockDef[] = [];
@@ -1223,6 +1230,7 @@ for (const block of BLOCKS) {
   REPLACEABLE[block.id] = block.replaceable ? 1 : 0;
   LIQUID[block.id] = block.liquid ? 1 : 0;
   HOT[block.id] = block.hot ? 1 : 0;
+  FALLS[block.id] = block.falls ? 1 : 0;
   VARIANT_OF[block.id] = block.variantOf;
 }
 // 定義の無い ID を引くと undefined が伝播して原因が遠くに出るので、ここで落とす
@@ -1363,6 +1371,15 @@ export function isHotLiquid(id: number): boolean {
 export function quenched(id: number, neighbour: number): number {
   const cools = isLiquid(neighbour) && !isHotLiquid(neighbour);
   return isHotLiquid(id) && cools ? OBSIDIAN : id;
+}
+
+/**
+ * 支えを失うと下まで落ちて積み直すか（砂・砂利）。**`id === SAND` と書かないこと** ——
+ * `isLiquid()` / `isHotLiquid()` と同じ表 1 本に聞く。座標は知らない。
+ * どのマスに効くかは `gravity.ts` の仕事。
+ */
+export function fallsDown(id: number): boolean {
+  return FALLS[id] === 1;
 }
 
 /** 頭がそのブロックの中にあるときのフォグ。液体でなければ null。 */
