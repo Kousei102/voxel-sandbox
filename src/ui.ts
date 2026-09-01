@@ -1,4 +1,5 @@
 import type { BossBar } from "./boss";
+import { wearBar } from "./durability";
 import { HOTBAR_SIZE, isEmpty, type Inventory, type Slot } from "./inventory";
 import { itemCssColor, itemName } from "./items";
 
@@ -19,11 +20,16 @@ export function paintSlot(el: HTMLElement, slot: Slot | null, showCount = true):
   if (count) count.textContent = filled && showCount && slot.count > 1 ? String(slot.count) : "";
   if (label) label.textContent = filled ? itemName(slot.item) : "";
   el.title = filled ? `${itemName(slot.item)} x${slot.count}` : "";
+  // 道具の傷の帯。**割合は `durability.ts` の `wearBar()`**（ここは幅に貼るだけ）。
+  // 出さないもの（空・棒のような減らない物・新品）は -1 が返るので、幅 0 になって消える。
+  const wear = el.querySelector<HTMLElement>(".wear");
+  if (wear) wear.style.width = `${Math.max(0, filled ? wearBar(slot) : -1) * 100}%`;
 }
 
 export function slotMarkup(extra = ""): string {
   return (
-    `${extra}<span class="swatch"></span><span class="count"></span><span class="label"></span>`
+    `${extra}<span class="swatch"></span><span class="count"></span>` +
+    `<span class="weartrack"><span class="wear"></span></span><span class="label"></span>`
   );
 }
 

@@ -14,6 +14,7 @@
 
 import { AIR, CHEST, FURNACE, baseBlock } from "./blocks";
 import { clearBedPartner } from "./beds";
+import { wearForBreaking } from "./durability";
 import { settleColumn } from "./gravity";
 import { NO_ITEM, rollDrop } from "./items";
 import { canHarvest } from "./mining";
@@ -62,9 +63,14 @@ export interface BreakOutcome {
   readonly drops: readonly Burst[];
   /** 掘った消耗を足すか（クリエイティブと、壊れなかったときは false）。 */
   readonly exhaust: boolean;
+  /**
+   * 手に持っている道具に付ける傷（0 か 1）。**決めるのは `durability.ts`**
+   * （ここは聞いて載せるだけ。クリエイティブ・素手・硬さ 0 のブロックでは 0）。
+   */
+  readonly wear: number;
 }
 
-const NOTHING: BreakOutcome = { broken: false, drops: [], exhaust: false };
+const NOTHING: BreakOutcome = { broken: false, drops: [], exhaust: false, wear: 0 };
 
 /**
  * 掘り切ったブロックを消して、地面に出すものを決める。
@@ -102,14 +108,17 @@ export function tryBreak(
   // ドロップは下の 1 本の経路だけを通るので、**出るベッドは 1 個**。
   clearBedPartner(world, x, y, z, id);
 
-  if (creative) return { broken: true, drops, exhaust: false };
+  if (creative) return { broken: true, drops, exhaust: false, wear: 0 };
 
+  // **傷も落ちる／落ちないに関わらず付く**（消耗と同じで、掘った労力そのもの。
+  // 適正でない道具で削っても道具は傷む）。**いくつ付くかは `durability.ts`。**
+  const wear = wearForBreaking(id, order.tool, creative);
   // **消耗は落ちる／落ちないに関わらず足す**（掘った労力そのものなので、
   // 適正でない道具で削っても腹は減る）。
-  if (!canHarvest(id, order.tool)) return { broken: true, drops, exhaust: true };
+  if (!canHarvest(id, order.tool)) return { broken: true, drops, exhaust: true, wear };
   const mined = harvest(id, order.roll, x, y, z, 0.35);
   if (mined) drops.push(mined);
-  return { broken: true, drops, exhaust: true };
+  return { broken: true, drops, exhaust: true, wear };
 }
 
 /**

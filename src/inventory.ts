@@ -1,3 +1,4 @@
+import { deserializeWear, serializeWear } from "./durability";
 import { NO_ITEM, itemStackLimit } from "./items";
 
 export const HOTBAR_SIZE = 9;
@@ -7,19 +8,26 @@ export const INVENTORY_SIZE = HOTBAR_SIZE + STORAGE_SIZE;
 export interface Slot {
   item: number;
   count: number;
+  /**
+   * 道具の傷（使った回数）。**新品は 0**（省略可なので、`Slot` を作る側は書かなくてよい）。
+   * **何回で壊れるか・いつ減るかは `durability.ts`** で、ここは値を持つだけ。
+   */
+  damage?: number;
 }
 
 function empty(): Slot {
-  return { item: NO_ITEM, count: 0 };
+  return { item: NO_ITEM, count: 0, damage: 0 };
 }
 
 export function isEmpty(slot: Slot): boolean {
   return slot.item === NO_ITEM || slot.count <= 0;
 }
 
+/** **傷も一緒に捨てること** —— 残すと、次に入れたものが半分減った状態で始まる。 */
 export function clearSlot(slot: Slot): void {
   slot.item = NO_ITEM;
   slot.count = 0;
+  slot.damage = 0;
 }
 
 /**
@@ -59,6 +67,8 @@ export function addToSlots(
     const put = Math.min(limit, left);
     slot.item = item;
     slot.count = put;
+    // **入れたものは新品から始める**（空の枠に前の持ち主の傷が残っていても捨てる）。
+    slot.damage = 0;
     left -= put;
   }
   return left;
@@ -229,10 +239,14 @@ export class Inventory {
   swap(a: number, b: number): void {
     const item = this.slots[a].item;
     const count = this.slots[a].count;
+    // **傷も一緒に入れ替えること** —— 置いていくと、収納から出した道具が新品に戻る。
+    const damage = this.slots[a].damage ?? 0;
     this.slots[a].item = this.slots[b].item;
     this.slots[a].count = this.slots[b].count;
+    this.slots[a].damage = this.slots[b].damage ?? 0;
     this.slots[b].item = item;
     this.slots[b].count = count;
+    this.slots[b].damage = damage;
   }
 
   clear(): void {
@@ -243,6 +257,8 @@ export class Inventory {
   setSelected(item: number, count = itemStackLimit(item)): void {
     this.selectedSlot.item = item;
     this.selectedSlot.count = count;
+    // クリエイティブで湧かせたものは新品（傷んだ道具の上に湧かせても引き継がない）。
+    this.selectedSlot.damage = 0;
   }
 
   /**
@@ -281,5 +297,19 @@ export class Inventory {
       this.slots[i].item = item;
       this.slots[i].count = Math.min(count, itemStackLimit(item));
     }
+  }
+
+  /**
+   * 道具の傷。**`inventory` とは別の省略可キー**（`SaveData.wear`）に置く ——
+   * `[item, count]` を 3 要素にすると既存のセーブが丸ごとずれる。
+   * **形も丸め方も `durability.ts`**（ここは委譲するだけ）。
+   */
+  serializeWear(): number[] | undefined {
+    return serializeWear(this.slots);
+  }
+
+  /** **`deserialize()` のあとで呼ぶこと**（何回使える道具かは中身で決まる）。 */
+  deserializeWear(flat: number[] | undefined): void {
+    deserializeWear(this.slots, flat);
   }
 }

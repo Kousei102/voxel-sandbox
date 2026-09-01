@@ -62,6 +62,8 @@ export interface SaveParts {
   readonly health: number;
   readonly hunger: number;
   readonly inventory: number[];
+  /** 道具の傷 36 要素。**全部新品なら `undefined`**（キーごと消える）。 */
+  readonly wear: number[] | undefined;
   readonly craft: number[] | undefined;
   readonly volume: number;
   /** リスポーン地点。**世界に 1 点だけ**なので上の階層に置く。 */
@@ -97,6 +99,7 @@ export function buildSave(parts: SaveParts): SaveData {
     health: parts.health,
     hunger: parts.hunger,
     inventory: parts.inventory,
+    wear: parts.wear,
     craft: parts.craft,
     volume: parts.volume,
     drops: parts.shape.top.drops,
@@ -142,7 +145,11 @@ export function restoredValues(saved: SaveData | null | undefined): {
  */
 export interface RestoreTargets {
   readonly dayNight: { setTime(t: number): void };
-  readonly inventory: { deserialize(data: number[] | undefined): void };
+  readonly inventory: {
+    deserialize(data: number[] | undefined): void;
+    /** **`deserialize()` のあとで呼ぶ**（何回使える道具かは中身で決まる）。 */
+    deserializeWear(data: number[] | undefined): void;
+  };
   readonly craft: { deserialize(data: number[] | undefined): void; returnAll(): void };
   readonly audio: { setVolume(volume: number): void };
   /** 体力と空腹は代入で戻す（`Vitals` の持ち方に合わせてある）。 */
@@ -175,6 +182,8 @@ export function applyRestore(
   if (restored.time !== null) targets.dayNight.setTime(restored.time);
 
   targets.inventory.deserialize(saved?.inventory);
+  // **傷は中身を入れたあとで**（空の枠に傷だけ戻しても、何回使える道具か決まらない）。
+  targets.inventory.deserializeWear(saved?.wear);
   // **必ずインベントリを入れたあとで**（上の 1.）。
   targets.craft.deserialize(saved?.craft);
   targets.craft.returnAll();

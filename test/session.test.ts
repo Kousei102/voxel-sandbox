@@ -37,6 +37,8 @@ function parts(
     health: 12,
     hunger: 7,
     inventory: [1, 2],
+    // 道具の傷。**全部新品なら undefined**（キーごと消えて、古いセーブと同じ形になる）。
+    wear: undefined,
     craft: undefined,
     volume: 0.4,
     bed: [3, 64, 5],
@@ -77,6 +79,9 @@ export function run(): void {
     check("オーバーワールドでは dim も dims も出ない", save.dim === undefined && save.dims === undefined);
     const keys = Object.keys(save).filter((k) => save[k as keyof SaveData] !== undefined);
     check("空のキーは省かれる（craft）", !keys.includes("craft"), keys.join(" "));
+    // 傷が 1 つも無ければ `wear` も出ない（道具を傷めていない人のセーブは、
+    // 耐久値が入る前と 1 バイトも変わらない）。
+    check("空のキーは省かれる（wear）", !keys.includes("wear"), keys.join(" "));
   }
 
   {
@@ -140,7 +145,10 @@ export function run(): void {
     const order: string[] = [];
     const targets = {
       dayNight: { setTime: (t: number) => order.push(`setTime(${t})`) },
-      inventory: { deserialize: () => order.push("inventory") },
+      inventory: {
+        deserialize: () => order.push("inventory"),
+        deserializeWear: () => order.push("wear"),
+      },
       craft: {
         deserialize: () => order.push("craft.deserialize"),
         returnAll: () => order.push("craft.returnAll"),
@@ -167,6 +175,12 @@ export function run(): void {
         order.indexOf("craft.deserialize") < order.indexOf("craft.returnAll"),
       order.join(" → "),
     );
+    // **傷は中身を入れたあとで戻すこと**（空の枠に傷だけ戻しても、何回使える道具か決まらない）。
+    check(
+      "道具の傷はインベントリを入れたあとで戻す",
+      order.indexOf("inventory") < order.indexOf("wear"),
+      order.join(" → "),
+    );
     check("体力と空腹はセーブの値に戻る", targets.vitals.health === 5 && targets.vitals.hunger === 6);
     check("クリエイティブかどうかを返す（貼るのは main.ts）", result.creative);
     // 返したぶんは次の保存で `craft` のキーごと消えるので、保存の印を立てる合図が要る。
@@ -178,7 +192,7 @@ export function run(): void {
     // セーブが無い（初回）。**体力も空腹も触らない**（満タンのまま）。
     const targets = {
       dayNight: { setTime: () => check("初回は時刻を触らない", false) },
-      inventory: { deserialize: () => {} },
+      inventory: { deserialize: () => {}, deserializeWear: () => {} },
       craft: { deserialize: () => {}, returnAll: () => {} },
       audio: { setVolume: () => {} },
       vitals: { health: MAX_HEALTH, hunger: MAX_HUNGER },

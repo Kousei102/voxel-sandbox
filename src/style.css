@@ -360,6 +360,32 @@ body {
   box-shadow: none;
 }
 
+/*
+ * 道具の傷の帯。**幅は残りの割合**（`ui.ts` が `durability.ts` の `wearBar()` を貼る）。
+ * 新品と減らない物は幅 0 なので出ない —— **ここに「いつ出すか」を書かないこと。**
+ *
+ * 走る幅（.weartrack）を先に決めてあるのは、割合を枠の幅で解かせないため
+ * （左右の余白ぶん、100% がスロットからはみ出す）。色の帯は走る幅いっぱいに
+ * 敷いてあるので、残りが減るほど赤い側だけが残る。
+ */
+.slot .weartrack {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: 4px;
+  height: 3px;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.slot .wear {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #d8483a, #d8c23a 45%, #6fd08c);
+  background-size: 38px 3px;
+}
+
 /* --- inventory --- */
 #inventory {
   position: fixed;

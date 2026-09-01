@@ -22,6 +22,7 @@ import { decideClick, decideKey } from "./controls";
 import { CraftScreen } from "./craftscreen";
 import { liveCrystals, shatterCrystal } from "./crystals";
 import { DayNight, WAKE_TIME, canSleep, environmentFor } from "./daynight";
+import { breakMessage, wearSlot } from "./durability";
 import { eyeMessage, fitEye } from "./endportal";
 import { syncExitPortal } from "./exitportal";
 import { Dimensions, OVERWORLD, emptyState, type DimensionState } from "./dimensions";
@@ -558,6 +559,7 @@ function currentSave(): SaveData {
     health: vitals.health,
     hunger: vitals.hunger,
     inventory: inventory.serialize(),
+    wear: inventory.serializeWear(),
     craft: craft.serialize(),
     volume: audio.getVolume(),
     bed: beds.serialize(),
@@ -973,6 +975,10 @@ function breakBlock(x: number, y: number, z: number, blockId: number, tool: numb
   for (const out of result.drops) drops.burst(out.item, out.count, out.x, out.y, out.z);
   // 掘ると腹が減る。**どれだけ減るかは `vitals.ts`**（ここは種類を渡すだけ）。
   if (result.exhaust) vitals.exhaust("mine");
+  // 道具に傷が付く。**いくつ付くか・壊れたかは `durability.ts`**（ここは戻り値を見るだけ）。
+  const worn = wearSlot(inventory.selectedSlot, result.wear);
+  if (worn !== NO_ITEM) hud.flash(breakMessage(worn));
+  hud.refresh();
 }
 
 window.addEventListener("wheel", (event) => {
