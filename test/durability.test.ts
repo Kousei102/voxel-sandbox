@@ -1,8 +1,16 @@
 import { BEDROCK, COBBLE, IRON_ORE, STONE, TORCH } from "../src/blocks";
 import { tryBreak } from "../src/breaking";
 import {
+  CREATIVE_ITEMS,
+  CraftScreen,
+  type MouseButton,
+  type SlotArea,
+} from "../src/craftscreen";
+import {
   TOOL_USES,
   breakMessage,
+  carryWear,
+  damageOf,
   deserializeWear,
   maxUses,
   serializeWear,
@@ -10,14 +18,42 @@ import {
   wearForBreaking,
   wearSlot,
 } from "../src/durability";
-import { INVENTORY_SIZE, Inventory, isEmpty, type Slot } from "../src/inventory";
+import { HOTBAR_SIZE, INVENTORY_SIZE, Inventory, isEmpty, type Slot } from "../src/inventory";
 import { ARROW, DIAMOND_PICKAXE, IRON_PICKAXE, NO_ITEM, STICK, STONE_PICKAXE, WOOD_PICKAXE } from "../src/items";
+import { applyRestore } from "../src/session";
+import type { SaveData } from "../src/storage";
 import { Slab, sourceOf } from "./arena";
 import { check, describe } from "./harness";
 
 /** 素の `Slot` 1 個。**`World` も DOM も要らない**（試験場はこれで足りる）。 */
 function slot(item: number, count = 1, damage = 0): Slot {
   return { item, count, damage };
+}
+
+/**
+ * インベントリ画面の試験場。**`World` も DOM も要らない**（`Inventory` + `CraftScreen` だけ）。
+ * 1 枠目に傷んだ木のツルハシ、6 枠目に傷んだ石のツルハシを置いて 3x3 で開く。
+ */
+function arena(): { inv: Inventory; screen: CraftScreen } {
+  const inv = new Inventory();
+  inv.slots[0].item = WOOD_PICKAXE;
+  inv.slots[0].count = 1;
+  inv.slots[0].damage = 30;
+  inv.slots[5].item = STONE_PICKAXE;
+  inv.slots[5].count = 1;
+  inv.slots[5].damage = 7;
+  const screen = new CraftScreen(inv);
+  screen.openScreen(3);
+  return { inv, screen };
+}
+
+/**
+ * 掴む／置くの 1 回。**`press()` は掴んでいるあいだ構えるだけ**なので、
+ * `release()` まで通さないと 1 個も動かない（`rules/inventory-screen.md`）。
+ */
+function click(screen: CraftScreen, area: SlotArea, index: number, button: MouseButton = 0): void {
+  screen.press(area, index, button);
+  screen.release();
 }
 
 export function run(): void {
@@ -239,4 +275,253 @@ export function run(): void {
     durability.includes(word),
   );
   check("durability.ts に DOM・three・音・乱数が無い", unverifiable.length === 0, unverifiable.join(" / "));
+
+  describe("傷ごと動く");
+
+  // --- 試験場が効いているか（先に置く。`rules/testing.md`） ---
+  {
+    const { inv, screen } = arena();
+    console.log(
+      `      試験場: 1 枠目 ${damageOf(inv.slots[0])} / 6 枠目 ${damageOf(inv.slots[5])} / ` +
+        `画面 ${screen.isOpen ? "開" : "閉"}`,
+    );
+    check("傷 30 の木のツルハシが 1 枠目に居る", damageOf(inv.slots[0]) === 30, `${damageOf(inv.slots[0])}`);
+    check("画面が開いていて盤面が使える", screen.isOpen && screen.usable(0));
+    // 「道具でなければ 0」の判断は `damageOf` / `carryWear` の 2 本だけが持つ。
+    const stick = slot(STICK, 5, 9);
+    check("道具でない枠の傷は読まない（0）", damageOf(stick) === 0, `${damageOf(stick)}`);
+    check("空の枠・null も 0", damageOf(slot(NO_ITEM, 0, 9)) === 0 && damageOf(null) === 0);
+    carryWear(stick, 12);
+    check("道具でない枠には載せない", stick.damage === 0, `${stick.damage}`);
+  }
+
+  // --- 掴む → 空き枠へ置く（左・右の両方） ---
+  for (const button of [0, 2] as MouseButton[]) {
+    const label = button === 0 ? "左" : "右";
+    const { inv, screen } = arena();
+    click(screen, "inv", 0, button); // 掴む
+    const held = damageOf(screen.held);
+    click(screen, "inv", 20, button); // 空き枠へ置く
+    console.log(`      ${label}クリック: 掴んだとき ${held} → 置いた先 ${damageOf(inv.slots[20])}`);
+    check(
+      `${label}クリックで掴むと傷ごと手に乗る`,
+      held === 30 && screen.held === null,
+      `手 ${held}`,
+    );
+    check(
+      `${label}クリックで空き枠へ置いても傷が残る`,
+      inv.slots[20].item === WOOD_PICKAXE && inv.slots[20].damage === 30,
+      `傷 ${inv.slots[20].damage}`,
+    );
+    check("動かした元は空で、傷も 0 に戻る", isEmpty(inv.slots[0]) && damageOf(inv.slots[0]) === 0);
+  }
+
+  // --- 別のアイテムと入れ替える（両方の傷が入れ替わる） ---
+  {
+    const { inv, screen } = arena();
+    click(screen, "inv", 0, 0); // 木（傷 30）を掴む
+    click(screen, "inv", 5, 0); // 石（傷 7）と入れ替える
+    console.log(`      入れ替え: 6 枠目 ${damageOf(inv.slots[5])} / 手 ${damageOf(screen.held)}`);
+    check(
+      "置いた先は木のツルハシの傷 30",
+      inv.slots[5].item === WOOD_PICKAXE && damageOf(inv.slots[5]) === 30,
+      `${inv.slots[5].item} / 傷 ${damageOf(inv.slots[5])}`,
+    );
+    check(
+      "手に戻った石のツルハシは傷 7 のまま",
+      screen.held?.item === STONE_PICKAXE && damageOf(screen.held) === 7,
+      `傷 ${damageOf(screen.held)}`,
+    );
+
+    // 片方が道具でなければ 0（丸石の山に傷が乗ってはいけない）。
+    const stack = new Inventory();
+    stack.slots[0].item = WOOD_PICKAXE;
+    stack.slots[0].count = 1;
+    stack.slots[0].damage = 30;
+    stack.add(COBBLE, 20);
+    const other = new CraftScreen(stack);
+    other.openScreen(2);
+    click(other, "inv", 0, 0); // 木（傷 30）を掴む
+    click(other, "inv", 1, 0); // 丸石 20 個と入れ替える
+    console.log(`      道具でない相手: 丸石の枠 ${damageOf(stack.slots[1])} / 手 ${damageOf(other.held)}`);
+    check(
+      "道具でない山と入れ替えても山に傷が乗らない",
+      other.held?.item === COBBLE && damageOf(other.held) === 0 && other.held?.count === 20,
+      `手 ${other.held?.item} x${other.held?.count} 傷 ${damageOf(other.held)}`,
+    );
+    check("入れ替わった道具の傷は残る", damageOf(stack.slots[1]) === 30, `${damageOf(stack.slots[1])}`);
+  }
+
+  // --- 数字キー（`swapHotbar()`） ---
+  {
+    const { inv, screen } = arena();
+    inv.swap(0, 20); // 木（傷 30）を収納へ
+    screen.hover("inv", 20, false); // カーソルを乗せる（行き先を決めるのは画面の側）
+    screen.swapHotbar(5); // 石（傷 7）の枠と入れ替える
+    console.log(`      数字キー: 20 枠目 ${damageOf(inv.slots[20])} / 6 枠目 ${damageOf(inv.slots[5])}`);
+    check(
+      "入れ替えた両方の傷が付いてくる",
+      inv.slots[5].item === WOOD_PICKAXE && damageOf(inv.slots[5]) === 30 &&
+        inv.slots[20].item === STONE_PICKAXE && damageOf(inv.slots[20]) === 7,
+      `${inv.slots[5].item}/${damageOf(inv.slots[5])} と ${inv.slots[20].item}/${damageOf(inv.slots[20])}`,
+    );
+    // 空き枠と入れ替えても消えない。
+    screen.hover("inv", 5, false);
+    screen.swapHotbar(8);
+    check(
+      "空き枠と入れ替えても傷が残る",
+      damageOf(inv.slots[8]) === 30 && damageOf(inv.slots[5]) === 0,
+      `8 枠目 ${damageOf(inv.slots[8])} / 6 枠目 ${damageOf(inv.slots[5])}`,
+    );
+  }
+
+  // --- ドラッグで配る（上限 1 なので配れるのは 1 枠だけ） ---
+  {
+    const { inv, screen } = arena();
+    screen.press("inv", 0, 0); // 掴む
+    screen.press("inv", 20, 0); // 1 枠目を撫でる（構えるだけ）
+    screen.hover("inv", 21, true); // 2 枠目
+    screen.release();
+    console.log(`      ドラッグ: 20 枠目 ${damageOf(inv.slots[20])} / 21 枠目 ${damageOf(inv.slots[21])}`);
+    check(
+      "配った 1 枠に傷が乗る",
+      inv.slots[20].item === WOOD_PICKAXE && damageOf(inv.slots[20]) === 30,
+      `傷 ${damageOf(inv.slots[20])}`,
+    );
+    check("2 枠目には配られない（stack: 1）", isEmpty(inv.slots[21]) && damageOf(inv.slots[21]) === 0);
+  }
+
+  // --- シフトクリック（ホットバー ↔ 収納） ---
+  {
+    const { inv, screen } = arena();
+    screen.press("inv", 0, 0, { shift: true, double: false });
+    const moved = inv.slots.findIndex((s, i) => i >= HOTBAR_SIZE && s.item === WOOD_PICKAXE);
+    console.log(`      シフト: ${moved} 枠目へ / 傷 ${damageOf(inv.slots[moved])}`);
+    check("収納へ動かしても傷が残る", moved >= HOTBAR_SIZE && damageOf(inv.slots[moved]) === 30, `${moved} 枠目`);
+    screen.press("inv", moved, 0, { shift: true, double: false });
+    const back = inv.slots.findIndex((s, i) => i < HOTBAR_SIZE && s.item === WOOD_PICKAXE);
+    check("ホットバーへ戻しても傷が残る", back >= 0 && damageOf(inv.slots[back]) === 30, `${back} 枠目`);
+  }
+
+  // --- 画面を閉じたとき（`returnAll()`） ---
+  {
+    const { inv, screen } = arena();
+    click(screen, "inv", 0, 0);
+    click(screen, "grid", 0, 0); // 木（傷 30）を盤面へ
+    screen.press("inv", 5, 0); // 石（傷 7）を掴んだまま閉じる
+    screen.close();
+    const wood = inv.slots.find((s) => s.item === WOOD_PICKAXE);
+    const stone = inv.slots.find((s) => s.item === STONE_PICKAXE);
+    console.log(`      閉じたあと: 木 ${damageOf(wood)} / 石 ${damageOf(stone)}`);
+    check("盤面の預かり物が傷ごと返る", damageOf(wood) === 30, `${damageOf(wood)}`);
+    check("掴んだままの山も傷ごと返る", damageOf(stone) === 7, `${damageOf(stone)}`);
+  }
+
+  // --- クリエイティブの一覧から出した物は新品 ---
+  {
+    const { screen } = arena();
+    screen.openCreative();
+    const index = CREATIVE_ITEMS.indexOf(WOOD_PICKAXE);
+    check("一覧に木のツルハシが並んでいる", index >= 0, `${index} 番目`);
+    check("一覧の見せる姿にも傷が無い", (screen.slotFor("creative", index)?.damage ?? 0) === 0);
+
+    // **傷んだ道具を掴んだ上から出しても引き継がない**（一覧は捨て場も兼ねている）。
+    screen.press("inv", 0, 0);
+    check("掴んだのは傷 30 の道具", damageOf(screen.held) === 30, `${damageOf(screen.held)}`);
+    screen.press("creative", index, 0); // 掴んでいる山を捨てる
+    screen.press("creative", index, 0); // 新しく 1 山出す
+    console.log(`      一覧から出した道具: 傷 ${damageOf(screen.held)}`);
+    check(
+      "一覧から出した道具は新品",
+      screen.held?.item === WOOD_PICKAXE && damageOf(screen.held) === 0,
+      `傷 ${damageOf(screen.held)}`,
+    );
+  }
+
+  // --- セーブの往復（`craftWear` は 10 要素の別キー） ---
+  {
+    const { screen } = arena();
+    click(screen, "inv", 0, 0);
+    click(screen, "grid", 0, 0); // 盤面へ（傷 30）
+    screen.press("inv", 5, 0); // 掴んだまま（傷 7）
+    const flat = screen.serializeWear();
+    console.log(`      craftWear: ${JSON.stringify(flat)}`);
+    check("盤面 9 + 手 1 の 10 要素", flat?.length === 10, `${flat?.length} 要素`);
+    check("craft の 20 要素は変わらない", screen.serialize()?.length === 20, `${screen.serialize()?.length} 要素`);
+
+    const back = new CraftScreen(new Inventory());
+    back.deserialize(screen.serialize());
+    back.deserializeWear(flat);
+    console.log(`      読み戻し: 盤面 ${damageOf(back.grid[0])} / 手 ${damageOf(back.held)}`);
+    check("往復しても盤面の傷が残る", damageOf(back.grid[0]) === 30, `${damageOf(back.grid[0])}`);
+    check("往復しても掴んだ山の傷が残る", damageOf(back.held) === 7, `${damageOf(back.held)}`);
+
+    // **全部新品ならキーごと消える**（傷めていない人のセーブは今までと 1 バイトも変わらない）。
+    const clean = new CraftScreen(new Inventory());
+    clean.grid[0].item = WOOD_PICKAXE;
+    clean.grid[0].count = 1;
+    check("全部新品なら undefined", clean.serializeWear() === undefined, `${clean.serializeWear()}`);
+  }
+
+  // --- 古い・壊れた craftWear ---
+  {
+    const old = new CraftScreen(new Inventory());
+    old.grid[0].item = WOOD_PICKAXE;
+    old.grid[0].count = 1;
+    old.deserializeWear(undefined);
+    check("craftWear が無い古いセーブは全部新品", damageOf(old.grid[0]) === 0, `${damageOf(old.grid[0])}`);
+
+    const odd = new CraftScreen(new Inventory());
+    odd.grid[0].item = WOOD_PICKAXE;
+    odd.grid[0].count = 1;
+    odd.grid[1].item = STICK;
+    odd.grid[1].count = 3;
+    // 長さ違い・数でない値・最大以上を 1 度に流す。
+    odd.deserializeWear([9999, Number.NaN as number, 5]);
+    console.log(`      壊れた craftWear: 盤面 0 番 ${damageOf(odd.grid[0])} / 1 番 ${odd.grid[1].damage}`);
+    check(
+      "最大以上は最大 - 1 に丸める（壊れた状態では復元しない）",
+      damageOf(odd.grid[0]) === 58 && !isEmpty(odd.grid[0]),
+      `傷 ${damageOf(odd.grid[0])} / 最大 59`,
+    );
+    check("道具でない枠には載らない", (odd.grid[1].damage ?? 0) === 0, `${odd.grid[1].damage}`);
+  }
+
+  // --- 読み込みの順（`deserializeWear()` は `returnAll()` より前） ---
+  {
+    const inv = new Inventory();
+    const craft = new CraftScreen(inv);
+    const saved = {
+      inventory: [],
+      // 盤面 0 番に木のツルハシ 1 個（20 要素）と、その傷 30（10 要素）。
+      craft: [WOOD_PICKAXE, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      craftWear: [30, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    } as unknown as SaveData;
+    applyRestore(saved, {
+      dayNight: { setTime: () => {} },
+      inventory: inv,
+      craft,
+      audio: { setVolume: () => {} },
+      vitals: { health: 20, hunger: 20 },
+    });
+    const returned = inv.slots.find((s) => s.item === WOOD_PICKAXE);
+    console.log(`      読み込み後にインベントリへ返った道具: 傷 ${damageOf(returned)}`);
+    // **`returnAll()` より後に傷を戻すと、返した先に載らない**（ここが 0 になる）。
+    check("預かり物は傷ごとインベントリへ返る", damageOf(returned) === 30, `${damageOf(returned)}`);
+  }
+
+  // 見張り 1: 画面が耐久値を「減らす」側に回っていないこと（運ぶだけ）。
+  const screenSource = sourceOf("src/craftscreen.ts");
+  const inScreen = ["59", "131", "250", "1561", "maxUses(", "wearSlot("].filter((word) =>
+    screenSource.includes(word),
+  );
+  check("craftscreen.ts に回数と減らす道具が無い", inScreen.length === 0, inScreen.join(" / "));
+
+  // 見張り 2: DOM の側に判断を渡さない（`crafting.ts` / `smelting.ts` と同じ扱い）。
+  const inventoryUi = sourceOf("src/inventoryui.ts");
+  check(
+    "inventoryui.ts が durability.ts を import しない",
+    !inventoryUi.includes("./durability"),
+    inventoryUi.includes("./durability") ? "import あり" : "",
+  );
 }

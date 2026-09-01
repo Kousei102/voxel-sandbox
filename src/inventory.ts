@@ -1,4 +1,4 @@
-import { deserializeWear, serializeWear } from "./durability";
+import { carryWear, damageOf, deserializeWear, serializeWear } from "./durability";
 import { NO_ITEM, itemStackLimit } from "./items";
 
 export const HOTBAR_SIZE = 9;
@@ -39,6 +39,10 @@ export function clearSlot(slot: Slot): void {
  * `Inventory` の外に出してあるのは、**チェスト（`chests.ts`）が同じ規則で入るため。**
  * 写すと、片方だけ直したときに「プレイヤーの収納とチェストで入り方が違う」形で
  * 静かに食い違う。
+ *
+ * `damage` は**入れる物の傷**。**既定 0 の省略可のまま**にすること ——
+ * 必須にすると、まだ傷を運ばない側（`chests.ts`）にも手が要る。
+ * 傷が付く物は `stack: 1` なので、載るのは必ず空き枠へ入れた 1 個だけ。
  */
 export function addToSlots(
   slots: Slot[],
@@ -46,6 +50,7 @@ export function addToSlots(
   count: number,
   start: number,
   end: number,
+  damage = 0,
 ): number {
   if (item === NO_ITEM || count <= 0) return 0;
   const limit = itemStackLimit(item);
@@ -67,8 +72,8 @@ export function addToSlots(
     const put = Math.min(limit, left);
     slot.item = item;
     slot.count = put;
-    // **入れたものは新品から始める**（空の枠に前の持ち主の傷が残っていても捨てる）。
-    slot.damage = 0;
+    // **前の持ち主の傷は捨てて、運んできた傷を載せる**（既定は 0 = 新品）。
+    carryWear(slot, damage);
     left -= put;
   }
   return left;
@@ -117,17 +122,20 @@ export class Inventory {
     this.select(this.selected + delta);
   }
 
-  /** 入れられなかった数を返す（0 なら全部入った）。 */
-  add(item: number, count = 1): number {
-    return this.addRange(item, count, 0, INVENTORY_SIZE);
+  /**
+   * 入れられなかった数を返す（0 なら全部入った）。
+   * `damage` は入れる物の傷（**既定は新品**。`addToSlots()` の項）。
+   */
+  add(item: number, count = 1, damage = 0): number {
+    return this.addRange(item, count, 0, INVENTORY_SIZE, damage);
   }
 
   /**
    * `[start, end)` のスロットにだけ入れる。入れられなかった数を返す。
    * シフトクリックの「ホットバー ↔ 収納」がこれを使う（行き先を絞るため）。
    */
-  addRange(item: number, count: number, start: number, end: number): number {
-    return addToSlots(this.slots, item, count, start, end);
+  addRange(item: number, count: number, start: number, end: number, damage = 0): number {
+    return addToSlots(this.slots, item, count, start, end, damage);
   }
 
   /** そのアイテムをあと何個入れられるか（一括クラフトが回せるかの判定に使う）。 */
@@ -240,13 +248,15 @@ export class Inventory {
     const item = this.slots[a].item;
     const count = this.slots[a].count;
     // **傷も一緒に入れ替えること** —— 置いていくと、収納から出した道具が新品に戻る。
-    const damage = this.slots[a].damage ?? 0;
+    // **先に両方を読んでおくこと**（書きながら読むと、2 枠目が書き換え後の値を拾う）。
+    const damage = damageOf(this.slots[a]);
+    const other = damageOf(this.slots[b]);
     this.slots[a].item = this.slots[b].item;
     this.slots[a].count = this.slots[b].count;
-    this.slots[a].damage = this.slots[b].damage ?? 0;
+    carryWear(this.slots[a], other);
     this.slots[b].item = item;
     this.slots[b].count = count;
-    this.slots[b].damage = damage;
+    carryWear(this.slots[b], damage);
   }
 
   clear(): void {

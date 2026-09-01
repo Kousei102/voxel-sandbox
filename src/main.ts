@@ -561,6 +561,7 @@ function currentSave(): SaveData {
     inventory: inventory.serialize(),
     wear: inventory.serializeWear(),
     craft: craft.serialize(),
+    craftWear: craft.serializeWear(),
     volume: audio.getVolume(),
     bed: beds.serialize(),
     bedDim: beds.serializeDim(),

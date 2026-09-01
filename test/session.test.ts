@@ -40,6 +40,7 @@ function parts(
     // 道具の傷。**全部新品なら undefined**（キーごと消えて、古いセーブと同じ形になる）。
     wear: undefined,
     craft: undefined,
+    craftWear: undefined,
     volume: 0.4,
     bed: [3, 64, 5],
     bedDim,
@@ -151,6 +152,7 @@ export function run(): void {
       },
       craft: {
         deserialize: () => order.push("craft.deserialize"),
+        deserializeWear: () => order.push("craft.wear"),
         returnAll: () => order.push("craft.returnAll"),
       },
       audio: { setVolume: (v: number) => order.push(`volume(${v})`) },
@@ -193,7 +195,7 @@ export function run(): void {
     const targets = {
       dayNight: { setTime: () => check("初回は時刻を触らない", false) },
       inventory: { deserialize: () => {}, deserializeWear: () => {} },
-      craft: { deserialize: () => {}, returnAll: () => {} },
+      craft: { deserialize: () => {}, deserializeWear: () => {}, returnAll: () => {} },
       audio: { setVolume: () => {} },
       vitals: { health: MAX_HEALTH, hunger: MAX_HUNGER },
     };

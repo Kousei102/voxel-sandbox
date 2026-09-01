@@ -1,5 +1,6 @@
 import { addToChest, type ChestState } from "./chests";
 import { consumeGrid, findRecipe } from "./crafting";
+import { carryWear, damageOf, deserializeWear, serializeWear } from "./durability";
 import {
   HOTBAR_SIZE,
   INVENTORY_SIZE,
@@ -113,7 +114,7 @@ const NO_MODS: PressMods = { shift: false, double: false };
 const MAX_QUICK_CRAFT = 512;
 
 function emptySlot(): Slot {
-  return { item: NO_ITEM, count: 0 };
+  return { item: NO_ITEM, count: 0, damage: 0 };
 }
 
 /**
@@ -286,7 +287,8 @@ export class CraftScreen {
 
   private returnSlot(slot: Slot): void {
     if (isEmpty(slot)) return;
-    const left = this.inventory.add(slot.item, slot.count);
+    // **傷ごと返すこと** —— 画面を閉じただけで道具が新品に戻ってはいけない。
+    const left = this.inventory.add(slot.item, slot.count, damageOf(slot));
     slot.count = left;
     if (left <= 0) clearSlot(slot);
   }
@@ -375,6 +377,8 @@ export class CraftScreen {
     }
     this.heldSlot.item = item;
     this.heldSlot.count = button === 0 ? limit : 1;
+    // **湧かせたものは必ず新品**（傷んだ道具の上から出しても引き継がない）。
+    carryWear(this.heldSlot, 0);
     return CHANGED;
   }
 
@@ -421,11 +425,15 @@ export class CraftScreen {
 
     const targets = this.slotsOf(refs);
     const item = this.heldSlot.item;
+    // 配る前に読むこと（配り終えると手が空になって 0 に戻る）。
+    // **傷が付く物は `stack: 1`** なので、配れるのは 1 枠に 1 個だけ。
+    const damage = damageOf(this.heldSlot);
     const plan = planDrag(targets, item, this.heldSlot.count, whole);
     for (let i = 0; i < targets.length; i++) {
       if (plan[i] <= 0) continue;
       targets[i].item = item;
       targets[i].count += plan[i];
+      carryWear(targets[i], damage);
       this.heldSlot.count -= plan[i];
     }
     if (this.heldSlot.count <= 0) clearSlot(this.heldSlot);
@@ -460,7 +468,10 @@ export class CraftScreen {
     const slot = this.slotAt(area, index);
     if (!slot || isEmpty(slot)) return NOTHING;
 
-    const left = area === "inv" ? this.quickMoveFromInventory(slot, index) : this.inventory.add(slot.item, slot.count);
+    const left =
+      area === "inv"
+        ? this.quickMoveFromInventory(slot, index)
+        : this.inventory.add(slot.item, slot.count, damageOf(slot));
 
     if (left === slot.count) return NOTHING; // 1 個も動かなかった
     slot.count = left;
@@ -490,9 +501,13 @@ export class CraftScreen {
           : null;
       if (target) return moveInto(target, slot);
     }
+    // **ホットバー ↔ 収納は傷ごと動かす。** かまど・チェストへ入れる上の 2 本は
+    // まだ傷を持てない（`[item, count]` のまま）ので、渡さないでおく
+    // （`TUNING.md`。塞ぐのは `AUTODEV-QUEUE.md` の 3c）。
+    const damage = damageOf(slot);
     return index < HOTBAR_SIZE
-      ? this.inventory.addRange(slot.item, slot.count, HOTBAR_SIZE, INVENTORY_SIZE)
-      : this.inventory.addRange(slot.item, slot.count, 0, HOTBAR_SIZE);
+      ? this.inventory.addRange(slot.item, slot.count, HOTBAR_SIZE, INVENTORY_SIZE, damage)
+      : this.inventory.addRange(slot.item, slot.count, 0, HOTBAR_SIZE, damage);
   }
 
   /**
@@ -553,10 +568,15 @@ export class CraftScreen {
 
     const item = slot.item;
     const count = slot.count;
+    // **入れ替えた両方の傷が付いてくること**（`Inventory.swap()` と同じ形）。
+    const damage = damageOf(slot);
+    const other = damageOf(target);
     slot.item = target.item;
     slot.count = target.count;
+    carryWear(slot, other);
     target.item = item;
     target.count = count;
+    carryWear(target, damage);
     return CHANGED;
   }
 
@@ -615,12 +635,17 @@ export class CraftScreen {
    */
   private transfer(slot: Slot, whole: boolean): void {
     const held = this.heldSlot;
+    // **傷は書き始める前に両方読んでおくこと**（入れ替えの途中で読むと、
+    // 2 つ目が書き換えたあとの値を拾う。`Inventory.swap()` と同じ形）。
+    const slotWear = damageOf(slot);
+    const heldWear = damageOf(held);
 
     if (isEmpty(held)) {
       if (isEmpty(slot)) return;
       const take = whole ? slot.count : Math.ceil(slot.count / 2);
       held.item = slot.item;
       held.count = take;
+      carryWear(held, slotWear);
       slot.count -= take;
       if (slot.count <= 0) clearSlot(slot);
       return;
@@ -630,12 +655,15 @@ export class CraftScreen {
       const put = whole ? held.count : 1;
       slot.item = held.item;
       slot.count = put;
+      carryWear(slot, heldWear);
       held.count -= put;
       if (held.count <= 0) clearSlot(held);
       return;
     }
 
     if (slot.item === held.item) {
+      // 同じアイテムの山に足す。**傷が付く物は `stack: 1` なのでここへは来ない**
+      // （来るとしたら山に傷を持たせたときで、そこは作らない決まり）。
       const room = itemStackLimit(slot.item) - slot.count;
       const put = Math.min(room, whole ? held.count : 1);
       slot.count += put;
@@ -650,8 +678,10 @@ export class CraftScreen {
     const count = slot.count;
     slot.item = held.item;
     slot.count = held.count;
+    carryWear(slot, heldWear);
     held.item = item;
     held.count = count;
+    carryWear(held, slotWear);
   }
 
   /**
@@ -720,7 +750,8 @@ export class CraftScreen {
   slotFor(area: SlotArea, index = 0): Slot | null {
     if (area === "creative") {
       const item = CREATIVE_ITEMS[index] ?? NO_ITEM;
-      return item === NO_ITEM ? null : { item, count: itemStackLimit(item) };
+      // **傷は 0**（湧き口なので、一覧の道具に帯が出てはいけない）。
+      return item === NO_ITEM ? null : { item, count: itemStackLimit(item), damage: 0 };
     }
     return this.slotAt(area, index);
   }
@@ -773,6 +804,23 @@ export class CraftScreen {
     const flat: number[] = [];
     for (const slot of all) flat.push(isEmpty(slot) ? 0 : slot.item, isEmpty(slot) ? 0 : slot.count);
     return flat;
+  }
+
+  /**
+   * 預かり物の傷。**`craft` とは別の省略可キー**（`SaveData.craftWear`。10 要素）——
+   * 20 要素を 30 要素にすると既存のセーブが丸ごとずれる（`wear` を `inventory` と
+   * 分けたのとまったく同じ理由）。**形も丸め方も `durability.ts`**（ここは委譲するだけ）。
+   */
+  serializeWear(): number[] | undefined {
+    return serializeWear([...this.grid, this.heldSlot]);
+  }
+
+  /**
+   * **`deserialize()` のあと、`returnAll()` より前に呼ぶこと。**
+   * あとに回すと、返した先（インベントリ）に傷が載りません。
+   */
+  deserializeWear(flat: number[] | undefined): void {
+    deserializeWear([...this.grid, this.heldSlot], flat);
   }
 
   /** 盤面と掴んでいる山を、インベントリへ戻さず空にする（保存データの削除で使う）。 */

@@ -110,3 +110,38 @@
   2.5 倍（30m/s）で、**プレイヤーの 10 マス上から撃ち下ろす**ためのものです。
   山なりに戻すと、狙った所より手前へ落ちて当たりません。**「ブレスは雲のように漂う」
   という本家の像に寄せ直すなら、撃つ側（`DRAGON.phases` の高さと間隔）ごと考え直すこと。**
+
+## `.claude/rules/inventory-screen.md` — 画面は傷を「運ぶだけ」（新しい節を末尾へ）
+
+**そのまま置いてください:**
+
+### 道具の傷（`damage`）を運ぶ
+
+**画面のどの操作でも、傷は `item` / `count` と一緒に動きます。**
+運ぶ場所は 6 つで、**どれも `durability.ts` の `damageOf()` と `carryWear()` を通します**:
+`transfer()`（掴む・置く・入れ替え）/ `swapHotbar()`（数字キー）/ `release()`（ドラッグ配分）/
+`returnSlot()`（閉じるときの返却）/ `quickMove()`（シフトクリック）/
+`inventory.ts` の `addToSlots()`（末尾の `damage` は**既定 0 の省略可**。必須にすると
+`chests.ts` に手が要ります）。
+
+- **`slot.damage ?? 0` を画面の側に書かないこと。** 「道具でなければ 0」の判断が
+  その場ごとに散り、棒の山に傷が付く経路が 1 つずつ増えます。読むのは `damageOf()`、
+  載せるのは `carryWear()`（**`to.item` を入れたあとで呼ぶこと**）。
+- **入れ替えるときは、書き始める前に両方の傷を読んでおくこと。** 途中で読むと
+  2 つ目が書き換えたあとの値を拾います（`Inventory.swap()` と同じ形）。
+- **`craftscreen.ts` が `durability.ts` から取ってよいのは `damageOf` / `carryWear` /
+  `serializeWear` / `deserializeWear` の 4 本だけ。** `maxUses` / `TOOL_USES` / `wearSlot` が
+  要ったら「画面が耐久値を減らす」設計になっている合図です（`test/durability.test.ts` が
+  `craftscreen.ts` に回数と `wearSlot(` が出てこないことを見張っています）。
+- **山に傷を持たせないこと。** 傷が付く物は全部 `stack: 1`（`items.ts` の道具 12 本）なので、
+  傷はいつも 1 個ずつ動きます。`count > 1` の枠に傷を載せる経路を作ると、
+  「半分だけ傷んだ山を割る」話が要ります。
+- **クリエイティブの一覧から出したものは必ず新品**（`pressCreative()` が `carryWear(held, 0)`）。
+  湧き口なので、傷んだ道具を掴んだ上から出しても引き継ぎません。
+- セーブは **`SaveData.craftWear`（10 要素・省略可）**で、`craft` の 20 要素とは別のキーです
+  （**30 要素にすると既存のセーブが丸ごとずれます**。`wear` を `inventory` と分けたのと同じ理由）。
+  読む順は **`craft.deserialize()` → `craft.deserializeWear()` → `craft.returnAll()`** ——
+  **`returnAll()` より後に傷を戻すと、返した先（インベントリ）に載りません。**
+- **落とし物・チェスト・かまどの中身はまだ傷を持ちません**（`TUNING.md`。塞ぐのは
+  `AUTODEV-QUEUE.md` の 3c）。**チェストを開いてシフトクリックすると新品に戻ります** ——
+  `addToChest()` は `chests.ts` の仕事なので、画面の側で塞ごうとしないこと。

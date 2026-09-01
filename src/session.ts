@@ -65,6 +65,8 @@ export interface SaveParts {
   /** 道具の傷 36 要素。**全部新品なら `undefined`**（キーごと消える）。 */
   readonly wear: number[] | undefined;
   readonly craft: number[] | undefined;
+  /** 預かり物の傷 10 要素。**全部新品なら `undefined`**（`wear` と同じ作法）。 */
+  readonly craftWear: number[] | undefined;
   readonly volume: number;
   /** リスポーン地点。**世界に 1 点だけ**なので上の階層に置く。 */
   readonly bed: number[] | undefined;
@@ -101,6 +103,7 @@ export function buildSave(parts: SaveParts): SaveData {
     inventory: parts.inventory,
     wear: parts.wear,
     craft: parts.craft,
+    craftWear: parts.craftWear,
     volume: parts.volume,
     drops: parts.shape.top.drops,
     furnaces: parts.shape.top.furnaces,
@@ -150,7 +153,12 @@ export interface RestoreTargets {
     /** **`deserialize()` のあとで呼ぶ**（何回使える道具かは中身で決まる）。 */
     deserializeWear(data: number[] | undefined): void;
   };
-  readonly craft: { deserialize(data: number[] | undefined): void; returnAll(): void };
+  readonly craft: {
+    deserialize(data: number[] | undefined): void;
+    /** **`deserialize()` のあと、`returnAll()` より前に呼ぶ**（下の 3.）。 */
+    deserializeWear(data: number[] | undefined): void;
+    returnAll(): void;
+  };
   readonly audio: { setVolume(volume: number): void };
   /** 体力と空腹は代入で戻す（`Vitals` の持ち方に合わせてある）。 */
   readonly vitals: { health: number; hunger: number };
@@ -170,6 +178,8 @@ export interface RestoreResult {
  *    アイテムが消えない）。先に返すと、まだ空のインベントリに返してから
  *    セーブぶんで上書きすることになり、**預かり物が丸ごと消えます。**
  * 2. 返しきれなかったぶんは盤面に残り、次に空きができたときにまた返ります。
+ * 3. **傷（`craftWear`）は `deserialize()` のあと、`returnAll()` より前。**
+ *    あとに回すと、返した先（インベントリ）に傷が載りません。
  *
  * **`main.ts` に `typeof saved?.health === "number"` のような均しを書き戻さないこと**
  * （均しは `restoredValues()`。ここはそれを貼るだけ）。
@@ -186,6 +196,8 @@ export function applyRestore(
   targets.inventory.deserializeWear(saved?.wear);
   // **必ずインベントリを入れたあとで**（上の 1.）。
   targets.craft.deserialize(saved?.craft);
+  // **返す前に傷を載せること**（上の 3.）。
+  targets.craft.deserializeWear(saved?.craftWear);
   targets.craft.returnAll();
 
   targets.audio.setVolume(clampVolume(saved?.volume));

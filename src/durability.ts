@@ -9,9 +9,9 @@
  * **`inventory.ts` からは `import type { Slot }` だけを取ります。**
  * 逆向き（`inventory.ts` → ここ）は普通の import なので、値を取ると読み込みの輪ができます。
  *
- * **この周では傷はインベントリの中にしか残りません。** 落とし物・チェスト・かまどの中身は
- * `[item, count, ...]` のままなので、傷んだ道具を地面に落として拾い直すと新品で戻ります
- * （`TUNING.md`。塞ぐのは `AUTODEV-QUEUE.md` の 3b）。
+ * **傷が残るのはインベントリと画面の中だけです**（36 枠 + 盤面 9 + 掴んだ山 1）。
+ * 落とし物・チェスト・かまどの中身は `[item, count, ...]` のままなので、傷んだ道具を
+ * 地面に落として拾い直すと新品で戻ります（`TUNING.md`。塞ぐのは `AUTODEV-QUEUE.md` の 3c）。
  */
 
 import { blockHardness, isBreakable } from "./blocks";
@@ -103,11 +103,38 @@ export function wearBar(slot: Slot | null): number {
 }
 
 /**
+ * その枠の傷。**空の枠・道具でない枠は 0。**
+ *
+ * **`slot.damage ?? 0` を運ぶ側（`inventory.ts` / `craftscreen.ts`）に書かないこと** ——
+ * 「道具でなければ 0」の判断がその場ごとに散り、棒の山に傷が付く経路が
+ * 1 つずつ増えます。運ぶ側が傷を読むのはここ 1 本だけ。
+ */
+export function damageOf(slot: Slot | null | undefined): number {
+  if (!slot || slot.count <= 0) return 0;
+  if (!wearable(slot.item)) return 0;
+  return slot.damage ?? 0;
+}
+
+/**
+ * 傷を載せる。**`to.item` を入れたあとで呼ぶこと**（何の道具かで載るかどうかが決まる）。
+ *
+ * 道具でないものには載せません。**傷が付く物は全部 `stack: 1`** なので
+ * （`items.ts` の道具 12 本）、載る枠はいつも 1 個ぶんです ——
+ * `count > 1` の山に傷を持たせる経路を作らないこと（半端に傷んだ山を割る話になります）。
+ */
+export function carryWear(to: Slot, damage: number): void {
+  to.damage = wearable(to.item) ? damage : 0;
+}
+
+/**
  * セーブの形。**36 要素の平坦な配列**で、位置は `slots` と同じ。
  *
  * **全部新品なら `undefined`** を返します —— そうすれば `SaveData.wear` のキーごと
  * 消えて、道具を傷めていない人のセーブは耐久値が入る前と 1 バイトも変わりません
  * （`craft` と同じ「省略可・無ければ既定」の作法）。
+ *
+ * **`Slot[]` を取るので、盤面 9 + 掴んだ山 1 の 10 枠にもそのまま効きます**
+ * （`SaveData.craftWear`。**2 本目を書かないこと** —— 丸め方が 2 か所に分かれます）。
  *
  * **`SaveData.inventory` を 3 要素にしないこと。** あちらは `[item, count]` x 36 で、
  * 増やすと既存のセーブが丸ごとずれます。
