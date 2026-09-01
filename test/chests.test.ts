@@ -1,9 +1,11 @@
 import { readFileSync } from "node:fs";
-import { CHEST, COBBLE, DIRT, PLANK, STONE, WOOD } from "../src/blocks";
+import { AIR, CHEST, COBBLE, DIRT, PLANK, STONE, WOOD } from "../src/blocks";
 import {
   CHEST_SIZE,
   Chests,
+  LARGE_CHEST_SIZE,
   addToChest,
+  chestPartner,
   createChest,
   isChestEmpty,
   serializeChest,
@@ -12,6 +14,7 @@ import { findRecipe } from "../src/crafting";
 import { CraftScreen } from "../src/craftscreen";
 import { HOTBAR_SIZE, Inventory, isEmpty, type Slot } from "../src/inventory";
 import { MAX_STACK, NO_ITEM, itemName } from "../src/items";
+import { sourceOf } from "./arena";
 import { check, describe } from "./harness";
 
 function stripComments(path: string): string {
@@ -22,6 +25,18 @@ function stripComments(path: string): string {
 
 function grid(items: number[][]): Slot[] {
   return items.flat().map((item) => ({ item, count: item === NO_ITEM ? 0 : 1 }));
+}
+
+/**
+ * チェストだけを置いた偽のボクセル。**未読み込みの列は AIR**（`World.getVoxel` と同じ）。
+ * 組かどうかは voxel だけで決まるので、試験場はこの Map 1 つで足りる。
+ */
+function placed(...spots: readonly (readonly [number, number, number])[]): {
+  getVoxel(x: number, y: number, z: number): number;
+} {
+  const map = new Map<string, number>();
+  for (const [x, y, z] of spots) map.set(`${x},${y},${z}`, CHEST);
+  return { getVoxel: (x, y, z) => map.get(`${x},${y},${z}`) ?? AIR };
 }
 
 /** チェストを 1 つ開いた画面。 */
@@ -278,5 +293,211 @@ export function run(): void {
       `チェスト ${itemName(craft.chest?.slots[0].item ?? 0)} / 手元 ${itemName(craft.inventory.slots[0].item)}`,
     );
     check("ホットバーの枠数は変わらない", craft.inventory.slots.length >= HOTBAR_SIZE);
+  }
+
+  describe("大きいチェスト（隣り合った 2 個で 54 枠）");
+
+  console.log(`      単体 ${CHEST_SIZE} 枠 / 組 ${LARGE_CHEST_SIZE} 枠`);
+
+  {
+    // **先に「試験場が効いている」ことを出す。** 隣に何も置いていない状態で 27 枠に
+    // ならないなら、下の「組になる」も全部当てにならない。
+    const alone = placed([0, 64, 0]);
+    const chests = new Chests();
+    const size = chests.open(alone, 0, 64, 0).slots.length;
+    check("隣に何も無ければ 27 枠のまま", size === CHEST_SIZE, `${size} 枠`);
+    check("相方も居ない", chestPartner(alone, 0, 64, 0) === null);
+  }
+
+  {
+    // 水平 4 向きとも組になり、**相方の相方が自分**であること（`beds.ts` と同じ不変条件）。
+    let paired = 0;
+    let mutual = 0;
+    for (const [dx, dz] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ]) {
+      const world = placed([0, 64, 0], [dx, 64, dz]);
+      const partner = chestPartner(world, 0, 64, 0);
+      if (partner && partner.x === dx && partner.y === 64 && partner.z === dz) paired++;
+      const back = partner ? chestPartner(world, partner.x, partner.y, partner.z) : null;
+      if (back && back.x === 0 && back.y === 64 && back.z === 0) mutual++;
+    }
+    check("水平 4 向きとも組になる", paired === 4, `${paired} / 4`);
+    check("相方の相方は自分（4 向きとも）", mutual === 4, `${mutual} / 4`);
+  }
+
+  {
+    const world = placed([0, 64, 0], [1, 64, 0]);
+    const chests = new Chests();
+    const craft = new CraftScreen(new Inventory());
+    craft.openChest(chests.open(world, 0, 64, 0));
+    check("隣り合った 2 個を開くと 54 枠", craft.chestSize === LARGE_CHEST_SIZE, `${craft.chestSize} 枠`);
+
+    // **54 枠は参照の並び**（コピーではない）。奥の枠へ置いたものが、相方のマスの
+    // 中身として残っていること —— コピーだと入れたものが黙って消える。
+    craft.inventory.add(COBBLE, 4);
+    craft.press("inv", 0, 0);
+    craft.release();
+    craft.press("chest", LARGE_CHEST_SIZE - 1, 0);
+    craft.release();
+    const far = chests.at(1, 64, 0).slots[CHEST_SIZE - 1];
+    check(
+      "奥の枠へ置くと相方のマスに入る",
+      far.item === COBBLE && far.count === 4,
+      `${itemName(far.item)} x${far.count}`,
+    );
+  }
+
+  {
+    // **どちらの半分を開いても並びが同じ**（開く側で変わると、置いた場所を見失う）。
+    const world = placed([0, 64, 0], [1, 64, 0]);
+    const chests = new Chests();
+    addToChest(chests.at(0, 64, 0), STONE, 1);
+    addToChest(chests.at(1, 64, 0), DIRT, 2);
+    const fromLeft = chests.open(world, 0, 64, 0).slots.map((s) => s.item);
+    const fromRight = chests.open(world, 1, 64, 0).slots.map((s) => s.item);
+    check("どちらの半分を開いても並びが同じ", fromLeft.join(",") === fromRight.join(","));
+    check(
+      "根は x が小さいほう",
+      fromLeft[0] === STONE && fromLeft[CHEST_SIZE] === DIRT,
+      `${itemName(fromLeft[0])} → ${itemName(fromLeft[CHEST_SIZE])}`,
+    );
+
+    // x が同じときは z が小さいほうが根。
+    const alongZ = placed([5, 64, 0], [5, 64, 1]);
+    const other = new Chests();
+    addToChest(other.at(5, 64, 0), STONE, 1);
+    addToChest(other.at(5, 64, 1), DIRT, 2);
+    const zOrder = other.open(alongZ, 5, 64, 1).slots.map((s) => s.item);
+    check(
+      "x が同じなら z が小さいほうが根",
+      zOrder[0] === STONE && zOrder[CHEST_SIZE] === DIRT,
+      `${itemName(zOrder[0])} → ${itemName(zOrder[CHEST_SIZE])}`,
+    );
+  }
+
+  {
+    // **3 個を横一列に並べると 3 つとも 27 枠に戻る**（半端な組を作らないため）。
+    const world = placed([0, 64, 0], [1, 64, 0], [2, 64, 0]);
+    const chests = new Chests();
+    for (let x = 0; x < 3; x++) addToChest(chests.at(x, 64, 0), STONE, 6);
+    const sizes = [0, 1, 2].map((x) => chests.open(world, x, 64, 0).slots.length);
+    check("3 個並べると全部 27 枠", sizes.every((n) => n === CHEST_SIZE), sizes.join(" / "));
+    const kept = [0, 1, 2].reduce((sum, x) => sum + chests.at(x, 64, 0).slots[0].count, 0);
+    check("3 個並べても中身は 1 個も消えない", kept === 18, `${kept} 個`);
+  }
+
+  {
+    // 2x2 の 4 個も全部 27 枠（どの 1 個も隣が 2 個あるため）。
+    const world = placed([0, 64, 0], [1, 64, 0], [0, 64, 1], [1, 64, 1]);
+    const chests = new Chests();
+    const sizes = [
+      chests.open(world, 0, 64, 0).slots.length,
+      chests.open(world, 1, 64, 0).slots.length,
+      chests.open(world, 0, 64, 1).slots.length,
+      chests.open(world, 1, 64, 1).slots.length,
+    ];
+    check("2x2 の 4 個も全部 27 枠", sizes.every((n) => n === CHEST_SIZE), sizes.join(" / "));
+  }
+
+  {
+    const stacked = placed([0, 64, 0], [0, 65, 0]);
+    const diagonal = placed([0, 64, 0], [1, 64, 1]);
+    const chests = new Chests();
+    check(
+      "縦に積んだ 2 個は組にならない",
+      chests.open(stacked, 0, 64, 0).slots.length === CHEST_SIZE,
+      `${chests.open(stacked, 0, 64, 0).slots.length} 枠`,
+    );
+    check(
+      "斜めは組にならない",
+      chests.open(diagonal, 0, 64, 0).slots.length === CHEST_SIZE,
+      `${chests.open(diagonal, 0, 64, 0).slots.length} 枠`,
+    );
+  }
+
+  {
+    // **未読み込みの列では `getVoxel` が AIR を返す。** そこで落ちず、組にならないこと
+    // （`furnaces.ts` の `hasColumn()` の罠と同じ場所）。
+    const unloaded = { getVoxel: () => AIR };
+    const chests = new Chests();
+    const size = chests.open(unloaded, 0, 64, 0).slots.length;
+    check("未読み込みの列では組にならない（落ちない）", size === CHEST_SIZE, `${size} 枠`);
+  }
+
+  {
+    // 54 枠ぶん入れられること。**27 枠で打ち切られていないか**が要点。
+    const world = placed([0, 64, 0], [1, 64, 0]);
+    const chests = new Chests();
+    const big = chests.open(world, 0, 64, 0);
+    const left = addToChest(big, STONE, MAX_STACK * LARGE_CHEST_SIZE);
+    check("54 枠ぶん入る", left === 0, `残り ${left} 個`);
+    check(
+      "後ろの 27 枠も埋まっている",
+      chests.at(1, 64, 0).slots[CHEST_SIZE - 1].count === MAX_STACK,
+      `${chests.at(1, 64, 0).slots[CHEST_SIZE - 1].count} 個`,
+    );
+    const over = addToChest(big, DIRT, 5);
+    check("使い切ってから余りを返す", over === 5, `${over} 個`);
+  }
+
+  {
+    // **片方を壊すと、そのマスのぶんだけ落ちる。** 残った側は 27 枠で中身を保つ。
+    const world = placed([0, 64, 0], [1, 64, 0]);
+    const chests = new Chests();
+    addToChest(chests.open(world, 0, 64, 0), STONE, 5);
+    addToChest(chests.at(1, 64, 0), DIRT, 7);
+    const spilled = chests.remove(0, 64, 0);
+    const total = spilled.reduce((sum, s) => sum + s.count, 0);
+    check("片方を壊すとそのマスのぶんだけ落ちる", spilled.length === 1 && total === 5, `${total} 個`);
+
+    const rest = placed([1, 64, 0]);
+    const left = chests.open(rest, 1, 64, 0);
+    check(
+      "残った側は 27 枠のチェストとして中身を保つ",
+      left.slots.length === CHEST_SIZE && left.slots[0].item === DIRT && left.slots[0].count === 7,
+      `${left.slots.length} 枠 / ${left.slots[0].count} 個`,
+    );
+  }
+
+  {
+    // **セーブは 1 マスにつき 54 要素のまま 2 キー**（54 枠を 1 キーにまとめない）。
+    const world = placed([0, 64, 0], [1, 64, 0]);
+    const chests = new Chests();
+    addToChest(chests.open(world, 0, 64, 0), STONE, MAX_STACK * CHEST_SIZE + 3);
+    const saved = chests.serialize() ?? {};
+    const keys = Object.keys(saved).sort();
+    check("組でも 1 マスにつき 1 キー", keys.length === 2, keys.join(" "));
+    check(
+      "1 キーは 54 要素（27 枠）のまま",
+      keys.every((key) => saved[key].length === CHEST_SIZE * 2),
+      keys.map((key) => saved[key].length).join(" / "),
+    );
+
+    const restored = new Chests();
+    restored.deserialize(saved);
+    const back = restored.open(world, 1, 64, 0);
+    check(
+      "読み戻しても組で開ける",
+      back.slots.length === LARGE_CHEST_SIZE && back.slots[CHEST_SIZE].count === 3,
+      `${back.slots.length} 枠 / 相方 ${back.slots[CHEST_SIZE].count} 個`,
+    );
+  }
+
+  {
+    // 見張り。**枠数と隣接の判断が `main.ts` と `inventoryui.ts` に漏れていないこと。**
+    const main = sourceOf("src/main.ts");
+    const leaked = ["chestPartner", "CHEST_SIZE"].filter((name) => main.includes(name));
+    check("main.ts に枠数と隣接の判断が無い", leaked.length === 0, leaked.join(" "));
+
+    const ui = sourceOf("src/inventoryui.ts");
+    check(
+      "inventoryui.ts は枠数を craft.chestSize に聞く",
+      ui.includes("craft.chestSize") && !ui.includes('from "./chests"'),
+      "UI が枠数を自分で決めている",
+    );
   }
 }

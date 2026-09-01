@@ -739,9 +739,11 @@ function openFurnace(x: number, y: number, z: number): void {
 /**
  * チェストを開く。かまどと同じで、中身は `chests.ts` が位置ごとに持っていて、
  * 画面はそれを借りるだけ。**閉じても中身は返さない**（ワールドの持ち物）。
+ *
+ * **隣り合っているかを見るのは `chests.open()`**（ここに隣接の判断を書かないこと）。
  */
 function openChest(x: number, y: number, z: number): void {
-  openPanel(() => screen.showChest(chests.at(x, y, z)));
+  openPanel(() => screen.showChest(chests.open(world, x, y, z)));
 }
 
 function closeInventory(): void {

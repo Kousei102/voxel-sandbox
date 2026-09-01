@@ -1,5 +1,4 @@
 import {
-  CHEST_SIZE,
   CREATIVE_SIZE,
   type ChestState,
   type CraftScreen,
@@ -7,6 +6,7 @@ import {
   FURNACE_AREAS,
   type FurnaceState,
   GRID_SLOTS,
+  LARGE_CHEST_SIZE,
   type MouseButton,
   type ScreenResult,
   type SlotArea,
@@ -43,7 +43,11 @@ export class InventoryScreen {
   private readonly gridSlots: HTMLElement[] = [];
   /** かまどの 3 枠。並びは `FURNACE_AREAS`（材料・燃料・焼き上がり）。 */
   private readonly furnaceSlots: HTMLElement[] = [];
-  /** チェストの 27 枠。**収納と同じ `build()` で作る**（枠ごとの意味が無いので）。 */
+  /**
+   * チェストの枠。**いちばん多いとき（隣り合った 2 個）の数だけ作って置く**ので、
+   * 何枠出すかは `craft.chestSize` に聞いて `hidden` を付け外しする
+   * （**ここに 27 / 54 を書かないこと**。数を決めるのは `chests.ts`）。
+   */
   private readonly chestSlots: HTMLElement[] = [];
   /** クリエイティブの一覧。**枠の数も並びも `craftscreen.ts` が決める**（`CREATIVE_SIZE`）。 */
   private readonly creativeSlots: HTMLElement[] = [];
@@ -73,9 +77,11 @@ export class InventoryScreen {
       this.wire(el, FURNACE_AREAS[i], 0);
     });
 
-    // チェストは 27 枠あって枠ごとの意味も無いので、かまどの 3 枠と違って
+    // チェストは枠数が多くて枠ごとの意味も無いので、かまどの 3 枠と違って
     // index.html に直書きせず、収納とまったく同じ `build()` で作る。
-    this.build(this.chestEl, this.chestSlots, CHEST_SIZE, "chest", 0);
+    // **いちばん多いときの数で作る** —— 単体のときに余る枠は refresh() が隠す
+    // （開くたびに DOM を作り直すと、撫でて配る配線も張り直しになる）。
+    this.build(this.chestEl, this.chestSlots, LARGE_CHEST_SIZE, "chest", 0);
 
     // クリエイティブの一覧。チェストと同じ作り方で、違うのは中身が湧き口だということ
     // （中身の出どころも、押したときに何が起きるかも craftscreen.ts が持っている）。
@@ -259,7 +265,10 @@ export class InventoryScreen {
       this.furnaceArrow.classList.toggle("lit", status?.lit === true);
       this.furnaceHint.textContent = status?.text ?? "";
     }
+    // **出す枠数は `craft.chestSize`**（隣り合っていれば 54、単体なら 27）。
+    // 余った枠は隠すだけで、中身は `slotFor()` が null を返すので描かれない。
     for (let i = 0; i < this.chestSlots.length; i++) {
+      this.chestSlots[i].classList.toggle("hidden", i >= this.craft.chestSize);
       this.paint(this.chestSlots[i], chest ? this.craft.slotFor("chest", i) : null, "chest", i);
     }
     // 一覧の中身は変わらないが、**開いているときだけ描く**（他の器と同じ扱い）。

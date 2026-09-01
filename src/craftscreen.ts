@@ -26,7 +26,7 @@ import {
  */
 export type { FurnaceState } from "./smelting";
 export type { ChestState } from "./chests";
-export { CHEST_SIZE } from "./chests";
+export { CHEST_SIZE, LARGE_CHEST_SIZE } from "./chests";
 
 /** 作業台なら 3x3、手持ちなら 2x2。 */
 export type CraftSize = 2 | 3;
@@ -213,6 +213,16 @@ export class CraftScreen {
   /** 開いているチェスト。開いていなければ null（UI が中身を描くのに使う）。 */
   get chest(): ChestState | null {
     return this.chestState;
+  }
+
+  /**
+   * いま開いているチェストの枠数（27 か 54。開いていなければ 0）。
+   *
+   * **UI に 27 / 54 を書かせないための 1 行**です。枠が何個かを決めるのは
+   * `chests.ts` の `open()`（隣り合っているか）で、ここは器に聞くだけ。
+   */
+  get chestSize(): number {
+    return this.chestState?.slots.length ?? 0;
   }
 
   openScreen(size: CraftSize): void {
