@@ -75,6 +75,25 @@ export interface MobDrop {
 }
 
 /**
+ * 刈って取れるもの。**持っているモブだけが刈れる**（無ければ `null`）。
+ *
+ * **`kind === "sheep"` と書かないこと**（`ranged` / `teleport` / `orbit` と同じ作法）——
+ * 刈れるモブが増えるたびに、刈る側と戻す側の 2 か所に分岐が生えます。
+ *
+ * **何で刈るか（シアーズか）はここでは見ません** —— それは `items.ts` の
+ * `isShears()` の仕事で、ここが持つのは「誰から・何が・何個・いつ戻るか」だけです。
+ */
+export interface ShearRule {
+  /** 刈ると出るもの。 */
+  readonly item: number;
+  /** 出る数の下限と上限（両端を含む）。 */
+  readonly min: number;
+  readonly max: number;
+  /** また刈れるようになるまでの秒数。**0 にしないこと** —— 連打で羊毛が無限に出ます。 */
+  readonly regrow: number;
+}
+
+/**
  * 遠くから撃つ攻め方。**持っているモブだけが撃つ**（無ければ `null`）。
  *
  * **飛び方は書かない** —— それは `projectiles.ts` の表の仕事で、ここが持つのは
@@ -258,8 +277,15 @@ export interface MobDef {
    * （`onDrop` が `drops.ts` を知らないのとまったく同じ筋）。
    */
   readonly regen: number;
-  /** 倒したときのドロップ。倒れた場所に落ちる（`onDrop` → `main.ts` → `drops.ts`）。 */
+  /**
+   * 倒したときのドロップ。倒れた場所に落ちる（`onDrop` → `main.ts` → `drops.ts`）。
+   *
+   * **刈られているあいだのぶんは `dropFor()` が抑えます。** この表を書き換えないこと ——
+   * 倒したときに何が出るかと、刈ったあとで出ないことは別の話です。
+   */
   readonly drop: MobDrop;
+  /** 刈って取れるものか。**刈れないモブは `null`。** */
+  readonly shearing: ShearRule | null;
   /**
    * 声の高さの倍率。**種類ごとに `Sfx` を増やさないこと**
    * （出来事 × 種類で膨らむ）。`recipeFor` が freq と cutoff に掛ける。
@@ -311,6 +337,7 @@ const PIG: MobDef = {
   phases: null,
   regen: 0,
   drop: { item: RAW_PORK, count: 1, chance: 1 },
+  shearing: null,
   voice: 1.4,
   groups: [
     { motion: "fixed", pivot: [0, 0, 0], phase: 0 },
@@ -366,6 +393,10 @@ const SHEEP: MobDef = {
   phases: null,
   regen: 0,
   drop: { item: WOOL, count: 1, chance: 1 },
+  // **倒さずに羊毛を取れる唯一のモブ。** 数値は Minecraft のまま（1〜3 個）で、
+  // 戻るまでの 60 秒はこちらで決めた暫定（`TUNING.md`）。
+  // **刈った羊を倒しても羊毛は出ません**（`dropFor()`）。
+  shearing: { item: WOOL, min: 1, max: 3, regrow: 60 },
   voice: 1.25,
   groups: [
     { motion: "fixed", pivot: [0, 0, 0], phase: 0 },
@@ -433,6 +464,7 @@ const ZOMBIE: MobDef = {
   phases: null,
   regen: 0,
   drop: { item: ROTTEN_FLESH, count: 1, chance: 0.6 },
+  shearing: null,
   voice: 0.7,
   groups: [
     { motion: "fixed", pivot: [0, 0, 0], phase: 0 },
@@ -513,6 +545,7 @@ const BLAZE: MobDef = {
   phases: null,
   regen: 0,
   drop: { item: BLAZE_ROD, count: 1, chance: 0.5 },
+  shearing: null,
   voice: 1.15,
   groups: [
     { motion: "fixed", pivot: [0, 0, 0], phase: 0 },
@@ -588,6 +621,7 @@ const ENDERMAN: MobDef = {
   phases: null,
   regen: 0,
   drop: { item: ENDER_PEARL, count: 1, chance: 0.5 },
+  shearing: null,
   // 本家の湧きの重み。ゾンビ (100) の 1/10 なので、夜に出会うのはたまに。
   spawnWeight: 10,
   voice: 0.6,
@@ -698,6 +732,7 @@ const DRAGON: MobDef = {
   // **何も落とさない**（本家は経験値と卵。どちらもまだ無い）。倒した合図は
   // 体力バーとクリア画面（2-13b）の仕事で、地面に湧く物ではない。
   drop: { item: NO_ITEM, count: 0, chance: 0 },
+  shearing: null,
   voice: 0.5,
   groups: [
     { motion: "fixed", pivot: [0, 0, 0], phase: 0 },
@@ -926,6 +961,13 @@ export interface Mob {
   headPitch: number;
   /** 殴られた直後の赤い明滅の残り (秒)。描画がこれを見て色を差し替える。 */
   hurtTimer: number;
+  /**
+   * 刈られてから、また刈れるようになるまでの残り (秒)。**0 なら刈れる。**
+   *
+   * **保存しません**（モブそのものを保存しないので、1 バイトも増えません）。
+   * 刈れないモブでは 0 のまま動かない（`MobDef.shearing` が `null`）。
+   */
+  woolTimer: number;
   /** 逃げている残り (秒)。0 より大きいあいだは、プレイヤーと反対を向いて速く歩く。 */
   fleeTimer: number;
   /**
@@ -1254,6 +1296,8 @@ export class Mobs {
       headYaw: 0,
       headPitch: 0,
       hurtTimer: 0,
+      // 湧いた羊はすぐ刈れる（本家と同じ）。
+      woolTimer: 0,
       fleeTimer: 0,
       burnTimer: 0,
       burnTick: 0,
@@ -1661,6 +1705,9 @@ export class Mobs {
     const beforeZ = mob.position.z;
 
     if (mob.hurtTimer > 0) mob.hurtTimer = Math.max(0, mob.hurtTimer - dt);
+    // 刈られたぶんが戻るまで。**`hurtTimer` と同じ毎フレームの減らし方**にしておくと、
+    // 判断（5Hz）を通らないモブ（遠くて動かない個体）でもきちんと戻る。
+    if (mob.woolTimer > 0) mob.woolTimer = Math.max(0, mob.woolTimer - dt);
 
     // **止まる判断だけは毎フレーム見ること。** 判断は 5Hz なので、そのあいだに
     // 0.9 ブロック進む。ティックだけで止めるとプレイヤーに重なるまで踏み込んでしまう。
@@ -1931,9 +1978,11 @@ export class Mobs {
     // **プレイヤーが撃ったものだけ落ちる**（`attack()` と同じ規則）。
     // モブ同士の流れ弾で肉が湧いてはいけない。
     if (shot.owner !== PLAYER_OWNER) return;
-    const drop = def.drop;
+    // **`dropFor()` を通すこと**（`attack()` と同じ 1 本）。ここだけ `def.drop` を
+    // 直に読むと、刈った羊を**弓で撃ったときだけ**羊毛が出ます。
+    const drop = dropFor(mob, def);
     const random = ctx.random ?? Math.random;
-    if (drop.count > 0 && (drop.chance >= 1 || random() < drop.chance)) {
+    if (drop && drop.count > 0 && (drop.chance >= 1 || random() < drop.chance)) {
       this.onDrop?.(drop.item, drop.count, mob.position.x, mob.position.y, mob.position.z);
     }
   }
@@ -2164,12 +2213,42 @@ export class Mobs {
     }
 
     this.onSound?.("mobdeath", def.voice);
-    const drop = def.drop;
-    if (drop.count > 0 && (drop.chance >= 1 || random() < drop.chance)) {
+    // **刈られた羊は羊毛を落とさない**（`hitByProjectile()` と同じ 1 本を通す）。
+    const drop = dropFor(mob, def);
+    if (drop && drop.count > 0 && (drop.chance >= 1 || random() < drop.chance)) {
       // **倒れた場所を渡すこと。** 受け取る側（`main.ts`）はそこに落とすので、
       // 座標が無いと「遠くで倒したものが足元に湧く」形に戻る。
       this.onDrop?.(drop.item, drop.count, mob.position.x, mob.position.y, mob.position.z);
     }
+    return true;
+  }
+
+  /**
+   * いま刈れるか。**刈れないモブと、刈られたばかりのモブは false。**
+   *
+   * **何を持っているかは見ません**（それは `use.ts` の `decideUse()` が
+   * `isShears()` に聞く）。ここが答えるのは「相手の側の都合」だけです。
+   */
+  canShear(mob: Mob): boolean {
+    return MOBS[mob.kind].shearing !== null && mob.woolTimer <= 0;
+  }
+
+  /**
+   * 羊を刈る。**刈れたら true**（呼ぶ側はそのときだけシアーズを減らす）。
+   * 刈れなければ何もせず false —— 空振りで道具が減ってはいけません。
+   *
+   * 出る数は `ShearRule` の `min`..`max`（両端を含む）。**倒したときと同じ
+   * `onDrop` に流します**ので、`mobs.ts` は `drops.ts` を知らないままです。
+   */
+  shear(mob: Mob, ctx: MobContext, random = ctx.random ?? Math.random): boolean {
+    const rule = MOBS[mob.kind].shearing;
+    if (rule === null || mob.woolTimer > 0) return false;
+    const span = Math.max(0, rule.max - rule.min);
+    const count = rule.min + Math.min(span, Math.floor(random() * (span + 1)));
+    mob.woolTimer = rule.regrow;
+    this.onDrop?.(rule.item, count, mob.position.x, mob.position.y, mob.position.z);
+    // **新しい音を足さない**（出来事 × 種類で膨らむ）。声色は種類ごとの `voice`。
+    this.onSound?.("dig", MOBS[mob.kind].voice);
     return true;
   }
 
@@ -2223,6 +2302,23 @@ function clearShot(
   losOrigin.set(x, y, z);
   losDir.set(dx / distance, dy / distance, dz / distance);
   return raycastVoxels(world, losOrigin, losDir, distance) === null;
+}
+
+/**
+ * **倒したときに落ちるもの。** 刈られているあいだは、刈って取れるものと同じものを落とさない
+ * （＝刈ってから倒す二重取りを塞ぐ）。落ちないなら null。
+ *
+ * **倒したときのドロップはこの 1 本に通すこと。** いま `def.drop` を直に読む経路は
+ * `attack()`（殴って倒す）と `hitByProjectile()`（撃って倒す）の**2 つ**あり、
+ * 片方だけ直すと**弓で撃ったときだけ刈った羊から羊毛が出ます**
+ * （`rollDrop()` を `breaking.ts` の 1 か所に集めたのとまったく同じ話）。
+ *
+ * **`MobDef.drop` の表は書き換えません** —— 倒したときに何が出るかと、
+ * 刈ったあとで出ないことは別の話です。
+ */
+export function dropFor(mob: Mob, def: MobDef): MobDrop | null {
+  if (mob.woolTimer > 0 && def.shearing?.item === def.drop.item) return null;
+  return def.drop;
 }
 
 /** プレイヤーに背を向ける向き。`aimHead` の「見る向き」の裏返し。 */

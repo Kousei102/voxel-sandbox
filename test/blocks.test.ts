@@ -57,7 +57,9 @@ import {
   BUCKET,
   IRON_INGOT,
   LAVA_BUCKET,
+  MAX_ITEM_ID,
   NO_ITEM,
+  SHEARS,
   STICK,
   WATER_BUCKET,
   allItemIds,
@@ -126,6 +128,22 @@ export function run(): void {
     collisions.length === 0,
     collisions.join(" / ") || `共有帯の使用済み ${sharedUsed.size} 個`,
   );
+
+  // **アイテムの側も数を出すこと。** ブロックだけ数えていると、共有帯を
+  // アイテムで埋めたときに「空きが減った理由」が出力から読めない。
+  const sharedItems = allItemIds().filter((id) => id >= SHARED_ID_START);
+  console.log(
+    `      アイテム ${allItemIds().length} 種（うち共有帯 ${sharedItems.length} 個: ` +
+      `${sharedItems.map((id) => `${id} ${itemName(id)}`).join(" / ")}）  MAX_ITEM_ID ${MAX_ITEM_ID}`,
+  );
+  check(
+    "共有帯のアイテムは剣 4 本とシアーズの 5 個（115 まで）",
+    sharedItems.length === 5 && sharedItems[4] === SHEARS && MAX_ITEM_ID === SHEARS,
+    `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
+  );
+  // **95..110 は空けたまま**（ブロック側の向き違いが使っている番号）。
+  const inGap = allItemIds().filter((id) => id > VARIANT_BAND_MAX - 16 && id <= VARIANT_BAND_MAX);
+  check("95..110 にアイテムを置いていない", inGap.length === 0, inGap.join(" "));
 
   // **剣はどのブロックの適正でもない。** 1 つでも `tool: "sword"` を要求すると、
   // 剣がそのブロックの採掘道具になって（`toolSpeed()` が速さを返し、`canHarvest()` が

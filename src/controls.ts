@@ -125,7 +125,7 @@ export interface ClickFacts {
 }
 
 /**
- * マウスの注文。**`use` は右クリック**で、その先の 11 通りは `use.ts` が決めます。
+ * マウスの注文。**`use` は右クリック**で、その先の 12 通りは `use.ts` が決めます。
  * ここが分けるのは「殴る／掘る／スポイト／右クリック」の 4 つだけ。
  */
 export type ClickAction =
@@ -142,6 +142,19 @@ export type ClickAction =
   | "use";
 
 /**
+ * **手前に居るのはモブか（狙っているブロックより近いか）。**
+ *
+ * 左クリック（殴る／掘る）と右クリック（刈る／置く）が**同じ 1 本を呼びます** ——
+ * `main.ts` に距離の比較を書き始めると、殴れる間合いと刈れる間合いが食い違い、
+ * 「殴れるのに刈れない羊」がブラウザを開くまで分かりません。
+ *
+ * 距離はどちらも視点からの距離で測ること。
+ */
+export function mobIsNearer(facts: ClickFacts): boolean {
+  return facts.mobDistance < facts.blockDistance;
+}
+
+/**
  * マウスのボタンを押したときに何をするかを決める。
  *
  * **狙っているブロックが無くても降りないこと** —— 何も無い所の向こうにモブが居ます
@@ -149,8 +162,8 @@ export type ClickAction =
  */
 export function decideClick(button: number, facts: ClickFacts): ClickAction {
   if (button === 0) {
-    // **手前にあるほうを取る。** 距離はどちらも視点からの距離で測ること。
-    if (facts.mobDistance < facts.blockDistance) return "attack";
+    // **手前にあるほうを取る**（式は `mobIsNearer()` の 1 本。2 か所に書かない）。
+    if (mobIsNearer(facts)) return "attack";
     if (facts.blockDistance === Infinity) return "none";
     return facts.creative ? "break" : "mine";
   }

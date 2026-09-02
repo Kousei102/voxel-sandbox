@@ -43,6 +43,7 @@ import {
   IRON_SHOVEL,
   IRON_SWORD,
   NO_ITEM,
+  SHEARS,
   STICK,
   STONE_AXE,
   STONE_PICKAXE,
@@ -141,6 +142,10 @@ export const RECIPES: readonly Recipe[] = [
   // 矢は火打石 + 棒で 4 本（Minecraft は羽根も要るが、鶏がまだ居ない）。
   // 1 列なので 2x2 でも作れる —— **弓を持って出たまま矢を作り足せる。**
   { name: "矢", out: ARROW, count: 4, shape: ["F", "S"], key: { F: FLINT, S: STICK } },
+
+  // シアーズは鉄 2 個の斜め（Minecraft と同じ）。2x2 に収まるので**作業台が要らない**
+  // —— 羊を見つけた場所で作り足せる。左右反転でも作れる。
+  { name: "シアーズ", out: SHEARS, count: 1, shape: [".I", "I."], key: { I: IRON_INGOT } },
 
   ...toolRecipes("木", PLANK, WOOD_PICKAXE, WOOD_AXE, WOOD_SHOVEL, WOOD_SWORD),
   ...toolRecipes("石", COBBLE, STONE_PICKAXE, STONE_AXE, STONE_SHOVEL, STONE_SWORD),

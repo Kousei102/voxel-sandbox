@@ -154,7 +154,20 @@ export const STONE_SWORD = 112;
 export const IRON_SWORD = 113;
 export const DIAMOND_SWORD = 114;
 
-export const MAX_ITEM_ID = DIAMOND_SWORD;
+/**
+ * シアーズ。**羊を刈って、倒さずに羊毛を取る道具**（本家と同じ鉄 2 個の斜め）。
+ *
+ * **`tool:` を持たせないこと。** `ToolKind` に足すと `mobs.ts` の `TOOL_ATTACK` に
+ * 無い種類が入って `attackDamage()` が **NaN** を返しますし、`wearForBreaking()` が
+ * 「掘る道具」として 1 を返すので**石を掘るたびに減ります。**
+ * 火種・弓と同じ**「使って減るもの」**（`durability.ts` の `wearForUse()`）です。
+ *
+ * 誰が刈れるか・何個出るか・いつ戻るかは **`mobs.ts` の表（`MobDef.shearing`）**で、
+ * ここが知っているのは「どれがシアーズか」だけ。
+ */
+export const SHEARS = 115;
+
+export const MAX_ITEM_ID = SHEARS;
 
 export const MAX_STACK = 64;
 
@@ -275,6 +288,10 @@ for (let tier = TIER_WOOD; tier <= TIER_DIAMOND; tier++) {
     tool: { kind: "sword", tier, speed: 1 },
   });
 }
+
+// シアーズは道具と同じで積めない（傷が付くので、山にできない）。
+// **`tool` を持たせないこと**（上の `SHEARS` の説明）。
+item({ id: SHEARS, name: "シアーズ", block: AIR, stack: 1, color: 0xa8b8c0, tool: null });
 
 const EMPTY: ItemDef = ITEMS[NO_ITEM];
 
@@ -488,6 +505,19 @@ const BOWS: readonly number[] = [BOW];
 
 export function isBow(item: number): boolean {
   return BOWS.includes(item);
+}
+
+/**
+ * 刈るもの（シアーズ）。**火種・弓とまったく同じ表 1 本**で、
+ * `item === SHEARS` と書き始めると、種類が増えたときに持てる側と刈る側で
+ * 片方だけ直すことになる。
+ *
+ * **誰を刈れるか・何個出るかは見ません**（それは `mobs.ts` の `MobDef.shearing`）。
+ */
+const SHEARS_ITEMS: readonly number[] = [SHEARS];
+
+export function isShears(item: number): boolean {
+  return SHEARS_ITEMS.includes(item);
 }
 
 /**

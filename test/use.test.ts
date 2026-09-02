@@ -20,6 +20,7 @@ import {
   ENDER_PEARL,
   FLINT_AND_STEEL,
   NO_ITEM,
+  SHEARS,
   WATER_BUCKET,
 } from "../src/items";
 import { decideUse, type UseAction, type UseFacts } from "../src/use";
@@ -31,9 +32,9 @@ function aimAt(id: number, x = 3, y = 11, z = 5) {
   return { id, block: { x, y, z }, normal: { x: 0, y: 1, z: 0 }, point: { y: y + 1 } };
 }
 
-/** 並の状況（サバイバル・腹は減っている・矢はある）。違うところだけ上書きする。 */
+/** 並の状況（サバイバル・腹は減っている・矢はある・刈れるモブは居ない）。違うところだけ上書きする。 */
 function facts(held: number, over: Partial<UseFacts> = {}): UseFacts {
-  return { held, creative: false, canEat: true, hasArrow: true, ...over };
+  return { held, creative: false, canEat: true, hasArrow: true, shearable: false, ...over };
 }
 
 /** 表に出すための短い説明（何が起きるか）。 */
@@ -68,9 +69,16 @@ export function run(): void {
   // もとは `main.ts` の `useOrPlace()` にあった 11 通りの `if` の列。
   // **戻っていないこと**を語で見る（`placing.ts` の `canPlaceAt` と同じ作法）。
   const main = sourceOf("src/main.ts");
-  const backInMain = ["isBucket(", "isBow(", "isFireStarter(", "isEndPortalFrame(", "ENDER_EYE"].filter(
-    (name) => main.includes(name),
-  );
+  const backInMain = [
+    "isBucket(",
+    "isBow(",
+    "isFireStarter(",
+    "isEndPortalFrame(",
+    "ENDER_EYE",
+    // 刈るかどうかも同じ（`main.ts` が持ってよいのは「刈れるモブが手前に居る」という
+    // 事実だけで、どれがシアーズかは `items.ts` の表 1 本）。
+    "isShears(",
+  ].filter((name) => main.includes(name));
   check("main.ts に振り分けが戻っていない", backInMain.length === 0, backInMain.join(" "));
 
   // --- 11 通りの表（触ったときに壊れ方が見えるように出す） ---
@@ -208,6 +216,36 @@ export function run(): void {
     check(
       "狙った面がそのまま置く側へ渡る",
       put?.kind === "place" && put.aim.block.x === 3 && put.aim.normal.y === 1,
+    );
+  }
+
+  // --- シアーズ（刈れるモブが手前に居るときだけ） ---
+  // 「刈れるか」（`mobs.canShear()`）も「手前か」（`controls.mobIsNearer()`）も
+  // 呼ぶ側が込みにして渡す（`hasArrow` とまったく同じ約束）。
+  {
+    const rows: [string, UseFacts, ReturnType<typeof aimAt> | null][] = [
+      ["シアーズ + 刈れる羊", facts(SHEARS, { shearable: true }), null],
+      ["シアーズだけ（羊が居ない）", facts(SHEARS), aimAt(GRASS)],
+      ["シアーズだけ（空を向く）", facts(SHEARS), null],
+      ["シアーズで作業台（羊が手前）", facts(SHEARS, { shearable: true }), aimAt(CRAFTING_TABLE)],
+      ["石 + 刈れる羊", facts(STONE, { shearable: true }), aimAt(GRASS)],
+      ["焼き豚 + 刈れる羊", facts(COOKED_PORK, { shearable: true }), null],
+      ["水入りバケツ + 刈れる羊", facts(WATER_BUCKET, { shearable: true }), null],
+    ];
+    for (const [name, f, aim] of rows) {
+      console.log(`      ${name.padEnd(28)}  ${describeAction(decideUse(aim, f))}`);
+    }
+    const kind = (i: number): string => decideUse(rows[i][2], rows[i][1]).kind;
+    check("シアーズ + 刈れるモブが手前 → 刈る", kind(0) === "shear", kind(0));
+    // 羊が居なければ今までどおり（置ける物でなければ `place(AIR)`）。
+    check("刈れるモブが居なければ今までどおり", kind(1) === "place" && kind(2) === "none", `${kind(1)} / ${kind(2)}`);
+    // **器より先**（あとにすると、作業台の前に立った羊だけ刈れない）。
+    check("刈るのは器より先", kind(3) === "shear", kind(3));
+    // **別のアイテムからは何も奪わないこと**（`place` も `eat` も `bucket` も今までどおり）。
+    check(
+      "シアーズ以外は刈らない（置く・食べる・汲むを奪わない）",
+      kind(4) === "place" && kind(5) === "eat" && kind(6) === "bucket",
+      `${kind(4)} / ${kind(5)} / ${kind(6)}`,
     );
   }
 

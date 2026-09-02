@@ -2,9 +2,12 @@
  * 右クリックで**何が起きるか**の振り分け。**判断だけのファイル**で、three も DOM も
  * `World` も持ち物も出てこない（`placing.ts` / `bow.ts` / `endportal.ts` と同じ形）。
  *
- * もとは `main.ts` の `useOrPlace()` にあった 11 通りの `if` の列。**順番そのものが
- * 判断です** —— 並べ替えると静かに壊れるものが 2 つあり、どちらもブラウザを開いて
+ * もとは `main.ts` の `useOrPlace()` にあった `if` の列（いまは 12 通り）。**順番そのものが
+ * 判断です** —— 並べ替えると静かに壊れるものが 3 つあり、どれもブラウザを開いて
  * 現物を狙うまで気付けません:
+ *
+ * - **刈る**（`shear`）は器より先。あとにすると、作業台やチェストの前に立った羊だけ
+ *   刈れません（そこまで追い込まないと気付けない形で壊れます）
  *
  * - **枠にアイを嵌める**（`fitEye`）は**投げる**（`throwEye`）より先。逆にすると、
  *   枠を狙っても手からアイが飛んでいって**永久に嵌まりません**（枠は地下 18 マス）
@@ -24,7 +27,7 @@ import {
   isEndPortalFrame,
   type PlaceAim,
 } from "./blocks";
-import { ENDER_EYE, foodOf, isBow, isBucket, isFireStarter, placedBlock } from "./items";
+import { ENDER_EYE, foodOf, isBow, isBucket, isFireStarter, isShears, placedBlock } from "./items";
 
 /** 右クリックした瞬間の事実。**`main.ts` は集めて渡すだけ**（判断はこの中）。 */
 export interface UseFacts {
@@ -35,6 +38,12 @@ export interface UseFacts {
   readonly canEat: boolean;
   /** **放てる矢があるか。** クリエイティブぶんは呼ぶ側で込みにする（`bow.ts` と同じ約束）。 */
   readonly hasArrow: boolean;
+  /**
+   * **いま刈れるモブが手前に居るか。** 「手前か」は `controls.ts` の `mobIsNearer()`、
+   * 「刈れるか」は `mobs.ts` の `canShear()` で、呼ぶ側が 2 つを込みにして渡します
+   * （`hasArrow` とまったく同じ約束 —— ここが器を見に行き始めると判断が 2 か所に散ります）。
+   */
+  readonly shearable: boolean;
 }
 
 /** 効くマス（狙ったブロックそのもの）。 */
@@ -51,6 +60,8 @@ export interface UseSpot {
  */
 export type UseAction =
   | { readonly kind: "none" }
+  /** 手前のモブを刈る（何が何個出るかは `mobs.ts` の `MobDef.shearing`）。 */
+  | { readonly kind: "shear" }
   | { readonly kind: "flash"; readonly message: string }
   | { readonly kind: "craft" }
   | { readonly kind: "furnace"; readonly at: UseSpot }
@@ -74,6 +85,11 @@ const NOTHING: UseAction = { kind: "none" };
  */
 export function decideUse(aim: PlaceAim | null, facts: UseFacts): UseAction {
   const { held, creative } = facts;
+
+  // **器より先。** 羊は作業台やチェストの前にも立つので、あとにすると
+  // 「器の前に居る羊だけ刈れない」という、現物を追い込むまで気付けない形になる。
+  // **手前に居るときだけ真**（`shearable` に「手前か」が込みで入っている）。
+  if (facts.shearable && isShears(held)) return { kind: "shear" };
 
   if (aim && aim.id === CRAFTING_TABLE) return { kind: "craft" };
   // かまど。点火中も同じ 1 台なので、大元の ID で見る。

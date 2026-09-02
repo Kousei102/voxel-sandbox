@@ -41,6 +41,7 @@ import {
   MOB_DAMAGE,
   PLAYER_ATTACK_COOLDOWN,
   attackDamage,
+  dropFor,
   LOOK_DISTANCE,
   MAX_MOBS,
   MOBS,
@@ -154,6 +155,10 @@ export function run(): void {
     "orbit",
     "regen",
     "healers",
+    // **刈られたかどうかもここに足すこと。** 見た目（刈られた羊の姿）は別の周だが、
+    // 「誰が刈れるか・いつ戻るか」が描画側に生えると、羊を捕まえて刈るまで確かめられない。
+    "shearing",
+    "woolTimer",
   ].filter((name) => renderSource.includes(name));
   check("mobrender.ts に判断が漏れていない", decisions.length === 0, decisions.join(" "));
 
@@ -1709,6 +1714,202 @@ export function run(): void {
     wall !== null && wallDistance < (front?.distance ?? Infinity),
     `ブロック ${wallDistance.toFixed(2)} < モブ ${front?.distance.toFixed(2)}`,
   );
+
+  describe("羊を刈る（倒さずに羊毛を取る）");
+
+  // --- 誰が刈れるか（表 1 本。`kind === "sheep"` と書かない） ---
+  console.log(
+    `      刈れる: ${MOB_KINDS.map((k) => `${MOBS[k].name} ${MOBS[k].shearing ? "○" : "×"}`).join(" / ")}`,
+  );
+  {
+    const shearable = MOB_KINDS.filter((k) => MOBS[k].shearing !== null);
+    check("刈れるのは羊だけ", shearable.length === 1 && shearable[0] === "sheep", shearable.join(" "));
+    const rule = MOBS.sheep.shearing;
+    console.log(
+      `      羊の表: ${itemName(rule?.item ?? NO_ITEM)} ${rule?.min}〜${rule?.max} 個 / ` +
+        `${rule?.regrow} 秒で戻る（倒したときは ${itemName(MOBS.sheep.drop.item)} x${MOBS.sheep.drop.count}）`,
+    );
+    check("刈ると羊毛が 1〜3 個（本家のまま）", rule?.item === WOOL && rule?.min === 1 && rule?.max === 3);
+    // **0 にしないこと** —— 連打で羊毛が無限に出る。
+    check("戻るまでの間がある", (rule?.regrow ?? 0) > 0, `${rule?.regrow} 秒`);
+  }
+
+  /** 刈る試験場。羊 1 体と、落とし物・音の控え。 */
+  function shearArena(): {
+    pack: Mobs;
+    sheep: ReturnType<Mobs["spawn"]>;
+    drops: { item: number; count: number }[];
+    sounds: Sfx[];
+    c: MobContext;
+    world: ReturnType<Arena["asWorld"]>;
+  } {
+    const pack = new Mobs();
+    const drops: { item: number; count: number }[] = [];
+    const sounds: Sfx[] = [];
+    pack.onDrop = (item, count) => drops.push({ item, count });
+    pack.onSound = (sfx) => sounds.push(sfx);
+    const c = ctx({ random: seeded(101) });
+    const sheep = pack.spawn("sheep", 0.5, 11, 2.5, 0, seeded(103));
+    return { pack, sheep, drops, sounds, c, world: fightArena().asWorld() };
+  }
+
+  // --- 1 回目は刈れて、2 回目は刈れない ---
+  {
+    const { pack, sheep, drops, sounds, c } = shearArena();
+    const before = pack.canShear(sheep);
+    const first = pack.shear(sheep, c);
+    const second = pack.shear(sheep, c);
+    console.log(
+      `      刈る: 前 ${before} → 1 回目 ${first}（${drops.map((d) => `${itemName(d.item)} x${d.count}`).join(" ")}）` +
+        ` → 2 回目 ${second} / 音 ${sounds.join(" ")} / 残り ${sheep.woolTimer} 秒`,
+    );
+    check("刈る前は刈れる", before);
+    check("1 回目は刈れて、羊毛が 1 山だけ出る", first && drops.length === 1 && drops[0].item === WOOL);
+    // **刈れなければ false**（呼ぶ側がシアーズを減らさないための戻り値）。
+    check("2 回目は刈れない（false・何も出ない）", !second && drops.length === 1, `${second} / ${drops.length} 件`);
+    check("刈ったあとは canShear も false", !pack.canShear(sheep));
+    // **新しい `Sfx` を足さない**（音は確かめられない側。既にある "dig" を鳴らす）。
+    check("鳴るのは既にある dig 1 回だけ", sounds.length === 1 && sounds[0] === "dig", sounds.join(" "));
+    // **倒れていないこと**（刈るのは攻撃ではない）。
+    check("刈っても体力は減らない", pack.count === 1 && sheep.health === MOBS.sheep.maxHealth, `${sheep.health}`);
+  }
+
+  // --- 出る数は 1〜3（種を固定した乱数 1 本を回し続ける。`rules/testing.md`） ---
+  {
+    const pack = new Mobs();
+    const counts: number[] = [];
+    pack.onDrop = (_item, count) => counts.push(count);
+    const roll = seeded(211);
+    const c = ctx({ random: roll });
+    for (let i = 0; i < 200; i++) {
+      const sheep = pack.spawn("sheep", 0.5, 11, 2.5, 0, roll);
+      pack.shear(sheep, c);
+    }
+    const tally = [1, 2, 3].map((n) => counts.filter((c2) => c2 === n).length);
+    console.log(`      200 回刈った内訳: 1 個 ${tally[0]} / 2 個 ${tally[1]} / 3 個 ${tally[2]}`);
+    check("200 回とも 1〜3 個", counts.length === 200 && counts.every((n) => n >= 1 && n <= 3), `${Math.min(...counts)}〜${Math.max(...counts)}`);
+    check("3 通りとも出る（偏っていない）", tally.every((n) => n > 0), tally.join(" / "));
+    // 両端は乱数を直に渡して出す（`rollDrop(id, 0.05)` と同じ作法）。
+    const low = new Mobs();
+    const high = new Mobs();
+    let lowCount = 0;
+    let highCount = 0;
+    low.onDrop = (_i, n) => (lowCount = n);
+    high.onDrop = (_i, n) => (highCount = n);
+    low.shear(low.spawn("sheep", 0.5, 11, 2.5, 0, seeded(7)), ctx({}), () => 0);
+    high.shear(high.spawn("sheep", 0.5, 11, 2.5, 0, seeded(7)), ctx({}), () => 0.999999);
+    console.log(`      両端: random 0 → ${lowCount} 個 / random ≈1 → ${highCount} 個`);
+    check("random 0 なら 1 個", lowCount === 1, `${lowCount}`);
+    check("random ≈1 でも 3 個までで止まる", highCount === 3, `${highCount}`);
+  }
+
+  // --- 60 秒でまた刈れる（毎フレーム減る） ---
+  {
+    const { pack, sheep, c, world } = shearArena();
+    pack.shear(sheep, c);
+    const regrow = MOBS.sheep.shearing?.regrow ?? 0;
+    // **境目の 1 フレーム手前で止めて、「まだ戻っていない」ことも見る**（`rules/testing.md`）。
+    for (let i = 0; i < regrow * 60 - 1; i++) pack.update(1 / 60, world, c);
+    const justBefore = pack.canShear(sheep);
+    for (let i = 0; i < 2; i++) pack.update(1 / 60, world, c);
+    const after = pack.canShear(sheep);
+    console.log(
+      `      戻り: ${regrow} 秒の 1 フレーム手前 ${justBefore}（残り ${sheep.woolTimer.toFixed(3)} 秒）→ ${regrow} 秒後 ${after}`,
+    );
+    check(`${regrow} 秒経つ前はまだ刈れない`, !justBefore);
+    check(`${regrow} 秒でまた刈れる`, after && sheep.woolTimer === 0, `${sheep.woolTimer}`);
+  }
+
+  // --- 刈れないモブ（表に無いものは false のまま。何も出ない） ---
+  {
+    const pack = new Mobs();
+    const drops: number[] = [];
+    pack.onDrop = (item) => drops.push(item);
+    const c = ctx({});
+    const rows = MOB_KINDS.filter((k) => MOBS[k].shearing === null).map((kind) => {
+      const mob = pack.spawn(kind, 0.5, 11, 2.5, 0, seeded(131));
+      return [MOBS[kind].name, pack.canShear(mob), pack.shear(mob, c)] as const;
+    });
+    console.log(`      刈れないモブ: ${rows.map(([n, can, did]) => `${n} ${can}/${did}`).join(" / ")}`);
+    check(
+      "豚・ゾンビ・ブレイズ・エンダーマン・ドラゴンは刈れない",
+      rows.every(([, can, did]) => !can && !did) && drops.length === 0,
+      `${drops.length} 件落ちた`,
+    );
+  }
+
+  // --- 刈った羊を倒しても羊毛は落ちない（**殴っても撃っても**） ---
+  {
+    // 判断そのものは `dropFor()` の 1 本。**表（`MobDef.drop`）は書き換えない。**
+    const pack = new Mobs();
+    const c = ctx({});
+    const woolly = pack.spawn("sheep", 0.5, 11, 2.5, 0, seeded(137));
+    const shorn = pack.spawn("sheep", 0.5, 11, 4.5, 0, seeded(139));
+    pack.shear(shorn, c);
+    const pig = pack.spawn("pig", 0.5, 11, 6.5, 0, seeded(141));
+    console.log(
+      `      dropFor: 刈っていない羊 ${itemName(dropFor(woolly, MOBS.sheep)?.item ?? NO_ITEM)} / ` +
+        `刈った羊 ${dropFor(shorn, MOBS.sheep) === null ? "なし" : "羊毛"} / ` +
+        `豚 ${itemName(dropFor(pig, MOBS.pig)?.item ?? NO_ITEM)}`,
+    );
+    check("刈っていない羊は今までどおり羊毛", dropFor(woolly, MOBS.sheep)?.item === WOOL);
+    check("刈った羊は何も落とさない", dropFor(shorn, MOBS.sheep) === null);
+    check("刈られていないモブには効かない", dropFor(pig, MOBS.pig)?.item === RAW_PORK);
+    check("表そのものは書き換えていない", MOBS.sheep.drop.item === WOOL && MOBS.sheep.drop.count === 1);
+  }
+  {
+    // 殴って倒す（`attack()`）。**先に「刈っていない羊なら落ちる」を出すこと** ——
+    // 出さないと「そもそも倒せていない」で緑になる。
+    const arena = fightArena();
+    const outcome = (shearFirst: boolean): number[] => {
+      const pack = new Mobs();
+      const dropped: number[] = [];
+      pack.onDrop = (item) => dropped.push(item);
+      const c = ctx({ random: seeded(149) });
+      const sheep = pack.spawn("sheep", 0.5, 11, 1.5, 0, seeded(151));
+      if (shearFirst) pack.shear(sheep, c);
+      dropped.length = 0;
+      while (pack.count > 0) {
+        pack.attack(sheep, DIAMOND_SWORD, c);
+        advance(pack, arena, c, COOLDOWN_FRAMES);
+      }
+      return dropped;
+    };
+    const woolly = outcome(false);
+    const shorn = outcome(true);
+    console.log(
+      `      殴って倒す: 刈っていない羊 ${woolly.map(itemName).join(" ") || "なし"} / ` +
+        `刈った羊 ${shorn.map(itemName).join(" ") || "なし"}`,
+    );
+    check("刈っていない羊を倒すと羊毛が落ちる", woolly.length === 1 && woolly[0] === WOOL, `${woolly.length} 件`);
+    check("刈った羊を倒しても羊毛は落ちない", shorn.length === 0, `${shorn.length} 件`);
+  }
+  {
+    // 撃って倒す（`hitByProjectile()`）。**`attack()` と同じ 1 本（`dropFor()`）を通ること** ——
+    // 片方だけ直すと、弓で撃ったときだけ刈った羊から羊毛が出る。
+    const shoot = (shearFirst: boolean): number[] => {
+      const pack = new Mobs();
+      const flying = new Projectiles();
+      const dropped: number[] = [];
+      pack.onDrop = (item) => dropped.push(item);
+      const c = ctx({ random: seeded(157) });
+      const sheep = pack.spawn("sheep", 3.5, 11, 0.5, 0, seeded(163));
+      if (shearFirst) pack.shear(sheep, c);
+      dropped.length = 0;
+      const target = pack.projectileTargets(c).find((t) => t.owner === sheep.id)!;
+      const arrow = flying.spawn("arrow", 0.5, 12, 0.5, 0, 0, -1, PLAYER_OWNER, 100);
+      pack.hitByProjectile(arrow!, target, c);
+      return dropped;
+    };
+    const woolly = shoot(false);
+    const shorn = shoot(true);
+    console.log(
+      `      矢で倒す: 刈っていない羊 ${woolly.map(itemName).join(" ") || "なし"} / ` +
+        `刈った羊 ${shorn.map(itemName).join(" ") || "なし"}`,
+    );
+    check("矢でも刈っていない羊なら羊毛が落ちる", woolly.length === 1 && woolly[0] === WOOL, `${woolly.length} 件`);
+    check("矢で撃っても刈った羊からは出ない（2 か所とも塞がっている）", shorn.length === 0, `${shorn.length} 件`);
+  }
 
   describe("敵対モブの AI（追跡と日光）");
 

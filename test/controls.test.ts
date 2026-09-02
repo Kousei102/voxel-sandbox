@@ -1,4 +1,4 @@
-import { decideClick, decideKey, type KeyAction, type KeyFacts } from "../src/controls";
+import { decideClick, decideKey, mobIsNearer, type KeyAction, type KeyFacts } from "../src/controls";
 import { sourceOf } from "./arena";
 import { check, describe } from "./harness";
 
@@ -161,4 +161,30 @@ export function run(): void {
   // 右クリックの先（11 通り）は `use.ts` の担当。ここは「右クリックだ」までしか言わない。
   check("右クリックは use.ts へ", click(2, Infinity, Infinity) === "use");
   check("知らないボタンは何も起きない", click(3, 1, 1) === "none");
+
+  // --- 手前に居るのはモブか（左クリックと右クリックが共有する 1 本） ---
+  // **式を 2 か所に書かないための関数**。`main.ts` が右クリック用に比較を書き直すと、
+  // 殴れる間合いと刈れる間合いが食い違い、「殴れるのに刈れない羊」ができる。
+  const nearer = (mobDistance: number, blockDistance: number) =>
+    mobIsNearer({ creative: false, mobDistance, blockDistance });
+  console.log(
+    `      mobIsNearer: モブが手前 ${nearer(2, 4.5)} / ブロックが手前 ${nearer(4.5, 2)} / ` +
+      `どちらも無い ${nearer(Infinity, Infinity)} / モブだけ ${nearer(3, Infinity)}`,
+  );
+  check("モブが手前なら true", nearer(2, 4.5));
+  check("ブロックが手前なら false", !nearer(4.5, 2));
+  // **狙う先が無くても降りないこと**（空を背にしたモブが殴れなくなる／刈れなくなる）。
+  check("空を背にしたモブも手前あつかい", nearer(3, Infinity));
+  check("どちらも無ければ false", !nearer(Infinity, Infinity));
+  // 左クリックがこの 1 本に乗っていること（写した式が残っていたら、ここは合っても
+  // `decideClick` だけ別の答えを返せる）。
+  check(
+    "左クリックの「殴る」も同じ 1 本に乗っている",
+    [
+      [2, 4.5],
+      [4.5, 2],
+      [3, Infinity],
+      [Infinity, Infinity],
+    ].every(([m, b]) => (click(0, m, b) === "attack") === nearer(m, b)),
+  );
 }

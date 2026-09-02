@@ -9,6 +9,7 @@ import {
 import {
   BOW_USES,
   FIRE_STARTER_USES,
+  SHEARS_USES,
   TOOL_USES,
   breakMessage,
   carryWear,
@@ -33,6 +34,7 @@ import {
   IRON_PICKAXE,
   IRON_SWORD,
   NO_ITEM,
+  SHEARS,
   STICK,
   STONE_PICKAXE,
   STONE_SWORD,
@@ -694,15 +696,62 @@ export function run(): void {
   console.log(`      main.ts の 384 は ${digits} 件`);
   check("main.ts に 384 が出てこない", digits === 0, `${digits} 件`);
 
-  // 見張り 2: 配線が 2 か所とも生きている（点火と発射）。**1 回だと片方を落としている。**
+  // 見張り 2: 配線が 3 か所とも生きている（点火・発射・刈る）。
+  // **1 つ減ると、その経路だけ「使っても減らない道具」になる。**
   const uses = [...mainSource.matchAll(/wearForUse\(/g)].length;
   console.log(`      main.ts の wearForUse( は ${uses} 回`);
-  check("main.ts は点火と発射の 2 か所から呼ぶ", uses === 2, `${uses} 回`);
+  check("main.ts は点火・発射・刈るの 3 か所から呼ぶ", uses === 3, `${uses} 回`);
 
   // 見張り 3: どれが火種・どれが弓かは `items.ts` の表 1 本（`durability.ts` は知らない）。
   const durabilitySource = sourceOf("src/durability.ts");
   const named = [/\bBOW\b/, /\bFLINT_AND_STEEL\b/].filter((re) => re.test(durabilitySource));
   check("durability.ts にアイテムの名前が出てこない", named.length === 0, named.join(" / "));
+
+  describe("シアーズ（使って減る 3 つ目）");
+
+  // --- 試験場が効いているか（先に置く。`rules/testing.md`） ---
+  {
+    const shears = slot(SHEARS);
+    console.log(
+      `      シアーズ: 名前 ${itemName(SHEARS)} / ${maxUses(SHEARS)} 回 / ` +
+        `1 枠 ${itemStackLimit(SHEARS)} 個 / 新品の傷 ${shears.damage}`,
+    );
+    check("名前が付いている", itemName(SHEARS) === "シアーズ", itemName(SHEARS));
+    check("238 回（Minecraft のまま）", maxUses(SHEARS) === SHEARS_USES && SHEARS_USES === 238, `${maxUses(SHEARS)}`);
+    // 傷が付く物は全部 `stack: 1`（山にすると、半端に傷んだ山を割る話が始まる）。
+    check("積めるのは 1 個まで", itemStackLimit(SHEARS) === 1, `${itemStackLimit(SHEARS)}`);
+  }
+
+  // --- 減り方は「使って減る」だけ（掘っても殴っても減らない） ---
+  {
+    const use = wearForUse(SHEARS, false);
+    const dig = wearForBreaking(STONE, SHEARS, false);
+    const hit = wearForAttack(SHEARS, false);
+    const inCreative = wearForUse(SHEARS, true);
+    console.log(
+      `      シアーズ: wearForUse ${use} / wearForBreaking(石) ${dig} / ` +
+        `wearForAttack ${hit} / クリエイティブ ${inCreative}`,
+    );
+    check("刈ると 1 減る", use === 1, `${use}`);
+    // **`tool:` を持たせると、ここが 1 になって石を掘るたびに減る**（禁じ手 1）。
+    check("石を掘っても減らない", dig === 0, `${dig}`);
+    check("殴っても減らない（剣ではない）", hit === 0, `${hit}`);
+    check("クリエイティブでは減らない", inCreative === 0, `${inCreative}`);
+  }
+
+  // --- 使い切ると壊れる（238 回目） ---
+  {
+    const held = slot(SHEARS);
+    for (let i = 0; i < SHEARS_USES - 1; i++) wearSlot(held, wearForUse(held.item, false));
+    const last = held.item === SHEARS && held.damage === SHEARS_USES - 1;
+    const broke = wearSlot(held, wearForUse(held.item, false));
+    console.log(
+      `      使い切り: 237 回目 ${last ? "手に残る" : "消えた"} → 238 回目 ${broke}（傷 ${held.damage}）`,
+    );
+    check("237 回目までは手に残る", last, `${held.item} / 傷 ${held.damage}`);
+    check("238 回目で壊れる", broke === SHEARS && isEmpty(held), `${broke}`);
+    check("壊れた 1 行に名前が出る", breakMessage(SHEARS) === "シアーズ が壊れました", breakMessage(SHEARS));
+  }
 
   describe("剣（殴って減る）");
 

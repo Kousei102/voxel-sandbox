@@ -31,6 +31,7 @@ import {
   FLINT_AND_STEEL,
   IRON_SWORD,
   NO_ITEM,
+  SHEARS,
   STICK,
   STONE_AXE,
   STONE_SWORD,
@@ -96,8 +97,22 @@ export function run(): void {
   check("鉄 3 個の V 字 → バケツ", bucket?.out === BUCKET && bucket.count === 1, bucket?.name ?? "無し");
   const bucketUpsideDown = findRecipe(grid(3, [".I.", "I.I"], P), 3);
   check("上下を逆にするとバケツにならない", bucketUpsideDown === null, bucketUpsideDown?.name ?? "無し");
+  // **`=== null` に戻さないこと。** 2x2 の斜めはシアーズ（鉄 2 個）が取っているので、
+  // ここで見たいのは「バケツにならない」ことそのもの。
   const bucketIn2 = findRecipe(grid(2, ["I.", ".I"], P), 2);
-  check("2x2 ではバケツは作れない（作業台が要る）", bucketIn2 === null, bucketIn2?.name ?? "無し");
+  check("2x2 ではバケツは作れない（作業台が要る）", bucketIn2?.out !== BUCKET, bucketIn2?.name ?? "無し");
+
+  // --- シアーズ ---
+  // **鉄 2 個の斜め**（Minecraft と同じ）。2x2 に収まるので**作業台が要らない** ——
+  // 羊を見つけた場所で作り足せる。
+  const shears = findRecipe(grid(2, [".I", "I."], P), 2);
+  check("鉄 2 個の斜め → シアーズ 1 個", shears?.out === SHEARS && shears.count === 1, shears?.name ?? "無し");
+  const shearsMirror = findRecipe(grid(2, ["I.", ".I"], P), 2);
+  check("左右反転でも作れる", shearsMirror?.out === SHEARS, shearsMirror?.name ?? "無し");
+  const shearsIn3 = findRecipe(grid(3, ["...", ".I.", "I.."], P), 3);
+  check("3x3 の作業台でも同じ形で作れる", shearsIn3?.out === SHEARS, shearsIn3?.name ?? "無し");
+  const ironPair = findRecipe(grid(2, ["II"], P), 2);
+  check("横に並べただけではシアーズにならない", ironPair?.out !== SHEARS, ironPair?.name ?? "無し");
 
   // --- 火打石と打ち金 ---
   // **ネザーポータルの点火手段。** 形なしなので 2x2（手持ち）でも作れる ——

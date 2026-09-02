@@ -14,14 +14,14 @@
  * `wear` / `craftWear` / `dropWear` / `chestWear` / `furnaceWear` の 5 つ）。
  *
  * **減り方は 3 通りです**: 掘って減るもの（`wearForBreaking()`。ツルハシ・斧・シャベル）と、
- * **使って減るもの**（`wearForUse()`。火種・弓）と、**殴って減るもの**
+ * **使って減るもの**（`wearForUse()`。火種・弓・シアーズ）と、**殴って減るもの**
  * （`wearForAttack()`。剣）。**混ぜないこと** —— 弓で石を掘って弓が減っては困りますし、
  * ツルハシを右クリックしても、剣を右クリックしても減ってはいけません。
  */
 
 import { blockHardness, isBreakable } from "./blocks";
 import type { Slot } from "./inventory";
-import { NO_ITEM, isBow, isFireStarter, isSword, itemName, toolOf } from "./items";
+import { NO_ITEM, isBow, isFireStarter, isShears, isSword, itemName, toolOf } from "./items";
 
 /**
  * 階層ごとに何回使えるか。**Minecraft のまま**（木 59 / 石 131 / 鉄 250 / ダイヤ 1561）。
@@ -38,16 +38,20 @@ export const FIRE_STARTER_USES = 64;
 /** 弓が放てる回数。**Minecraft のまま**（384 回）。 */
 export const BOW_USES = 384;
 
+/** シアーズが刈れる回数。**Minecraft のまま**（238 回）。 */
+export const SHEARS_USES = 238;
+
 /**
  * **掘らずに、使って減るもの**が何回使えるか。掘る道具は 0（あちらは `TOOL_USES`）。
  *
- * **どれが火種・どれが弓かは `items.ts` の表 1 本に聞きます**（`isFireStarter()` /
- * `isBow()`）。ここに `item === ...` を書き始めると、火種や弓が増えたときに
+ * **どれが火種・弓・シアーズかは `items.ts` の表 1 本に聞きます**（`isFireStarter()` /
+ * `isBow()` / `isShears()`）。ここに `item === ...` を書き始めると、種類が増えたときに
  * 「持てる側」と「減る側」の 2 か所を直すことになり、必ず片方を忘れます。
  */
 function usedUp(item: number): number {
   if (isFireStarter(item)) return FIRE_STARTER_USES;
   if (isBow(item)) return BOW_USES;
+  if (isShears(item)) return SHEARS_USES;
   return 0;
 }
 
@@ -73,7 +77,7 @@ export function wearable(item: number): boolean {
  * ブロックを 1 個掘ったときに減る回数。**0 か 1 だけ**。
  *
  * 減らないのは 5 つ: クリエイティブ / 道具でないもの（素手を含む）/
- * **掘る道具でないもの**（火種・弓。持ったまま殴っても減りません）/ 壊せないブロック /
+ * **掘る道具でないもの**（火種・弓・シアーズ。持ったまま殴っても減りません）/ 壊せないブロック /
  * **硬さ 0 のブロック**（松明・草。Minecraft も一瞬で壊れるものでは減りません）。
  */
 export function wearForBreaking(blockId: number, item: number, creative: boolean): number {
@@ -89,11 +93,11 @@ export function wearForBreaking(blockId: number, item: number, creative: boolean
  * **右クリックで 1 回使ったとき**に減る回数。**0 か 1 だけ**で、
  * `wearForBreaking()` とまったく同じ形です。
  *
- * 減るのは「使って減るもの」だけ（火種・弓）。**掘る道具は 0** ——
+ * 減るのは「使って減るもの」だけ（火種・弓・シアーズ）。**掘る道具は 0** ——
  * ツルハシを右クリックしても減ってはいけません。
  *
  * **効かなかったときに呼ばないのは呼ぶ側の仕事です**（`main.ts` は
- * 「火が点いた」「矢が飛んだ」を確かめた後ろで呼びます）。ここに
+ * 「火が点いた」「矢が飛んだ」「刈れた」を確かめた後ろで呼びます）。ここに
  * 「点いたか」を持ち込むと、`World` を知らない約束が崩れます。
  */
 export function wearForUse(item: number, creative: boolean): number {

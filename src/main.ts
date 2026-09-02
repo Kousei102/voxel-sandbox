@@ -18,7 +18,7 @@ import { VictoryWatch, bossBarState, victoryMessage } from "./boss";
 import { Drawing, FULL_DRAW_PITCH, SHOOT_HEIGHT } from "./bow";
 import { autoBreak, tryBreak } from "./breaking";
 import { Chests } from "./chests";
-import { decideClick, decideKey } from "./controls";
+import { decideClick, decideKey, mobIsNearer } from "./controls";
 import { CraftScreen } from "./craftscreen";
 import { liveCrystals, shatterCrystal } from "./crystals";
 import { DayNight, WAKE_TIME, canSleep, environmentFor } from "./daynight";
@@ -36,7 +36,7 @@ import { debugMob, nextShot } from "./debugspawn";
 import { debugText } from "./debugtext";
 import { Mining } from "./mining";
 import { MobRenderer } from "./mobrender";
-import { Mobs, type MobContext } from "./mobs";
+import { Mobs, type Mob, type MobContext } from "./mobs";
 import { Player } from "./player";
 import { tryBucket, tryIgnite, tryPlace } from "./placing";
 import {
@@ -773,11 +773,12 @@ document.addEventListener("mousedown", (event) => {
   // 距離は `hit.point` から取る（`RaycastHit` に距離のフィールドを足さない）。
   // **どちらが手前かの判断は `controls.ts`**（ここは測って渡すだけ）。
   const target = mobs.pick(camera.position, lookDirection, REACH);
-  const act = decideClick(event.button, {
+  const facts = {
     creative,
     mobDistance: target?.distance ?? Infinity,
     blockDistance: hit ? hit.point.distanceTo(camera.position) : Infinity,
-  });
+  };
+  const act = decideClick(event.button, facts);
 
   if (act === "attack" && target) {
     // **殴れたときだけ**剣が減る（クールダウン中は 1 も減らない）。
@@ -806,7 +807,9 @@ document.addEventListener("mousedown", (event) => {
     else if (!inventory.selectItem(picked)) hud.flash(`${blockName(picked)} を持っていません`);
     hud.refresh();
   } else if (act === "use") {
-    useOrPlace();
+    // **手前がモブかどうかは左クリックと同じ 1 本**（`controls.ts` の `mobIsNearer()`）。
+    // ここに距離の比較を書くと、殴れる間合いと刈れる間合いが食い違う。
+    useOrPlace(mobIsNearer(facts) ? target : null);
   }
 });
 
@@ -839,15 +842,20 @@ function fitHighlight(target: RaycastHit): void {
 const bounds = [0, 0, 0, 1, 1, 1];
 
 /**
- * 右クリック。**何が起きるかの振り分けは `use.ts` の `decideUse()`**（11 通りの
+ * 右クリック。**何が起きるかの振り分けは `use.ts` の `decideUse()`**（12 通りの
  * 並び順そのものが判断なので、ここに戻さないこと）。ここは注文を受けて貼るだけ。
+ *
+ * `m` は**手前に居るモブ**（居なければ null。どちらが手前かは `mobIsNearer()`）。
  */
-function useOrPlace(): void {
+function useOrPlace(m: { mob: Mob } | null): void {
   const held = inventory.selectedItem;
   const hasArrow = creative || inventory.has(ARROW);
-  const act = decideUse(hit, { held, creative, canEat: vitals.canEat, hasArrow });
+  // 「刈れるか」は `mobs.ts`、「手前か」は `controls.ts`。込みにするのは呼ぶ側の仕事。
+  const shearable = m !== null && mobs.canShear(m.mob);
+  const act = decideUse(hit, { held, creative, canEat: vitals.canEat, hasArrow, shearable });
   switch (act.kind) {
     case "flash": hud.flash(act.message); return;
+    case "shear": if (m) shearMob(m.mob); return;
     case "craft": openInventory(3); return;
     case "furnace": openFurnace(act.at.x, act.at.y, act.at.z); return;
     case "chest": openChest(act.at.x, act.at.y, act.at.z); return;
@@ -880,6 +888,17 @@ function throwEye(): void {
 function wearHeld(uses: number): void {
   const worn = wearSlot(inventory.selectedSlot, uses);
   if (worn !== NO_ITEM) hud.flash(breakMessage(worn));
+}
+
+/**
+ * 羊を刈る。**何が何個出るか・いつまた刈れるかは `mobs.ts` の表**（ここは貼るだけ）。
+ * **刈れたときだけ**減らす（`mobs.shear()` の戻り値の中でだけ呼ぶ）—— 空振りで減ると、
+ * 刈れない羊を撫でているうちにシアーズが尽きる。
+ */
+function shearMob(mob: Mob): void {
+  if (!mobs.shear(mob, mobContext())) return;
+  wearHeld(wearForUse(inventory.selectedItem, creative));
+  hud.refresh();
 }
 
 /** 火種で火を点ける。**どのマスに点くかも枠の判定も `placing.ts` / `portals.ts`。** */
