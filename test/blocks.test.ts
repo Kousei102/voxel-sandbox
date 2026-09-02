@@ -35,6 +35,7 @@ import {
   baseBlock,
   blockDef,
   blockName,
+  blockTool,
   canSupport,
   collisionBoxes,
   endPortalFrame,
@@ -124,6 +125,18 @@ export function run(): void {
     "111 以降で 1 つの番号を 2 つのものが取っていない",
     collisions.length === 0,
     collisions.join(" / ") || `共有帯の使用済み ${sharedUsed.size} 個`,
+  );
+
+  // **剣はどのブロックの適正でもない。** 1 つでも `tool: "sword"` を要求すると、
+  // 剣がそのブロックの採掘道具になって（`toolSpeed()` が速さを返し、`canHarvest()` が
+  // 通る）、「殴るための道具」でなくなる。
+  const swordBlocks = BLOCKS.filter((b) => blockTool(b.id) === "sword").map((b) => `${b.id}:${b.name}`);
+  const toolKinds = [...new Set(BLOCKS.map((b) => blockTool(b.id)).filter((t) => t !== null))];
+  console.log(`      ブロックが要求する道具: ${toolKinds.join(" / ")}`);
+  check(
+    "「sword」を要求するブロックが 1 つも無い",
+    swordBlocks.length === 0,
+    swordBlocks.join(" / ") || `要求される種類 ${toolKinds.length} 個`,
   );
 
   // **向き違いはアイテムを持たない**（`items.ts` が `variantOf` のあるものを飛ばす）。

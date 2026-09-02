@@ -1084,13 +1084,13 @@ const KNOCKBACK_LIFT = 4;
  * 道具の種類ごとの攻撃力の素。**`ItemDef` に `damage` を足さないこと**
  * （戦闘の数値がアイテムの表とここに散る）。素手は 1 で、これがいちばん低い。
  */
-const TOOL_ATTACK: Record<string, number> = { axe: 3, pickaxe: 2, shovel: 1 };
+const TOOL_ATTACK: Record<string, number> = { sword: 4, axe: 3, pickaxe: 2, shovel: 1 };
 /** 階層 1 つにつき増える攻撃力。 */
 const TIER_ATTACK = 0.5;
 
 /**
- * その道具で殴ったときのダメージ。斧 > ツルハシ > シャベル > 素手 で、
- * 同じ種類なら階層が上ほど強い（素手 1 〜 ダイヤの斧 5）。
+ * その道具で殴ったときのダメージ。剣 > 斧 > ツルハシ > シャベル > 素手 で、
+ * 同じ種類なら階層が上ほど強い（素手 1 〜 ダイヤの剣 6）。
  */
 export function attackDamage(item: number): number {
   const tool = toolOf(item);

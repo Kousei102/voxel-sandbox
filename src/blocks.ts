@@ -304,8 +304,14 @@ export const NETHER_PORTAL_Z = 103;
  */
 const FIRST_FRAME_VARIANT = 104;
 
-/** 採掘に向いた道具の種類。 */
-export type ToolKind = "pickaxe" | "axe" | "shovel";
+/**
+ * 道具の種類。**`BlockDef.tool`（掘るのに向いた種類）と `ItemDef.tool` が共有します。**
+ *
+ * **`"sword"` はどのブロックの適正でもありません**（`BlockDef.tool` に書かないこと）。
+ * 書いた瞬間、剣がそのブロックの採掘道具になって速く掘れるようになります ——
+ * 剣は「殴るための道具」で、掘る速さは素手と同じ（`ItemDef.tool.speed` が 1）です。
+ */
+export type ToolKind = "pickaxe" | "axe" | "shovel" | "sword";
 
 /**
  * 音の材質グループ。足音・破壊・設置の音はここから作る（`sfx.ts` の表）。

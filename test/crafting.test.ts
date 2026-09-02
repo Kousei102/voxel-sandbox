@@ -26,13 +26,17 @@ import {
   ENDER_PEARL,
   IRON_INGOT,
   DIAMOND_PICKAXE,
+  DIAMOND_SWORD,
   FLINT,
   FLINT_AND_STEEL,
+  IRON_SWORD,
   NO_ITEM,
   STICK,
   STONE_AXE,
+  STONE_SWORD,
   WOOD_PICKAXE,
   WOOD_SHOVEL,
+  WOOD_SWORD,
   itemStackLimit,
 } from "../src/items";
 import { check, describe } from "./harness";
@@ -197,6 +201,36 @@ export function run(): void {
   check("2x2 ではツルハシは作れない", pickIn2 === null);
   const shovel = findRecipe(grid(3, [".P.", ".S.", ".S."], P), 3);
   check("縦 3 のシャベルも作業台が要る", shovel?.out === WOOD_SHOVEL, shovel?.name ?? "無し");
+
+  // --- 剣 4 本（材料 2 + 棒 1 の縦 3。Minecraft と同じ形） ---
+  const swords: [string, string, number][] = [
+    ["木の剣", "P", WOOD_SWORD],
+    ["石の剣", "C", STONE_SWORD],
+    ["鉄の剣", "I", IRON_SWORD],
+    ["ダイヤの剣", "D", DIAMOND_SWORD],
+  ];
+  const made = swords.map(([name, ch, out]) => {
+    const recipe = findRecipe(grid(3, [ch, ch, "S"], P), 3);
+    return { name, out, recipe };
+  });
+  console.log(
+    `      剣: ${made.map((m) => `${m.name} → ${m.recipe?.name ?? "作れない"} x${m.recipe?.count ?? 0}`).join(" / ")}`,
+  );
+  for (const { name, out, recipe } of made) {
+    check(`材料 2 個 + 棒 1 → ${name} 1 本`, recipe?.out === out && recipe.count === 1, recipe?.name ?? "無し");
+  }
+  // **盤面のどこに置いても同じ**（`trim` が空の行・列を落とす）。
+  const swordMoved = findRecipe(grid(3, ["..P", "..P", "..S"], P), 3);
+  check("盤面の右端に寄せても同じ", swordMoved?.out === WOOD_SWORD, swordMoved?.name ?? "無し");
+  // **3 行あるので 2x2 では作れない**（剣には作業台が要る）。
+  const swordIn2 = findRecipe(grid(2, ["P.", "S."], P), 2);
+  check("2x2 では剣は作れない（作業台が要る）", swordIn2 === null, swordIn2?.name ?? "無し");
+  // シャベル（材料 1 + 棒 2）と上下 1 マスしか違わない。取り違えていないことを見る。
+  const upsideDown = findRecipe(grid(3, ["P", "S", "S"], P), 3);
+  check("上下を入れ替えるとシャベルになる（剣ではない）", upsideDown?.out === WOOD_SHOVEL, upsideDown?.name ?? "無し");
+  const mixedSword = findRecipe(grid(3, ["P", "C", "S"], P), 3);
+  check("材料が混ざった剣は作れない", mixedSword === null, mixedSword?.name ?? "無し");
+  check("剣は 1 本しか積めない（道具と同じ）", itemStackLimit(WOOD_SWORD) === 1);
 
   // --- ハーフブロック ---
   const stoneSlab = findRecipe(grid(3, ["TTT"], P), 3);

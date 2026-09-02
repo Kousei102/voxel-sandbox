@@ -22,7 +22,7 @@ import { decideClick, decideKey } from "./controls";
 import { CraftScreen } from "./craftscreen";
 import { liveCrystals, shatterCrystal } from "./crystals";
 import { DayNight, WAKE_TIME, canSleep, environmentFor } from "./daynight";
-import { breakMessage, wearForUse, wearSlot } from "./durability";
+import { breakMessage, wearForAttack, wearForUse, wearSlot } from "./durability";
 import { eyeMessage, fitEye } from "./endportal";
 import { syncExitPortal } from "./exitportal";
 import { Dimensions, OVERWORLD, emptyState, type DimensionState } from "./dimensions";
@@ -780,7 +780,12 @@ document.addEventListener("mousedown", (event) => {
   });
 
   if (act === "attack" && target) {
-    mobs.attack(target.mob, inventory.selectedItem, mobContext());
+    // **殴れたときだけ**剣が減る（クールダウン中は 1 も減らない）。
+    // 減るかどうかも回数も `durability.ts`（ここは戻り値を渡すだけ）。
+    if (mobs.attack(target.mob, inventory.selectedItem, mobContext())) {
+      wearHeld(wearForAttack(inventory.selectedItem, creative));
+      hud.refresh();
+    }
     // 殴ると腹が減る。**どれだけ減るかは `vitals.ts`** が持っている。
     if (!creative) vitals.exhaust("attack");
     // 殴っている間は掘らない（ひび割れが出ると、何を壊しているのか分からない）。

@@ -13,14 +13,15 @@
  * （36 枠 + 盤面 9 + 掴んだ山 1 + 落ちている山 + 器の中身。`SaveData` の
  * `wear` / `craftWear` / `dropWear` / `chestWear` / `furnaceWear` の 5 つ）。
  *
- * **減り方は 2 通りです**: 掘って減るもの（`wearForBreaking()`。ツルハシ・斧・シャベル）と、
- * **使って減るもの**（`wearForUse()`。火種・弓）。**混ぜないこと** —— 弓で石を掘って
- * 弓が減っては困りますし、ツルハシを右クリックしても減ってはいけません。
+ * **減り方は 3 通りです**: 掘って減るもの（`wearForBreaking()`。ツルハシ・斧・シャベル）と、
+ * **使って減るもの**（`wearForUse()`。火種・弓）と、**殴って減るもの**
+ * （`wearForAttack()`。剣）。**混ぜないこと** —— 弓で石を掘って弓が減っては困りますし、
+ * ツルハシを右クリックしても、剣を右クリックしても減ってはいけません。
  */
 
 import { blockHardness, isBreakable } from "./blocks";
 import type { Slot } from "./inventory";
-import { NO_ITEM, isBow, isFireStarter, itemName, toolOf } from "./items";
+import { NO_ITEM, isBow, isFireStarter, isSword, itemName, toolOf } from "./items";
 
 /**
  * 階層ごとに何回使えるか。**Minecraft のまま**（木 59 / 石 131 / 鉄 250 / ダイヤ 1561）。
@@ -98,6 +99,22 @@ export function wearForBreaking(blockId: number, item: number, creative: boolean
 export function wearForUse(item: number, creative: boolean): number {
   if (creative) return 0;
   return usedUp(item) > 0 ? 1 : 0;
+}
+
+/**
+ * **モブを 1 回殴ったとき**に減る回数。**0 か 1 だけ**で、上の 2 本と同じ形です。
+ *
+ * 減るのは剣だけ。**ツルハシ・斧・シャベルは 0** —— 本家は殴っても減りますが、
+ * ここでそう変えると**既存 12 本の寿命が黙って縮みます**（掘るための回数のまま
+ * 戦闘ぶんが乗るので）。弓・火種も 0 で、あちらは `wearForUse()` の持ち場です。
+ *
+ * **`wearForUse()` に混ぜないこと** —— 混ぜると剣を右クリックしただけで減ります。
+ * **効かなかったとき（クールダウン中）に呼ばないのは呼ぶ側の仕事**で、
+ * `main.ts` は `mobs.attack()` が true を返した後ろでだけ呼びます。
+ */
+export function wearForAttack(item: number, creative: boolean): number {
+  if (creative) return 0;
+  return isSword(item) ? 1 : 0;
 }
 
 /**

@@ -15,7 +15,20 @@ import {
 } from "../src/blocks";
 import { MAX_LIGHT, columnOf } from "../src/constants";
 import { DayNight } from "../src/daynight";
-import { ENDER_PEARL, NO_ITEM, RAW_PORK, ROTTEN_FLESH, STONE_AXE, WOOD_PICKAXE, itemName } from "../src/items";
+import {
+  DIAMOND_AXE,
+  DIAMOND_SWORD,
+  ENDER_PEARL,
+  NO_ITEM,
+  RAW_PORK,
+  ROTTEN_FLESH,
+  STONE_AXE,
+  WOOD_AXE,
+  WOOD_PICKAXE,
+  WOOD_SHOVEL,
+  WOOD_SWORD,
+  itemName,
+} from "../src/items";
 import { buildMobMesh } from "../src/mobmesh";
 import {
   ATTACK_RANGE,
@@ -1510,6 +1523,49 @@ export function run(): void {
     "極端な値が無い（1〜8）",
     allDamage.every((d) => d >= 1 && d <= 8),
     `${Math.min(...allDamage)} 〜 ${Math.max(...allDamage)}`,
+  );
+
+  // --- 剣を入れた総当り表（4 種類 x 4 階層 + 素手 = 17 通り） ---
+  // **剣は別の ID の帯（111..）に居る**ので、上の 3 種類のループ
+  // （`WOOD_PICKAXE + tier * 3 + k`）には乗らない。混ぜないこと。
+  const KIND_ROWS: [string, (tier: number) => number][] = [
+    ["剣      ", (tier) => WOOD_SWORD + tier],
+    ["斧      ", (tier) => WOOD_AXE + tier * 3],
+    ["ツルハシ", (tier) => WOOD_PICKAXE + tier * 3],
+    ["シャベル", (tier) => WOOD_SHOVEL + tier * 3],
+  ];
+  const bare = attackDamage(NO_ITEM);
+  console.log(`      道具      ${TIER_NAMES.map((n) => n.padStart(4)).join(" ")}    （素手 ${bare}）`);
+  const fullRows = KIND_ROWS.map(([label, idOf]) => {
+    const row = [0, 1, 2, 3].map((tier) => attackDamage(idOf(tier)));
+    console.log(`      ${label}  ${row.map((d) => d.toFixed(1).padStart(4)).join(" ")}`);
+    return row;
+  });
+  check(
+    "剣 > 斧 > ツルハシ > シャベル > 素手（4 階層とも）",
+    [0, 1, 2, 3].every(
+      (t) =>
+        fullRows[0][t] > fullRows[1][t] &&
+        fullRows[1][t] > fullRows[2][t] &&
+        fullRows[2][t] > fullRows[3][t] &&
+        fullRows[3][t] > bare,
+    ),
+    fullRows.map((row) => row.join("/")).join(" > "),
+  );
+  check(
+    "木の剣 4.5 / ダイヤの剣 6（本家は 4 と 7。ここは階層ごとに +0.5）",
+    fullRows[0][0] === 4.5 && fullRows[0][3] === 6,
+    `${fullRows[0].join(" / ")}`,
+  );
+  check(
+    "ダイヤの剣（6）はダイヤの斧（5）より強い",
+    attackDamage(DIAMOND_SWORD) === 6 && attackDamage(DIAMOND_AXE) === 5,
+    `剣 ${attackDamage(DIAMOND_SWORD)} / 斧 ${attackDamage(DIAMOND_AXE)}`,
+  );
+  check(
+    "17 通りとも 1〜8 に収まる",
+    [...fullRows.flat(), bare].every((d) => d >= 1 && d <= 8),
+    `${Math.min(...fullRows.flat(), bare)} 〜 ${Math.max(...fullRows.flat(), bare)}`,
   );
 
   // 声色。低すぎると唸り声にも聞こえず、高すぎると耳障りになる。

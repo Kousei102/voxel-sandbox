@@ -17,6 +17,7 @@ import {
   maxUses,
   serializeWear,
   wearBar,
+  wearForAttack,
   wearForBreaking,
   wearForUse,
   wearSlot,
@@ -27,13 +28,20 @@ import {
   ARROW,
   BOW,
   DIAMOND_PICKAXE,
+  DIAMOND_SWORD,
   FLINT_AND_STEEL,
   IRON_PICKAXE,
+  IRON_SWORD,
   NO_ITEM,
   STICK,
   STONE_PICKAXE,
+  STONE_SWORD,
   WOOD_PICKAXE,
+  WOOD_SWORD,
+  itemName,
+  itemStackLimit,
 } from "../src/items";
+import { breakTime } from "../src/mining";
 import { applyRestore } from "../src/session";
 import type { SaveData } from "../src/storage";
 import { Slab, sourceOf } from "./arena";
@@ -695,4 +703,133 @@ export function run(): void {
   const durabilitySource = sourceOf("src/durability.ts");
   const named = [/\bBOW\b/, /\bFLINT_AND_STEEL\b/].filter((re) => re.test(durabilitySource));
   check("durability.ts にアイテムの名前が出てこない", named.length === 0, named.join(" / "));
+
+  describe("剣（殴って減る）");
+
+  const SWORDS: [string, number, number][] = [
+    ["木の剣", WOOD_SWORD, 59],
+    ["石の剣", STONE_SWORD, 131],
+    ["鉄の剣", IRON_SWORD, 250],
+    ["ダイヤの剣", DIAMOND_SWORD, 1561],
+  ];
+
+  // --- 試験場が効いているか（先に置く。`rules/testing.md`） ---
+  {
+    console.log(
+      `      剣 4 本: ${SWORDS.map(([, id]) => `${itemName(id)} ${maxUses(id)} 回`).join(" / ")}`,
+    );
+    check(
+      "4 本とも名前が付いている",
+      SWORDS.every(([name, id]) => itemName(id) === name),
+      SWORDS.map(([, id]) => itemName(id)).join(" / "),
+    );
+    // **階層の表（`TOOL_USES`）がそのまま効く**（剣用の 5 つ目の表を作っていない）。
+    for (const [name, id, uses] of SWORDS) {
+      check(`${name}は ${uses} 回`, maxUses(id) === uses, `${maxUses(id)} 回`);
+    }
+    check(
+      "回数は掘る道具と同じ表から来ている",
+      SWORDS.every(([, id], i) => maxUses(id) === TOOL_USES[i + 1]),
+      `TOOL_USES = ${TOOL_USES.join(" / ")}`,
+    );
+  }
+
+  // --- `wearForAttack()` の全ケース（減るのは剣だけ） ---
+  {
+    const cases: [string, number, boolean, number][] = [
+      ["木の剣で殴る（減る）", WOOD_SWORD, false, 1],
+      ["ダイヤの剣で殴る（減る）", DIAMOND_SWORD, false, 1],
+      ["クリエイティブの剣", WOOD_SWORD, true, 0],
+      // **本家は掘る道具も殴ると減るが、ここではそうしない**（既存 12 本の寿命が縮む）。
+      ["ツルハシで殴る", WOOD_PICKAXE, false, 0],
+      ["弓で殴る", BOW, false, 0],
+      ["火種で殴る", FLINT_AND_STEEL, false, 0],
+      ["棒で殴る", STICK, false, 0],
+      ["素手で殴る", NO_ITEM, false, 0],
+    ];
+    console.log(
+      `      wearForAttack: ${cases.map(([n, id, c]) => `${n} ${wearForAttack(id, c)}`).join(" / ")}`,
+    );
+    for (const [name, item, creative, want] of cases) {
+      const got = wearForAttack(item, creative);
+      check(`${name} → ${want}`, got === want, `${got}`);
+    }
+  }
+
+  // --- 3 つの減り方が混ざっていない（剣を右クリックしても減らない） ---
+  {
+    const use = wearForUse(WOOD_SWORD, false);
+    const dig = wearForBreaking(STONE, WOOD_SWORD, false);
+    console.log(`      剣: wearForUse ${use} / wearForBreaking(石) ${dig}`);
+    check("剣を右クリックしても減らない（wearForUse は 0）", use === 0, `${use}`);
+    // 本家と同じで、剣で掘れば減る（`toolOf()` が非 null なので 1 行も足さずに付いてくる）。
+    check("剣で石を掘ると減る（wearForBreaking は 1）", dig === 1, `${dig}`);
+    // 逆向きの守り: 掘る道具・弓・火種の既存の減り方は変わっていない。
+    check("ツルハシで掘るのは今までどおり 1", wearForBreaking(STONE, WOOD_PICKAXE, false) === 1);
+    check("弓を放つのは今までどおり 1", wearForUse(BOW, false) === 1);
+  }
+
+  // --- 掘る速さは素手と同じ（剣は採掘道具ではない） ---
+  {
+    const times = [
+      ["素手", breakTime(STONE, NO_ITEM)],
+      ["木の剣", breakTime(STONE, WOOD_SWORD)],
+      ["木のツルハシ", breakTime(STONE, WOOD_PICKAXE)],
+    ] as const;
+    console.log(`      石を掘る秒数: ${times.map(([n, t]) => `${n} ${t.toFixed(2)}`).join(" / ")}`);
+    check(
+      "剣で掘っても素手と同じ速さ",
+      breakTime(STONE, WOOD_SWORD) === breakTime(STONE, NO_ITEM),
+      `剣 ${breakTime(STONE, WOOD_SWORD)} / 素手 ${breakTime(STONE, NO_ITEM)}`,
+    );
+    check(
+      "ツルハシのほうが速いまま",
+      breakTime(STONE, WOOD_PICKAXE) < breakTime(STONE, WOOD_SWORD),
+    );
+  }
+
+  // --- 使い切ると壊れる（59 回目。58 回目はまだ手に残る） ---
+  {
+    const held = slot(WOOD_SWORD);
+    for (let i = 0; i < 58; i++) wearSlot(held, wearForAttack(held.item, false));
+    const last = held.item === WOOD_SWORD && held.damage === 58;
+    // **壊す前に控えを取ること** —— 壊れた枠は傷が 0 に戻るので、
+    // あとから `held.damage` を読むと「58 回目なのに傷 0」という嘘の補足が出る。
+    const lastDamage = held.damage ?? 0;
+    const broke = wearSlot(held, wearForAttack(held.item, false));
+    console.log(
+      `      使い切り: 58 回目 ${last ? "手に残る" : "消えた"} → 59 回目 ${broke}（${breakMessage(WOOD_SWORD)}）`,
+    );
+    check("58 回殴っても手に残る", last, `傷 ${lastDamage}`);
+    check("59 回目で壊れる", broke === WOOD_SWORD && isEmpty(held), `${broke}`);
+    check("壊れた枠の傷は 0 に戻る", (held.damage ?? 0) === 0, `${held.damage}`);
+    check(
+      "壊れた 1 行に名前が出る",
+      breakMessage(WOOD_SWORD) === "木の剣 が壊れました",
+      breakMessage(WOOD_SWORD),
+    );
+  }
+
+  // --- 帯もセーブもそのまま乗る（`maxUses()` 1 本から伸びる） ---
+  {
+    const sword = slot(DIAMOND_SWORD);
+    const fresh = wearBar(sword);
+    wearSlot(sword, wearForAttack(sword.item, false));
+    const used = wearBar(sword);
+    console.log(`      帯: 新品のダイヤの剣 ${fresh} → 1 回殴ると ${used.toFixed(5)}`);
+    check("無傷の剣は -1（帯を出さない）", fresh === -1, `${fresh}`);
+    check("1 回殴ると 1560/1561", Math.abs(used - 1560 / 1561) < 1e-9, `${used}`);
+    check("最大以上は 1560 に丸める", wornValue(DIAMOND_SWORD, 99999) === 1560, `${wornValue(DIAMOND_SWORD, 99999)}`);
+    check("剣は 1 個しか積めない（傷が付く物はすべて stack: 1）", itemStackLimit(WOOD_SWORD) === 1);
+  }
+
+  // 見張り 1: 配線は 1 か所だけ（**殴れたときだけ**減る。クールダウン中は減らない）。
+  const attacks = [...sourceOf("src/main.ts").matchAll(/wearForAttack\(/g)].length;
+  console.log(`      main.ts の wearForAttack( は ${attacks} 回`);
+  check("main.ts は殴った 1 か所からだけ呼ぶ", attacks === 1, `${attacks} 回`);
+
+  // 見張り 2: どれが剣かは `items.ts` の `isSword()`（`durability.ts` は名前を知らない）。
+  const swordNames = [/\bWOOD_SWORD\b/, /\bSTONE_SWORD\b/, /\bIRON_SWORD\b/, /\bDIAMOND_SWORD\b/]
+    .filter((re) => re.test(durabilitySource));
+  check("durability.ts に剣のアイテム名が出てこない", swordNames.length === 0, swordNames.join(" / "));
 }

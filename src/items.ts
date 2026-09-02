@@ -137,7 +137,24 @@ export const BOW = 93;
  */
 export const ARROW = 94;
 
-export const MAX_ITEM_ID = ARROW;
+/**
+ * 剣 4 本（木・石・鉄・ダイヤ）。**共有帯 111 以降の最初の使用者**で、
+ * **95..110 は空けたまま**にしてあります（ブロック側の向き違いが使っている番号）。
+ *
+ * **殴るための道具**です。掘る速さは素手と同じ 1（`ToolDef.speed`）で、
+ * どのブロックの適正でもないので `toolSpeed()` はいつも 1 を返します。
+ * 攻撃力は `mobs.ts` の `TOOL_ATTACK`、**何回で尽きるかは階層の表がそのまま**
+ * （`durability.ts` の `TOOL_USES`。木 59 / 石 131 / 鉄 250 / ダイヤ 1561）。
+ *
+ * **既存の道具のループ（`WOOD_PICKAXE + (tier-1)*3 + k`）に混ぜないこと** ——
+ * 番号が別の帯なので、剣は自分のループで作ります。
+ */
+export const WOOD_SWORD = 111;
+export const STONE_SWORD = 112;
+export const IRON_SWORD = 113;
+export const DIAMOND_SWORD = 114;
+
+export const MAX_ITEM_ID = DIAMOND_SWORD;
 
 export const MAX_STACK = 64;
 
@@ -164,6 +181,7 @@ const TOOL_NAMES: Record<ToolKind, string> = {
   pickaxe: "のツルハシ",
   axe: "の斧",
   shovel: "のシャベル",
+  sword: "の剣",
 };
 /** 階層ごとの採掘速度。Minecraft と同じ 2 / 4 / 6 / 8。 */
 const TIER_SPEEDS = [1, 2, 4, 6, 8];
@@ -236,6 +254,25 @@ for (let tier = TIER_WOOD; tier <= TIER_DIAMOND; tier++) {
       color: TIER_COLORS[tier],
       tool: { kind, tier, speed: TIER_SPEEDS[tier] },
     });
+  });
+}
+
+/**
+ * 剣 4 本。**掘る速さは持たせません**（`speed: 1` = 素手と同じ）——
+ * どのブロックの適正でもないので `toolSpeed()` は 1 を返しますが、
+ * `TIER_SPEEDS` を渡すと「剣が適正の材質」を足した日に黙って速く掘れるようになります。
+ *
+ * **`tool` を持たせた時点で耐久値が付いてきます**（`maxUses()` は `toolOf()` に聞くだけ）。
+ * 新しい表もセーブのキーも 1 つも要りません。
+ */
+for (let tier = TIER_WOOD; tier <= TIER_DIAMOND; tier++) {
+  item({
+    id: WOOD_SWORD + (tier - TIER_WOOD),
+    name: TIER_NAMES[tier] + TOOL_NAMES.sword,
+    block: AIR,
+    stack: 1,
+    color: TIER_COLORS[tier],
+    tool: { kind: "sword", tier, speed: 1 },
   });
 }
 
@@ -451,6 +488,17 @@ const BOWS: readonly number[] = [BOW];
 
 export function isBow(item: number): boolean {
   return BOWS.includes(item);
+}
+
+/**
+ * 殴るための道具（剣）か。**火種・弓と違って表を持たず、道具の種類に聞きます** ——
+ * 剣は 4 本とも `ToolDef` を持っているので、階層が増えても 1 行も直りません。
+ *
+ * **`durability.ts` に `item === WOOD_SWORD` と書き始めないこと**（火種・弓とまったく
+ * 同じ罠で、剣が増えたときに「持てる側」と「減る側」の片方を必ず忘れます）。
+ */
+export function isSword(item: number): boolean {
+  return toolOf(item)?.kind === "sword";
 }
 
 /** 全アイテム ID（テストと UI の列挙用）。 */

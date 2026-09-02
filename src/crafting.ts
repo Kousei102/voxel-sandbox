@@ -32,6 +32,7 @@ import {
   DIAMOND_AXE,
   DIAMOND_PICKAXE,
   DIAMOND_SHOVEL,
+  DIAMOND_SWORD,
   ENDER_EYE,
   ENDER_PEARL,
   FLINT,
@@ -40,14 +41,17 @@ import {
   IRON_INGOT,
   IRON_PICKAXE,
   IRON_SHOVEL,
+  IRON_SWORD,
   NO_ITEM,
   STICK,
   STONE_AXE,
   STONE_PICKAXE,
   STONE_SHOVEL,
+  STONE_SWORD,
   WOOD_AXE,
   WOOD_PICKAXE,
   WOOD_SHOVEL,
+  WOOD_SWORD,
 } from "./items";
 
 export interface Recipe {
@@ -138,10 +142,10 @@ export const RECIPES: readonly Recipe[] = [
   // 1 列なので 2x2 でも作れる —— **弓を持って出たまま矢を作り足せる。**
   { name: "矢", out: ARROW, count: 4, shape: ["F", "S"], key: { F: FLINT, S: STICK } },
 
-  ...toolRecipes("木", PLANK, WOOD_PICKAXE, WOOD_AXE, WOOD_SHOVEL),
-  ...toolRecipes("石", COBBLE, STONE_PICKAXE, STONE_AXE, STONE_SHOVEL),
-  ...toolRecipes("鉄", IRON_INGOT, IRON_PICKAXE, IRON_AXE, IRON_SHOVEL),
-  ...toolRecipes("ダイヤ", DIAMOND, DIAMOND_PICKAXE, DIAMOND_AXE, DIAMOND_SHOVEL),
+  ...toolRecipes("木", PLANK, WOOD_PICKAXE, WOOD_AXE, WOOD_SHOVEL, WOOD_SWORD),
+  ...toolRecipes("石", COBBLE, STONE_PICKAXE, STONE_AXE, STONE_SHOVEL, STONE_SWORD),
+  ...toolRecipes("鉄", IRON_INGOT, IRON_PICKAXE, IRON_AXE, IRON_SHOVEL, IRON_SWORD),
+  ...toolRecipes("ダイヤ", DIAMOND, DIAMOND_PICKAXE, DIAMOND_AXE, DIAMOND_SHOVEL, DIAMOND_SWORD),
 ];
 
 /** ハーフはどの材質も形が同じで、材料だけが変わる。 */
@@ -163,19 +167,28 @@ function stairRecipe(name: string, material: number, stairs: number): Recipe {
   };
 }
 
-/** 道具 3 種はどの階層も形が同じで、材料だけが変わる。 */
+/**
+ * 道具 4 種はどの階層も形が同じで、材料だけが変わる。
+ *
+ * **剣は材料 2 個 + 棒 1 の縦 3**（Minecraft と同じ）。シャベル（材料 1 + 棒 2）と
+ * 上下 1 マスしか違わないので、**片方の形を変えるときは
+ * `test/crafting.test.ts` の「同じ形のレシピが重複していない」を必ず見ること。**
+ * どちらも 3 行あるので 2x2 では作れない（作業台が要る）。
+ */
 function toolRecipes(
   tier: string,
   material: number,
   pickaxe: number,
   axe: number,
   shovel: number,
+  sword: number,
 ): Recipe[] {
   const key = { M: material, S: STICK };
   return [
     { name: `${tier}のツルハシ`, out: pickaxe, count: 1, shape: ["MMM", ".S.", ".S."], key },
     { name: `${tier}の斧`, out: axe, count: 1, shape: ["MM.", "MS.", ".S."], key },
     { name: `${tier}のシャベル`, out: shovel, count: 1, shape: ["M", "S", "S"], key },
+    { name: `${tier}の剣`, out: sword, count: 1, shape: ["M", "M", "S"], key },
   ];
 }
 
