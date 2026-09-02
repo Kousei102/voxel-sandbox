@@ -1,118 +1,119 @@
-# 仕様: 火打石と打ち金・弓の耐久値（使うと減る）
+# 仕様: 剣 4 本（木・石・鉄・ダイヤ）
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-`AUTODEV-QUEUE.md` の先頭 **3d** です。**C の周はこの 1 枚を全文渡すこと**（要約すると 2 と 6 が
+`AUTODEV-QUEUE.md` の先頭 **4.** です。**C の周はこの 1 枚を全文渡すこと**（要約すると 2 と 6 が
 真っ先に落ちます）。**`src/**` と `test/**` は `Read` / `Edit` で開くこと**（`cat` / `sed` だと
 `.claude/rules/*.md` が読み込まれません）。読むもの: **`.claude/rules/items-survival.md`** と
-**`.claude/rules/use.md`**。**使うスキルは無し**（ID を 1 個も足さないので `add-block` は要りません）。
+**`.claude/rules/mobs.md`**。**使うスキルは `add-block`**（ID を 4 個取るため）。
 
-**2026-09-01 にコードで数え直しました**（B の決まり）:
+**2026-09-02 にコードで数え直しました**（B の決まり）:
 
-- **`maxUses()` は `toolOf()` しか見ません** —— 火打石と打ち金（88）も弓（93）も `tool: null` なので
-  **`wearable()` が false**。だから帯も出ず、傷も付かず、**無限に使えます**
-- 「耐久値がまだ無い」というコメントは **`items.ts` の 4 か所**です（83〜86 / 124〜130 の 2 つの
-  説明と、210 / 221 行の 2 つの行末コメント）。**前の `HANDOFF.md` の「2 か所」は数え違い**
-- **減る場所は 2 つだけ**: `main.ts` の **`igniteAt()`（872 行）** と **`loose()`（1284 行）**。
-  どちらも「効いたときだけ」進む形が既にできています（`lit.kind !== "placed"` で戻る /
-  `!shot || 矢が無い` で戻る）ので、**そこに 1 行足すだけ**です
-- **セーブは 1 バイトも変わりません** —— `serializeWear()` / `wornValue()` は `maxUses()` に
-  聞くだけなので、**`maxUses()` が 0 でなくなった瞬間に `wear` / `craftWear` / `dropWear` /
-  `chestWear` / `furnaceWear` の 5 つ全部に自動で載ります**（新しいキーは 1 つも要りません）
+- **`src/**` に `sword` / `剣` は 1 つもありません**（`Grep` で 0 件）。本当に 1 本も無い
+- **`ToolKind` は `blocks.ts` の `"pickaxe" | "axe" | "shovel"`** で、`ItemDef.tool` と
+  `BlockDef.tool` の両方がこれを使います。**攻撃力は `mobs.ts` の
+  `TOOL_ATTACK`（`Record<string, number>`）+ `tier * TIER_ATTACK`（0.5）**
+- **`mobs.attack()` は「殴れたら true / クールダウン中なら false」を返します**（2138 行）。
+  いま `main.ts`（783 行）は**戻り値を捨てています** —— ここが減らす場所です
+- **`maxUses()` は `toolOf()` に聞くだけ**なので、剣に `tool:` を持たせた瞬間に
+  **`TOOL_USES[tier]`（59 / 131 / 250 / 1561 = 本家の剣と同じ数字）とセーブの 5 キーが
+  自動で載ります**。新しい表もキーも要りません
+- **共有帯 111..255 の使用者は現在 0 個**（空き 145）。**この周が最初の使用者です**
 
 ## 1. 何を足すか / 完了の判定
 
-**火打石と打ち金は 64 回、弓は 384 回で壊れる**（Minecraft のまま）。**掘っても減らず、
-使ったときだけ減る。**
+**剣 4 本。作業台で作れて、殴ると強く、殴ると減る。**
 
-判定: `npm test` に **「使うと減るもの（火打石と打ち金・弓）」**（`test/durability.test.ts`）の節が
-増えて全部緑（**いま 2488 件**）。次を**値を出してから**判定する:
+判定: `npm test` に **「剣（殴って減る）」**（`test/durability.test.ts`）の節が増えて全部緑
+（**いま 2525 件**）。次を**値を出してから**判定する:
 
-- **回数の表**: 木 59 / 石 131 / 鉄 250 / ダイヤ 1561 / **火種 64 / 弓 384**
-- **`wearForUse()` の全ケース**: 火種 1 / 弓 1 / **クリエイティブ 0** / **ツルハシ 0**（掘って
-  減るものは右クリックでは減らない）/ 棒 0 / 空の枠 0
-- **`wearForBreaking()` に 2 行足す**: **火種で掘る 0 / 弓で掘る 0**（**既存の 6 行は
-  書き換えないこと**）
-- **64 回目・384 回目で壊れる**（63 回目・383 回目は手に残ることも出す）。壊れたら
-  `breakMessage()` が「火打石と打ち金 が壊れました」を返す
-- **帯**: 無傷の弓は -1、1 回使うと `383/384`
-- **セーブの往復で残る**（`serializeWear()` → `deserializeWear()`）。**`wornValue(BOW, 999)` は 383**
-- **`SaveData` に新しいキーが 1 つも増えていない**（`storage.ts` の語を数えて出す）
+- **攻撃力の表**: 素手 1 / 木の剣 4.5 / 石 5 / 鉄 5.5 / ダイヤ 6 / **ダイヤの斧 5**。
+  **同じ階層なら剣 > 斧 > ツルハシ > シャベル > 素手**を 4 階層ぶん総当りで
+- **`wearForAttack()` の全ケース**: 剣 1 / **クリエイティブ 0** / ツルハシ 0 / 弓 0 /
+  火種 0 / 棒 0 / 素手 0
+- **`wearForUse(剣)` は 0**（右クリックしても減らない）。**`wearForBreaking(石, 剣)` は 1**
+  （本家と同じで、掘れば減る。**既存の 6 行は書き換えないこと**）
+- **回数**: 木 59 / 石 131 / 鉄 250 / ダイヤ 1561。**59 回目で壊れて**（58 回目は手に残る）
+  `breakMessage()` が「木の剣 が壊れました」を返す
+- **レシピ 4 本**（`test/crafting.test.ts`）: 材料 = 板 / 丸石 / 鉄インゴット / ダイヤ 2 個 + 棒 1。
+  **3 行あるので 2x2 では作れない**（作業台が要る）ことも出すこと
+- **ID**（`test/blocks.test.ts`）: **111..255 の空きが 145 → 141**。共有帯の衝突検査が緑で、
+  **`"sword"` を要求するブロックが 1 つも無い**（崩れると剣が採掘道具になります）
 
 ## 2. 触るファイル / 触らないファイル
 
-| 触る | 何を |
+| ファイル | 何をするか |
 | --- | --- |
-| `src/durability.ts` | `FIRE_STARTER_USES = 64` / `BOW_USES = 384` / **中で使う `usedUp(item)`**（`isFireStarter()` → 64、`isBow()` → 384、他は 0）/ `maxUses()` に「道具でなければ `usedUp()`」/ **`wearForUse(item, creative)`** を 1 本 / `wearForBreaking()` に**「掘る道具でなければ 0」の 1 行** / **先頭コメントの直し**（下の 6.） |
-| `src/main.ts` | **配線だけ**: `wearHeld(uses)` を 1 本（`wearSlot()` を呼んで、壊れたら `hud.flash(breakMessage())`）。`breakBlock()` の 2 行をその呼び出しに置き換え、`igniteAt()` と `loose()` から 1 行ずつ呼ぶ。**`igniteAt()` には `hud.refresh()` も要ります**（帯が減ったのに描き直されません） |
-| `src/items.ts` | **コメント 4 か所だけ**（上の「数え直し」）。**表も ID も `tool:` も 1 個も動かさない** |
-| `test/durability.test.ts` | 節を足す（**いまある判定は 1 つも書き換えない**） |
-| `test/ui.test.ts` | `routed` に **1 行**（`["火種と弓の消耗", "wearForUse("]`） |
+| `blocks.ts` | `ToolKind` に `"sword"` を足すだけ（**ブロックに割り当てない**） |
+| `items.ts` | ID 4 個・`TOOL_NAMES` に `sword: "の剣"`・剣の定義ループ・`MAX_ITEM_ID`・`isSword()` |
+| `durability.ts` | **`wearForAttack()` を 1 本足す**（3 本目。既存 2 本は触らない） |
+| `crafting.ts` | `toolRecipes()` に剣の 1 行（引数を 1 つ増やす） |
+| `mobs.ts` | `TOOL_ATTACK` に `sword: 4` を足すだけ |
+| `main.ts` | **配線だけ 2 行**（783 行の `if (mobs.attack(...))` と `hud.refresh()`） |
 
-**触らないもの**（1 行も）: **`src/bow.ts` / `src/use.ts` / `src/portals.ts` / `src/placing.ts`**
-（引きの長さも右クリックの振り分けも点火の可否も、もうそれぞれ 1 か所にあります）/
-**`src/storage.ts` / `src/session.ts` / `src/dimensions.ts`**（セーブの形は変わりません）/
-`src/ui.ts` / `src/inventoryui.ts` / `src/craftscreen.ts` / `src/inventory.ts` / `src/drops.ts` /
-`src/chests.ts` / `src/furnaces.ts` / `src/mining.ts` / `src/crafting.ts` / `src/blocks.ts` /
-`index.html`（見た目を増やしません）。
+**触らないこと**: `ui.ts` / `inventoryui.ts` / `mobrender.ts` / `mobmesh.ts` / `mining.ts` /
+`breaking.ts` / `storage.ts` / `inventory.ts` / `chests.ts` / `furnaces.ts` / `drops.ts`
+（**傷の道は `maxUses()` 1 本から自動で伸びます**）。
 
-## 3. 使う ID
+## 3. 使う ID（`ROADMAP.md` の予約表の 111..255）
 
-**0 個。** ブロックもアイテムも足しません（火打石と打ち金 88・弓 93 はもうあります）。
-**番号を取りたくなったら設計を間違えた合図**なので、止めて人を呼ぶこと（`AUTODEV.md` の停止条件 1）。
+**上から詰めて 4 個**。ブロック側も併せて見たうえで、共有帯の最初の 4 番です:
+
+| ID | 定数 | 名前 |
+| --- | --- | --- |
+| 111 | `WOOD_SWORD` | 木の剣 |
+| 112 | `STONE_SWORD` | 石の剣 |
+| 113 | `IRON_SWORD` | 鉄の剣 |
+| 114 | `DIAMOND_SWORD` | ダイヤの剣 |
+
+- **`MAX_ITEM_ID = DIAMOND_SWORD`**（いま `ARROW`）。**95..110 は空けたまま**で、
+  `allItemIds()` は `ITEMS[id]` が無い番号を飛ばします（**クリエイティブ一覧にも勝手に出ます**）
+- **既存の道具ループ（`WOOD_PICKAXE + (tier-1)*3 + k`）に混ぜないこと** —— 番号が
+  別の帯なので、剣は**自分のループ**（`WOOD_SWORD + (tier - TIER_WOOD)`）にすること
 
 ## 4. 判断をどこに置くか
 
-**`durability.ts` ↔ 運ぶ側**の形をそのまま続けます（`CLAUDE.md` の対の表）。
-
-| 層 | 置き場 |
+| 判断 | 置き場所 |
 | --- | --- |
-| **何回使えるか** | `durability.ts`（`TOOL_USES` / `FIRE_STARTER_USES` / `BOW_USES`） |
-| **どれが火種・どれが弓か** | `items.ts` の **`isFireStarter()` / `isBow()` の表 1 本**（`rules/items-survival.md`） |
-| **使ったら減るか** | `durability.ts` の `wearForUse(item, creative)`（`wearForBreaking()` と同じ形） |
-| **減らす・壊す・1 行** | `wearSlot()` / `breakMessage()`（**もうあります。2 本目を書かない**） |
-| **運ぶ** | `main.ts`（**何回で尽きるかを知らないまま貼るだけ**） |
+| 攻撃力（4 / 0.5） | **`mobs.ts` の `TOOL_ATTACK`**。`ItemDef` に `damage` を足さないこと |
+| 何回で尽きるか | **`durability.ts` の `TOOL_USES`**（既にある。1 行も足さない） |
+| いつ減るか | **`durability.ts` の `wearForAttack(item, creative)`** |
+| どれが剣か | **`items.ts` の `isSword(id)` = `toolOf(id)?.kind === "sword"`**。`isBow()` と同じ形 |
+| 掘る速さ | **持たせない**（`speed: 1`）。剣はどのブロックの適正でもないので `toolSpeed()` は 1 を返す |
 
-**確かめられないもの（three / DOM / 音 / GLSL）は 1 つも増えません** → `unverifiable-pair` は不要。
-**読み込みの向きも逆にしないこと**（`items.ts` は `durability.ts` を import しません）。
+- **`durability.ts` にアイテムの名前（`WOOD_SWORD` など）を書かず `isSword()` に聞くこと**
+- **`main.ts` に 4 も 0.5 も 59 も書かないこと。** 書くのは
+  `if (mobs.attack(...)) { wearHeld(wearForAttack(inventory.selectedItem, creative)); hud.refresh(); }` だけ
+- **新しく確かめられないものは足しません**（見た目も音も増えない）。`unverifiable-pair` は不要
 
 ## 5. 書くテスト
 
-**試験場は `test/durability.test.ts` にあるものを使い回すこと**（DOM も three も要りません）。
+**値を出してから判定する**（`.claude/rules/testing.md`）。節は 4 つ:
 
-- 上の 1. の 7 項目を、**値を出してから**判定する（先に「試験場が効いている」判定を置くこと ——
-  **`maxUses(FLINT_AND_STEEL)` が 64・`maxUses(BOW)` が 384 で、新品の傷が 0** だと先に出す）
-- **ソースを見張るテストは `sourceOf()` を通すこと**（`rules/testing.md`。生で探すと、
-  自分で書いた説明に引っかかります）。見張るのは 3 つ:
-  1. **`main.ts` に `384` が出てこない**（回数を運ぶ側に書き戻していないか）
-  2. **`main.ts` に `wearForUse(` が 2 回**（点火と発射。1 回だと片方の配線を落としています）
-  3. **`durability.ts` に `BOW` / `FLINT_AND_STEEL` の名前が出てこない**（表 1 本の決まり）
+- `test/durability.test.ts` に **「剣（殴って減る）」** —— 回数・`wearForAttack()` の全ケース・
+  壊れる回に加えて、**`main.ts` が `wearForAttack(` を 1 回だけ呼ぶこと**と
+  **`durability.ts` に剣のアイテム名が出てこないこと**の見張り
+- `test/mobs.test.ts` に **攻撃力の総当り表**（4 階層 x 4 種類 + 素手 = 17 行を `console.log`）
+- `test/crafting.test.ts` に **剣 4 本のレシピ**（材料・作業台が要ること）
+- `test/blocks.test.ts` に **`"sword"` を要求するブロックが無いこと**
 
 ## 6. このタスク固有の禁じ手
 
-- **火種と弓に `tool:` を付けないこと** —— `ToolDef` は「掘る速さ」の表なので、付けると
-  **弓で石が速く掘れます**（回数を `items.ts` に持たせないのも同じ理由。`durability.ts` の冒頭）
-- **`item === BOW` / `item === FLINT_AND_STEEL` と書かないこと**（`isBow()` / `isFireStarter()`）
-- **掘っても減らないこと。** 逆に、**ツルハシが右クリックで減らないこと**（`wearForUse()` は
-  「使って減るもの」だけ 1 を返す）
-- **効かなかったときは減らさないこと** —— 矢が無い・引きが足りない・火が点かなかった
-  （`blocked` / `none`）。**`main.ts` の早期 return より後ろで呼ぶこと**
-- **`main.ts` に 64 / 384 / `?? 0` / 「弓かどうか」を書かないこと**（`test/use.test.ts` が
-  `isBow(` / `isFireStarter(` を、この周の見張りが `384` を見ます）
-- **`SaveData` に新しいキーを足さないこと**（`version` は 1 のまま。既存の 5 つに自動で載ります）
-- **`durability.ts` の先頭コメントを直すこと** —— いま「掘るたびに 1 減り」「チェストとかまどの
-  中身はまだ `[item, count, ...]` のまま」と書いてありますが、**後者は前の周（`87c6a80`）で
-  嘘になっています。** 前者も「使ったときにも減る」に直すこと
-- **テストの判定をゆるめない**（とくに `test/world.test.ts` の p99 と `test/progression.test.ts`）
+- **`TOOL_USES` に剣用の 5 個目の表を作らないこと**（階層の表がそのまま効きます）
+- **`wearForUse()` に剣を混ぜないこと**（右クリックで減る物になります）。
+  **`wearForBreaking()` の既存 6 行を書き換えないこと**（剣は `toolOf()` が非 null なので、
+  1 行も足さずに「掘れば減る」が付いてきます）
+- **ツルハシ・斧・シャベルを「殴ると減る」に変えないこと**（本家はそうですが、
+  **この周の話ではありません**。既存 12 本の寿命が黙って縮みます）
+- **`mobs.attack()` の戻り値の意味を変えないこと**（いま「殴れたか」。ここを「倒したか」に
+  すると、`test/mobs.test.ts` の連打の判定が全部ずれます）
+- **ブロックに `tool: "sword"` を付けないこと**。**`SaveData` にキーを足さないこと**（`version` は 1）
 
 ## 7. 終了条件
 
-- `npm run typecheck` 緑 / **`npm test` 全部緑**（2488 件 + 増えたぶん）/ `npm run build` が通る
-- **コミット 1 つ**（`loop/devgame` へ push。`master` へは押さない）
-- **`TUNING.md` の「道具の耐久値」の節に 2 行**（火種 64 / 弓 384 と、**減るのは効いたときだけ**）
-- `HANDOFF.md` の**「ブラウザで見てほしいところ」に 2 行**（火を点けると火種に帯が出る /
-  矢を放つと弓に帯が出る。**どちらも新品では帯が出ないこと**）
-- `docs/autodev-log.md` に 1 節、`AUTODEV-QUEUE.md` の 3d の行を消し、**この仕様書を `状態: 済` に**
-- 決まりごと（`rules/items-survival.md` の「道具の耐久値はまだありません」）の更新は
-  **`RULES-INBOX.md` へ本文をそのまま書くこと**（`.claude/` は無人の周では触れません）
+`npm run typecheck` / `npm test`（**2525 件 + 新しい節がすべて緑**）/ `npm run build` /
+**コミット 1 つ**。**`TUNING.md` に 1 行**（`TOOL_ATTACK` の `sword: 4` —— 本家は
+4/5/6/7 で階層ごとに +1、ここは +0.5 なので**ダイヤの剣が 6**）。
+`ROADMAP.md` の予約表に 111..114 を「実装済み」と書き、`AUTODEV-QUEUE.md` の 4. を消し、
+**この仕様書の `状態:` を `済`** にして、`HANDOFF.md` を丸ごと書き直すこと。
