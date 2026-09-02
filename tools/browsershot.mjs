@@ -9,7 +9,10 @@
  *   - Chromium 141.0.7390.37 が `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`
  *   - playwright が `/opt/node22/lib/node_modules/playwright`
  *   - GPU は無い（`/dev/dri` が無い）ので SwiftShader のソフト描画。**遅い**
- * パスはこのサンドボックス決め打ちです。環境変数で差し替えられます
+ * **パスは決め打ちにしないこと。** イメージが Chromium を上げると `chromium-1194` が
+ * 別の番号になるので、`/opt/pw-browsers` を**探して新しいものを採ります**。
+ * 見つからなければ**落ちずに `npm run shot` を案内して終わります**（`AUTODEV.md` の C-3。
+ * **そこで Playwright を入れにいかないこと**）。環境変数で名指しもできます
  * （`PW_MODULE` / `CHROME_BIN`）。
  * ------------------------------------------------------------------------
  *
@@ -24,20 +27,69 @@
  * その場で読み直して、**色数と上下の代表色**を出します（`analyze()`）。
  * ページの `console` のエラーと例外、`gl.getError()` も拾って最後に並べます。
  *
- * **`npm run shot`（`tools/raster.ts`）の絵とは明るさが食い違います。**
- * 同じ種・同じ時刻で草の上面を突き合わせると、CPU 側 rgb(37,100,20) に対して
- * ブラウザは rgb(106,168,79) —— **ちょうど sRGB の伝達関数 1 回ぶん**です
- * （`1.055 * x^(1/2.4) - 0.055` を 3 チャンネルとも ±1 で通ります）。
- * three の `WebGLRenderer` は `outputColorSpace = SRGBColorSpace` が既定で、
- * `raster.ts` は線形の値をそのまま 8 ビットへ丸めている（`raster.ts:243`）ため。
- * **形・面の欠け・AO・影の付き方は一致します。絶対の明るさだけが信用できません。**
- * 詳しくは `docs/browser-shots/README.md`。
+ * **`npm run shot`（`tools/raster.ts`）の絵と明るさが揃っています。** 揃ったのは
+ * この道具のおかげです —— 突き合わせたら CPU 側だけ **sRGB の伝達関数 1 回ぶん暗く**
+ * （草の上面が rgb(37,100,20) 対 rgb(106,168,79)）、`raster.ts` に `srgb()` を入れて直しました。
+ * いまは地面の代表色が両方とも rgb(106,168,79) / rgb(94,156,65) で一致します。
+ * **直った状態を `test/shot.test.ts` が画素の値で見張っています**（正面 239 / 上面 255 /
+ * 底面 188 / 半透明 119）。**ここが食い違ったらまず `raster.ts` を疑うこと。**
+ * **空だけは一致しません**（ブラウザは `sky.ts` の天球 GLSL、CPU は `daynight.ts` の
+ * 2 色の勾配で、そもそも別経路）。詳しくは `docs/browser-shots/README.md`。
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 
-const PW_MODULE = process.env.PW_MODULE ?? "/opt/node22/lib/node_modules/playwright/index.mjs";
-const CHROME_BIN = process.env.CHROME_BIN ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
+/** ブラウザが見つからなかったときに出す道案内。**入れにいかせないこと。** */
+const FALLBACK = [
+  "**ここで Playwright を入れにいかないこと**（`AUTODEV.md` の C-3）。",
+  "代わりに `npm run shot -- mobs terrain` で撮ってください（GPU もブラウザも要りません）。",
+  "名指しするなら PW_MODULE / CHROME_BIN に渡せます。",
+].join("\n  ");
+
+const PW_CANDIDATES = [
+  process.env.PW_MODULE,
+  "/opt/node22/lib/node_modules/playwright/index.mjs",
+  "playwright", // 入っていれば普通に解決させる（node_modules / NODE_PATH）
+];
+
+const CHROME_ROOTS = [
+  process.env.PLAYWRIGHT_BROWSERS_PATH,
+  "/opt/pw-browsers",
+  `${process.env.HOME ?? "/root"}/.cache/ms-playwright`,
+];
+
+/**
+ * Chromium の実体を探す。**ビルド番号を決め打ちしないこと** ——
+ * イメージが上がると `chromium-1194` は消えます。番号の大きいものから採り、
+ * 1 つも無ければ `undefined` を返して**playwright 自身に探させます**。
+ */
+function findChrome() {
+  if (process.env.CHROME_BIN) return process.env.CHROME_BIN;
+  for (const root of CHROME_ROOTS) {
+    if (!root || !existsSync(root)) continue;
+    const builds = readdirSync(root)
+      .filter((d) => d.startsWith("chromium-")) // chromium_headless_shell-* は除く
+      .sort((a, b) => Number(b.slice(9)) - Number(a.slice(9)));
+    for (const build of builds) {
+      const bin = `${root}/${build}/chrome-linux/chrome`;
+      if (existsSync(bin)) return bin;
+    }
+  }
+  return undefined;
+}
+
+async function loadChromium() {
+  for (const spec of PW_CANDIDATES) {
+    if (!spec) continue;
+    if (spec.startsWith("/") && !existsSync(spec)) continue;
+    try {
+      return (await import(spec)).chromium;
+    } catch {
+      // 次の候補へ。**ここで諦めないこと**（1 つ目は環境変数で、3 つ目は無いのが普通）
+    }
+  }
+  return undefined;
+}
 
 function parse(argv) {
   const opt = { url: "http://127.0.0.1:8080/", out: "docs/browser-shots", seed: "4242", wait: 30, width: 960, height: 600 };
@@ -95,7 +147,11 @@ async function analyze(page, buffer) {
 }
 
 const opt = parse(process.argv.slice(2));
-const { chromium } = await import(PW_MODULE);
+const chromium = await loadChromium();
+if (!chromium) {
+  console.error(`playwright が見つかりません（探した先: ${PW_CANDIDATES.filter(Boolean).join(" / ")}）。\n  ${FALLBACK}`);
+  process.exit(1);
+}
 mkdirSync(opt.out, { recursive: true });
 
 const errors = [];
@@ -103,7 +159,15 @@ const shots = [];
 const t0 = Date.now();
 const at = () => `${((Date.now() - t0) / 1000).toFixed(1)}s`;
 
-const browser = await chromium.launch({ executablePath: CHROME_BIN, args: ["--no-sandbox"] });
+const chromeBin = findChrome();
+console.log(`Chromium: ${chromeBin ?? "playwright の既定"}`);
+let browser;
+try {
+  browser = await chromium.launch({ executablePath: chromeBin, args: ["--no-sandbox"] });
+} catch (e) {
+  console.error(`Chromium を起動できません（${chromeBin ?? "playwright の既定"}）: ${e.message}\n  ${FALLBACK}`);
+  process.exit(1);
+}
 const page = await browser.newPage({ viewport: { width: opt.width, height: opt.height } });
 page.on("console", (m) => {
   if (m.type() === "error" || m.type() === "warning") errors.push(`[console.${m.type()}] ${m.text()}`);
@@ -176,9 +240,9 @@ try {
   await shot("debug");
   await page.keyboard.press("KeyE");
   await page.waitForSelector("#inventory:not(.hidden)", { timeout: 5000 }).catch(() => {});
-  // **オートセーブの通知（`#status`）が説明文にまともに重なる**（`#status` は
-  // `bottom: 118px` 固定で、インベントリの `#recipehint` と同じ高さ）。15 秒ごとに
-  // 3 秒出るので、消えている隙を待ってから撮る。
+  // **オートセーブの通知（`#status`）がパネル末尾の説明文にまともに重なる**
+  // （`#status` は `bottom: 118px` 固定で、960x600 だと帯が y 452〜482 に来る）。
+  // 15 秒ごとに 3 秒出るので、消えている隙を待ってから撮る。`REVIEW.md` に積んである。
   await page
     .waitForFunction(() => !document.getElementById("status").classList.contains("on"), { timeout: 20000 })
     .catch(() => {});
