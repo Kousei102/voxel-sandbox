@@ -83,12 +83,13 @@ npm run build      # typecheck + dist/ に静的ファイル一式
   済んだぶんを `docs/tasks-done.md` と `docs/review-archive.md` へ退避すること**
   （`main.ts` の 1500 行と同じ扱い。**`docs/` は誰も読まない置き場**です）。
 
-## この環境では WebGL が動かない
+## WebGL は手元では動かない（クラウドでは動きます）
 
-**確認済み: このコンテナの Chromium では WebGL コンテキストを作れません。**
-SwiftShader の初期化が `BindToCurrentSequence failed` で落ちます。ANGLE/Vulkan/Xvfb・
-ヘッドレスシェル・フル Chromium と一通り試して不可でした。Playwright でスクリーンショットを
-撮ろうとしても時間を捨てるだけなので、やらないでください。
+**手元の devcontainer にはブラウザが 1 つも無く、入れても WebGL コンテキストを作れません**
+（SwiftShader が `BindToCurrentSequence failed`。ANGLE/Vulkan/Xvfb と一通り試して不可）。
+**ここで Playwright を試さないこと。** ただし **クラウドのサンドボックスでは動きます**
+（2026-09-02 実測。Chromium 141 と playwright が同梱で、SwiftShader で WebGL 2.0。
+撮り方は `tools/browsershot.mjs`、撮れた絵は `docs/browser-shots/README.md`）。
 
 ただし **見た目そのものは `npm run shot` で PNG に撮れます**（`tools/raster.ts`。three の
 `Scene` を GPU 無しで CPU で塗るので、ブラウザも WebGL も要りません）。面の欠け・裏返り・
