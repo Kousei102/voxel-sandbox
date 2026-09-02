@@ -52,9 +52,12 @@ export function run(): void {
   const [r, g, b] = middle(pixels);
   console.log(`      箱の正面の画素: (${r}, ${g}, ${b}) / 塗った三角形 ${stats().filled}`);
 
-  // 赤 x 面の向きによる明暗（+Z 面は 0.86）x スカイライト最大（1.0）= 219。
-  // **ここがずれたら、頂点カラーか光の合成か遠近の補間のどれかが壊れている。**
-  check("正面の面が明暗込みで塗られる", r === 219 && g === 0 && b === 0, `(${r}, ${g}, ${b})`);
+  // 赤 x 面の向きによる明暗（+Z 面は 0.86）x スカイライト最大（1.0）= 線形 0.86。
+  // それを three と同じ sRGB の符号化に通して 239。**この数字は本物のブラウザと
+  // 突き合わせてある**（`docs/browser-shots/README.md`）。符号化を外すと 219 に戻り、
+  // **形は合っているのに明るさだけが本番と違う絵**になる。
+  // **ここがずれたら、頂点カラーか光の合成か遠近の補間か色空間のどれかが壊れている。**
+  check("正面の面が明暗込みで塗られる", r === 239 && g === 0 && b === 0, `(${r}, ${g}, ${b})`);
   // 箱は 12 三角形あるが、こちらを向いているのは +Z の 1 面だけ。
   // 残り 10 枚が塗られたら裏面カリングが効いていない（＝内側から見た面まで描いている）。
   check("裏を向いた面は塗らない（裏面カリング）", stats().filled === 2, `${stats().filled} 三角形`);
@@ -67,15 +70,18 @@ export function run(): void {
   flipped.add(redBox(true));
   const gone = middle(shoot(flipped, [0, 3.2, 0.9]));
   check("上から見ると上面（明暗 1.0）", top[0] === 255, `(${top.join(", ")})`);
-  check("巡回順を逆にすると上面が消えて底面が見える", gone[0] === 128, `(${gone.join(", ")})`);
+  // 底面は明暗 0.5 → 符号化して 188（符号化前は 128）。
+  check("巡回順を逆にすると上面が消えて底面が見える", gone[0] === 188, `(${gone.join(", ")})`);
 
   // 半透明は下地と混ざること（水とガラスがこの経路）。
+  // **混ぜるのは符号化したあと**（three もフレームバッファ上で混ぜている）。
+  // 239 の半分で 119。線形で混ぜてから符号化すると 175 になるので、そこも見ている。
   const clear = new Scene();
   const glass = redBox(false);
   glass.material = new MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.5 });
   clear.add(glass);
   const blended = middle(shoot(clear));
-  check("半透明は下地と混ざる", blended[0] === 110, `赤 ${blended[0]}（不透明なら 219、素通しなら 0）`);
+  check("半透明は下地と混ざる", blended[0] === 119, `赤 ${blended[0]}（不透明なら 239、素通しなら 0、線形で混ぜると 175）`);
 
   const png = encodePng(2, 1, new Uint8Array([255, 0, 0, 0, 255, 0]));
   check("PNG の署名と長さ", png.subarray(1, 4).toString("ascii") === "PNG" && png.length > 40, `${png.length} バイト`);

@@ -106,13 +106,15 @@ export function render(scene: Object3D, camera: Camera, opts: RenderOptions): Ui
   const color = new Float32Array(W * H * 3);
   const depth = new Float32Array(W * H).fill(Infinity);
 
+  // 下地も**符号化してから**入れる。`DayNight` の色は three の作業色空間（線形）なので、
+  // 生のまま入れると地形だけが sRGB で、空だけが線形という食い違った絵になる。
   for (let y = 0; y < H; y++) {
     const t = y / (H - 1);
     for (let x = 0; x < W; x++) {
       const o = (y * W + x) * 3;
-      color[o] = opts.zenith.r + (opts.horizon.r - opts.zenith.r) * t;
-      color[o + 1] = opts.zenith.g + (opts.horizon.g - opts.zenith.g) * t;
-      color[o + 2] = opts.zenith.b + (opts.horizon.b - opts.zenith.b) * t;
+      color[o] = srgb(opts.zenith.r + (opts.horizon.r - opts.zenith.r) * t);
+      color[o + 1] = srgb(opts.zenith.g + (opts.horizon.g - opts.zenith.g) * t);
+      color[o + 2] = srgb(opts.zenith.b + (opts.horizon.b - opts.zenith.b) * t);
     }
   }
 
@@ -223,15 +225,25 @@ export function render(scene: Object3D, camera: Camera, opts: RenderOptions): Ui
             bb *= Math.max(s * opts.daylight.b, bl);
           }
 
+          // **ここまでは線形。書き込む直前に sRGB へ符号化する。**
+          // three は `outputColorSpace = SRGBColorSpace` が既定で、この変換を
+          // フラグメントシェーダの最後（`colorspace_fragment`）でやっている。
+          // 抜かすと、**明るさだけが本番と違う絵**になる（暗い所ほど差が開き、
+          // ネザーのように光量が 0.16 しかない場所は真っ黒に見える）。
+          // **混ぜるのは符号化したあと** —— three もフレームバッファ上、
+          // つまり符号化済みの値で混ぜている。
           const p = o * 3;
+          const sr = srgb(r);
+          const sg = srgb(gg);
+          const sb = srgb(bb);
           if (blend && a < 1) {
-            color[p] += (r - color[p]) * a;
-            color[p + 1] += (gg - color[p + 1]) * a;
-            color[p + 2] += (bb - color[p + 2]) * a;
+            color[p] += (sr - color[p]) * a;
+            color[p + 1] += (sg - color[p + 1]) * a;
+            color[p + 2] += (sb - color[p + 2]) * a;
           } else {
-            color[p] = r;
-            color[p + 1] = gg;
-            color[p + 2] = bb;
+            color[p] = sr;
+            color[p + 1] = sg;
+            color[p + 2] = sb;
           }
         }
       }
@@ -242,6 +254,17 @@ export function render(scene: Object3D, camera: Camera, opts: RenderOptions): Ui
   const out = new Uint8Array(W * H * 3);
   for (let i = 0; i < out.length; i++) out[i] = Math.max(0, Math.min(255, Math.round(color[i] * 255)));
   return out;
+}
+
+/**
+ * 線形 → sRGB。**three の `outputColorSpace = SRGBColorSpace` と同じ式。**
+ * 2026-09-02 に本物のブラウザと突き合わせて確かめてあります（草の上面が
+ * CPU 側 rgb(37,100,20)、ブラウザ rgb(106,168,79)、この式を通すと ±1 で一致）。
+ * **勝手に触らないこと** —— ここが本番と揃っているから、この絵で明るさを見られます。
+ */
+function srgb(v: number): number {
+  if (v <= 0.0031308) return v * 12.92;
+  return 1.055 * v ** (1 / 2.4) - 0.055;
 }
 
 const WHITE = new Color(1, 1, 1);
