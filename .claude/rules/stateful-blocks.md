@@ -1,6 +1,7 @@
 ---
 paths:
   - "src/smelting.ts"
+  - "src/durability.ts"
   - "src/furnaces.ts"
   - "src/chests.ts"
   - "src/craftscreen.ts"
@@ -82,3 +83,39 @@ paths:
   クリエイティブでも出します（かまどと同じ理由）。
 - セーブは `SaveData.chests`（`"x,y,z"` → 54 要素）。**空っぽのチェストは省きます。**
 
+## 器の中身は傷ごと持つ
+
+**かまどもチェストも、中に入っている道具の傷を持ちます**（3c-2・2026-09-01）。
+**傷が消える経路はもう残っていません** —— つまんで置く・シフトクリック・器を壊す・
+読み込み直す・次元をまたぐ、のどれを通っても付いて回ります。
+
+- **セーブは中身の配列を増やさず、省略可キーを別に足す形です**（`SaveData.chestWear` /
+  `SaveData.furnaceWear`）。**`serializeChest()` の 54 要素と `serializeFurnace()` の
+  9 要素は増やさないこと** —— 増やすと既存のセーブが丸ごとずれます
+  （`wear` を `inventory` と分けたのとまったく同じ理由）。`version` は 1 のままです。
+  - **キーは `chests` / `furnaces` と同じ `"x,y,z"`**、値の位置は**枠の並びそのまま**
+    （チェストは 27 要素、かまどは `input` / `fuel` / `output` の 3 要素）
+  - **省く条件も `serialize()` と揃えること**（`isChestEmpty()` / `isIdle()`）。
+    ずらすと、**別の台の傷が載ります**
+  - **全部新品なら `serializeWear()` が `undefined` を返してキーごと消えます。**
+    道具を器に入れていない人のセーブは、耐久値が入る前と 1 バイトも変わりません
+- **`deserialize(raw, wear)` を 2 本に分けないこと。** ここが `map` を作り直すので、
+  別呼び出しにすると順番を間違えた瞬間に傷だけ消えます（`drops.deserialize()` と同じ形）。
+- **`chests.ts` / `furnaces.ts` / `smelting.ts` が `durability.ts` から取ってよいのは
+  `damageOf` / `carryWear` / `serializeWear` / `deserializeWear` の 4 本だけ**です。
+  `maxUses` / `TOOL_USES` / `wearSlot` が要ったら「**器が耐久値を減らす**」設計に
+  なっている合図（減るのは掘ったときだけで、焼いても入れても減りません）。
+  `test/chests.test.ts` が 3 ファイルとも見張っています。
+- **器の側に `?? 0` を書かないこと。** 傷を読むのは `damageOf()`、載せるのは
+  `carryWear()`、丸めるのは `wornValue()` の 1 本ずつです。写した瞬間に
+  「棒の山に傷が付く」経路がその場ごとに増えます。
+- **壊したときは中身を傷ごと返します**（`remove()` の `{ item, count, damage }`）。
+  落とす側（`breaking.ts` の `Burst.damage`）は素通しするだけで、
+  「道具かどうか」も「何回で尽きるか」も知りません。
+- **山（`count > 1`）に傷を載せる経路を作らないこと。** `addToChest()` の第 4 引数は
+  `addToSlots()` へ素通しするだけで、載るのは**空き枠へ入れた 1 個ぶん**です
+  （傷が付く物は全部 `stack: 1`）。
+- **かまどへのシフトクリック（`craftscreen.ts` の `moveInto()`）にも傷を載せてあります**
+  が、**いまの表では道具で届きません** —— 焼けるものにも燃料にも道具が 1 本も
+  無いためです。本家のように鉄の道具が焼けるようになった日に黙って新品へ戻らないよう、
+  `test/smelting.test.ts` が**呼び出しの形**を見張っています。
