@@ -30,6 +30,7 @@ import {
   COAL,
   DIAMOND,
   DIAMOND_AXE,
+  DIAMOND_HOE,
   DIAMOND_PICKAXE,
   DIAMOND_SHOVEL,
   DIAMOND_SWORD,
@@ -38,6 +39,7 @@ import {
   FLINT,
   FLINT_AND_STEEL,
   IRON_AXE,
+  IRON_HOE,
   IRON_INGOT,
   IRON_PICKAXE,
   IRON_SHOVEL,
@@ -46,10 +48,12 @@ import {
   SHEARS,
   STICK,
   STONE_AXE,
+  STONE_HOE,
   STONE_PICKAXE,
   STONE_SHOVEL,
   STONE_SWORD,
   WOOD_AXE,
+  WOOD_HOE,
   WOOD_PICKAXE,
   WOOD_SHOVEL,
   WOOD_SWORD,
@@ -147,10 +151,18 @@ export const RECIPES: readonly Recipe[] = [
   // —— 羊を見つけた場所で作り足せる。左右反転でも作れる。
   { name: "シアーズ", out: SHEARS, count: 1, shape: [".I", "I."], key: { I: IRON_INGOT } },
 
-  ...toolRecipes("木", PLANK, WOOD_PICKAXE, WOOD_AXE, WOOD_SHOVEL, WOOD_SWORD),
-  ...toolRecipes("石", COBBLE, STONE_PICKAXE, STONE_AXE, STONE_SHOVEL, STONE_SWORD),
-  ...toolRecipes("鉄", IRON_INGOT, IRON_PICKAXE, IRON_AXE, IRON_SHOVEL, IRON_SWORD),
-  ...toolRecipes("ダイヤ", DIAMOND, DIAMOND_PICKAXE, DIAMOND_AXE, DIAMOND_SHOVEL, DIAMOND_SWORD),
+  ...toolRecipes("木", PLANK, WOOD_PICKAXE, WOOD_AXE, WOOD_SHOVEL, WOOD_SWORD, WOOD_HOE),
+  ...toolRecipes("石", COBBLE, STONE_PICKAXE, STONE_AXE, STONE_SHOVEL, STONE_SWORD, STONE_HOE),
+  ...toolRecipes("鉄", IRON_INGOT, IRON_PICKAXE, IRON_AXE, IRON_SHOVEL, IRON_SWORD, IRON_HOE),
+  ...toolRecipes(
+    "ダイヤ",
+    DIAMOND,
+    DIAMOND_PICKAXE,
+    DIAMOND_AXE,
+    DIAMOND_SHOVEL,
+    DIAMOND_SWORD,
+    DIAMOND_HOE,
+  ),
 ];
 
 /** ハーフはどの材質も形が同じで、材料だけが変わる。 */
@@ -173,12 +185,13 @@ function stairRecipe(name: string, material: number, stairs: number): Recipe {
 }
 
 /**
- * 道具 4 種はどの階層も形が同じで、材料だけが変わる。
+ * 道具 5 種はどの階層も形が同じで、材料だけが変わる。
  *
  * **剣は材料 2 個 + 棒 1 の縦 3**（Minecraft と同じ）。シャベル（材料 1 + 棒 2）と
  * 上下 1 マスしか違わないので、**片方の形を変えるときは
  * `test/crafting.test.ts` の「同じ形のレシピが重複していない」を必ず見ること。**
- * どちらも 3 行あるので 2x2 では作れない（作業台が要る）。
+ * **クワは材料 2 個を横に並べて棒を縦 2**（Minecraft と同じ。斧と上段は同じだが、
+ * 下 2 段が棒だけなので別の形になる）。どれも 3 行あるので 2x2 では作れない（作業台が要る）。
  */
 function toolRecipes(
   tier: string,
@@ -187,6 +200,7 @@ function toolRecipes(
   axe: number,
   shovel: number,
   sword: number,
+  hoe: number,
 ): Recipe[] {
   const key = { M: material, S: STICK };
   return [
@@ -194,6 +208,7 @@ function toolRecipes(
     { name: `${tier}の斧`, out: axe, count: 1, shape: ["MM.", "MS.", ".S."], key },
     { name: `${tier}のシャベル`, out: shovel, count: 1, shape: ["M", "S", "S"], key },
     { name: `${tier}の剣`, out: sword, count: 1, shape: ["M", "M", "S"], key },
+    { name: `${tier}のクワ`, out: hoe, count: 1, shape: ["MM.", ".S.", ".S."], key },
   ];
 }
 

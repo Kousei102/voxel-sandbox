@@ -2,6 +2,7 @@ import {
   AIR,
   BED,
   DIRT,
+  FARMLAND,
   GRASS,
   LAVA,
   OBSIDIAN,
@@ -13,7 +14,7 @@ import {
   blockName,
   isBed,
 } from "../src/blocks";
-import { tryBucket, tryPlace } from "../src/placing";
+import { tryBucket, tryPlace, tryTill } from "../src/placing";
 import { BUCKET, LAVA_BUCKET, WATER_BUCKET } from "../src/items";
 import { Slab, sourceOf } from "./arena";
 import { check, describe } from "./harness";
@@ -216,5 +217,58 @@ export function run(): void {
       if (lavaLake.getVoxel(x, 11, z) === OBSIDIAN) obsidian++;
     }
     check("固まったのは隣り合っていた溶岩", obsidian > 0, `${obsidian} 個`);
+  }
+
+  describe("クワで耕す（tryTill）");
+
+  {
+    // 土も草も耕地になる。上（y=11）は空いているので耕せる。
+    const dirtField = new Slab();
+    dirtField.fill(-4, 4, 10, 10, -4, 4, DIRT);
+    const tilledDirt = tryTill(dirtField, { x: 0, y: 10, z: 0 });
+    console.log(`      土を耕す: ${tilledDirt.kind}  結果 ${dirtField.getVoxel(0, 10, 0)}`);
+    check("土を耕すと耕地", tilledDirt.kind === "placed" && dirtField.getVoxel(0, 10, 0) === FARMLAND);
+
+    const grassField = field();
+    const tilledGrass = tryTill(grassField, { x: 0, y: 10, z: 0 });
+    check("草も耕せる", tilledGrass.kind === "placed" && grassField.getVoxel(0, 10, 0) === FARMLAND);
+
+    // 石は耕せない（`tilled()` が AIR を返す）。黙って何も起きない。
+    const rock = new Slab();
+    rock.fill(-4, 4, 10, 10, -4, 4, STONE);
+    const tilledRock = tryTill(rock, { x: 0, y: 10, z: 0 });
+    check("石は耕せない", tilledRock.kind === "none" && rock.getVoxel(0, 10, 0) === STONE);
+  }
+
+  {
+    // 上が塞がっていると耕せない（石でも水でも）。
+    const blockedByStone = field();
+    blockedByStone.fill(0, 0, 11, 11, 0, 0, STONE);
+    const stoneAbove = tryTill(blockedByStone, { x: 0, y: 10, z: 0 });
+    console.log(`      上に石: ${stoneAbove.kind}  ${stoneAbove.kind === "blocked" ? stoneAbove.message : ""}`);
+    check(
+      "上に石があると耕せない（理由が出る）",
+      stoneAbove.kind === "blocked" && blockedByStone.getVoxel(0, 10, 0) === GRASS,
+    );
+
+    const blockedByWater = field();
+    blockedByWater.fill(0, 0, 11, 11, 0, 0, WATER);
+    const waterAbove = tryTill(blockedByWater, { x: 0, y: 10, z: 0 });
+    // 水は `isReplaceable` だが、それでも `isLiquid` なので塞がっている扱い。
+    check("上に水があっても耕せない", waterAbove.kind === "blocked", waterAbove.kind);
+
+    // **上が草むらなら耕せる**（草むらは `isReplaceable` で液体ではない）。
+    const grassy = field();
+    grassy.fill(0, 0, 11, 11, 0, 0, TALL_GRASS);
+    const grassyAbove = tryTill(grassy, { x: 0, y: 10, z: 0 });
+    check("上が草むらなら耕せる", grassyAbove.kind === "placed" && grassy.getVoxel(0, 10, 0) === FARMLAND);
+  }
+
+  {
+    // 書き込めない列（未読み込み）では、耕せなかったことにする。
+    const frozen = field();
+    frozen.frozenColumns.add("0,0");
+    const out = tryTill(frozen, { x: 0, y: 10, z: 0 });
+    check("書き込めなければ耕したことにしない", out.kind === "none");
   }
 }

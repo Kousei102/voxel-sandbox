@@ -167,7 +167,20 @@ export const DIAMOND_SWORD = 114;
  */
 export const SHEARS = 115;
 
-export const MAX_ITEM_ID = SHEARS;
+/**
+ * クワ 4 本（木・石・鉄・ダイヤ）。**土か草を耕して耕地にする道具**です。
+ *
+ * 剣と同じ形で、**掘る速さは持たせません**（`speed: 1` = 素手と同じ）——
+ * `TIER_SPEEDS` を渡すと「クワが適正の材質」を足した日に黙って速く掘れるようになります。
+ * **何回で尽きるかは掘る道具と同じ階層の表**（`durability.ts` の `wearForTill()`。
+ * 木 59 / 石 131 / 鉄 250 / ダイヤ 1561）で、**耕したときだけ**減ります。
+ */
+export const WOOD_HOE = 117;
+export const STONE_HOE = 118;
+export const IRON_HOE = 119;
+export const DIAMOND_HOE = 120;
+
+export const MAX_ITEM_ID = DIAMOND_HOE;
 
 export const MAX_STACK = 64;
 
@@ -195,6 +208,7 @@ const TOOL_NAMES: Record<ToolKind, string> = {
   axe: "の斧",
   shovel: "のシャベル",
   sword: "の剣",
+  hoe: "のクワ",
 };
 /** 階層ごとの採掘速度。Minecraft と同じ 2 / 4 / 6 / 8。 */
 const TIER_SPEEDS = [1, 2, 4, 6, 8];
@@ -292,6 +306,22 @@ for (let tier = TIER_WOOD; tier <= TIER_DIAMOND; tier++) {
 // シアーズは道具と同じで積めない（傷が付くので、山にできない）。
 // **`tool` を持たせないこと**（上の `SHEARS` の説明）。
 item({ id: SHEARS, name: "シアーズ", block: AIR, stack: 1, color: 0xa8b8c0, tool: null });
+
+/**
+ * クワ 4 本。**剣とまったく同じループ**（上の `WOOD_SWORD` のループを写した形）。
+ * `speed: 1` のまま `TIER_SPEEDS` を渡さないのも剣と同じ理由 —— どのブロックの
+ * 適正でもない道具に階層別の速さを持たせると、いつか誰かがそれを掘る速さだと誤読する。
+ */
+for (let tier = TIER_WOOD; tier <= TIER_DIAMOND; tier++) {
+  item({
+    id: WOOD_HOE + (tier - TIER_WOOD),
+    name: TIER_NAMES[tier] + TOOL_NAMES.hoe,
+    block: AIR,
+    stack: 1,
+    color: TIER_COLORS[tier],
+    tool: { kind: "hoe", tier, speed: 1 },
+  });
+}
 
 const EMPTY: ItemDef = ITEMS[NO_ITEM];
 
@@ -529,6 +559,14 @@ export function isShears(item: number): boolean {
  */
 export function isSword(item: number): boolean {
   return toolOf(item)?.kind === "sword";
+}
+
+/**
+ * 耕す道具（クワ）か。**`isSword()` と同じ形**（表を持たず、道具の種類に聞く）——
+ * クワは 4 本とも `ToolDef` を持っているので、階層が増えても 1 行も直りません。
+ */
+export function isHoe(item: number): boolean {
+  return toolOf(item)?.kind === "hoe";
 }
 
 /** 全アイテム ID（テストと UI の列挙用）。 */

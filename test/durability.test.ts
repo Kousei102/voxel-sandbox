@@ -20,6 +20,7 @@ import {
   wearBar,
   wearForAttack,
   wearForBreaking,
+  wearForTill,
   wearForUse,
   wearSlot,
   wornValue,
@@ -28,16 +29,20 @@ import { HOTBAR_SIZE, INVENTORY_SIZE, Inventory, isEmpty, type Slot } from "../s
 import {
   ARROW,
   BOW,
+  DIAMOND_HOE,
   DIAMOND_PICKAXE,
   DIAMOND_SWORD,
   FLINT_AND_STEEL,
+  IRON_HOE,
   IRON_PICKAXE,
   IRON_SWORD,
   NO_ITEM,
   SHEARS,
   STICK,
+  STONE_HOE,
   STONE_PICKAXE,
   STONE_SWORD,
+  WOOD_HOE,
   WOOD_PICKAXE,
   WOOD_SWORD,
   itemName,
@@ -881,4 +886,88 @@ export function run(): void {
   const swordNames = [/\bWOOD_SWORD\b/, /\bSTONE_SWORD\b/, /\bIRON_SWORD\b/, /\bDIAMOND_SWORD\b/]
     .filter((re) => re.test(durabilitySource));
   check("durability.ts に剣のアイテム名が出てこない", swordNames.length === 0, swordNames.join(" / "));
+
+  describe("クワ（耕して減る。4 つ目の減り方）");
+
+  const HOES: [string, number, number][] = [
+    ["木のクワ", WOOD_HOE, 59],
+    ["石のクワ", STONE_HOE, 131],
+    ["鉄のクワ", IRON_HOE, 250],
+    ["ダイヤのクワ", DIAMOND_HOE, 1561],
+  ];
+
+  // --- 試験場が効いているか（先に置く。`rules/testing.md`） ---
+  {
+    console.log(`      クワ 4 本: ${HOES.map(([, id]) => `${itemName(id)} ${maxUses(id)} 回`).join(" / ")}`);
+    check(
+      "4 本とも名前が付いている",
+      HOES.every(([name, id]) => itemName(id) === name),
+      HOES.map(([, id]) => itemName(id)).join(" / "),
+    );
+    // **階層の表（`TOOL_USES`）がそのまま効く**（クワ用の表を新しく作っていない）。
+    for (const [name, id, uses] of HOES) {
+      check(`${name}は ${uses} 回`, maxUses(id) === uses, `${maxUses(id)} 回`);
+    }
+  }
+
+  // --- 減り方は「耕して減る」だけ（掘っても殴っても、右クリックしただけでも減らない） ---
+  {
+    const till = wearForTill(WOOD_HOE, false);
+    const use = wearForUse(WOOD_HOE, false);
+    const attack = wearForAttack(WOOD_HOE, false);
+    const dig = wearForBreaking(STONE, WOOD_HOE, false);
+    const inCreative = wearForTill(WOOD_HOE, true);
+    console.log(
+      `      木のクワ: wearForTill ${till} / wearForUse ${use} / wearForAttack ${attack} / ` +
+        `wearForBreaking(石) ${dig} / クリエイティブ ${inCreative}`,
+    );
+    check("耕すと 1 減る", till === 1, `${till}`);
+    check("右クリックしただけでは減らない（wearForUse は 0）", use === 0, `${use}`);
+    check("殴っても減らない（wearForAttack は 0）", attack === 0, `${attack}`);
+    // **本家と同じで、クワで掘れば減る**（`toolOf()` が非 null なので 1 行も足さずに付いてくる）。
+    check("クワで石を掘ると減る（剣と同じ）", dig === 1, `${dig}`);
+    check("クリエイティブでは減らない", inCreative === 0, `${inCreative}`);
+    // 逆向きの守り: ほかの道具は耕しても今までどおり減らない。
+    check("ツルハシで耕しても減らない", wearForTill(WOOD_PICKAXE, false) === 0);
+    check("剣で耕しても減らない", wearForTill(WOOD_SWORD, false) === 0);
+    check("素手で耕しても減らない", wearForTill(NO_ITEM, false) === 0);
+  }
+
+  // --- 掘る速さは素手と同じ（クワはどのブロックの適正でもない） ---
+  {
+    console.log(
+      `      石を掘る秒数: 素手 ${breakTime(STONE, NO_ITEM).toFixed(2)} / 木のクワ ${breakTime(STONE, WOOD_HOE).toFixed(2)}`,
+    );
+    check(
+      "クワで掘っても素手と同じ速さ",
+      breakTime(STONE, WOOD_HOE) === breakTime(STONE, NO_ITEM),
+      `クワ ${breakTime(STONE, WOOD_HOE)} / 素手 ${breakTime(STONE, NO_ITEM)}`,
+    );
+  }
+
+  // --- 使い切ると壊れる（59 回目。58 回目はまだ手に残る） ---
+  {
+    const held = slot(WOOD_HOE);
+    for (let i = 0; i < 58; i++) wearSlot(held, wearForTill(held.item, false));
+    const last = held.item === WOOD_HOE && held.damage === 58;
+    const broke = wearSlot(held, wearForTill(held.item, false));
+    console.log(`      使い切り: 58 回目 ${last ? "手に残る" : "消えた"} → 59 回目 ${broke}`);
+    check("58 回耕しても手に残る", last, `${held.item} / 傷 ${held.damage}`);
+    check("59 回目で壊れる", broke === WOOD_HOE && isEmpty(held), `${broke}`);
+    check(
+      "壊れた 1 行に名前が出る",
+      breakMessage(WOOD_HOE) === "木のクワ が壊れました",
+      breakMessage(WOOD_HOE),
+    );
+  }
+
+  // 見張り 1: main.ts は「耕せたときだけ」1 か所から呼ぶ（点火・発射・刈るとは別の関数）。
+  const tills = [...mainSource.matchAll(/wearForTill\(/g)].length;
+  console.log(`      main.ts の wearForTill( は ${tills} 回`);
+  check("main.ts は耕した 1 か所からだけ呼ぶ", tills === 1, `${tills} 回`);
+
+  // 見張り 2: どれがクワかは `items.ts` の `isHoe()`（`durability.ts` は名前を知らない）。
+  const hoeNames = [/\bWOOD_HOE\b/, /\bSTONE_HOE\b/, /\bIRON_HOE\b/, /\bDIAMOND_HOE\b/]
+    .filter((re) => re.test(durabilitySource));
+  check("durability.ts にクワのアイテム名が出てこない", hoeNames.length === 0, hoeNames.join(" / "));
 }

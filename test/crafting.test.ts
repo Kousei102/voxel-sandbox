@@ -22,6 +22,7 @@ import {
   BUCKET,
   COAL,
   DIAMOND,
+  DIAMOND_HOE,
   ENDER_EYE,
   ENDER_PEARL,
   IRON_INGOT,
@@ -29,12 +30,15 @@ import {
   DIAMOND_SWORD,
   FLINT,
   FLINT_AND_STEEL,
+  IRON_HOE,
   IRON_SWORD,
   NO_ITEM,
   SHEARS,
   STICK,
   STONE_AXE,
+  STONE_HOE,
   STONE_SWORD,
+  WOOD_HOE,
   WOOD_PICKAXE,
   WOOD_SHOVEL,
   WOOD_SWORD,
@@ -246,6 +250,28 @@ export function run(): void {
   const mixedSword = findRecipe(grid(3, ["P", "C", "S"], P), 3);
   check("材料が混ざった剣は作れない", mixedSword === null, mixedSword?.name ?? "無し");
   check("剣は 1 本しか積めない（道具と同じ）", itemStackLimit(WOOD_SWORD) === 1);
+
+  // --- クワ 4 本（材料 2 個を横に並べて棒を縦 2。Minecraft と同じ形） ---
+  const hoes: [string, string, number][] = [
+    ["木のクワ", "P", WOOD_HOE],
+    ["石のクワ", "C", STONE_HOE],
+    ["鉄のクワ", "I", IRON_HOE],
+    ["ダイヤのクワ", "D", DIAMOND_HOE],
+  ];
+  const madeHoes = hoes.map(([name, ch, out]) => {
+    const recipe = findRecipe(grid(3, [ch + ch, ".S", ".S"], P), 3);
+    return { name, out, recipe };
+  });
+  console.log(
+    `      クワ: ${madeHoes.map((m) => `${m.name} → ${m.recipe?.name ?? "作れない"} x${m.recipe?.count ?? 0}`).join(" / ")}`,
+  );
+  for (const { name, out, recipe } of madeHoes) {
+    check(`材料 2 個を横 + 棒縦 2 → ${name} 1 本`, recipe?.out === out && recipe.count === 1, recipe?.name ?? "無し");
+  }
+  // **3 行あるので 2x2 では作れない**（クワにも作業台が要る）。
+  const hoeIn2 = findRecipe(grid(2, ["PP", ".S"], P), 2);
+  check("2x2 ではクワは作れない（作業台が要る）", hoeIn2 === null, hoeIn2?.name ?? "無し");
+  check("クワは 1 本しか積めない（道具と同じ）", itemStackLimit(WOOD_HOE) === 1);
 
   // --- ハーフブロック ---
   const stoneSlab = findRecipe(grid(3, ["TTT"], P), 3);

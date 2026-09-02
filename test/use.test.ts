@@ -3,6 +3,7 @@ import {
   BED,
   CHEST,
   CRAFTING_TABLE,
+  DIRT,
   FACE_XP,
   FURNACE,
   FURNACE_LIT,
@@ -22,6 +23,7 @@ import {
   NO_ITEM,
   SHEARS,
   WATER_BUCKET,
+  WOOD_HOE,
 } from "../src/items";
 import { decideUse, type UseAction, type UseFacts } from "../src/use";
 import { sourceOf } from "./arena";
@@ -78,6 +80,8 @@ export function run(): void {
     // 刈るかどうかも同じ（`main.ts` が持ってよいのは「刈れるモブが手前に居る」という
     // 事実だけで、どれがシアーズかは `items.ts` の表 1 本）。
     "isShears(",
+    // クワかどうかも同じ（`decideUse()` が振り分けを済ませて `till` の注文だけを渡す）。
+    "isHoe(",
   ].filter((name) => main.includes(name));
   check("main.ts に振り分けが戻っていない", backInMain.length === 0, backInMain.join(" "));
 
@@ -100,6 +104,9 @@ export function run(): void {
     ["石を置く", aimAt(GRASS), facts(STONE)],
     ["素手で地面を狙う", aimAt(GRASS), facts(NO_ITEM)],
     ["素手で空を向く", null, facts(NO_ITEM)],
+    ["クワで土を狙う", aimAt(DIRT), facts(WOOD_HOE)],
+    ["クワで作業台を狙う", aimAt(CRAFTING_TABLE), facts(WOOD_HOE)],
+    ["クワだけ（空を向く）", null, facts(WOOD_HOE)],
   ];
   console.log("      狙い / 手                        起きること");
   const got = new Map<string, UseAction>();
@@ -248,6 +255,27 @@ export function run(): void {
       `${kind(4)} / ${kind(5)} / ${kind(6)}`,
     );
   }
+
+  // --- クワ（耕す。器の次・バケツより前） ---
+  check("クワ + 土 → till", kindOf("クワで土を狙う") === "till", kindOf("クワで土を狙う"));
+  {
+    const till = got.get("クワで土を狙う");
+    check(
+      "耕すマスがそのまま渡る（可否は placing.ts）",
+      till?.kind === "till" && till.at.x === 3 && till.at.z === 5,
+      till?.kind === "till" ? `(${till.at.x},${till.at.y},${till.at.z})` : till?.kind,
+    );
+  }
+  // **器が先。** 作業台を狙っているあいだはクワを持っていても開くほうが勝つ。
+  check("クワ + 作業台 → craft（器が先）", kindOf("クワで作業台を狙う") === "craft", kindOf("クワで作業台を狙う"));
+  // 狙う先が無ければ何も起きない（どのマスを耕すか決まらない）。
+  check("クワだけ（aim なし）→ none", kindOf("クワだけ（空を向く）") === "none", kindOf("クワだけ（空を向く）"));
+  // 別のアイテムを持って土を狙っても今までどおり（置く側へ落ちる）。
+  check(
+    "別のアイテム + 土 → 今までどおり（置く）",
+    decideUse(aimAt(DIRT), facts(STONE)).kind === "place",
+    decideUse(aimAt(DIRT), facts(STONE)).kind,
+  );
 
   // --- 落とし物のアイテムは何も起きない（投げるのは Q） ---
   check("エンダーパールは右クリックでは何も起きない", decideUse(null, facts(ENDER_PEARL)).kind === "none");

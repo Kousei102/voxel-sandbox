@@ -24,6 +24,7 @@ import {
   ROTTEN_FLESH,
   STONE_AXE,
   WOOD_AXE,
+  WOOD_HOE,
   WOOD_PICKAXE,
   WOOD_SHOVEL,
   WOOD_SWORD,
@@ -1572,6 +1573,13 @@ export function run(): void {
     [...fullRows.flat(), bare].every((d) => d >= 1 && d <= 8),
     `${Math.min(...fullRows.flat(), bare)} 〜 ${Math.max(...fullRows.flat(), bare)}`,
   );
+
+  // クワ。**`TOOL_ATTACK` に `hoe` を足し忘れると `attackDamage()` が NaN を返し、
+  // クワで殴ったモブの体力が NaN になって二度と死ななくなる**（禁じ手 2）。
+  const hoeDamage = attackDamage(WOOD_HOE);
+  console.log(`      木のクワで殴る: ${hoeDamage}（シャベルと同じ階層の攻撃力）`);
+  check("クワで殴っても NaN にならない", !Number.isNaN(hoeDamage), `${hoeDamage}`);
+  check("木のクワは 1.5（シャベルと同じ）", hoeDamage === 1.5, `${hoeDamage}`);
 
   // 声色。低すぎると唸り声にも聞こえず、高すぎると耳障りになる。
   console.log(

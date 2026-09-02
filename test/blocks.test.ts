@@ -6,6 +6,7 @@ import {
   BLOCKS,
   CACTUS,
   COBBLE_SLAB,
+  DIRT,
   END_PORTAL_FRAME,
   FACE_XN,
   FACE_XP,
@@ -13,6 +14,7 @@ import {
   FACE_YP,
   FACE_ZN,
   FACE_ZP,
+  FARMLAND,
   FRAME_HEIGHT,
   GRASS,
   LAVA,
@@ -50,11 +52,13 @@ import {
   placeSpot,
   placedVariant,
   shapeBoxes,
+  tilled,
 } from "../src/blocks";
 import { MAX_LIGHT } from "../src/constants";
 import { PLAYER_SIZE } from "../src/physics";
 import {
   BUCKET,
+  DIAMOND_HOE,
   IRON_INGOT,
   LAVA_BUCKET,
   MAX_ITEM_ID,
@@ -62,11 +66,13 @@ import {
   SHEARS,
   STICK,
   WATER_BUCKET,
+  WOOD_HOE,
   allItemIds,
   bucketOf,
   bucketUse,
   dropOf,
   isBucket,
+  isHoe,
   itemName,
   itemStackLimit,
   liquidOf,
@@ -137,8 +143,9 @@ export function run(): void {
       `${sharedItems.map((id) => `${id} ${itemName(id)}`).join(" / ")}）  MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   check(
-    "共有帯のアイテムは剣 4 本とシアーズの 5 個（115 まで）",
-    sharedItems.length === 5 && sharedItems[4] === SHEARS && MAX_ITEM_ID === SHEARS,
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本の 9 個（120 まで）",
+    sharedItems.length === 9 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+      MAX_ITEM_ID === DIAMOND_HOE,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **95..110 は空けたまま**（ブロック側の向き違いが使っている番号）。
@@ -754,6 +761,35 @@ export function run(): void {
 
   // バケツでないものを渡しても何も起きない（`main.ts` が誤って呼んでも安全）
   check("バケツ以外では何も起きない", bucketUse(IRON_INGOT, WATER) === null && bucketUse(NO_ITEM, LAVA) === null);
+
+  describe("耕地とクワ");
+
+  // **`variantOf: DIRT`** —— 点火中のかまど（`FURNACE_LIT`）と同じ仕掛け。
+  check("耕地は土の向き違い（variantOf: DIRT）", baseBlock(FARMLAND) === DIRT, `baseBlock ${baseBlock(FARMLAND)}`);
+  // (a) `variantOf` が AIR でないので `items.ts` の for が飛ばす → アイテムが無い。
+  check("耕地はアイテムを持たない（一覧が増えない）", itemName(FARMLAND) === "", `"${itemName(FARMLAND)}"`);
+  // (b) `dropOf()` の既定（`baseBlock()`）どおり、掘ると土が 1 個落ちる。
+  check("耕地を掘ると土が落ちる", dropOf(FARMLAND).item === DIRT && dropOf(FARMLAND).count === 1, `${itemName(dropOf(FARMLAND).item)} x${dropOf(FARMLAND).count}`);
+
+  // `tilled()` の 4 通り（純粋・座標を知らない。`quenched()` と同じ形）。
+  const tillCases: [string, number, number][] = [
+    ["土", DIRT, FARMLAND],
+    ["草", GRASS, FARMLAND],
+    ["石", STONE, AIR],
+    ["空気", AIR, AIR],
+  ];
+  console.log(`      tilled(): ${tillCases.map(([n, id]) => `${n}→${blockName(tilled(id))}`).join(" / ")}`);
+  for (const [name, id, want] of tillCases) {
+    check(`${name}を耕すと ${want === FARMLAND ? "耕地" : "何も起きない"}`, tilled(id) === want, `${tilled(id)}`);
+  }
+
+  // クワは 4 本だけ `isHoe()` が true。掘る速さは持たない（素手と同じ 1）。
+  console.log(
+    `      isHoe: 木のクワ ${isHoe(WOOD_HOE)} / ダイヤのクワ ${isHoe(DIAMOND_HOE)} / ` +
+      `石 ${isHoe(STONE)} / 素手 ${isHoe(NO_ITEM)}`,
+  );
+  check("木・ダイヤのクワは isHoe", isHoe(WOOD_HOE) && isHoe(DIAMOND_HOE));
+  check("クワでないものは isHoe ではない", !isHoe(STONE) && !isHoe(NO_ITEM) && !isHoe(BUCKET));
 
   endPortalFrames();
 

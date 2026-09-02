@@ -271,6 +271,16 @@ export const VARIANT_BAND_MAX = 110;
 export const SHARED_ID_START = VARIANT_BAND_MAX + 1;
 const ID_LIMIT = MAX_BLOCK_ID + 1;
 
+/**
+ * 耕地。**土か草をクワで耕すとなる**（規則は下の `tilled()`）。
+ *
+ * **`variantOf: DIRT` にしてあります。** 点火中のかまど（`FURNACE_LIT`）とまったく同じ
+ * 仕掛けで、(a) `items.ts` の for が `variantOf !== AIR` を飛ばすので**アイテムが
+ * 作られず**（一覧にも持ち物にも出ない）、(b) `dropOf()` の既定が `baseBlock()` なので
+ * **掘ると土が 1 個**落ちます。**耕地そのものは手に入りません。**
+ */
+export const FARMLAND = 116;
+
 /** 上付きハーフ。見た目と当たり判定だけが違うので、大元は下付きのハーフ。 */
 export const STONE_SLAB_TOP = 64;
 export const COBBLE_SLAB_TOP = 65;
@@ -311,7 +321,7 @@ const FIRST_FRAME_VARIANT = 104;
  * 書いた瞬間、剣がそのブロックの採掘道具になって速く掘れるようになります ——
  * 剣は「殴るための道具」で、掘る速さは素手と同じ（`ItemDef.tool.speed` が 1）です。
  */
-export type ToolKind = "pickaxe" | "axe" | "shovel" | "sword";
+export type ToolKind = "pickaxe" | "axe" | "shovel" | "sword" | "hoe";
 
 /**
  * 音の材質グループ。足音・破壊・設置の音はここから作る（`sfx.ts` の表）。
@@ -1149,6 +1159,15 @@ export const BLOCKS: readonly BlockDef[] = [
       boxes: END_CRYSTAL_BOX,
     },
   ),
+
+  // 耕地。**土と同じ音**（柔らかい）で、硬さだけ少し軽くしてある。
+  // `variantOf: DIRT` なので、アイテムにならず掘ると土が落ちる（上のコメント）。
+  def(
+    FARMLAND,
+    "耕地",
+    { top: 0x59422d, side: 0x6b533a, bottom: 0x6b533a },
+    { hardness: 0.6, tool: "shovel", sound: "dirt", variantOf: DIRT },
+  ),
 ];
 
 
@@ -1377,6 +1396,17 @@ export function isHotLiquid(id: number): boolean {
 export function quenched(id: number, neighbour: number): number {
   const cools = isLiquid(neighbour) && !isHotLiquid(neighbour);
   return isHotLiquid(id) && cools ? OBSIDIAN : id;
+}
+
+/**
+ * 土か草をクワで耕すと何になるか。**純粋・座標を知らない**（`quenched()` と同じ形）。
+ * 耕せないブロックなら `AIR`（＝耕地にならない）を返す。
+ *
+ * **上のマスが塞がっていないかは見ない。** どのマスに効くか（上を確かめて書き込む）は
+ * `placing.ts` の `tryTill()` の仕事。
+ */
+export function tilled(id: number): number {
+  return id === DIRT || id === GRASS ? FARMLAND : AIR;
 }
 
 /**

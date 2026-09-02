@@ -28,6 +28,7 @@ import {
   placeSpot,
   placedVariant,
   supportFace,
+  tilled,
   type PlaceAim,
 } from "./blocks";
 import { placeBed, type BedWorld } from "./beds";
@@ -35,6 +36,7 @@ import { settleColumn } from "./gravity";
 import { bucketUse } from "./items";
 import { quenchAround } from "./liquids";
 import { ignite, portalBlock } from "./portals";
+import type { UseSpot } from "./use";
 
 /**
  * `beds.ts` と同じで、`World` を丸ごとではなく要る入口だけを受ける
@@ -122,6 +124,27 @@ export function tryIgnite(world: PlaceWorld, aim: PlaceAim): PlaceOutcome {
   const lit = ignite(world, aim.block.x + aim.normal.x, aim.block.y + aim.normal.y, aim.block.z + aim.normal.z);
   if (lit <= 0) return { kind: "blocked", message: "黒曜石の枠がありません" };
   return { kind: "placed", id: portalBlock("x") };
+}
+
+/**
+ * クワで耕す。狙ったマスが土か草でなければ何も起きない（`tilled()` が `AIR` を返す）。
+ *
+ * **上のマスが塞がっていたら耕せない** —— `isReplaceable()` でない、または
+ * 液体（水は `isReplaceable` だが、それでも塞がっている扱いにする）。**どちらの規則も
+ * ここで見るだけ**で、何が耕地になるかは `blocks.ts` の `tilled()`（純粋・座標を知らない）。
+ */
+export function tryTill(world: PlaceWorld, at: UseSpot): PlaceOutcome {
+  const { x, y, z } = at;
+  const result = tilled(world.getVoxel(x, y, z));
+  if (result === AIR) return NOTHING;
+
+  const above = world.getVoxel(x, y + 1, z);
+  if (!isReplaceable(above) || isLiquid(above)) {
+    return { kind: "blocked", message: "上が塞がっています" };
+  }
+
+  if (!world.setVoxel(x, y, z, result)) return NOTHING;
+  return { kind: "placed", id: result };
 }
 
 /**

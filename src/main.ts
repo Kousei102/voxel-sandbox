@@ -22,7 +22,7 @@ import { decideClick, decideKey, mobIsNearer } from "./controls";
 import { CraftScreen } from "./craftscreen";
 import { liveCrystals, shatterCrystal } from "./crystals";
 import { DayNight, WAKE_TIME, canSleep, environmentFor } from "./daynight";
-import { breakMessage, wearForAttack, wearForUse, wearSlot } from "./durability";
+import { breakMessage, wearForAttack, wearForTill, wearForUse, wearSlot } from "./durability";
 import { eyeMessage, fitEye } from "./endportal";
 import { syncExitPortal } from "./exitportal";
 import { Dimensions, OVERWORLD, emptyState, type DimensionState } from "./dimensions";
@@ -38,7 +38,7 @@ import { Mining } from "./mining";
 import { MobRenderer } from "./mobrender";
 import { Mobs, type Mob, type MobContext } from "./mobs";
 import { Player } from "./player";
-import { tryBucket, tryIgnite, tryPlace } from "./placing";
+import { tryBucket, tryIgnite, tryPlace, tryTill } from "./placing";
 import {
   PortalGate,
   arriveThrough,
@@ -860,6 +860,7 @@ function useOrPlace(m: { mob: Mob } | null): void {
     case "furnace": openFurnace(act.at.x, act.at.y, act.at.z); return;
     case "chest": openChest(act.at.x, act.at.y, act.at.z); return;
     case "bed": sleepOrSetSpawn(act.at.x, act.at.y, act.at.z, act.id); return;
+    case "till": tillAt(act.at.x, act.at.y, act.at.z); return;
     case "bucket": useBucket(act.item); return;
     case "fitEye": fitEndPortalEye(act.at.x, act.at.y, act.at.z); return;
     case "throwEye": throwEye(); return;
@@ -909,6 +910,18 @@ function igniteAt(aim: PlaceAim): void {
   audio.play("place", "stone");
   // **点いたときだけ**火種が減る（早期 return より後ろ）。帯が減るので描き直す。
   wearHeld(wearForUse(inventory.selectedItem, creative));
+  hud.refresh();
+  saveDirty = true;
+}
+
+/** クワで耕す。**どのマスが耕地になるかも上が塞がっているかも `placing.ts` の `tryTill()`。** */
+function tillAt(x: number, y: number, z: number): void {
+  const tilling = tryTill(world, { x, y, z });
+  if (tilling.kind === "blocked") hud.flash(tilling.message);
+  if (tilling.kind !== "placed") return;
+  audio.play("place", "dirt");
+  // **耕したときだけ**クワが減る（早期 return より後ろ）。
+  wearHeld(wearForTill(inventory.selectedItem, creative));
   hud.refresh();
   saveDirty = true;
 }

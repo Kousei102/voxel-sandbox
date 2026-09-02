@@ -13,15 +13,16 @@
  * （36 枠 + 盤面 9 + 掴んだ山 1 + 落ちている山 + 器の中身。`SaveData` の
  * `wear` / `craftWear` / `dropWear` / `chestWear` / `furnaceWear` の 5 つ）。
  *
- * **減り方は 3 通りです**: 掘って減るもの（`wearForBreaking()`。ツルハシ・斧・シャベル）と、
+ * **減り方は 4 通りです**: 掘って減るもの（`wearForBreaking()`。ツルハシ・斧・シャベル）と、
  * **使って減るもの**（`wearForUse()`。火種・弓・シアーズ）と、**殴って減るもの**
- * （`wearForAttack()`。剣）。**混ぜないこと** —— 弓で石を掘って弓が減っては困りますし、
- * ツルハシを右クリックしても、剣を右クリックしても減ってはいけません。
+ * （`wearForAttack()`。剣）と、**耕して減るもの**（`wearForTill()`。クワ）。
+ * **混ぜないこと** —— 弓で石を掘って弓が減っては困りますし、ツルハシを右クリックしても、
+ * 剣を右クリックしても、クワで殴っても減ってはいけません。
  */
 
 import { blockHardness, isBreakable } from "./blocks";
 import type { Slot } from "./inventory";
-import { NO_ITEM, isBow, isFireStarter, isShears, isSword, itemName, toolOf } from "./items";
+import { NO_ITEM, isBow, isFireStarter, isHoe, isShears, isSword, itemName, toolOf } from "./items";
 
 /**
  * 階層ごとに何回使えるか。**Minecraft のまま**（木 59 / 石 131 / 鉄 250 / ダイヤ 1561）。
@@ -119,6 +120,19 @@ export function wearForUse(item: number, creative: boolean): number {
 export function wearForAttack(item: number, creative: boolean): number {
   if (creative) return 0;
   return isSword(item) ? 1 : 0;
+}
+
+/**
+ * **土か草を 1 回耕したとき**に減る回数。**0 か 1 だけ**で、`wearForAttack()` と
+ * まったく同じ形です（`wearForBreaking()` を写した 4 つ目の減り方）。
+ *
+ * 減るのはクワだけ。**掘る道具・剣・弓・火種・シアーズは 0** —— 耕しても減りません。
+ * **効かなかったとき（`placing.ts` の `tryTill()` が `blocked` / `none` を返したとき）に
+ * 呼ばないのは呼ぶ側の仕事です**（`main.ts` は `placed` の中でだけ呼びます）。
+ */
+export function wearForTill(item: number, creative: boolean): number {
+  if (creative) return 0;
+  return isHoe(item) ? 1 : 0;
 }
 
 /**

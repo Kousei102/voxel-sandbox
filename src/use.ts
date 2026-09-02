@@ -2,7 +2,7 @@
  * 右クリックで**何が起きるか**の振り分け。**判断だけのファイル**で、three も DOM も
  * `World` も持ち物も出てこない（`placing.ts` / `bow.ts` / `endportal.ts` と同じ形）。
  *
- * もとは `main.ts` の `useOrPlace()` にあった `if` の列（いまは 12 通り）。**順番そのものが
+ * もとは `main.ts` の `useOrPlace()` にあった `if` の列（いまは 13 通り）。**順番そのものが
  * 判断です** —— 並べ替えると静かに壊れるものが 3 つあり、どれもブラウザを開いて
  * 現物を狙うまで気付けません:
  *
@@ -27,7 +27,7 @@ import {
   isEndPortalFrame,
   type PlaceAim,
 } from "./blocks";
-import { ENDER_EYE, foodOf, isBow, isBucket, isFireStarter, isShears, placedBlock } from "./items";
+import { ENDER_EYE, foodOf, isBow, isBucket, isFireStarter, isHoe, isShears, placedBlock } from "./items";
 
 /** 右クリックした瞬間の事実。**`main.ts` は集めて渡すだけ**（判断はこの中）。 */
 export interface UseFacts {
@@ -67,6 +67,8 @@ export type UseAction =
   | { readonly kind: "furnace"; readonly at: UseSpot }
   | { readonly kind: "chest"; readonly at: UseSpot }
   | { readonly kind: "bed"; readonly at: UseSpot; readonly id: number }
+  /** クワで耕す。**耕せるかどうかはここで決めない**（可否は `placing.ts`）。 */
+  | { readonly kind: "till"; readonly at: UseSpot }
   | { readonly kind: "bucket"; readonly item: number }
   | { readonly kind: "fitEye"; readonly at: UseSpot }
   | { readonly kind: "throwEye" }
@@ -97,6 +99,10 @@ export function decideUse(aim: PlaceAim | null, facts: UseFacts): UseAction {
   if (aim && aim.id === CHEST) return { kind: "chest", at: aim.block };
   // ベッドは足側でも枕側でも同じ 1 台なので、どちらを叩いても同じ扱い。
   if (aim && isBed(aim.id)) return { kind: "bed", at: aim.block, id: aim.id };
+
+  // クワ。**耕せるかどうか（土か草か・上が塞がっていないか）はここで決めない**
+  // （`place` と同じで、可否は `placing.ts` の `tryTill()`）。
+  if (aim && isHoe(held)) return { kind: "till", at: aim.block };
 
   // バケツ。**汲めるか流せるかは `items.ts` の `bucketUse()`**、どのマスに効くかは
   // `placing.ts` の `tryBucket()`。ここは「バケツを使う」とだけ言う。
