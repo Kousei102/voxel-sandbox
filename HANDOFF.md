@@ -6,33 +6,43 @@
 **ループは 2 本あります。** クリア導線は `LOOP.md`（`loop/endgame`）、
 **機能追加は `AUTODEV.md`（`loop/devgame`）**。いまクラウドで回っているのは後者です。
 
-## 見た目を PNG に撮れるようになりました（`npm run shot`）
+## 見た目が確かめられるようになりました（2 つの道が通りました）
 
-**GPU もブラウザも要りません。** `tools/raster.ts` が three の `Scene` を CPU で塗ります
-（`Scene` / `BufferGeometry` / 行列は Node でそのまま動くので、詰まっていたのは
-「three が GPU に描かせる」ところだけでした）。**640x400 で 1 場面 1〜2 秒**です。
+**1. 手元でも撮れます: `npm run shot`**（`tools/raster.ts`。GPU もブラウザも要りません）
+
+three の `Scene` を CPU で塗ります（`Scene` / `BufferGeometry` / 行列は Node でそのまま
+動くので、詰まっていたのは「three が GPU に描かせる」ところだけでした）。
+**640x400 で 1 場面 1〜2 秒。** 場面は terrain / ground / nether / end / water / mobs。
 
 ```
-npm run shot                 # 全部の場面を shots/ へ（terrain / ground / nether / end / water / mobs）
+npm run shot                 # 全部 shots/ へ
 npm run shot -- water --time 0.75 --size 960x600
 ```
 
-- **無人の周も自分で見られます。** PNG を撮って `Read` で開けばよいだけです。
-  「面が消えていないか」を、ユーザーを待たずに確かめられます
-- **写らないもの**: `sky.ts` の天球 GLSL（下地の 2 色で代用）・フォグ・
-  near 平面をまたぐ三角形・**DOM の画面（インベントリ・作業台・かまど）**。
-  ここは今までどおりユーザーに見てもらうこと
-- **DOM の画面は WebGL とは別の話**です（`ui.ts` / `inventoryui.ts` は three を
-  1 行も import していません）。撮るならブラウザのプロセスが要るだけで、
-  **GPU は要りません**。まだ手を付けていません
-- 見張りは `test/shot.test.ts`。**画素の値そのもの**を判定に置いてあります
-  （赤い箱の正面 219 / 上面 255 / 半透明 110 / 巡回順を逆にすると上面が消えて底面 128）。
-  **この道具が黙って壊れると、直っているものを直しにいくことになる**ため
+**写らないもの**: `sky.ts` の天球 GLSL（下地の 2 色で代用）・フォグ・near 平面をまたぐ
+三角形・**DOM の画面**。見張りは `test/shot.test.ts`（**画素の値そのもの**で判定）。
 
-**撮って分かったこと**（不具合ではありません。手触りの話として）:
+**2. クラウドの周では本物のブラウザで撮れます: `node tools/browsershot.mjs`**
 
-- **ネザーは、松明も溶岩も無い所では実際にまっ暗です**（`AMBIENT_LIGHT` = 0.16）。
-  天井があってスカイライトが 0 なので、`max(sky x 昼夜, block)` が 0.16 になります
+**`CLAUDE.md` の「この環境では WebGL が動かない」は手元の devcontainer の話で、
+クラウドのサンドボックスには当てはまりませんでした**（2026-09-02 実測。Chromium 141 と
+playwright が最初から入っていて、`/opt/pw-browsers`。GPU は無いが SwiftShader で
+**WebGL 2.0 が動く**）。**天球 GLSL もフォグも DOM の画面も、これなら写ります。**
+撮った 5 枚と分かったことは **`docs/browser-shots/README.md`**。
+
+- ポインタロックはヘッドレスでも**効きました**（HUD が本当に出た絵です）
+- 地形が落ち着くまで **13〜16 秒**（SwiftShader なので遅い）。1 周ぶんで 30 秒ほど
+- **日本語は 1 文字も欠けていません**
+
+**3. その突き合わせで、CPU 側のバグが 1 つ見つかって直りました**
+
+`tools/raster.ts` が **sRGB の符号化を抜かしていました**（three の
+`outputColorSpace = SRGBColorSpace` に当たるもの）。形は合っているのに**明るさだけが
+本番と違う絵**が出ていて、暗い所ほど差が開きます。直したので、地面の代表色は
+**本物とまったく同じ rgb(106,168,79) / rgb(94,156,65)** になりました（`95f0e74`）。
+
+**この前の周の申し送りにあった「ネザーは実際にまっ暗」は誤りでした。** あれは
+この符号化漏れで、直したいまは天井のグロウストーンも岩肌も見えます。
 
 ## 実験: 無人で `.claude/` に書けるか
 
@@ -70,9 +80,10 @@ routines には**権限モードの指定自体がありません**（"there is 
 ## いまの状態（2026-09-02）
 
 - ブランチ **`loop/devgame`**（push 済み）。**`master` への push とマージは引き続き禁止**
+- ブランチ **`loop/devgame`**（`d182405` まで push 済み）
 - `npm run typecheck` は通ります。**`npm test` 2531 件すべて成功**
-  （+6 件は `test/shot.test.ts`）。**`npm run build` は走らせていません**
-  （`src/**` に 1 行も触っていないため）
+  （+6 件は `test/shot.test.ts`）。**`npm run build` はクラウドの周が走らせて通っています**
+  （`src/**` には 1 行も触っていません）
 - **進行（クリア導線）達成 13 / 13。仮の判定は 0 件**
 - `src/main.ts` は **1396 行 / 上限 1500**（**この周は 0 行**）
 - **ブロック ID: 1..63 の空き 9 / 111..255 の空き 145**（**この周は 0 個**）
@@ -81,8 +92,9 @@ routines には**権限モードの指定自体がありません**（"there is 
 - **`RULES-INBOX.md` は未取り込み 0 件**
 - **ブラウザ確認は 0 件**（見た目に出るものを 1 つも足していません）
 - **`src/**` は 1 行も触っていません。** 足したのは `tools/raster.ts` / `tools/shot.ts` /
-  `test/shot.test.ts` と、`CLAUDE.md` 5 行・`package.json` の `shot`・`tsconfig.json` の
-  `include` に `tools`・`.gitignore` に `shots/`
+  `tools/browsershot.mjs` / `test/shot.test.ts` / `docs/browser-shots/` と、
+  `CLAUDE.md`・`package.json` の `shot`・`tsconfig.json` の `include` に `tools`・
+  `.gitignore` に `shots/`
 
 ## この周でやったこと（無人・B の周 1 種類だけ）
 
@@ -126,6 +138,13 @@ routines には**権限モードの指定自体がありません**（"there is 
 
 人がやること:
 
+- **`#status`（通知）がインベントリの説明文とメニューのモード行に重なります。**
+  `#status` は `bottom: 118px` 固定（`style.css:674`）で、インベントリの `#recipehint` と
+  同じ高さ。オートセーブは 15 秒ごと・通知は 3 秒出るので、**インベントリを開いている
+  時間の 2 割ほどで説明文が読めません**。**ブラウザの絵で見つかったもの**で、
+  `docs/browser-shots/inventory.png` と `menu.png` に写っています。直していません
+  （`REVIEW.md` に入れるか手触りとして流すかは人が決めること）
+- 無人の周にブラウザ撮影をやらせるかどうか（`AUTODEV.md` の書き換えが要ります）
 - `master` へのマージ
 
 **音のテスト（`test/audio.test.ts`）の揺れは、この周も出ていません**（3 回走らせて緑）。
