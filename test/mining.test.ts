@@ -4,6 +4,7 @@ import {
   COBBLE,
   DIAMOND_ORE,
   DIRT,
+  GLASS,
   GOLD_ORE,
   GRASS,
   GRAVEL,
@@ -11,6 +12,7 @@ import {
   LEAVES,
   STONE,
   WATER,
+  WHEAT_CROP_RIPE,
   WOOD,
   blockName,
 } from "../src/blocks";
@@ -22,10 +24,13 @@ import {
   IRON_PICKAXE,
   NO_ITEM,
   STONE_PICKAXE,
+  WHEAT,
   WOOD_AXE,
   WOOD_PICKAXE,
   dropOf,
+  itemName,
   rollDrop,
+  rollDrops,
 } from "../src/items";
 import { Mining, breakTime, canHarvest } from "../src/mining";
 import { seeded } from "./arena";
@@ -172,4 +177,52 @@ function gravelDropsFlint(): void {
   check("砂利は表どおりの割合で火打石になる", Math.abs(percent - 10) < 2, `${percent.toFixed(1)}%`);
   // **掘っても何も出ない目があってはいけない。** `otherwise` を落とすとここが減る。
   check("掘れば必ず何かが落ちる", flint + gravel === ROUNDS, `${flint + gravel} / ${ROUNDS}`);
+
+  stackCounts();
+}
+
+/**
+ * **山の数**（`rollDrops()`）。`rollDrop()` は 1 山目だけを答えるので、
+ * 「0 山」と「2 山」はこちらでしか見えない。
+ */
+function stackCounts(): void {
+  // 数を**先に出してから**判定する（`rules/testing.md`）。
+  const cases: [string, number, number][] = [
+    ["石", STONE, 0.5],
+    ["ガラス", GLASS, 0.5],
+    ["葉（外れ）", LEAVES, 0.5],
+    ["砂利（外れ）", GRAVEL, 0.5],
+    ["砂利（当たり）", GRAVEL, 0.05],
+    ["実った小麦", WHEAT_CROP_RIPE, 0.5],
+  ];
+  console.log(
+    "      山の数: " +
+      cases
+        .map(([label, id, roll]) => {
+          const stacks = rollDrops(id, roll);
+          const inside = stacks.map((s) => `${itemName(s.item)} x${s.count}`).join("+") || "なし";
+          return `${label} ${stacks.length}（${inside}）`;
+        })
+        .join(" / "),
+  );
+  check("石は 1 山", rollDrops(STONE, 0.5).length === 1, `${rollDrops(STONE, 0.5).length}`);
+  check("ガラスは 0 山", rollDrops(GLASS, 0.5).length === 0, `${rollDrops(GLASS, 0.5).length}`);
+  check("外した葉は 0 山", rollDrops(LEAVES, 0.5).length === 0, `${rollDrops(LEAVES, 0.5).length}`);
+  // **`otherwise` の砂利は 0 山にならない**（外れても砂利そのものが出る）。
+  check(
+    "砂利は当たっても外しても 1 山",
+    rollDrops(GRAVEL, 0.5).length === 1 && rollDrops(GRAVEL, 0.05).length === 1,
+    `外れ ${rollDrops(GRAVEL, 0.5).length} / 当たり ${rollDrops(GRAVEL, 0.05).length}`,
+  );
+  check(
+    "実った小麦だけが 2 山（小麦 + 種）",
+    rollDrops(WHEAT_CROP_RIPE, 0.5).length === 2,
+    `${rollDrops(WHEAT_CROP_RIPE, 0.5).length}`,
+  );
+  // **`rollDrop()` の戻りは今までどおり 1 山目だけ**（既存の約 25 か所の根拠）。
+  check(
+    "rollDrop() は今までどおり 1 山目だけを答える",
+    rollDrop(WHEAT_CROP_RIPE, 0.5).item === WHEAT && rollDrop(WHEAT_CROP_RIPE, 0.5).count === 1,
+    `${itemName(rollDrop(WHEAT_CROP_RIPE, 0.5).item)} x${rollDrop(WHEAT_CROP_RIPE, 0.5).count}`,
+  );
 }

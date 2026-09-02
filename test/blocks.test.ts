@@ -84,6 +84,7 @@ import {
   liquidOf,
   placedBlock,
   rollDrop,
+  rollDrops,
   toolOf,
 } from "../src/items";
 import { breakTime } from "../src/mining";
@@ -929,12 +930,63 @@ function ripeWheat(): void {
     rollDrop(WHEAT_CROP_RIPE, 0.5).item === WHEAT && rollDrop(WHEAT_CROP_RIPE, 0.5).count === 1,
     `${itemName(rollDrop(WHEAT_CROP_RIPE, 0.5).item)} x${rollDrop(WHEAT_CROP_RIPE, 0.5).count}`,
   );
-  // **種は戻らない**（1 ブロックにつき 1 山しか落とせない。2 山落ちる器は別のタスク）。
+  // **`rollDrop()` は 1 山目だけ**（既存の約 25 か所の根拠。ここを配列にしない）。
   check(
-    "いまは種が戻らない（1 山しか落とせないため）",
+    "rollDrop() には種が出てこない（1 山目だけを答えるため）",
     rollDrop(WHEAT_CROP_RIPE, 0.5).item !== WHEAT_SEEDS,
     `${itemName(rollDrop(WHEAT_CROP_RIPE, 0.5).item)}`,
   );
+
+  // --- 種も戻る（2 山）。**これで畑が自転する** ---
+  {
+    const stacks = rollDrops(WHEAT_CROP_RIPE, 0.5);
+    console.log(
+      `      実った小麦の山（${stacks.length} 個）: ` +
+        stacks.map((s) => `${itemName(s.item)}(${s.item}) x${s.count}`).join(" / "),
+    );
+    check("実った小麦は 2 山落ちる", stacks.length === 2, `${stacks.length} 山`);
+    check(
+      "1 山目は小麦 124 が 1 個",
+      stacks[0]?.item === WHEAT && stacks[0]?.count === 1,
+      `${itemName(stacks[0]?.item ?? NO_ITEM)} x${stacks[0]?.count}`,
+    );
+    check(
+      "2 山目は種 122 が 1 個（植え直せる）",
+      stacks[1]?.item === WHEAT_SEEDS && stacks[1]?.count === 1,
+      `${itemName(stacks[1]?.item ?? NO_ITEM)} x${stacks[1]?.count}`,
+    );
+    // **苗は 1 山のまま。** 実る前に刈っても得しない（得すると、育つのを待つ理由が消える）。
+    const young = rollDrops(WHEAT_CROP, 0.5);
+    check(
+      "苗は 1 山のまま（実る前に刈っても得しない）",
+      young.length === 1 && young[0].item === WHEAT_SEEDS && young[0].count === 1,
+      young.map((s) => `${itemName(s.item)} x${s.count}`).join(" / "),
+    );
+  }
+
+  // --- 不変条件（表が増えたときに勝手に壊れないこと） ---
+  {
+    const withExtra: string[] = [];
+    const sameItem: string[] = [];
+    const tooMany: string[] = [];
+    for (const { id } of BLOCKS) {
+      const drop = dropOf(id);
+      if (drop.extra) {
+        withExtra.push(`${blockName(id)}(${id})`);
+        // **2 山目は 1 山目と別のアイテム**（同じなら 1 山にまとめるべきで、
+        // 分かれていると拾う側で 2 枠を食う）。
+        if (drop.extra.item === drop.item) sameItem.push(`${blockName(id)}(${id})`);
+      }
+      // 当たりの目と外れの目の両方で見る（`chance` と `extra` の組み合わせ）。
+      for (const roll of [0, 0.5, 0.999]) {
+        if (rollDrops(id, roll).length > 2) tooMany.push(`${blockName(id)}(${id})@${roll}`);
+      }
+    }
+    console.log(`      extra を持つブロック: ${withExtra.join(" / ") || "なし"}`);
+    check("extra を持つのは実った小麦だけ", withExtra.length === 1, withExtra.join(" / "));
+    check("extra は 1 山目と別のアイテム", sameItem.length === 0, sameItem.join(" / "));
+    check("どのブロックでも山は 2 つまで", tooMany.length === 0, tooMany.join(" / "));
+  }
 
   // 苗と同じ形（通り抜けられる・支えにならない・上書きして置けない・素手ですぐ壊せる）。
   check("実った小麦は通り抜けられる", collisionBoxes(WHEAT_CROP_RIPE).length === 0);

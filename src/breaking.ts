@@ -16,7 +16,7 @@ import { AIR, CHEST, FURNACE, baseBlock } from "./blocks";
 import { clearBedPartner } from "./beds";
 import { wearForBreaking } from "./durability";
 import { settleColumn } from "./gravity";
-import { NO_ITEM, rollDrop } from "./items";
+import { rollDrops } from "./items";
 import { canHarvest } from "./mining";
 
 /** **`World` を丸ごと受け取らない**（`beds.ts` / `placing.ts` と同じ作法）。 */
@@ -140,8 +140,7 @@ export function tryBreak(
   // **消耗は落ちる／落ちないに関わらず足す**（掘った労力そのものなので、
   // 適正でない道具で削っても腹は減る）。
   if (!canHarvest(id, order.tool)) return { broken: true, drops, exhaust: true, wear };
-  const mined = harvest(id, order.roll, x, y, z, 0.35);
-  if (mined) drops.push(mined);
+  drops.push(...harvest(id, order.roll, x, y, z, 0.35));
   return { broken: true, drops, exhaust: true, wear };
 }
 
@@ -168,13 +167,21 @@ export function autoBreak(
   // 相方のぶんは落とさない —— 出るベッドは 1 台につき 1 個。
   clearBedPartner(world, x, y, z, id);
   if (creative) return [];
-  const dropped = harvest(id, roll, x, y, z, 0.25);
-  return dropped ? [dropped] : [];
+  return harvest(id, roll, x, y, z, 0.25);
 }
 
-/** **何が落ちるかは `items.ts` の `rollDrop()`**（ここは確率の比較を持たない）。 */
-function harvest(id: number, roll: number, x: number, y: number, z: number, dy: number): Burst | null {
-  const drop = rollDrop(id, roll);
-  if (drop.item === NO_ITEM || drop.count <= 0) return null;
-  return { item: drop.item, count: drop.count, x: x + 0.5, y: y + dy, z: z + 0.5 };
+/**
+ * **何が何山落ちるかは `items.ts` の `rollDrops()`**（ここは確率の比較を持たない）。
+ *
+ * **山が 2 つでも同じ場所に貼るだけ**でよい —— 地面での散らばりは `drops.ts` の
+ * `burst()` が乱数で付けるので、ここで並べて置こうとしないこと。
+ */
+function harvest(id: number, roll: number, x: number, y: number, z: number, dy: number): Burst[] {
+  return rollDrops(id, roll).map((drop) => ({
+    item: drop.item,
+    count: drop.count,
+    x: x + 0.5,
+    y: y + dy,
+    z: z + 0.5,
+  }));
 }

@@ -425,6 +425,12 @@ export function allFoodIds(): number[] {
   return [...FOODS.keys()];
 }
 
+/** 地面に出す 1 山ぶん（**どこに落ちるかは知らない**。場所は `breaking.ts` が決める）。 */
+export interface DropStack {
+  readonly item: number;
+  readonly count: number;
+}
+
 export interface Drop {
   readonly item: number;
   readonly count: number;
@@ -437,6 +443,15 @@ export interface Drop {
    * 「外れ = 何も出ない」しか無いと砂利が掘れば消えるブロックになる。
    */
   readonly otherwise?: number;
+  /**
+   * **1 山目とは別に、必ず落ちるもの**（実った小麦の種がこれ）。省略すると 1 山だけ。
+   *
+   * **確率も個数の範囲も持たせないこと。** 流れてくる乱数は `roll` の 1 本だけなので、
+   * ここに確率を付けると**1 山目の当たり外れと必ず相関します**（砂利の火打石と
+   * 種の個数が連動する形）。本家の「小麦 1 + 種 0〜3」に寄せたくなったら、
+   * **乱数をもう 1 本流す話が先**です（`BreakOrder` と `autoBreak()` の引数に及びます）。
+   */
+  readonly extra?: DropStack;
 }
 
 /**
@@ -466,10 +481,10 @@ const DROPS = new Map<number, Drop>([
   // 苗は**種が 1 個戻るだけ**（育っていないので小麦は出ない）。**この 1 行が要る** ——
   // `variantOf` が自分自身なので、既定の `baseBlock()` はアイテムの無い 121 を落とす。
   [WHEAT_CROP, { item: WHEAT_SEEDS, count: 1, chance: 1 }],
-  // 実った小麦は**小麦が 1 個**。**この 1 行が要る** —— `variantOf` は苗なので、
-  // 既定の `baseBlock()` に任せると実らせても種しか採れない。
-  // **種は戻らない**（1 ブロックにつき 1 山しか落とせないため。2 山落ちる器は別のタスク）。
-  [WHEAT_CROP_RIPE, { item: WHEAT, count: 1, chance: 1 }],
+  // 実った小麦は**小麦が 1 個 + 種が 1 個の 2 山**。**この 1 行が要る** —— `variantOf` は
+  // 苗なので、既定の `baseBlock()` に任せると実らせても種しか採れない。
+  // **種が戻るので畑が自転します**（種はここから 1 個固定。本家の「0〜3」より渋い）。
+  [WHEAT_CROP_RIPE, { item: WHEAT, count: 1, chance: 1, extra: { item: WHEAT_SEEDS, count: 1 } }],
   // ポータルの面は壊せる（硬さ 0）が、何も落ちない。**持ち帰れると枠が要らなくなる。**
   [NETHER_PORTAL, { item: NO_ITEM, count: 0, chance: 0 }],
   // エンドクリスタルは砕けて消える（Minecraft では爆発する）。**拾えると、
@@ -500,6 +515,28 @@ export function rollDrop(blockId: number, roll: number): { item: number; count: 
   if (roll < drop.chance) return { item: drop.item, count: drop.count };
   const missed = drop.otherwise ?? NO_ITEM;
   return { item: missed, count: missed === NO_ITEM ? 0 : 1 };
+}
+
+/**
+ * **地面に出す山を全部**（0〜2 山）。実った小麦だけが 2 山（小麦 + 種）で、
+ * 他は今までどおり 0 山か 1 山。
+ *
+ * **1 山目は `rollDrop()` に作らせること** —— `chance` と `otherwise` の判断をここへ
+ * 写すと、**掘ったときと床を抜かれたときで落ちるものが違う**が戻ってきます
+ * （`rules/items-survival.md`）。`rollDrop()` は既存のテストの根拠なので消しません。
+ *
+ * **`extra` は 1 山目の当たり外れに関係なく必ず入れます。** 別の山なので、
+ * 「1 山目を外したら 2 山目も落ちない」ではありません（`chance` と `extra` の
+ * 両方を持つブロックはいま 1 つも無いので、この決めはここのコメントが唯一の根拠）。
+ */
+export function rollDrops(blockId: number, roll: number): readonly DropStack[] {
+  const stacks: DropStack[] = [];
+  const first = rollDrop(blockId, roll);
+  // 何も出ない目（ガラス・葉の外れ）は山にしない。
+  if (first.item !== NO_ITEM && first.count > 0) stacks.push(first);
+  const { extra } = dropOf(blockId);
+  if (extra && extra.item !== NO_ITEM && extra.count > 0) stacks.push(extra);
+  return stacks;
 }
 
 // --- バケツ -------------------------------------------------------------
