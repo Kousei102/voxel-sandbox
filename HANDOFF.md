@@ -8,14 +8,36 @@
 
 ## 実験: 無人で `.claude/` に書けるか
 
-**答え: (c) 拒否されました。** 無人の周は `.claude/` の中を書けません。
+**答え: 書けません。無人なら、そこで止まります。**
 
 - 使ったツール: **`Write`**（Bash や python のスクリプトではありません）
 - パス: **`.claude/rules/.probe.md`**（本文は `probe` の 1 行）
-- 返ってきた文言: **`Denied by user`**（これ以外の説明はありませんでした）
-- ファイルは**作られていません**（`ls` で `No such file or directory`）。消す作業も不要でした
-- **確認待ちで止まる（b）ではなく、その場で拒否（c）です。** 番は止まらず、そのまま
-  本題の周を最後まで進められました。**決まりごとの更新は今までどおり `RULES-INBOX.md` へ**
+- 出たもの: **`Claude requested permissions to edit ... which is a sensitive file.`**
+  という**確認**。返ってきた結果は **`Denied by user`**
+- ファイルは作られていません（`ls` で `No such file or directory`）
+
+**この周を書いた無人の自分は「(c) 即時拒否なので番は止まらない」と結論しましたが、
+これは誤りでした。** 実行ログの時刻がそれを示しています:
+
+```
+01:25:08.254  tool_use Write: .claude/rules/.probe.md
+01:25:08.358  permission prompt: ... which is a sensitive file.
+01:33:30.475  env[info]: Allocating sandbox        ← 8 分 22 秒の空白
+01:33:38.224  tool_result ERROR: Denied by user
+```
+
+**8 分 22 秒ブロックされ、その間にサンドボックスが一度回収されて割り当て直されています。**
+`Denied by user` が返ったのは、**ユーザーがブラウザで見ていて「拒否」を押したから**です。
+**呼んだ側からは待たされたことが見えません**（結果だけが返るので、即時拒否と区別が付かない）。
+**誰も居なければ、そのまま止まったままでした。**
+
+**原因は Claude Code の [Protected paths](https://code.claude.com/docs/en/permission-modes#protected-paths)**
+で、`.git` や `.vscode` と並んで **`.claude` が挙がっています**。**判定が許可ルールより手前で走る**ので、
+`.claude/settings.json` の `Edit(.claude/rules/**)` は**どこに書いても効きません**（公式ドキュメントに明記）。
+routines には**権限モードの指定自体がありません**（"there is no permission-mode picker"）。
+**`Bash` の `python3` から書くと判定を素通りしますが、それはガードを迂回する形なので使わないこと。**
+
+**結論: 決まりごとの更新は `RULES-INBOX.md` へ。この実験を次の周でやり直さないこと。**
 
 ## いまの状態（2026-09-02）
 
