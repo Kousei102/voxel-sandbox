@@ -1,119 +1,119 @@
-# 仕様: 小麦の種と苗（耕地に植える）
+# 仕様: 育つ器（`crops.ts`）と実った小麦
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-**キューの「12. 種・小麦・パンと『育つブロック』」を割った前半**（**後半は 13 番**として書き戻し
-済み）。**数え直し済み**: `crop` / `wheat` / `小麦` / `seed`（ワールドの種を除く）/ `bread` / `パン`
-は `src/**` にも `test/**` にも 1 件もありません。**耕地（116）と `tryTill()` は前の周で入りました。**
+**キューの「13. 育つ器と小麦・パン」を割った前半**（**後半 2 つは 14 番・15 番**として書き戻し済み）。
+**数え直し済み**（2026-09-02）: `crops` / `WHEAT_CROP_RIPE` / `bread` / `パン` は `src/**` にも `test/**` にも
+1 件もなく、**苗（121）・種（122）・`tryPlant()` は前の周で入っています**（実装前: 2707 件緑 / `main.ts` 1444 行）。
 
 ## 1. 何を足すか / 完了の判定
 
-**小麦の種（アイテム）と小麦の苗（ブロック）。** 草むらを壊すと 12.5% で種が出て、種を持って
-**耕地**を右クリックすると上に苗が立ち、種が 1 減ります。苗を壊すと種が 1 個戻り、**下の耕地を
-掘ると苗も壊れて種が落ちます**（支えを失う経路）。**まだ育ちません**（後半）。
-完了の判定 —— **`npm test` に次が増えて、全部緑**:
+**植えた苗が時間で育ち、実ったら小麦が採れる。** 耕地の上の苗を `GROW_SECONDS` 秒ぶん放っておくと
+**実った小麦（別のブロック ID）に差し替わり**、掘ると**小麦（アイテム）が 1 個**出ます。育ち具合は
+**位置ごとの状態**（`furnaces.ts` の器の形）で持ち、**セーブに省略可キー `crops` が 1 つ**増えます。
+**種は戻りません**（1 回の採掘で 2 山落とす器が無いため。**14 番**で入れます）。完了の判定 ——
+**`npm test` に次が増えて全部緑**（いま 2707 件）:
 
-- 「**立方体 36**（±0）/ **非立方体 68**（67 → 68）/ **アイテム 88 種**（87 → 88）/
-  `MAX_ITEM_ID` 122 / **111..255 の空き 133**（135 → 133）」
-- 「草むらを壊すと 12.5% で種・外したら草むらそのもの」「耕地に植わる」「土や草には植わらない」
-  「もう苗が立っているマスには植わらない」「苗を壊すと種 1 個」「**耕地を掘ると苗も種になって落ちる**」
-- 「苗はアイテムを持たない（一覧が増えるのは種の 1 枠だけ）」「種は食べられない・道具でない」
+- 「**立方体 36**（±0）/ **非立方体 69**（68 → 69）/ **アイテム 89 種**（88 → 89）/
+  `MAX_ITEM_ID` 124 / **111..255 の空き 131**（133 → 131）」
+- 「`GROW_SECONDS` 秒で実る」「**未読み込みの列では育たず、忘れられもしない**」「下が耕地でなければ
+  育たない」「苗が消えていたら忘れる」「実ったら `crops` から消える」「`setVoxel` が失敗したら持ち越す」
+- 「実った小麦を掘ると**小麦 1 個**」「耕地を掘っても落ちる」「実った小麦はアイテムを持たない」
+  「`crops` は空なら書き出さない（**植えていない人のセーブは 1 バイトも増えない**）」「次元をまたいでも残る」
 
 ## 2. 触るファイル / 触らないファイル
 
 | 触る | 何を |
 | --- | --- |
-| `blocks.ts` | `WHEAT_CROP = 121` の `def`（`model: "cross"`） |
-| `items.ts` | `WHEAT_SEEDS = 122` ・`MAX_ITEM_ID` ・`isSeed()` ・`DROPS` に 2 行 |
-| `use.ts` | `UseAction` に `{ kind: "plant" }` と `decideUse()` に 1 行（**`till` の次・バケツより前**） |
-| `placing.ts` | `tryPlant()` |
-| `main.ts` | **配線だけ（+12 行以内**。いま 1433 / 上限 1500） |
+| `crops.ts`（**新規**） | **判断は全部ここ。** 育つ秒数・育つ条件・実らせる・忘れる・セーブの形 |
+| `blocks.ts` | `WHEAT_CROP_RIPE = 123` の `def`（`WHEAT_CROP` の隣。**`variantOf: WHEAT_CROP`**） |
+| `items.ts` | `WHEAT = 124` ・`MAX_ITEM_ID` ・`DROPS` に 1 行 |
+| `storage.ts` / `dimensions.ts` / `session.ts` | **省略可キー `crops` を 1 つ**通すだけ（下の 5) |
+| `main.ts` | **配線だけ（+6 行以内**。いま 1444 / **1450 を超えたら停止条件**） |
+| `tools/shot.ts` | 撮るための場面を 1 つ（`SCENES` に `crops`。**`src/**` ではない**） |
 
-**1 行も書かないこと**: **`crops.ts` を作らない**（後半）/ `world.ts`・`dimensions.ts`・`session.ts`・
-`storage.ts`（**セーブは 1 バイトも増えません**）/ `durability.ts`（**傷は付きません**）/ `crafting.ts` /
-`smelting.ts` / `vitals.ts`（**種は食べ物ではない**）/ `mobs.ts` / `sfx.ts` / `audio.ts`（**新しい音を
-足さない** —— 植えた音は `"place"` の `"grass"`）/ `mobrender.ts` / `inventoryui.ts` / `ui.ts` /
-`.claude/**`（決まりごとは `RULES-INBOX.md` へ）。
+**1 行も書かないこと**: `placing.ts`（`tryPlant()` はもう正しい）/ `use.ts` / `crafting.ts`（**パンは 15 番**）/
+`vitals.ts`（**小麦は食べ物ではない**。`FOODS` に足さない）/ `durability.ts` / `world.ts`（**育つ仕掛けを
+`world.update()` に足さない**）/ `breaking.ts`（`DROPS` の 1 行で足ります）/ `mobs.ts` / `sfx.ts` /
+`audio.ts`（**新しい音を足さない**）/ `*render.ts` / `inventoryui.ts` / `ui.ts` / `.claude/**`。
 
 ## 3. 使う ID
 
-**121..122 の 2 個**（`ROADMAP.md` の予約表「121..255 予備」の先頭から上に詰めて取る）。
-**121 = 小麦の苗（ブロック）/ 122 = 小麦の種（アイテム）。95..110 は空けたまま。**
-
-**苗は `variantOf: WHEAT_CROP`（自分自身）にすること。** `items.ts` の for が `variantOf !== AIR` を
-飛ばすので**アイテムが作られません**。**耕地（`variantOf: DIRT`）と違って大元に向けられない** ——
-苗は土でも耕地でもないので、**落ちるものは `DROPS` の 1 行で必ず書くこと**（既定の `baseBlock()`
-は自分自身を返し、アイテムの無い番号を落とします。`VARIANT_OF[id] || id` なので値は変わりません）。
+**123..124 の 2 個**（`ROADMAP.md` の予約表「123..255 予備」の先頭から詰めて取る）。**123 = 実った小麦
+（ブロック）/ 124 = 小麦（アイテム）。95..110 は空けたまま。** **実った小麦は `variantOf: WHEAT_CROP`**
+（苗と違って**大元にできる相手が居る**）。だからアイテムも名前も増えませんが、**`dropOf()` の既定は
+大元＝苗**なので **`DROPS` の 1 行が必須**です（書き忘れると、実らせても種しか採れません）。
 
 ## 4. 判断をどこに置くか
 
 | 判断 | 置き場 |
 | --- | --- |
-| どれが種か | `items.ts` の `isSeed()`（**表 1 本**。`isShears()` / `isBow()` と同じ形） |
-| 何が落ちるか（草むら・苗） | `items.ts` の `DROPS`（**確率の比較を呼ぶ側に書かない**） |
-| どこに植わるか・書き込み | `placing.ts` の `tryPlant()`（`tryTill()` と同じ形） |
-| 右クリックがどこへ行くか | `use.ts` の `decideUse()` |
-| 支えを失ったら壊れる | `blocks.ts` の `supportFace: FACE_YN`（**1 行で付いてきます**） |
-| （**新しい「確かめられないもの」は 1 つも足しません** —— `unverifiable-pair` は不要） | — |
+| 何秒で育つか・育つ条件・実らせる・忘れる・どの ID に差し替えるか | `crops.ts`（**`main.ts` に秒数を書かない**） |
+| 実った小麦から何が落ちるか | `items.ts` の `DROPS` |
+| 支えを失ったら壊れる | `blocks.ts` の `supportFace: FACE_YN`（苗と同じ 1 行） |
+| セーブのキーの並び・読み戻し | `session.ts`（**`main.ts` に `typeof` の均しを書かない**） |
 
-## 5. 実装の要点（この順で。`add-block` スキルの手順に乗る）
+**新しい「確かめられないもの」は 1 つも足しません**（`crops.ts` は three も DOM も音も触りません）ので
+`unverifiable-pair` は不要。**使うのは `add-stateful-block` スキル**です。
 
-1. `blocks.ts`: `WHEAT_CROP = 121`（**`FARMLAND` の隣に説明つきで**）と `def(WHEAT_CROP, "小麦の苗", { top: 0x6f8f3f }, { opaque: false, solid: false, hardness: 0, sound: "grass", model: "cross",
-   boxes: CROSS_BOX, supportFace: FACE_YN, variantOf: WHEAT_CROP })`。**`replaceable` を付けない**
-2. `items.ts`: `WHEAT_SEEDS = 122` / `MAX_ITEM_ID = WHEAT_SEEDS` / `item({ id: WHEAT_SEEDS,
-   name: "小麦の種", block: AIR, stack: MAX_STACK, color: 0x9aa85a, tool: null })`（**`block: AIR`**
-   —— 植えるのは `place` でなく `plant` の経路）/ `SEEDS` の表と `isSeed()`
-3. `DROPS`: `[TALL_GRASS, { item: WHEAT_SEEDS, count: 1, chance: 0.125, otherwise: TALL_GRASS }]` と `[WHEAT_CROP, { item: WHEAT_SEEDS, count: 1, chance: 1 }]`
-4. `use.ts`: `{ kind: "plant"; at: UseSpot }` を足し、**`till` の次・バケツより前**に `if (aim &&
-   isSeed(held)) return { kind: "plant", at: aim.block };`。**可否はここで決めない** / 冒頭を 14 通りに
-5. `placing.ts`: `tryPlant(world, at)` —— 狙ったマスが `FARMLAND` でなければ `none`。上のマスが
-   `isReplaceable()` でない、または `isLiquid()` なら `blocked`（「そこには植えられません」）。
-   通れば `setVoxel(x, y + 1, z, WHEAT_CROP)` して `placed`
-6. `main.ts`: `case "plant": plantAt(act.at.x, act.at.y, act.at.z); return;` と `plantAt()`
-   （**`tillAt()` を写す形**。`placed` のときだけ `audio.play("place", blockSound(...))` /
-   **`if (!creative) inventory.consumeSelected(1);`** / `hud.refresh()` / `saveDirty = true`）。
-   **傷は付けない**（`wearHeld` を呼ばない）
+## 5. 実装の要点（この順で）
+
+1. `blocks.ts`: `export const WHEAT_CROP_RIPE = 123;` と `def(WHEAT_CROP_RIPE, "実った小麦", { top: 0xd8c26a }, { opaque: false, solid: false,
+   hardness: 0, sound: "grass", model: "cross", boxes: CROSS_BOX, supportFace: FACE_YN,
+   variantOf: WHEAT_CROP })`。**`replaceable` を付けない**
+2. `items.ts`: `WHEAT = 124` / `MAX_ITEM_ID = WHEAT` / `item({ id: WHEAT, name: "小麦", block: AIR,
+   stack: MAX_STACK, color: 0xd8c26a, tool: null })` / `DROPS` に
+   `[WHEAT_CROP_RIPE, { item: WHEAT, count: 1, chance: 1 }]`。**`FOODS` には足さない**
+3. `crops.ts`（**`furnaces.ts` を読んでから写すこと**）: `Crops` クラス。`plant(x, y, z)` /
+   `peek(x, y, z): number | null`（育った秒数）/ `count` / `clear()` / `update(dt, world): boolean` /
+   `serialize(): Record<string, number> | undefined` / `deserialize(raw)`。**受けるのは `World` 丸ごと
+   ではなく `getVoxel` / `setVoxel` / `hasColumn` の 3 つ**（`beds.ts` と同じ作法）。`update()` は 1 マスごとに:
+   - **列が読み込まれていなければ何もしない**（`hasColumn(columnOf(x), columnOf(z))`。**`getVoxel` は
+     未読み込みで AIR を返すので、ここを飛ばすと遠くの畑が丸ごと忘れられます**）
+   - `baseBlock(getVoxel(...)) !== WHEAT_CROP` なら**忘れる**（掘られた・上書きされた）
+   - **真下が `FARMLAND` でなければ育たない**（忘れはしない）
+   - `age += dt`。`GROW_SECONDS`（**180 秒。暫定**）を超えたら `setVoxel(WHEAT_CROP_RIPE)`。
+     **成功したときだけ忘れる**（失敗したら持ち越して次のフレーム。`syncLit()` と同じ）
+   - **返り値は「実った / 忘れた」ときだけ true**（毎フレーム true にすると `saveDirty` が立ちっぱなしに
+     なり、**苗が 1 本あるだけで自動保存が回り続けます**）
+4. `main.ts`（**+6 行以内**）: `const crops = new Crops();`（説明は 1 行に収める）/ `startWorld()` の
+   `furnaces.deserialize(...)` の隣に `crops.deserialize(state.crops);` / `frame()` の `furnaces.update(dt)`
+   の隣に `if (playing && crops.update(dt, world)) saveDirty = true;` / `plantAt()` の最後に
+   `crops.plant(x, y + 1, z);` / `collectState({ ... })` と `forgetEverything({ ... })` の
+   **中括弧に `crops` を足す**（行は増えません）
+5. セーブ: `storage.ts` の `SaveData` に `crops?: Record<string, number>`（`"x,y,z"` → 育った秒数）、
+   `dimensions.ts` の `DimensionState` に同じ 1 行と `normalize()` に 1 行、`session.ts` の
+   `StateSources` / `collectState()` / `SaveParts` / `buildSave()` / 読み戻し / `forgetEverything()`。
+   **`version` は 1 のまま**（省略可のキーを 1 つ足すだけ。`edits` に混ぜないこと）
 
 ## 6. 書くテスト（**値を出力してから判定すること**。`rules/testing.md`）
 
-- `blocks.test.ts`: 立方体 36 / 非立方体 68 / アイテム 88 / 空き 133（**出力を読むこと**）。
-  **「共有帯のアイテムは 9 個（120 まで）」を 10 個（122 まで・`sharedItems[9] === WHEAT_SEEDS`・
-  `MAX_ITEM_ID === WHEAT_SEEDS`）に直す** —— ゆるめるのではなく数え直す。**既存の「草むらを壊すと
-  自分が手に入る」は `rollDrop(TALL_GRASS, 0.5)` が草むら・`rollDrop(TALL_GRASS, 0.05)` が種、の
-  2 件に書き直すこと**（判定を消さない）。`itemName(WHEAT_CROP) === ""` / 苗は通り抜けられて支えに
-  ならず、**上書きして置けない**（`!isReplaceable(WHEAT_CROP)`）
-- `placing.test.ts`: 耕地 → 上に苗 / 土・草・石は `none` / 上に石や水があれば `blocked` /
-  **もう苗が立っているマスも `blocked`** / 苗が立っても耕地は耕地のまま
-- `use.test.ts`: 種 + 耕地 → `plant`（`at` が耕地のマス）/ 種 + 作業台 → `craft`（**器が先**）/
-  種だけ（`aim` なし）→ `none` / クワ + 土 → 今までどおり `till` / **`main.ts` に `isSeed(` が無い**
-- `breaking.test.ts`: 苗を掘ると種 1 個 / **耕地を掘ると `autoBreak()` の経路で苗が種になって落ちる**。
-  `items.test.ts`: `isSeed()` は種だけ true・`foodOf` も `toolOf` も null。`ui.test.ts`: `routed` に `["苗を植える", "tryPlant("]`
+- **`test/crops.test.ts`（新規）**: 上の 1 の 2 つ目の箱を全部（偽物のワールド 3 本で書けます）と、
+  往復（`serialize` → `deserialize`）・**壊れた値を飛ばす**こと。**秒数は `GROW_SECONDS` を import
+  すること**（180 と書くとゆるめた判定になります）
+- `blocks.test.ts`: 立方体 36 / 非立方体 69 / アイテム 89 / 空き 131（**出力を読むこと**）。**「共有帯の
+  アイテムは 10 個（122 まで）」を 11 個（124 まで・`MAX_ITEM_ID === WHEAT`）に直す** —— ゆるめるのでは
+  なく数え直す。`itemName(WHEAT_CROP_RIPE) === ""` / `baseBlock(WHEAT_CROP_RIPE) === WHEAT_CROP`
+- `breaking.test.ts`: 実った小麦を掘ると小麦 1 個 / **耕地を掘ると `autoBreak()` の経路で落ちる**。
+  `items.test.ts`: `foodOf(WHEAT)` も `toolOf(WHEAT)` も null
+- `storage` / `session` / `dimensions`: `crops` が往復する / **空なら書き出さない** / 次元をまたいでも残る。
+  `ui.test.ts` の `routed` に `["苗が育つ", "crops.update("]` / **`main.ts` に `GROW_SECONDS` が無い**
 
 ## 7. このタスク固有の禁じ手
 
-1. **`crops.ts` を作らない。苗に毎フレームの仕掛け（育つ・乾く・踏み荒らす）を 1 行も足さない**
-   （後半 = キューの 13 番。`world.update()` にも `main.ts` の更新の列にも足さないこと）
-2. **苗を `variantOf` 無しで足さないこと。** アイテムが生えて一覧が 1 枠増え、**苗を持ち歩いて
-   石の上にも置けるようになります**（耕地に植える意味が消えます）
-3. **`otherwise: TALL_GRASS` を落とさないこと**（87.5% で消える草むらになります）。逆に
-   **草むらのドロップを「種だけ」に置き換えないこと** —— 草むらは置けるアイテムのままです
-4. **種に `tool:` を持たせない・苗に `tool:` を付けない**（シアーズと同じ罠。`ToolKind` を増やすと
-   `mobs.ts` の `TOOL_ATTACK` は `Record<string, number>` なので **NaN** が黙って通ります）
-5. **セーブにキーを足さない**（`version` は 1 のまま。苗は `edits` に乗るただのブロック）/ 既存の ID を
-   振り直さない / **判定をゆるめない**（`blocks.test.ts` の 1 件は「9 個 → 10 個」と**増やす**だけ）/
-   **`main.ts` に「耕地の上だけ」を書かない**（`placing.ts` の持ち場）
+1. **ブロック ID を 8 個使って 8 段階にしない**（本家の形。ここは 2 段階 = 123 の 1 個だけ）
+2. **`world.update()` の中で育てない**（`test/world.test.ts` の p99 にストリーミングの退行と混ざります）
+3. **`hasColumn` の確認を省かない**（上の 5-3）/ **`crops.ts` が `world` を丸ごと受け取らない・
+   `Math.random()` を使わない**（乱数を入れると、育つ秒数をテストで固定できなくなります）
+4. **`version` を上げない・`edits` に混ぜない・ID を振り直さない・判定をゆるめない**
+   （`blocks.test.ts` の 1 件は「10 個 → 11 個」と**増やす**だけ）
+5. **パン・小麦の食べ物化・種が戻る話を持ち込まない**（15 番と 14 番。取ると 1 周で閉じません）
 
 ## 8. 終了条件
 
 `npm run typecheck` と `npm test` が緑 / `npm run build` / **コミット 1 つ** / `TUNING.md` に 1 行
-（種が出る確率 0.125・苗の色 0x6f8f3f）/ `ROADMAP.md` の予約表に **121..122 を「実装済み」** /
-**見た目に出るので C-3 の撮影**（`node tools/browsershot.mjs` → **`Read` で見る**。苗を立てた 1 枚と
-一覧が 88 枠になった 1 枚）/ `HANDOFF.md` を丸ごと書き直す。
-
-## 割った残り
-
-**「育つ器（`crops.ts`）と小麦・パン」はキューの 13 番。** 育ち具合は**位置ごとの状態**で持ち
-（`furnaces.ts` の器の形）、実ったことは**もう 1 つのブロック ID**（`WHEAT_CROP_RIPE`。
-`variantOf: WHEAT_CROP`）で見せます —— 点火中のかまどと同じ差し替えで、**そこで初めて `SaveData`
-の省略可キー 1 つ（`crops`）と `DimensionState` の 1 行が要ります。**
+（`GROW_SECONDS` 180 秒・実った小麦の色 `0xd8c26a`・**種が戻らないのは暫定**）/ `ROADMAP.md` の予約表に
+**123..124 を「実装済み」** / **見た目に出るので C-3 の撮影**（`tools/shot.ts` に場面を 1 つ足して
+`npm run shot -- crops`。**苗と実った小麦を並べて撮り、`Read` で開いて見ること**。`browsershot.mjs` も
+撮れるなら撮る）/ キューの 13 番の行を消す / この仕様書を `済` に / `HANDOFF.md` を丸ごと書き直す。
