@@ -1,119 +1,119 @@
-# 仕様: シアーズ（羊を刈る）
+# 仕様: クワと耕地（土を耕す）
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-**`AUTODEV-QUEUE.md` の先頭「5. ハサミ」を 2 件に割った前半**（`AUTODEV.md` の B）。
-**数え直し済み**: `shears` / `ハサミ` は `src/**` にも `test/**` にも 1 件もありません。
+**`AUTODEV-QUEUE.md` の先頭「6. 小麦・種・耕地・パン」を 2 件に割った前半**（`AUTODEV.md` の B）。
+**数え直し済み**: `hoe` / `クワ` / `farmland` / `耕地` / `crops` / `wheat` / `小麦` は `src/**` にも `test/**`
+にも 1 件もありません（**`TALL_GRASS` = 32 はもうある** —— 後半で種の出どころに）。
 
 ## 1. 何を足すか / 完了の判定
 
-**シアーズ（アイテム 115）。** 鉄 2 個の斜めで作れて、**羊に右クリックすると羊毛が 1〜3 個 出て、
-その羊はしばらく刈られた状態になります**（倒さずに羊毛が取れる。本家と同じ）。**刈られた羊を
-倒しても羊毛は落ちません**（刈ってから倒す二重取りを塞ぐ）。60 秒で戻ります。
-
+**クワ 4 本（木・石・鉄・ダイヤ）と耕地。** 土か草に右クリックすると耕地になり、クワが 1 減ります。
+耕地を掘ると土が 1 個落ちます（**耕地そのものは手に入りません**）。**育つものはまだ植えられません。**
 完了の判定 —— **`npm test` に次が増えて、全部緑**:
 
-- 「アイテム 83 種（78 → 82 → 83）/ `MAX_ITEM_ID` 115 / **111..255 の空き 140**（141 → 140）」
-- 「羊を刈ると羊毛が 1〜3 個出る」「2 回目は刈れない」「**刈られた羊を倒しても
-  羊毛が落ちない**」「60 秒でまた刈れる」「豚・ゾンビは刈れない」
-- 「シアーズは 238 回で尽きる」「**掘っても殴っても減らない**」
+- 「**立方体 36**（35 → 36）/ **アイテム 87 種**（83 → 87）/ `MAX_ITEM_ID` 120 / **111..255 の空き 135**」
+- 「土を耕すと耕地」「草も耕せる」「石は耕せない」「**上が塞がっていると耕せない**」「耕地を掘ると
+  土が落ちる」「耕地はアイテムを持たない（クリエイティブの一覧が増えない）」
+- 「クワは階層ごとに 59 / 131 / 250 / 1561 回」「**耕したときだけ 1 減る**」「殴っても減らない」
+  「クワ 4 本が作業台で作れる」「クワはどのブロックの適正でもない（掘る速さ 1）」
 
 ## 2. 触るファイル / 触らないファイル
 
 | 触る | 何を |
 | --- | --- |
-| `items.ts` | ID 115・`isShears()` |
-| `durability.ts` | `SHEARS_USES` を `usedUp()` に 3 本目として |
-| `crafting.ts` | レシピ 1 行 |
-| `mobs.ts` | `MobDef.shearing` の表・`Mob.woolTimer`・`canShear()` / `shear()`・`dropFor()` |
-| `use.ts` | `UseFacts.shearable` と `{kind:"shear"}` |
-| `controls.ts` | `mobIsNearer()` を出すだけ |
-| `main.ts` | **配線だけ（+20 行以内**。いま 1400 / 上限 1500） |
+| `blocks.ts` | `FARMLAND = 116` の `def` ・`ToolKind` に `"hoe"` ・`tilled()` |
+| `items.ts` | クワ 4 本（117..120）・`TOOL_NAMES.hoe` ・`isHoe()` ・`MAX_ITEM_ID` |
+| `durability.ts` / `mobs.ts` | `wearForTill()` を 4 本目として / `TOOL_ATTACK` に `hoe: 1` の **1 行だけ** |
+| `crafting.ts` | `toolRecipes()` にクワ 1 行（引数に `hoe` を足す） |
+| `use.ts` / `placing.ts` | `UseAction` に `{ kind: "till" }` と `decideUse()` に 1 行 / `tryTill()` |
+| `main.ts` | **配線だけ（+15 行以内**。`npm test` が出す数え方で 1420 / 上限 1500） |
 
-**1 行も書かないこと**: `mobmesh.ts` / `mobrender.ts`（見た目は割った残り）/ `sfx.ts` / `audio.ts`
-（新しい音を足さない）/ `blocks.ts`（羊毛 `WOOL` = 37 はもうある）/ `drops.ts` / `inventory.ts` /
-`session.ts` / `storage.ts`（**セーブは 1 バイトも増えません**）。
+**1 行も書かないこと**: **`crops.ts` を作らない** / `world.ts`（**毎フレーム進むものを足さない**）/
+`storage.ts` / `session.ts`（**セーブは 1 バイトも増えません**）/ `sfx.ts` / `audio.ts`（新しい音を足さ
+ない。耕した音は既にある `"place"` を `"dirt"` の材質で）/ `mobrender.ts` / `inventoryui.ts` / `ui.ts` /
+`.claude/**`（決まりごとは `RULES-INBOX.md` へ）。
 
 ## 3. 使う ID
 
-**115 を 1 個だけ**（`ROADMAP.md` の予約表「115..255 予備」の先頭。111..114 は剣）。
-**ブロックは 1 個も取らず、95..110 は空けたまま。**
+**116..120 の 5 個**（`ROADMAP.md` の予約表「116..255 予備」の先頭から**上に詰めて**取る）。
+**116 = 耕地（ブロック）/ 117..120 = 木・石・鉄・ダイヤのクワ（アイテム）。95..110 は空けたまま。**
+**耕地は `variantOf: DIRT` にすること。** そうすると (a) `items.ts` の for が `variantOf !== AIR` を
+飛ばすので**アイテムが作られず**（一覧も持ち物も増えない）、(b) `dropOf()` の既定が `baseBlock()`
+なので**掘ると土が 1 個**落ちます。**点火中のかまど（`FURNACE_LIT`）とまったく同じ仕掛け。**
 
 ## 4. 判断をどこに置くか
 
 | 判断 | 置き場 |
 | --- | --- |
-| 何回で尽きるか・いつ減るか | `durability.ts`（`.claude/rules/items-survival.md` の「減り方は 3 種類」の**使って減るもの**） |
-| どれがシアーズか | `items.ts` の `isShears()`（`isFireStarter()` / `isBow()` と同じ**表 1 本**） |
-| 誰が刈れるか・何個出るか・いつ戻るか | `mobs.ts` の表（`MobDef.shearing`） |
+| 何が耕地になるか | `blocks.ts` の `tilled(id)`（**純粋・座標を知らない**。`quenched()` と同じ形） |
+| 上が塞がっていたら耕せない・書き込み | `placing.ts` の `tryTill()`（`tryIgnite()` と同じ形） |
 | 右クリックがどこへ行くか | `use.ts` の `decideUse()` |
-| 手前がモブかブロックか | `controls.ts`（左クリックの「殴る」と**同じ 1 本**） |
+| 何回で尽きるか・いつ減るか | `durability.ts`（`rules/items-survival.md` の「減り方は 3 種類」に**4 つ目**） |
+| どれがクワか / 殴ったときの強さ | `items.ts` の `isHoe()`（`isSword()` と同じ形）/ `mobs.ts` の `TOOL_ATTACK` |
 
-**新しい「確かめられないもの」は 1 つも足しません**（`unverifiable-pair` は不要。禁じ手 1・2）。
+**新しい「確かめられないもの」は 1 つも足しません**（`unverifiable-pair` は不要）。
 
 ## 5. 実装の要点（この順で。`add-block` スキルの手順に乗る）
 
-1. `items.ts`: `export const SHEARS = 115;` / `MAX_ITEM_ID = SHEARS` /
-   `item({ id: SHEARS, name: "シアーズ", block: AIR, stack: 1, color: 0xa8b8c0, tool: null })` /
-   `isShears()`。**`tool:` を持たせないこと**（禁じ手 1）
-2. `durability.ts`: `SHEARS_USES = 238`（本家のまま）を `usedUp()` に 3 本目として足す
-3. `crafting.ts`: `{ name: "シアーズ", out: SHEARS, count: 1, shape: [".I", "I."], key: { I: IRON_INGOT } }`
-4. `mobs.ts`:
-   - `interface ShearRule { item; min; max; regrow }` と `MobDef.shearing: ShearRule | null`。
-     羊だけ `{ item: WOOL, min: 1, max: 3, regrow: 60 }`、**ほかは全部 `null`**
-     （`kind === "sheep"` と書かないこと。`MobDef.ranged` / `teleport` と同じ作法）
-   - `Mob.woolTimer`（0 なら刈れる / > 0 なら刈られている。**保存しません**）
-   - `canShear(mob)` と `shear(mob, ctx, random?)`。刈れたら `onDrop(item, n, mob の位置 3 つ)` と
-     `onSound("dig", def.voice)`、`woolTimer = regrow`。刈れなければ **false**（呼ぶ側が減らさない）
-   - **倒したときのドロップは `dropFor(mob, def)` 1 本に通すこと** —— いま `def.drop` を直に読むのは
-     `attack()` と `hitByProjectile()` の**2 か所**で、片方だけ直すと**弓で撃ったときだけ
-     刈った羊から羊毛が出ます**（`rollDrop()` を 1 か所に集めたのと同じ話）
-   - `woolTimer` は `step()` の `hurtTimer` の隣で減らす（毎フレーム・`dt`）
-5. `controls.ts`: `mobIsNearer(facts: ClickFacts): boolean` を出す。**`decideClick()` の button 0 も
-   これを呼ぶこと**（式を 2 か所に書かない）。`main.ts` が右クリックでも同じ規則を使う
-6. `use.ts`: `UseFacts.shearable` / `UseAction` に `{ kind: "shear" }` / `decideUse()` の
-   **先頭（器より前）** に `if (facts.shearable && isShears(held)) …`（手前に居るときだけ真）
-7. `main.ts`: `mousedown` の `facts` を `const` に出し、`act === "use"` で
-   `useOrPlace(mobIsNearer(facts) ? target : null)`。`useOrPlace()` は
-   `shearable: m !== null && mobs.canShear(m.mob)` を渡し、`case "shear"` で
-   **`mobs.shear()` が true のときだけ** `wearHeld(wearForUse(...))` と `hud.refresh()`
+1. `blocks.ts`: `ToolKind` に `"hoe"`（`TOOL_NAMES` は `Record<ToolKind, …>` なので typecheck が抜けを
+   教えます。**`TOOL_ATTACK` は教えてくれません** —— 4 と禁じ手 2）/ `def(FARMLAND, "耕地",
+   { top: 0x59422d, side: 0x6b533a, bottom: 0x6b533a }, { hardness: 0.6, tool: "shovel",
+   sound: "dirt", variantOf: DIRT })` / `tilled(id)`: 土と草は `FARMLAND`、ほかは `AIR`（**表 1 本**）
+2. `items.ts`: `WOOD_HOE = 117` … `DIAMOND_HOE = 120` / `MAX_ITEM_ID = DIAMOND_HOE` /
+   **剣とまったく同じループ**で `tool: { kind: "hoe", tier, speed: 1 }`（**`TIER_SPEEDS` を
+   渡さないこと** —— 剣と同じ理由）/ `TOOL_NAMES.hoe = "のクワ"` / `isHoe()`
+3. `durability.ts`: `wearForTill(item, creative)` = クワなら 1、ほかは 0（**`wearForAttack()` を写す形**）。
+   **`usedUp()` には足さないこと**（回数は `TOOL_USES[tier]` から来ます）
+4. `crafting.ts`: `toolRecipes()` に `{ name: \`${tier}のクワ\`, out: hoe, count: 1,
+   shape: ["MM.", ".S.", ".S."], key }` / `mobs.ts`: `TOOL_ATTACK` に `hoe: 1`（シャベルと同じ）1 行だけ
+5. `use.ts`: `{ kind: "till"; at: UseSpot }` を足し、`decideUse()` の**器（ベッド）の次・バケツより前**に
+   `if (aim && isHoe(held)) return { kind: "till", at: aim.block };`。**耕せるかどうかはここで決めない
+   こと**（`place` と同じ。可否は `placing.ts`）
+6. `placing.ts`: `tryTill(world, at)` —— 狙ったマスを `tilled()` に通し `AIR` なら `none`。**上のマスが
+   `isReplaceable()` でない、または `isLiquid()` なら `blocked`**（「上が塞がっています」）。通れば
+   `setVoxel` して `placed`
+7. `main.ts`: `case "till": tillAt(act.at); return;` と `tillAt()`（**`igniteAt()` を写す形**）。**`placed`
+   のときだけ** `audio.play("place", "dirt")` / `wearHeld(wearForTill(...))` / `hud.refresh()` /
+   `saveDirty = true`
 
-## 6. 書くテスト
+## 6. 書くテスト（**値を出力してから判定すること**。`rules/testing.md`）
 
-**値を出力してから判定すること**（`.claude/rules/testing.md`）。
-
-- `test/items.test.ts` / `test/blocks.test.ts`: アイテム 83 種・空き 140（**出力を読むこと**）
-- `test/crafting.test.ts`: 鉄 2 個の斜めで 1 個。既存の「同じ形のレシピが重複していない」に乗る
-- `test/durability.test.ts`: `maxUses` 238 / `wearForUse` 1 / `wearForBreaking(STONE, …)` 0 /
-  `wearForAttack` 0 / `durability.ts` にアイテム名が出てこない見張りは**そのまま** /
-  **`main.ts` の `wearForUse(` を 2 → 3 に直すこと**（ゆるめるのではなく増やす）
-- `test/mobs.test.ts`: 上の 5 項目。**乱数は種を固定した 1 本を回し続けること**、
-  1 個と 3 個の両端は `random` を直に渡して出す
-- `test/use.test.ts`: シアーズ + 刈れるモブ → `shear` / シアーズだけ → 今までどおり /
-  別のアイテム + 刈れるモブ → 今までどおり（`place` も `eat` も奪わない）
-- `test/controls.test.ts`: `mobIsNearer()` の 3 通り（モブが手前 / ブロックが手前 / どちらも無い）
+- `blocks.test.ts`: 立方体 36 / アイテム 87 / 空き 135（**出力を読むこと**）。**「共有帯のアイテムは剣 4 本
+  とシアーズの 5 個」を 9 個（`MAX_ITEM_ID === DIAMOND_HOE`）に直すこと** —— ゆるめるのではなく数え
+  直す。`itemName(FARMLAND) === ""` / `tilled()` の 4 通り（土・草・石・空気）
+- `durability.test.ts`: `maxUses` 59 / 131 / 250 / 1561 ・`wearForTill` 1 ・**`wearForUse` 0**（右クリック
+  しても減らない）・`wearForAttack` 0 ・`wearForBreaking(STONE, クワ)` 1（掘れば減る。剣と同じ）/
+  アイテム名の見張りは**そのまま** / **`main.ts` の `wearForTill(` が 1 回**
+- `placing.test.ts`: 土 → 耕地 / 草 → 耕地 / 石は `none` / 上に石・水があると `blocked` / **上が草むらなら耕せる**
+- `use.test.ts`: クワ + 土 → `till` / クワ + 作業台 → `craft`（**器が先**）/ クワだけ（`aim` なし）→ `none` /
+  別のアイテム + 土 → 今までどおり。**`main.ts` に `isHoe(` が無いこと**
+- `crafting.test.ts`: 4 本とも作れる / 2x2 では作れない / 既存の「形の重複」の判定に乗る。
+  `mobs.test.ts`: `attackDamage(木のクワ)` が **NaN でない**（1.5。シャベルと同じ）。
+  `items.test.ts`: `isHoe()` が 4 本だけ true・クワの掘る速さが素手と同じ
 
 ## 7. このタスク固有の禁じ手
 
-1. **`ToolKind` に `"shears"` を足さないこと。** `mobs.ts` の `TOOL_ATTACK` に無い種類が入ると
-   `attackDamage()` が **NaN** を返し（`TOOL_ATTACK[kind]` が `undefined`）、`wearForBreaking()` は
-   「掘る道具」として 1 を返すので**石を掘るたびに減ります。** 火種・弓と同じ「使って減るもの」です
-2. **新しい `Sfx` を足さないこと**（音は確かめられない側。既にある `"dig"` を鳴らす）
-3. **羊の見た目を変えないこと**（下の「割った残り」）
-4. **`MobDef.drop` の表を書き換えないこと**（倒したときの羊毛 1 個はそのまま。抑えるのは `dropFor()`）
-5. **`main.ts` に `isShears(` と距離の比較を書かないこと**（`test/use.test.ts` が `isBucket(` などを
-   見張っているのと同じ理由）
-6. **セーブにキーを足さないこと**（`version` は 1 のまま。刈られた状態はモブの持ち物で、保存しません）
-7. 既存の ID を振り直さない / **テストの判定をゆるめない**
+1. **耕地を `variantOf` 無しで足さないこと。** アイテムが生えて一覧が 1 枠増え、**耕地そのものを持ち
+   歩いて置けるようになります**（本家に無い形）
+2. **`TOOL_ATTACK` に `hoe` を足し忘れないこと。** `attackDamage()` が **NaN** を返し、**クワで殴った
+   モブの体力が NaN になって二度と死にません。** `Record<string, number>` なので **typecheck は通ります**
+3. **`wearForUse()` にクワを混ぜないこと**（あちらは掘る道具でないものの表）。逆に `wearForBreaking()`
+   から外さないこと —— **掘れば減るのは剣と同じ**で、1 行も足さずに付いてきます
+4. **`crops.ts` を作らない。耕地に毎フレームの仕掛け（乾く・踏み荒らす・育つ）を足さない**（割った残り）
+5. **セーブにキーを足さない**（`version` は 1 のまま。耕地は `edits` に乗るただのブロック）/ **どの
+   ブロックにも `tool: "hoe"` を付けない**（剣の見張りと同じ理由。`speed: 1` のまま）/ 既存の ID を
+   振り直さない / **テストの判定をゆるめない**（`blocks.test.ts` の 1 件は「5 個 → 9 個」と**増やす**だけ）
 
 ## 8. 終了条件
 
-`npm run typecheck` と `npm test` が緑 / `npm run build` / **コミット 1 つ** / `TUNING.md` に
-1 行（羊毛 1〜3 個・戻るまで 60 秒・238 回）/ `ROADMAP.md` の予約表に **115 を「実装済み」** /
-クリエイティブ一覧が 1 枠増えるので **C-3 の撮影**（`node tools/browsershot.mjs` → `Read` で見る）。
+`npm run typecheck` と `npm test` が緑 / `npm run build` / **コミット 1 つ** / `TUNING.md` に 1 行（耕地の
+硬さ 0.6・クワの攻撃力 1 + 階層 0.5）/ `ROADMAP.md` の予約表に **116..120 を「実装済み」** / クリエイティブ
+一覧が 4 枠増えるので **C-3 の撮影**（`node tools/browsershot.mjs` → **`Read` で見る**）。
 
 ## 割った残り
 
-**「刈られた羊が見て分かること」は別の周**（`AUTODEV-QUEUE.md` の 11 番）。`mobrender.ts` は
-形を `MobKind` ごとに 1 つ作って使い回すので、2 つ目の形と差し替えの仕掛けが要ります。
+**「種・小麦・パンと育つブロック（`crops.ts`）」は別の周**（`AUTODEV-QUEUE.md` の 12 番）。耕地の上に
+だけ植わり、**育ち具合は位置ごとの状態で持つ**（`furnaces.ts` の器の形。ブロック ID を 8 個使わない）。
+**種の出どころは草むら**（`TALL_GRASS` = 32。もうあります）。
