@@ -17,8 +17,10 @@
 
 import {
   AIR,
+  FARMLAND,
   NO_SUPPORT,
   OBSIDIAN,
+  WHEAT_CROP,
   bedPartner,
   blockName,
   faceFromYaw,
@@ -145,6 +147,31 @@ export function tryTill(world: PlaceWorld, at: UseSpot): PlaceOutcome {
 
   if (!world.setVoxel(x, y, z, result)) return NOTHING;
   return { kind: "placed", id: result };
+}
+
+/**
+ * 種を植える。**耕地の上にしか立ちません**（`tryTill()` の裏返しで、あちらが
+ * 「土か草を耕地にする」ならこちらは「耕地の上に苗を立てる」）。
+ *
+ * 狙うのは**耕地そのもの**（`use.ts` が `aim.block` を渡す）で、苗が立つのは**その 1 つ上**。
+ * 土や草を狙っても何も起きません（`none`）—— 先にクワで耕せ、という手ごたえは
+ * 「黙って何も起きない」で足ります（草原のどこを右クリックしても理由が出るほうが煩い）。
+ *
+ * **上のマスが塞がっていたら理由を出します。** もう苗が立っているマスもここに入ります
+ * （苗は `replaceable` ではないので、`isReplaceable()` が false）。
+ */
+export function tryPlant(world: PlaceWorld, at: UseSpot): PlaceOutcome {
+  const { x, y, z } = at;
+  if (world.getVoxel(x, y, z) !== FARMLAND) return NOTHING;
+
+  // 水は `isReplaceable` だが、それでも塞がっている扱い（`tryTill()` と同じ規則）。
+  const above = world.getVoxel(x, y + 1, z);
+  if (!isReplaceable(above) || isLiquid(above)) {
+    return { kind: "blocked", message: "そこには植えられません" };
+  }
+
+  if (!world.setVoxel(x, y + 1, z, WHEAT_CROP)) return NOTHING;
+  return { kind: "placed", id: WHEAT_CROP };
 }
 
 /**

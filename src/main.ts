@@ -38,7 +38,7 @@ import { Mining } from "./mining";
 import { MobRenderer } from "./mobrender";
 import { Mobs, type Mob, type MobContext } from "./mobs";
 import { Player } from "./player";
-import { tryBucket, tryIgnite, tryPlace, tryTill } from "./placing";
+import { tryBucket, tryIgnite, tryPlace, tryPlant, tryTill } from "./placing";
 import {
   PortalGate,
   arriveThrough,
@@ -861,6 +861,7 @@ function useOrPlace(m: { mob: Mob } | null): void {
     case "chest": openChest(act.at.x, act.at.y, act.at.z); return;
     case "bed": sleepOrSetSpawn(act.at.x, act.at.y, act.at.z, act.id); return;
     case "till": tillAt(act.at.x, act.at.y, act.at.z); return;
+    case "plant": plantAt(act.at.x, act.at.y, act.at.z); return;
     case "bucket": useBucket(act.item); return;
     case "fitEye": fitEndPortalEye(act.at.x, act.at.y, act.at.z); return;
     case "throwEye": throwEye(); return;
@@ -922,6 +923,17 @@ function tillAt(x: number, y: number, z: number): void {
   audio.play("place", "dirt");
   // **耕したときだけ**クワが減る（早期 return より後ろ）。
   wearHeld(wearForTill(inventory.selectedItem, creative));
+  hud.refresh();
+  saveDirty = true;
+}
+
+/** 種を植える。**可否も書き込みも `placing.ts` の `tryPlant()`。傷は付かない**（種は道具ではない）。 */
+function plantAt(x: number, y: number, z: number): void {
+  const planted = tryPlant(world, { x, y, z });
+  if (planted.kind === "blocked") hud.flash(planted.message);
+  if (planted.kind !== "placed") return;
+  audio.play("place", blockSound(planted.id));
+  if (!creative) inventory.consumeSelected(1);
   hud.refresh();
   saveDirty = true;
 }

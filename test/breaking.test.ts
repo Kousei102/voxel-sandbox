@@ -9,10 +9,11 @@ import {
   GRAVEL,
   STONE,
   TORCH,
+  WHEAT_CROP,
   bedPartner,
 } from "../src/blocks";
 import { autoBreak, tryBreak, type BreakContainers } from "../src/breaking";
-import { FLINT, NO_ITEM, WOOD_PICKAXE, itemName } from "../src/items";
+import { FLINT, NO_ITEM, WHEAT_SEEDS, WOOD_PICKAXE, itemName } from "../src/items";
 import { Slab, sourceOf } from "./arena";
 import { check, describe } from "./harness";
 
@@ -201,6 +202,30 @@ export function run(): void {
       "支えを失ったベッドも相方を連れていく（クリエイティブでも）",
       partner !== null && world.getVoxel(partner.dx, 11, partner.dz) === AIR,
     );
+  }
+
+  // --- 小麦の苗（**アイテムを持たないブロック**なので、`DROPS` の 1 行が唯一の根拠） ---
+  {
+    const world = new Slab();
+    world.setVoxel(0, 11, 0, WHEAT_CROP);
+    const out = tryBreak(world, containers(), order(WHEAT_CROP, { tool: NO_ITEM }));
+    check(
+      "苗を掘ると種が 1 個",
+      out.drops.length === 1 && out.drops[0].item === WHEAT_SEEDS && out.drops[0].count === 1,
+      describeDrops(out.drops),
+    );
+  }
+  {
+    // **耕地を掘ると苗も一緒に壊れて種になる**（`supportFace: FACE_YN` の経路）。
+    // ここが `autoBreak()` を通らないと、**苗だけが宙に浮いたまま残る。**
+    const world = new Slab();
+    const dropped = autoBreak(world, 0, 11, 0, WHEAT_CROP, false, 0.5);
+    check(
+      "支えを失った苗も種になって落ちる",
+      dropped.length === 1 && dropped[0].item === WHEAT_SEEDS,
+      describeDrops(dropped),
+    );
+    check("クリエイティブでは落ちない", autoBreak(world, 0, 11, 0, WHEAT_CROP, true, 0.5).length === 0);
   }
 
   // 2 つの経路が**同じ規則**で落とすこと（片方だけ直すと静かにずれる）。

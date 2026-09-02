@@ -281,6 +281,21 @@ const ID_LIMIT = MAX_BLOCK_ID + 1;
  */
 export const FARMLAND = 116;
 
+/**
+ * 小麦の苗。**種を持って耕地を右クリックすると、その上に立つ**（`placing.ts` の
+ * `tryPlant()`）。**まだ育ちません** —— 育つ仕掛け（`crops.ts`）は別のタスクです。
+ *
+ * **`variantOf` を自分自身に向けてあります。** `items.ts` の for は `variantOf !== AIR` を
+ * 飛ばすので、これで**アイテムが作られません**（苗を持ち歩いて石の上に置けると、
+ * 耕地に植える意味が消えます）。耕地の `variantOf: DIRT` と事情が違うのは、
+ * **苗には大元にできる相手が居ない**からです（土でも耕地でもない）。
+ *
+ * そのぶん `dropOf()` の既定（`baseBlock()`）は**自分自身**を返し、アイテムの無い
+ * 番号を落とします。だから**落ちるもの（種 1 個）は `items.ts` の `DROPS` に必ず
+ * 1 行書くこと。**
+ */
+export const WHEAT_CROP = 121;
+
 /** 上付きハーフ。見た目と当たり判定だけが違うので、大元は下付きのハーフ。 */
 export const STONE_SLAB_TOP = 64;
 export const COBBLE_SLAB_TOP = 65;
@@ -1168,6 +1183,21 @@ export const BLOCKS: readonly BlockDef[] = [
     { top: 0x59422d, side: 0x6b533a, bottom: 0x6b533a },
     { hardness: 0.6, tool: "shovel", sound: "dirt", variantOf: DIRT },
   ),
+
+  // 小麦の苗。草むらとまったく同じ形（十字の板 2 枚・通り抜けられる・空の光も止めない）で、
+  // 違うのは 3 つだけ: **`replaceable` を付けない**（上書きして置けると、植えた苗の上に
+  // ブロックを置いた拍子に消える）/ **`supportFace: FACE_YN`**（下の耕地を掘ると
+  // 一緒に壊れて種が落ちる）/ **`variantOf` が自分自身**（アイテムを作らせない。上のコメント）。
+  def(WHEAT_CROP, "小麦の苗", { top: 0x6f8f3f }, {
+    opaque: false,
+    solid: false,
+    hardness: 0,
+    sound: "grass",
+    model: "cross",
+    boxes: CROSS_BOX,
+    supportFace: FACE_YN,
+    variantOf: WHEAT_CROP,
+  }),
 ];
 
 

@@ -5,6 +5,7 @@ import {
   CRAFTING_TABLE,
   DIRT,
   FACE_XP,
+  FARMLAND,
   FURNACE,
   FURNACE_LIT,
   GRASS,
@@ -23,6 +24,7 @@ import {
   NO_ITEM,
   SHEARS,
   WATER_BUCKET,
+  WHEAT_SEEDS,
   WOOD_HOE,
 } from "../src/items";
 import { decideUse, type UseAction, type UseFacts } from "../src/use";
@@ -82,6 +84,8 @@ export function run(): void {
     "isShears(",
     // クワかどうかも同じ（`decideUse()` が振り分けを済ませて `till` の注文だけを渡す）。
     "isHoe(",
+    // 種かどうかも同じ（`plant` の注文だけが `main.ts` に届く）。
+    "isSeed(",
   ].filter((name) => main.includes(name));
   check("main.ts に振り分けが戻っていない", backInMain.length === 0, backInMain.join(" "));
 
@@ -107,6 +111,9 @@ export function run(): void {
     ["クワで土を狙う", aimAt(DIRT), facts(WOOD_HOE)],
     ["クワで作業台を狙う", aimAt(CRAFTING_TABLE), facts(WOOD_HOE)],
     ["クワだけ（空を向く）", null, facts(WOOD_HOE)],
+    ["種で耕地を狙う", aimAt(FARMLAND), facts(WHEAT_SEEDS)],
+    ["種で作業台を狙う", aimAt(CRAFTING_TABLE), facts(WHEAT_SEEDS)],
+    ["種だけ（空を向く）", null, facts(WHEAT_SEEDS)],
   ];
   console.log("      狙い / 手                        起きること");
   const got = new Map<string, UseAction>();
@@ -275,6 +282,33 @@ export function run(): void {
     "別のアイテム + 土 → 今までどおり（置く）",
     decideUse(aimAt(DIRT), facts(STONE)).kind === "place",
     decideUse(aimAt(DIRT), facts(STONE)).kind,
+  );
+
+  // --- 種（植える。クワの次・バケツより前） ---
+  check("種 + 耕地 → plant", kindOf("種で耕地を狙う") === "plant", kindOf("種で耕地を狙う"));
+  {
+    const plant = got.get("種で耕地を狙う");
+    check(
+      "植えるマス（狙った耕地）がそのまま渡る（可否は placing.ts）",
+      plant?.kind === "plant" && plant.at.x === 3 && plant.at.y === 11 && plant.at.z === 5,
+      plant?.kind === "plant" ? `(${plant.at.x},${plant.at.y},${plant.at.z})` : plant?.kind,
+    );
+  }
+  // **器が先。** 作業台の上に耕地は無いが、並びが崩れたときにここで出る。
+  check("種 + 作業台 → craft（器が先）", kindOf("種で作業台を狙う") === "craft", kindOf("種で作業台を狙う"));
+  // 狙う先が無ければ何も起きない（どのマスに植えるか決まらない）。
+  check("種だけ（aim なし）→ none", kindOf("種だけ（空を向く）") === "none", kindOf("種だけ（空を向く）"));
+  // **土を狙っても `plant` に来る**（可否は `placing.ts` の仕事で、ここで弾かない）。
+  check(
+    "種 + 土 → plant（耕地かどうかは placing.ts が見る）",
+    decideUse(aimAt(DIRT), facts(WHEAT_SEEDS)).kind === "plant",
+    decideUse(aimAt(DIRT), facts(WHEAT_SEEDS)).kind,
+  );
+  // 種を持っていないときの耕地は今までどおり（置く側へ落ちる）。
+  check(
+    "別のアイテム + 耕地 → 今までどおり（置く）",
+    decideUse(aimAt(FARMLAND), facts(STONE)).kind === "place",
+    decideUse(aimAt(FARMLAND), facts(STONE)).kind,
   );
 
   // --- 落とし物のアイテムは何も起きない（投げるのは Q） ---

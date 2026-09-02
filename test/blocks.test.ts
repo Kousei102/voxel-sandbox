@@ -34,6 +34,7 @@ import {
   VARIANT_BAND_MAX,
   WALL_TORCH_ZN,
   WATER,
+  WHEAT_CROP,
   baseBlock,
   blockDef,
   blockName,
@@ -66,17 +67,22 @@ import {
   SHEARS,
   STICK,
   WATER_BUCKET,
+  WHEAT_SEEDS,
   WOOD_HOE,
   allItemIds,
   bucketOf,
   bucketUse,
   dropOf,
+  foodOf,
   isBucket,
   isHoe,
+  isSeed,
   itemName,
   itemStackLimit,
   liquidOf,
   placedBlock,
+  rollDrop,
+  toolOf,
 } from "../src/items";
 import { breakTime } from "../src/mining";
 import { Player } from "../src/player";
@@ -143,9 +149,9 @@ export function run(): void {
       `${sharedItems.map((id) => `${id} ${itemName(id)}`).join(" / ")}）  MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本の 9 個（120 まで）",
-    sharedItems.length === 9 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
-      MAX_ITEM_ID === DIAMOND_HOE,
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種の 10 個（122 まで）",
+    sharedItems.length === 10 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+      sharedItems[9] === WHEAT_SEEDS && MAX_ITEM_ID === WHEAT_SEEDS,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **95..110 は空けたまま**（ブロック側の向き違いが使っている番号）。
@@ -563,7 +569,24 @@ export function run(): void {
   check("草むらは上書きして置ける", isReplaceable(TALL_GRASS));
   check("固いブロックは上書きされない", !isReplaceable(STONE) && !isReplaceable(STONE_SLAB));
   check("素手ですぐ壊せる", breakTime(TALL_GRASS) === 0, `${breakTime(TALL_GRASS)} 秒`);
-  check("壊すと自分が手に入る", dropOf(TALL_GRASS).item === TALL_GRASS);
+  // **12.5% で小麦の種、外したら草むらそのもの**（砂利と同じ `otherwise` の形）。
+  // 「自分が手に入る」の 1 件を**消さずに 2 件へ割った**もの —— 草むらは
+  // これからも置けるアイテムのままで、種はそのうえに 12.5% で乗る。
+  console.log(
+    `      草むらのドロップ: 当たり ${itemName(rollDrop(TALL_GRASS, 0.05).item)} / ` +
+      `外れ ${itemName(rollDrop(TALL_GRASS, 0.5).item)}（確率 ${dropOf(TALL_GRASS).chance}）`,
+  );
+  check(
+    "草むらを壊すと外れたときは自分が手に入る",
+    rollDrop(TALL_GRASS, 0.5).item === TALL_GRASS && rollDrop(TALL_GRASS, 0.5).count === 1,
+    `${itemName(rollDrop(TALL_GRASS, 0.5).item)} x${rollDrop(TALL_GRASS, 0.5).count}`,
+  );
+  check(
+    "草むらを壊すと 12.5% で小麦の種",
+    dropOf(TALL_GRASS).chance === 0.125 && rollDrop(TALL_GRASS, 0.05).item === WHEAT_SEEDS &&
+      rollDrop(TALL_GRASS, 0.124).item === WHEAT_SEEDS && rollDrop(TALL_GRASS, 0.125).item === TALL_GRASS,
+    `${itemName(rollDrop(TALL_GRASS, 0.05).item)} / 境目 ${itemName(rollDrop(TALL_GRASS, 0.125).item)}`,
+  );
 
   // 足場の上に生やす。歩いて通り抜けられて、足場を壊すと一緒に消える。
   world.setVoxel(1, ground, 1, AIR);
@@ -791,9 +814,82 @@ export function run(): void {
   check("木・ダイヤのクワは isHoe", isHoe(WOOD_HOE) && isHoe(DIAMOND_HOE));
   check("クワでないものは isHoe ではない", !isHoe(STONE) && !isHoe(NO_ITEM) && !isHoe(BUCKET));
 
+  wheatCrop(world, ground);
+
   endPortalFrames();
 
   world.dispose();
+}
+
+/**
+ * 小麦の苗と種。**苗はアイテムを持たない**（一覧が増えるのは種の 1 枠だけ）ので、
+ * 落ちるものは `DROPS` の 1 行が唯一の根拠になる。
+ */
+function wheatCrop(world: World, ground: number): void {
+  describe("小麦の苗と種");
+
+  // **`variantOf` は自分自身**（耕地の `variantOf: DIRT` と違って、大元にできる相手が居ない）。
+  console.log(
+    `      苗 ${WHEAT_CROP}（baseBlock ${baseBlock(WHEAT_CROP)} / アイテム "${itemName(WHEAT_CROP)}"）  ` +
+      `種 ${WHEAT_SEEDS}（${itemName(WHEAT_SEEDS)}）  落ちるもの ${itemName(dropOf(WHEAT_CROP).item)} ` +
+      `x${dropOf(WHEAT_CROP).count}`,
+  );
+  check("苗の大元は自分自身", baseBlock(WHEAT_CROP) === WHEAT_CROP, `${baseBlock(WHEAT_CROP)}`);
+  // `variantOf !== AIR` なので `items.ts` の for が飛ばす → 一覧にも持ち物にも出ない。
+  check("苗はアイテムを持たない（一覧が増えるのは種の 1 枠だけ）", itemName(WHEAT_CROP) === "", `"${itemName(WHEAT_CROP)}"`);
+  // **既定の `baseBlock()` はアイテムの無い 121 を返す**ので、`DROPS` の 1 行が要る。
+  check(
+    "苗を壊すと種が 1 個",
+    rollDrop(WHEAT_CROP, 0.5).item === WHEAT_SEEDS && rollDrop(WHEAT_CROP, 0.5).count === 1,
+    `${itemName(rollDrop(WHEAT_CROP, 0.5).item)} x${rollDrop(WHEAT_CROP, 0.5).count}`,
+  );
+
+  // 草むらと同じ形（通り抜けられて、支えにならない）だが、**上書きして置けない** ——
+  // `replaceable` にすると、植えた苗の上にブロックを置いた拍子に消える。
+  check("苗は通り抜けられる", collisionBoxes(WHEAT_CROP).length === 0);
+  check("苗にも狙う形はある", shapeBoxes(WHEAT_CROP).length > 0);
+  check("苗は支えにならない", [0, 1, 2, 3, 4, 5].every((f) => !canSupport(WHEAT_CROP, f)));
+  check("苗は上書きして置けない（草むらと違う）", !isReplaceable(WHEAT_CROP) && isReplaceable(TALL_GRASS));
+  check("素手ですぐ壊せる", breakTime(WHEAT_CROP) === 0, `${breakTime(WHEAT_CROP)} 秒`);
+
+  // 種は「植えるもの」だけ。**道具でも食べ物でもない**（`ToolKind` を増やすと
+  // `mobs.ts` の `TOOL_ATTACK` が NaN を返す罠。シアーズと同じ）。
+  console.log(
+    `      isSeed: 種 ${isSeed(WHEAT_SEEDS)} / 草むら ${isSeed(TALL_GRASS)} / ` +
+      `クワ ${isSeed(WOOD_HOE)} / 素手 ${isSeed(NO_ITEM)}`,
+  );
+  check("種だけが isSeed", isSeed(WHEAT_SEEDS));
+  check(
+    "種でないものは isSeed ではない",
+    !isSeed(TALL_GRASS) && !isSeed(WOOD_HOE) && !isSeed(NO_ITEM) && !isSeed(STONE),
+  );
+  check(
+    "種は道具でも食べ物でもない",
+    toolOf(WHEAT_SEEDS) === null && foodOf(WHEAT_SEEDS) === null,
+    `tool ${toolOf(WHEAT_SEEDS)} / food ${foodOf(WHEAT_SEEDS)}`,
+  );
+  // **`block: AIR`** —— 植えるのは `place` でなく `plant` の経路（`placing.ts` の `tryPlant()`）。
+  check("種は置けるアイテムではない（植えるのは plant の経路）", placedBlock(WHEAT_SEEDS) === AIR, `${placedBlock(WHEAT_SEEDS)}`);
+
+  // **支えを失う経路を本物の `World` で通す**（偽の試験場は `breakUnsupported` を持たない）。
+  // `supportFace: FACE_YN` の 1 行が効いていないと、**耕地を掘っても苗だけが宙に残る。**
+  {
+    world.setVoxel(2, ground - 1, 2, FARMLAND);
+    for (let y = ground; y < ground + 3; y++) world.setVoxel(2, y, 2, AIR);
+    check("苗は支えのある所にしか置けない", !world.canPlaceAt(2, ground + 2, 2, WHEAT_CROP));
+    world.setVoxel(2, ground, 2, WHEAT_CROP);
+    check("耕地の上には立つ", world.getVoxel(2, ground, 2) === WHEAT_CROP, `${world.getVoxel(2, ground, 2)}`);
+
+    let broke = 0;
+    world.onAutoBreak = (_x, _y, _z, id) => { if (id === WHEAT_CROP) broke++; };
+    world.setVoxel(2, ground - 1, 2, AIR); // 下の耕地を掘る
+    check(
+      "耕地を掘ると苗も壊れて、落とす合図が 1 回出る",
+      world.getVoxel(2, ground, 2) === AIR && broke === 1,
+      `苗 ${world.getVoxel(2, ground, 2)} / 合図 ${broke} 回`,
+    );
+    world.onAutoBreak = undefined;
+  }
 }
 
 /** エンドポータルの枠（向き 4 x アイの有無 2）。要塞が並べる（`stronghold.ts`）。 */

@@ -11,10 +11,11 @@ import {
   TALL_GRASS,
   TORCH,
   WATER,
+  WHEAT_CROP,
   blockName,
   isBed,
 } from "../src/blocks";
-import { tryBucket, tryPlace, tryTill } from "../src/placing";
+import { tryBucket, tryPlace, tryPlant, tryTill } from "../src/placing";
 import { BUCKET, LAVA_BUCKET, WATER_BUCKET } from "../src/items";
 import { Slab, sourceOf } from "./arena";
 import { check, describe } from "./harness";
@@ -270,5 +271,71 @@ export function run(): void {
     frozen.frozenColumns.add("0,0");
     const out = tryTill(frozen, { x: 0, y: 10, z: 0 });
     check("書き込めなければ耕したことにしない", out.kind === "none");
+  }
+
+  describe("種を植える（tryPlant）");
+
+  /** 耕地 1 マス（上面 y=10）。**狙うのは耕地そのもの**で、苗が立つのは 1 つ上。 */
+  function farm(): Slab {
+    const slab = new Slab();
+    slab.fill(-4, 4, 10, 10, -4, 4, FARMLAND);
+    return slab;
+  }
+
+  {
+    const field2 = farm();
+    const planted = tryPlant(field2, { x: 0, y: 10, z: 0 });
+    console.log(
+      `      耕地に植える: ${planted.kind}  下 ${field2.getVoxel(0, 10, 0)} / 上 ${field2.getVoxel(0, 11, 0)}`,
+    );
+    check("耕地を狙うと上に苗が立つ", planted.kind === "placed" && field2.getVoxel(0, 11, 0) === WHEAT_CROP);
+    // **耕地は耕地のまま**（苗が立つのは 1 つ上なので、下を書き換えてはいけない）。
+    check("苗が立っても耕地は耕地のまま", field2.getVoxel(0, 10, 0) === FARMLAND, `${field2.getVoxel(0, 10, 0)}`);
+  }
+
+  {
+    // 土・草・石には植わらない（**黙って何も起きない** —— 草原のどこを右クリック
+    // しても理由が出るのは煩い）。
+    const rows: [string, number][] = [["土", DIRT], ["草", GRASS], ["石", STONE]];
+    for (const [name, id] of rows) {
+      const slab = new Slab();
+      slab.fill(-4, 4, 10, 10, -4, 4, id);
+      const out = tryPlant(slab, { x: 0, y: 10, z: 0 });
+      check(`${name}には植わらない（黙って何も起きない）`, out.kind === "none" && slab.getVoxel(0, 11, 0) === AIR, out.kind);
+    }
+  }
+
+  {
+    // 上が塞がっていたら理由を出す（`tryTill()` とまったく同じ規則）。
+    const byStone = farm();
+    byStone.fill(0, 0, 11, 11, 0, 0, STONE);
+    const stoneAbove = tryPlant(byStone, { x: 0, y: 10, z: 0 });
+    console.log(`      上に石: ${stoneAbove.kind}  ${stoneAbove.kind === "blocked" ? stoneAbove.message : ""}`);
+    check("上に石があると植えられない（理由が出る）", stoneAbove.kind === "blocked" && byStone.getVoxel(0, 11, 0) === STONE);
+
+    const byWater = farm();
+    byWater.fill(0, 0, 11, 11, 0, 0, WATER);
+    // 水は `isReplaceable` だが、それでも `isLiquid` なので塞がっている扱い。
+    check("上に水があっても植えられない", tryPlant(byWater, { x: 0, y: 10, z: 0 }).kind === "blocked");
+
+    // **もう苗が立っているマスも塞がっている扱い**（苗は `replaceable` ではない）。
+    // ここが `none` に落ちると、右クリックのたびに種だけが 1 個ずつ減る。
+    const grown = farm();
+    grown.setVoxel(0, 11, 0, WHEAT_CROP);
+    const twice = tryPlant(grown, { x: 0, y: 10, z: 0 });
+    check("もう苗が立っているマスには植えられない", twice.kind === "blocked", twice.kind);
+
+    // 上が草むらなら植わる（草むらは `isReplaceable` で液体ではない）。
+    const grassy2 = farm();
+    grassy2.fill(0, 0, 11, 11, 0, 0, TALL_GRASS);
+    const overGrass = tryPlant(grassy2, { x: 0, y: 10, z: 0 });
+    check("上が草むらなら植わる", overGrass.kind === "placed" && grassy2.getVoxel(0, 11, 0) === WHEAT_CROP);
+  }
+
+  {
+    // 書き込めない列（未読み込み）では、植えたことにしない（`tryTill()` と同じ）。
+    const frozen = farm();
+    frozen.frozenColumns.add("0,0");
+    check("書き込めなければ植えたことにしない", tryPlant(frozen, { x: 0, y: 10, z: 0 }).kind === "none");
   }
 }

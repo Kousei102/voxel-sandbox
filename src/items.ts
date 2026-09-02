@@ -14,10 +14,12 @@ import {
   NETHER_PORTAL,
   SPRUCE_LEAVES,
   STONE,
+  TALL_GRASS,
   TIER_DIAMOND,
   TIER_WOOD,
   LAVA,
   WATER,
+  WHEAT_CROP,
   baseBlock,
   isLiquid,
   type ToolKind,
@@ -180,7 +182,21 @@ export const STONE_HOE = 118;
 export const IRON_HOE = 119;
 export const DIAMOND_HOE = 120;
 
-export const MAX_ITEM_ID = DIAMOND_HOE;
+/**
+ * 小麦の種。**草むらを壊すと 12.5% で出て**（下の `DROPS`）、持って耕地を右クリックすると
+ * その上に苗（`WHEAT_CROP`）が立ちます。
+ *
+ * **`block` は `AIR` です。** 植えるのは「置く」（`place`）ではなく `plant` の経路
+ * （`use.ts` → `placing.ts` の `tryPlant()`）で、耕地の上かどうかを見る必要があるため。
+ * `block` に苗を入れると、石の上にも草むらの代わりにも植えられるようになります。
+ *
+ * **`tool:` を持たせないこと**（シアーズとまったく同じ罠。`ToolKind` を増やすと
+ * `mobs.ts` の `TOOL_ATTACK` に無い種類が入って **NaN** が黙って通ります）。
+ * **食べ物でもありません**（`FOODS` に足さないこと）。
+ */
+export const WHEAT_SEEDS = 122;
+
+export const MAX_ITEM_ID = WHEAT_SEEDS;
 
 export const MAX_STACK = 64;
 
@@ -323,6 +339,10 @@ for (let tier = TIER_WOOD; tier <= TIER_DIAMOND; tier++) {
   });
 }
 
+// 小麦の種。**`block: AIR`**（植えるのは `place` でなく `plant` の経路。上の説明）。
+// 積めるのは普通のアイテムと同じ 64 個。
+item({ id: WHEAT_SEEDS, name: "小麦の種", block: AIR, stack: MAX_STACK, color: 0x9aa85a, tool: null });
+
 const EMPTY: ItemDef = ITEMS[NO_ITEM];
 
 export function itemDef(id: number): ItemDef {
@@ -426,6 +446,13 @@ const DROPS = new Map<number, Drop>([
   // 砂利は 10% で火打石、外したら砂利そのもの（Minecraft と同じ）。
   // **`otherwise` が無いと 90% で消えるブロックになる。**
   [GRAVEL, { item: FLINT, count: 1, chance: 0.1, otherwise: GRAVEL }],
+  // 草むらは 12.5% で小麦の種、**外したら草むらそのもの**（砂利と同じ形）。
+  // `otherwise` を落とすと、87.5% で消える草むらになる。逆に「種だけ」にすると
+  // 草むらが置けるアイテムでなくなる（どちらもテストで押さえてある）。
+  [TALL_GRASS, { item: WHEAT_SEEDS, count: 1, chance: 0.125, otherwise: TALL_GRASS }],
+  // 苗は**種が 1 個戻るだけ**（育っていないので小麦は出ない）。**この 1 行が要る** ——
+  // `variantOf` が自分自身なので、既定の `baseBlock()` はアイテムの無い 121 を落とす。
+  [WHEAT_CROP, { item: WHEAT_SEEDS, count: 1, chance: 1 }],
   // ポータルの面は壊せる（硬さ 0）が、何も落ちない。**持ち帰れると枠が要らなくなる。**
   [NETHER_PORTAL, { item: NO_ITEM, count: 0, chance: 0 }],
   // エンドクリスタルは砕けて消える（Minecraft では爆発する）。**拾えると、
@@ -548,6 +575,22 @@ const SHEARS_ITEMS: readonly number[] = [SHEARS];
 
 export function isShears(item: number): boolean {
   return SHEARS_ITEMS.includes(item);
+}
+
+/**
+ * 植えるもの（種）か。**火種・弓・シアーズとまったく同じ表 1 本**で、
+ * `item === WHEAT_SEEDS` と書き始めると、種が増えたときに持てる側と植える側で
+ * 片方だけ直すことになる。
+ *
+ * **どこに植わるかは見ません**（それは `placing.ts` の `tryPlant()`）。
+ * **どの苗が立つかもここでは決めません** —— いまは種が 1 種類なので
+ * `tryPlant()` が `WHEAT_CROP` を書きます（種が 2 種類目になったら、
+ * この表を `[種, 苗]` の対にすること）。
+ */
+const SEEDS: readonly number[] = [WHEAT_SEEDS];
+
+export function isSeed(item: number): boolean {
+  return SEEDS.includes(item);
 }
 
 /**

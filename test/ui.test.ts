@@ -123,6 +123,9 @@ function mainStaysWiring(): void {
     ["次元ごとの空", "setDimension("],
     ["足音・着地・水しぶき", "footsteps.update("],
     ["バケツ", "tryBucket("],
+    // 種をどこに植えられるか。**`main.ts` が「耕地の上だけ」を書き始めると、
+    // 置ける／置けないの規則が `placing.ts` と 2 か所に分かれる**（`tryTill()` と同じ）。
+    ["苗を植える", "tryPlant("],
     ["食べ進み", "eating.advance("],
     ["まとめ捨ての判定", "bulkDiscard("],
     // リスポーンで**どの次元へ戻るか**。`main.ts` が自分で決め始めると、
