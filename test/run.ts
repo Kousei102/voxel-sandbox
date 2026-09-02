@@ -38,6 +38,7 @@ import { run as physics } from "./physics.test";
 import { run as placing } from "./placing.test";
 import { run as progression } from "./progression.test";
 import { run as session } from "./session.test";
+import { run as shot } from "./shot.test";
 import { run as sfx } from "./sfx.test";
 import { run as smelting } from "./smelting.test";
 import { run as storage } from "./storage.test";
@@ -92,6 +93,7 @@ sfx();
 debugtext();
 debugspawn();
 ui();
+shot();
 docs();
 // **音だけは非同期。** `OfflineAudioContext` の書き出しを待つ必要があるので、
 // ここで await する（`summary()` より前に終わらせること）。

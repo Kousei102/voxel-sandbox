@@ -21,6 +21,7 @@ npm run dev        # http://localhost:5173
 
 npm run typecheck  # src と test をまとめて
 npm test           # 912 項目・12 秒前後。WebGL 不要（後述）
+npm run shot       # 画面を PNG に撮る（GPU 不要。shots/ へ。後述）
 npm run bench      # 生成とメッシュ化の速度計測
 npm run build      # typecheck + dist/ に静的ファイル一式
 ```
@@ -89,8 +90,11 @@ SwiftShader の初期化が `BindToCurrentSequence failed` で落ちます。ANG
 ヘッドレスシェル・フル Chromium と一通り試して不可でした。Playwright でスクリーンショットを
 撮ろうとしても時間を捨てるだけなので、やらないでください。
 
-したがって **描画結果の確認はユーザーにブラウザで見てもらうしかありません。**
-その代わり、画面を見ないと気付けない類の不具合は `npm test` で数値的に検証しています:
+ただし **見た目そのものは `npm run shot` で PNG に撮れます**（`tools/raster.ts`。three の
+`Scene` を GPU 無しで CPU で塗るので、ブラウザも WebGL も要りません）。面の欠け・裏返り・
+色・AO・光量・モブの形はこれで分かります。**写らないのは `sky.ts` の天球 GLSL・フォグ・
+DOM の画面**で、そこと「気持ちいいかどうか」は今までどおりユーザーに見てもらうこと。
+画面を見ないと気付けない類の不具合は、これとは別に `npm test` でも数値的に検証しています:
 
 - 全三角形について、頂点の巡回順から求めた法線と格納された法線が一致するか
   （ずれると裏面カリングで面が丸ごと消える）
