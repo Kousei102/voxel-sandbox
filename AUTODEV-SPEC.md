@@ -1,119 +1,119 @@
-# 仕様: 剣 4 本（木・石・鉄・ダイヤ）
+# 仕様: シアーズ（羊を刈る）
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-`AUTODEV-QUEUE.md` の先頭 **4.** です。**C の周はこの 1 枚を全文渡すこと**（要約すると 2 と 6 が
-真っ先に落ちます）。**`src/**` と `test/**` は `Read` / `Edit` で開くこと**（`cat` / `sed` だと
-`.claude/rules/*.md` が読み込まれません）。読むもの: **`.claude/rules/items-survival.md`** と
-**`.claude/rules/mobs.md`**。**使うスキルは `add-block`**（ID を 4 個取るため）。
-
-**2026-09-02 にコードで数え直しました**（B の決まり）:
-
-- **`src/**` に `sword` / `剣` は 1 つもありません**（`Grep` で 0 件）。本当に 1 本も無い
-- **`ToolKind` は `blocks.ts` の `"pickaxe" | "axe" | "shovel"`** で、`ItemDef.tool` と
-  `BlockDef.tool` の両方がこれを使います。**攻撃力は `mobs.ts` の
-  `TOOL_ATTACK`（`Record<string, number>`）+ `tier * TIER_ATTACK`（0.5）**
-- **`mobs.attack()` は「殴れたら true / クールダウン中なら false」を返します**（2138 行）。
-  いま `main.ts`（783 行）は**戻り値を捨てています** —— ここが減らす場所です
-- **`maxUses()` は `toolOf()` に聞くだけ**なので、剣に `tool:` を持たせた瞬間に
-  **`TOOL_USES[tier]`（59 / 131 / 250 / 1561 = 本家の剣と同じ数字）とセーブの 5 キーが
-  自動で載ります**。新しい表もキーも要りません
-- **共有帯 111..255 の使用者は現在 0 個**（空き 145）。**この周が最初の使用者です**
+**`AUTODEV-QUEUE.md` の先頭「5. ハサミ」を 2 件に割った前半**（`AUTODEV.md` の B）。
+**数え直し済み**: `shears` / `ハサミ` は `src/**` にも `test/**` にも 1 件もありません。
 
 ## 1. 何を足すか / 完了の判定
 
-**剣 4 本。作業台で作れて、殴ると強く、殴ると減る。**
+**シアーズ（アイテム 115）。** 鉄 2 個の斜めで作れて、**羊に右クリックすると羊毛が 1〜3 個 出て、
+その羊はしばらく刈られた状態になります**（倒さずに羊毛が取れる。本家と同じ）。**刈られた羊を
+倒しても羊毛は落ちません**（刈ってから倒す二重取りを塞ぐ）。60 秒で戻ります。
 
-判定: `npm test` に **「剣（殴って減る）」**（`test/durability.test.ts`）の節が増えて全部緑
-（**いま 2525 件**）。次を**値を出してから**判定する:
+完了の判定 —— **`npm test` に次が増えて、全部緑**:
 
-- **攻撃力の表**: 素手 1 / 木の剣 4.5 / 石 5 / 鉄 5.5 / ダイヤ 6 / **ダイヤの斧 5**。
-  **同じ階層なら剣 > 斧 > ツルハシ > シャベル > 素手**を 4 階層ぶん総当りで
-- **`wearForAttack()` の全ケース**: 剣 1 / **クリエイティブ 0** / ツルハシ 0 / 弓 0 /
-  火種 0 / 棒 0 / 素手 0
-- **`wearForUse(剣)` は 0**（右クリックしても減らない）。**`wearForBreaking(石, 剣)` は 1**
-  （本家と同じで、掘れば減る。**既存の 6 行は書き換えないこと**）
-- **回数**: 木 59 / 石 131 / 鉄 250 / ダイヤ 1561。**59 回目で壊れて**（58 回目は手に残る）
-  `breakMessage()` が「木の剣 が壊れました」を返す
-- **レシピ 4 本**（`test/crafting.test.ts`）: 材料 = 板 / 丸石 / 鉄インゴット / ダイヤ 2 個 + 棒 1。
-  **3 行あるので 2x2 では作れない**（作業台が要る）ことも出すこと
-- **ID**（`test/blocks.test.ts`）: **111..255 の空きが 145 → 141**。共有帯の衝突検査が緑で、
-  **`"sword"` を要求するブロックが 1 つも無い**（崩れると剣が採掘道具になります）
+- 「アイテム 83 種（78 → 82 → 83）/ `MAX_ITEM_ID` 115 / **111..255 の空き 140**（141 → 140）」
+- 「羊を刈ると羊毛が 1〜3 個出る」「2 回目は刈れない」「**刈られた羊を倒しても
+  羊毛が落ちない**」「60 秒でまた刈れる」「豚・ゾンビは刈れない」
+- 「シアーズは 238 回で尽きる」「**掘っても殴っても減らない**」
 
 ## 2. 触るファイル / 触らないファイル
 
-| ファイル | 何をするか |
+| 触る | 何を |
 | --- | --- |
-| `blocks.ts` | `ToolKind` に `"sword"` を足すだけ（**ブロックに割り当てない**） |
-| `items.ts` | ID 4 個・`TOOL_NAMES` に `sword: "の剣"`・剣の定義ループ・`MAX_ITEM_ID`・`isSword()` |
-| `durability.ts` | **`wearForAttack()` を 1 本足す**（3 本目。既存 2 本は触らない） |
-| `crafting.ts` | `toolRecipes()` に剣の 1 行（引数を 1 つ増やす） |
-| `mobs.ts` | `TOOL_ATTACK` に `sword: 4` を足すだけ |
-| `main.ts` | **配線だけ 2 行**（783 行の `if (mobs.attack(...))` と `hud.refresh()`） |
+| `items.ts` | ID 115・`isShears()` |
+| `durability.ts` | `SHEARS_USES` を `usedUp()` に 3 本目として |
+| `crafting.ts` | レシピ 1 行 |
+| `mobs.ts` | `MobDef.shearing` の表・`Mob.woolTimer`・`canShear()` / `shear()`・`dropFor()` |
+| `use.ts` | `UseFacts.shearable` と `{kind:"shear"}` |
+| `controls.ts` | `mobIsNearer()` を出すだけ |
+| `main.ts` | **配線だけ（+20 行以内**。いま 1400 / 上限 1500） |
 
-**触らないこと**: `ui.ts` / `inventoryui.ts` / `mobrender.ts` / `mobmesh.ts` / `mining.ts` /
-`breaking.ts` / `storage.ts` / `inventory.ts` / `chests.ts` / `furnaces.ts` / `drops.ts`
-（**傷の道は `maxUses()` 1 本から自動で伸びます**）。
+**1 行も書かないこと**: `mobmesh.ts` / `mobrender.ts`（見た目は割った残り）/ `sfx.ts` / `audio.ts`
+（新しい音を足さない）/ `blocks.ts`（羊毛 `WOOL` = 37 はもうある）/ `drops.ts` / `inventory.ts` /
+`session.ts` / `storage.ts`（**セーブは 1 バイトも増えません**）。
 
-## 3. 使う ID（`ROADMAP.md` の予約表の 111..255）
+## 3. 使う ID
 
-**上から詰めて 4 個**。ブロック側も併せて見たうえで、共有帯の最初の 4 番です:
-
-| ID | 定数 | 名前 |
-| --- | --- | --- |
-| 111 | `WOOD_SWORD` | 木の剣 |
-| 112 | `STONE_SWORD` | 石の剣 |
-| 113 | `IRON_SWORD` | 鉄の剣 |
-| 114 | `DIAMOND_SWORD` | ダイヤの剣 |
-
-- **`MAX_ITEM_ID = DIAMOND_SWORD`**（いま `ARROW`）。**95..110 は空けたまま**で、
-  `allItemIds()` は `ITEMS[id]` が無い番号を飛ばします（**クリエイティブ一覧にも勝手に出ます**）
-- **既存の道具ループ（`WOOD_PICKAXE + (tier-1)*3 + k`）に混ぜないこと** —— 番号が
-  別の帯なので、剣は**自分のループ**（`WOOD_SWORD + (tier - TIER_WOOD)`）にすること
+**115 を 1 個だけ**（`ROADMAP.md` の予約表「115..255 予備」の先頭。111..114 は剣）。
+**ブロックは 1 個も取らず、95..110 は空けたまま。**
 
 ## 4. 判断をどこに置くか
 
-| 判断 | 置き場所 |
+| 判断 | 置き場 |
 | --- | --- |
-| 攻撃力（4 / 0.5） | **`mobs.ts` の `TOOL_ATTACK`**。`ItemDef` に `damage` を足さないこと |
-| 何回で尽きるか | **`durability.ts` の `TOOL_USES`**（既にある。1 行も足さない） |
-| いつ減るか | **`durability.ts` の `wearForAttack(item, creative)`** |
-| どれが剣か | **`items.ts` の `isSword(id)` = `toolOf(id)?.kind === "sword"`**。`isBow()` と同じ形 |
-| 掘る速さ | **持たせない**（`speed: 1`）。剣はどのブロックの適正でもないので `toolSpeed()` は 1 を返す |
+| 何回で尽きるか・いつ減るか | `durability.ts`（`.claude/rules/items-survival.md` の「減り方は 3 種類」の**使って減るもの**） |
+| どれがシアーズか | `items.ts` の `isShears()`（`isFireStarter()` / `isBow()` と同じ**表 1 本**） |
+| 誰が刈れるか・何個出るか・いつ戻るか | `mobs.ts` の表（`MobDef.shearing`） |
+| 右クリックがどこへ行くか | `use.ts` の `decideUse()` |
+| 手前がモブかブロックか | `controls.ts`（左クリックの「殴る」と**同じ 1 本**） |
 
-- **`durability.ts` にアイテムの名前（`WOOD_SWORD` など）を書かず `isSword()` に聞くこと**
-- **`main.ts` に 4 も 0.5 も 59 も書かないこと。** 書くのは
-  `if (mobs.attack(...)) { wearHeld(wearForAttack(inventory.selectedItem, creative)); hud.refresh(); }` だけ
-- **新しく確かめられないものは足しません**（見た目も音も増えない）。`unverifiable-pair` は不要
+**新しい「確かめられないもの」は 1 つも足しません**（`unverifiable-pair` は不要。禁じ手 1・2）。
 
-## 5. 書くテスト
+## 5. 実装の要点（この順で。`add-block` スキルの手順に乗る）
 
-**値を出してから判定する**（`.claude/rules/testing.md`）。節は 4 つ:
+1. `items.ts`: `export const SHEARS = 115;` / `MAX_ITEM_ID = SHEARS` /
+   `item({ id: SHEARS, name: "シアーズ", block: AIR, stack: 1, color: 0xa8b8c0, tool: null })` /
+   `isShears()`。**`tool:` を持たせないこと**（禁じ手 1）
+2. `durability.ts`: `SHEARS_USES = 238`（本家のまま）を `usedUp()` に 3 本目として足す
+3. `crafting.ts`: `{ name: "シアーズ", out: SHEARS, count: 1, shape: [".I", "I."], key: { I: IRON_INGOT } }`
+4. `mobs.ts`:
+   - `interface ShearRule { item; min; max; regrow }` と `MobDef.shearing: ShearRule | null`。
+     羊だけ `{ item: WOOL, min: 1, max: 3, regrow: 60 }`、**ほかは全部 `null`**
+     （`kind === "sheep"` と書かないこと。`MobDef.ranged` / `teleport` と同じ作法）
+   - `Mob.woolTimer`（0 なら刈れる / > 0 なら刈られている。**保存しません**）
+   - `canShear(mob)` と `shear(mob, ctx, random?)`。刈れたら `onDrop(item, n, mob の位置 3 つ)` と
+     `onSound("dig", def.voice)`、`woolTimer = regrow`。刈れなければ **false**（呼ぶ側が減らさない）
+   - **倒したときのドロップは `dropFor(mob, def)` 1 本に通すこと** —— いま `def.drop` を直に読むのは
+     `attack()` と `hitByProjectile()` の**2 か所**で、片方だけ直すと**弓で撃ったときだけ
+     刈った羊から羊毛が出ます**（`rollDrop()` を 1 か所に集めたのと同じ話）
+   - `woolTimer` は `step()` の `hurtTimer` の隣で減らす（毎フレーム・`dt`）
+5. `controls.ts`: `mobIsNearer(facts: ClickFacts): boolean` を出す。**`decideClick()` の button 0 も
+   これを呼ぶこと**（式を 2 か所に書かない）。`main.ts` が右クリックでも同じ規則を使う
+6. `use.ts`: `UseFacts.shearable` / `UseAction` に `{ kind: "shear" }` / `decideUse()` の
+   **先頭（器より前）** に `if (facts.shearable && isShears(held)) …`（手前に居るときだけ真）
+7. `main.ts`: `mousedown` の `facts` を `const` に出し、`act === "use"` で
+   `useOrPlace(mobIsNearer(facts) ? target : null)`。`useOrPlace()` は
+   `shearable: m !== null && mobs.canShear(m.mob)` を渡し、`case "shear"` で
+   **`mobs.shear()` が true のときだけ** `wearHeld(wearForUse(...))` と `hud.refresh()`
 
-- `test/durability.test.ts` に **「剣（殴って減る）」** —— 回数・`wearForAttack()` の全ケース・
-  壊れる回に加えて、**`main.ts` が `wearForAttack(` を 1 回だけ呼ぶこと**と
-  **`durability.ts` に剣のアイテム名が出てこないこと**の見張り
-- `test/mobs.test.ts` に **攻撃力の総当り表**（4 階層 x 4 種類 + 素手 = 17 行を `console.log`）
-- `test/crafting.test.ts` に **剣 4 本のレシピ**（材料・作業台が要ること）
-- `test/blocks.test.ts` に **`"sword"` を要求するブロックが無いこと**
+## 6. 書くテスト
 
-## 6. このタスク固有の禁じ手
+**値を出力してから判定すること**（`.claude/rules/testing.md`）。
 
-- **`TOOL_USES` に剣用の 5 個目の表を作らないこと**（階層の表がそのまま効きます）
-- **`wearForUse()` に剣を混ぜないこと**（右クリックで減る物になります）。
-  **`wearForBreaking()` の既存 6 行を書き換えないこと**（剣は `toolOf()` が非 null なので、
-  1 行も足さずに「掘れば減る」が付いてきます）
-- **ツルハシ・斧・シャベルを「殴ると減る」に変えないこと**（本家はそうですが、
-  **この周の話ではありません**。既存 12 本の寿命が黙って縮みます）
-- **`mobs.attack()` の戻り値の意味を変えないこと**（いま「殴れたか」。ここを「倒したか」に
-  すると、`test/mobs.test.ts` の連打の判定が全部ずれます）
-- **ブロックに `tool: "sword"` を付けないこと**。**`SaveData` にキーを足さないこと**（`version` は 1）
+- `test/items.test.ts` / `test/blocks.test.ts`: アイテム 83 種・空き 140（**出力を読むこと**）
+- `test/crafting.test.ts`: 鉄 2 個の斜めで 1 個。既存の「同じ形のレシピが重複していない」に乗る
+- `test/durability.test.ts`: `maxUses` 238 / `wearForUse` 1 / `wearForBreaking(STONE, …)` 0 /
+  `wearForAttack` 0 / `durability.ts` にアイテム名が出てこない見張りは**そのまま** /
+  **`main.ts` の `wearForUse(` を 2 → 3 に直すこと**（ゆるめるのではなく増やす）
+- `test/mobs.test.ts`: 上の 5 項目。**乱数は種を固定した 1 本を回し続けること**、
+  1 個と 3 個の両端は `random` を直に渡して出す
+- `test/use.test.ts`: シアーズ + 刈れるモブ → `shear` / シアーズだけ → 今までどおり /
+  別のアイテム + 刈れるモブ → 今までどおり（`place` も `eat` も奪わない）
+- `test/controls.test.ts`: `mobIsNearer()` の 3 通り（モブが手前 / ブロックが手前 / どちらも無い）
 
-## 7. 終了条件
+## 7. このタスク固有の禁じ手
 
-`npm run typecheck` / `npm test`（**2525 件 + 新しい節がすべて緑**）/ `npm run build` /
-**コミット 1 つ**。**`TUNING.md` に 1 行**（`TOOL_ATTACK` の `sword: 4` —— 本家は
-4/5/6/7 で階層ごとに +1、ここは +0.5 なので**ダイヤの剣が 6**）。
-`ROADMAP.md` の予約表に 111..114 を「実装済み」と書き、`AUTODEV-QUEUE.md` の 4. を消し、
-**この仕様書の `状態:` を `済`** にして、`HANDOFF.md` を丸ごと書き直すこと。
+1. **`ToolKind` に `"shears"` を足さないこと。** `mobs.ts` の `TOOL_ATTACK` に無い種類が入ると
+   `attackDamage()` が **NaN** を返し（`TOOL_ATTACK[kind]` が `undefined`）、`wearForBreaking()` は
+   「掘る道具」として 1 を返すので**石を掘るたびに減ります。** 火種・弓と同じ「使って減るもの」です
+2. **新しい `Sfx` を足さないこと**（音は確かめられない側。既にある `"dig"` を鳴らす）
+3. **羊の見た目を変えないこと**（下の「割った残り」）
+4. **`MobDef.drop` の表を書き換えないこと**（倒したときの羊毛 1 個はそのまま。抑えるのは `dropFor()`）
+5. **`main.ts` に `isShears(` と距離の比較を書かないこと**（`test/use.test.ts` が `isBucket(` などを
+   見張っているのと同じ理由）
+6. **セーブにキーを足さないこと**（`version` は 1 のまま。刈られた状態はモブの持ち物で、保存しません）
+7. 既存の ID を振り直さない / **テストの判定をゆるめない**
+
+## 8. 終了条件
+
+`npm run typecheck` と `npm test` が緑 / `npm run build` / **コミット 1 つ** / `TUNING.md` に
+1 行（羊毛 1〜3 個・戻るまで 60 秒・238 回）/ `ROADMAP.md` の予約表に **115 を「実装済み」** /
+クリエイティブ一覧が 1 枠増えるので **C-3 の撮影**（`node tools/browsershot.mjs` → `Read` で見る）。
+
+## 割った残り
+
+**「刈られた羊が見て分かること」は別の周**（`AUTODEV-QUEUE.md` の 11 番）。`mobrender.ts` は
+形を `MobKind` ごとに 1 つ作って使い回すので、2 つ目の形と差し替えの仕掛けが要ります。
