@@ -27,6 +27,8 @@ function sources(edits: EditMap = new Map()) {
       serializeWear: () => ({ "1,2,3": [0, 0, 30] }),
     },
     chests: { serialize: () => undefined, serializeWear: () => undefined },
+    // 苗の育ち具合。**器の中身と違って傷は無い**ので `serialize()` の 1 本だけ。
+    crops: { serialize: () => ({ "5,41,6": 12.5 }) },
   };
 }
 
@@ -73,6 +75,13 @@ export function run(): void {
       JSON.stringify(state.furnaceWear),
     );
     check("全部新品の器は chestWear ごと出ない", state.chestWear === undefined, String(state.chestWear));
+    // 苗の育ち具合も**同じ 1 か所**で集まること（`collectState()` を 2 か所に写さないため）。
+    console.log(`      苗の育ち具合: ${JSON.stringify(state.crops)}`);
+    check(
+      "苗の育ち具合も同じ 1 か所で集まる",
+      state.crops?.["5,41,6"] === 12.5,
+      JSON.stringify(state.crops),
+    );
   }
 
   // --- 書き出す形 -----------------------------------------------------------
@@ -122,6 +131,21 @@ export function run(): void {
     const plain = buildSave(parts({ top: { edits: {}, chests: { "4,5,6": [69, 1] } } }));
     const plainKeys = Object.keys(plain).filter((k) => plain[k as keyof SaveData] !== undefined);
     check("空のキーは省かれる（chestWear / furnaceWear）", !plainKeys.includes("chestWear") && !plainKeys.includes("furnaceWear"), plainKeys.join(" "));
+    // **畑を作っていない人のセーブは 1 バイトも増えないこと**（`crops` がキーごと消える）。
+    check("空のキーは省かれる（crops）", !plainKeys.includes("crops"), plainKeys.join(" "));
+  }
+
+  {
+    // 苗の育ち具合も**上の階層**（オーバーワールドのぶん）に並ぶ。`edits` に混ぜないこと ——
+    // あちらは 1 マスにブロック ID 1 個の表なので、秒数の入る場所がない。
+    const farm = buildSave(parts({ top: { edits: {}, crops: { "0,41,0": 90 } } }));
+    console.log(`      セーブに載る苗: ${JSON.stringify(farm.crops)}`);
+    check("苗の育ち具合は上の階層に載る", farm.crops?.["0,41,0"] === 90, JSON.stringify(farm.crops));
+    check("edits には混ざらない", JSON.stringify(farm.edits) === "{}", JSON.stringify(farm.edits));
+
+    // 読み戻す側も上の階層から拾うこと（`savedShape()`）。
+    const shape = savedShape({ crops: { "1,2,3": 4 } } as Partial<SaveData> as SaveData);
+    check("読み戻しも上の階層から拾う", shape.top.crops?.["1,2,3"] === 4, JSON.stringify(shape.top.crops));
   }
 
   {
@@ -281,6 +305,7 @@ export function run(): void {
       drops: { clear: () => called.push("drops") },
       furnaces: { clear: () => called.push("furnaces") },
       chests: { clear: () => called.push("chests") },
+      crops: { clear: () => called.push("crops") },
     };
     forgetWorld(bag);
     // **預かり物とリスポーン地点は必ず忘れる** —— 忘れると、前のワールドで別の次元に
@@ -291,7 +316,7 @@ export function run(): void {
 
     called.length = 0;
     forgetEverything(bag);
-    const missing = ["dims", "beds", "inventory", "craft", "drops", "furnaces", "chests"].filter(
+    const missing = ["dims", "beds", "inventory", "craft", "drops", "furnaces", "chests", "crops"].filter(
       (name) => !called.includes(name),
     );
     // 1 つでも残すと、消したはずの持ち物が拾い直せる／移った先に置いてある。

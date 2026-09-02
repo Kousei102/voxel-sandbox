@@ -19,6 +19,7 @@ import { Chests } from "../src/chests";
 import { CraftScreen } from "../src/craftscreen";
 import { NETHER, OVERWORLD } from "../src/dimensions";
 import { Drops } from "../src/drops";
+import { Crops } from "../src/crops";
 import { Furnaces } from "../src/furnaces";
 import { check, describe } from "./harness";
 import { Inventory } from "../src/inventory";
@@ -157,6 +158,25 @@ export function run(): void {
     const beds = new Beds(OVERWORLD);
     beds.deserialize(saved?.bed, saved?.bedDim);
     check("bedDim があれば その次元へ戻る", beds.respawnDimension() === NETHER, beds.respawnDimension());
+  });
+
+  // **`crops` も省略可のキーとして足したもの**（`version` は 1 のまま）。
+  // **凍らせた v1 には無い**ので、書いてあれば効き、無ければ空、の両方をここで見る
+  // （畑を作っていない人のセーブは、育つ苗が入る前と 1 バイトも変わらない）。
+  withStorage(V1_SAVE.replace('"bed": [9, 41, -3],', '"bed": [9, 41, -3], "crops": { "2,41,3": 45.5 },'), () => {
+    const saved = load();
+    check("crops を足しても v1 として読める", saved !== null, String(saved === null));
+    const crops = new Crops();
+    crops.deserialize(saved?.crops);
+    console.log(`      読み戻した苗: ${crops.count} 本 / 育ち ${crops.peek(2, 41, 3)} 秒`);
+    check("苗の育ち具合が読み戻せる", crops.count === 1 && crops.peek(2, 41, 3) === 45.5, `${crops.peek(2, 41, 3)}`);
+  });
+
+  withStorage(V1_SAVE, () => {
+    // **`crops` の無い古いセーブは畑が 0 本**（`deserialize(undefined)` が空にする）。
+    const crops = new Crops();
+    crops.deserialize(load()?.crops);
+    check("crops の無い古いセーブは畑が 0 本", crops.count === 0, `${crops.count} 本`);
   });
 
   // --- 省略可のキーは 1 つずつ抜いても読める -------------------------------

@@ -35,6 +35,7 @@ import {
   WALL_TORCH_ZN,
   WATER,
   WHEAT_CROP,
+  WHEAT_CROP_RIPE,
   baseBlock,
   blockDef,
   blockName,
@@ -67,6 +68,7 @@ import {
   SHEARS,
   STICK,
   WATER_BUCKET,
+  WHEAT,
   WHEAT_SEEDS,
   WOOD_HOE,
   allItemIds,
@@ -148,10 +150,12 @@ export function run(): void {
     `      アイテム ${allItemIds().length} 種（うち共有帯 ${sharedItems.length} 個: ` +
       `${sharedItems.map((id) => `${id} ${itemName(id)}`).join(" / ")}）  MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
+  // **ゆるめるのではなく数え直すこと。** 123 はブロック（実った小麦）なので、
+  // 共有帯のアイテムは 122 と 124 の 2 つが飛び飛びに並ぶ（1 本の番号列だから正しい）。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種の 10 個（122 まで）",
-    sharedItems.length === 10 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
-      sharedItems[9] === WHEAT_SEEDS && MAX_ITEM_ID === WHEAT_SEEDS,
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦の 11 個（124 まで）",
+    sharedItems.length === 11 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+      sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && MAX_ITEM_ID === WHEAT,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **95..110 は空けたまま**（ブロック側の向き違いが使っている番号）。
@@ -890,6 +894,64 @@ function wheatCrop(world: World, ground: number): void {
     );
     world.onAutoBreak = undefined;
   }
+
+  ripeWheat();
+}
+
+/**
+ * 実った小麦（123）。**苗と違って `variantOf` は大元（苗）を向いている**ので、
+ * `dropOf()` の既定は「苗 = アイテムの無い 121」を返す。だから `DROPS` の 1 行が
+ * 無いと、**実らせても種しか採れない**（書き忘れが一番起こりやすい所）。
+ */
+function ripeWheat(): void {
+  describe("実った小麦");
+
+  console.log(
+    `      実った小麦 ${WHEAT_CROP_RIPE}（baseBlock ${baseBlock(WHEAT_CROP_RIPE)} / ` +
+      `アイテム "${itemName(WHEAT_CROP_RIPE)}"）  小麦 ${WHEAT}（${itemName(WHEAT)}）  ` +
+      `落ちるもの ${itemName(dropOf(WHEAT_CROP_RIPE).item)} x${dropOf(WHEAT_CROP_RIPE).count}`,
+  );
+
+  check(
+    "実った小麦の大元は苗（variantOf: WHEAT_CROP）",
+    baseBlock(WHEAT_CROP_RIPE) === WHEAT_CROP,
+    `${baseBlock(WHEAT_CROP_RIPE)}`,
+  );
+  // `variantOf !== AIR` なので `items.ts` の for が飛ばす → 一覧も持ち物も増えない。
+  check(
+    "実った小麦はアイテムを持たない（一覧が増えるのは小麦の 1 枠だけ）",
+    itemName(WHEAT_CROP_RIPE) === "",
+    `"${itemName(WHEAT_CROP_RIPE)}"`,
+  );
+  // **既定の `baseBlock()` は苗（アイテムの無い 121）を返す**ので、`DROPS` の 1 行が要る。
+  check(
+    "実った小麦を掘ると小麦が 1 個",
+    rollDrop(WHEAT_CROP_RIPE, 0.5).item === WHEAT && rollDrop(WHEAT_CROP_RIPE, 0.5).count === 1,
+    `${itemName(rollDrop(WHEAT_CROP_RIPE, 0.5).item)} x${rollDrop(WHEAT_CROP_RIPE, 0.5).count}`,
+  );
+  // **種は戻らない**（1 ブロックにつき 1 山しか落とせない。2 山落ちる器は別のタスク）。
+  check(
+    "いまは種が戻らない（1 山しか落とせないため）",
+    rollDrop(WHEAT_CROP_RIPE, 0.5).item !== WHEAT_SEEDS,
+    `${itemName(rollDrop(WHEAT_CROP_RIPE, 0.5).item)}`,
+  );
+
+  // 苗と同じ形（通り抜けられる・支えにならない・上書きして置けない・素手ですぐ壊せる）。
+  check("実った小麦は通り抜けられる", collisionBoxes(WHEAT_CROP_RIPE).length === 0);
+  check("実った小麦にも狙う形はある", shapeBoxes(WHEAT_CROP_RIPE).length > 0);
+  check("実った小麦は支えにならない", [0, 1, 2, 3, 4, 5].every((f) => !canSupport(WHEAT_CROP_RIPE, f)));
+  check("実った小麦は上書きして置けない", !isReplaceable(WHEAT_CROP_RIPE));
+  check("実った小麦も素手ですぐ壊せる", breakTime(WHEAT_CROP_RIPE) === 0, `${breakTime(WHEAT_CROP_RIPE)} 秒`);
+
+  // 小麦は「材料」だけ。**道具でも食べ物でもない**（パンにするのは別のタスク）。
+  console.log(
+    `      小麦: tool ${toolOf(WHEAT)} / food ${foodOf(WHEAT)} / ` +
+      `置けるブロック ${placedBlock(WHEAT)} / 1 山 ${itemStackLimit(WHEAT)}`,
+  );
+  check("小麦は道具でも食べ物でもない", toolOf(WHEAT) === null && foodOf(WHEAT) === null);
+  // **`block: AIR`** —— 置けると、耕地も育つ時間も飛ばして畑を並べられる。
+  check("小麦は置けるアイテムではない", placedBlock(WHEAT) === AIR, `${placedBlock(WHEAT)}`);
+  check("小麦は 64 個まで積める", itemStackLimit(WHEAT) === 64, `${itemStackLimit(WHEAT)}`);
 }
 
 /** エンドポータルの枠（向き 4 x アイの有無 2）。要塞が並べる（`stronghold.ts`）。 */

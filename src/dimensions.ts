@@ -49,6 +49,11 @@ export interface DimensionState {
   readonly chests?: Record<string, number[]>;
   /** チェストの中身の傷（1 台 27 要素。キーは `chests` と同じ）。**全部新品なら無し**。 */
   readonly chestWear?: Record<string, number[]>;
+  /**
+   * 植えてある苗の育ち具合（`"x,y,z"` -> 育った秒数）。**1 本も無ければ無し**。
+   * **次元ごとに持つこと** —— ネザーへ行っている間に畑が消えてはいけない。
+   */
+  readonly crops?: Record<string, number>;
 }
 
 /** まだ一度も行っていない次元の状態。 */
@@ -69,6 +74,7 @@ function normalize(raw: Partial<DimensionState> | undefined): DimensionState {
     furnaceWear: raw?.furnaceWear,
     chests: raw?.chests,
     chestWear: raw?.chestWear,
+    crops: raw?.crops,
   };
 }
 

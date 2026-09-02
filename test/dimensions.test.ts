@@ -46,6 +46,8 @@ function state(mark: number): DimensionState {
     furnaceWear: { [`${mark},2,0`]: [mark, 0, 0] },
     chests: { [`${mark},3,0`]: [mark, 64] },
     chestWear: { [`${mark},3,0`]: [mark] },
+    // 苗の育ち具合。**次元ごとに持つこと** —— ネザーへ行っている間に畑が消えてはいけない。
+    crops: { [`${mark},4,0`]: mark },
   };
 }
 
@@ -136,6 +138,10 @@ export function run(): void {
       `      戻ってきた傷: furnaceWear ${JSON.stringify(back?.furnaceWear)} / chestWear ${JSON.stringify(back?.chestWear)}`,
     );
     check("器の中身の傷も残っている", back?.furnaceWear?.["11,2,0"]?.[0] === 11 && back?.chestWear?.["11,3,0"]?.[0] === 11, JSON.stringify(back?.chestWear));
+    // **苗の育ち具合も次元をまたいで残ること。** 落ちると、ネザーへ行って戻った人の
+    // 畑が 0 秒から数え直しになる（型では防げない。どちらも `DimensionState`）。
+    console.log(`      戻ってきた苗: ${JSON.stringify(back?.crops)}`);
+    check("苗の育ち具合も残っている", back?.crops?.["11,4,0"] === 11, JSON.stringify(back?.crops));
 
     // もう一度行くと、置いてきたものがある。
     const again = dims.switchTo("あちら", back ?? emptyState());

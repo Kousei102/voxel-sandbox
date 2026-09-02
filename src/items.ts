@@ -20,6 +20,7 @@ import {
   LAVA,
   WATER,
   WHEAT_CROP,
+  WHEAT_CROP_RIPE,
   baseBlock,
   isLiquid,
   type ToolKind,
@@ -196,7 +197,16 @@ export const DIAMOND_HOE = 120;
  */
 export const WHEAT_SEEDS = 122;
 
-export const MAX_ITEM_ID = WHEAT_SEEDS;
+/**
+ * 小麦。**実った小麦（ブロック 123）を掘ると 1 個**出ます（下の `DROPS`）。
+ *
+ * **`block` は `AIR`。** 置けるようにすると、耕地も育つ時間も飛ばして
+ * 実った畑を並べられます（種を植えて待つ意味が消えます）。
+ * **食べ物でもありません**（`FOODS` に足さないこと。本家と同じで、パンにしてから食べます）。
+ */
+export const WHEAT = 124;
+
+export const MAX_ITEM_ID = WHEAT;
 
 export const MAX_STACK = 64;
 
@@ -343,6 +353,9 @@ for (let tier = TIER_WOOD; tier <= TIER_DIAMOND; tier++) {
 // 積めるのは普通のアイテムと同じ 64 個。
 item({ id: WHEAT_SEEDS, name: "小麦の種", block: AIR, stack: MAX_STACK, color: 0x9aa85a, tool: null });
 
+// 小麦。**`block: AIR`**（置けると畑を並べ直せる。上の説明）。パンにするのは別のタスク。
+item({ id: WHEAT, name: "小麦", block: AIR, stack: MAX_STACK, color: 0xd8c26a, tool: null });
+
 const EMPTY: ItemDef = ITEMS[NO_ITEM];
 
 export function itemDef(id: number): ItemDef {
@@ -453,6 +466,10 @@ const DROPS = new Map<number, Drop>([
   // 苗は**種が 1 個戻るだけ**（育っていないので小麦は出ない）。**この 1 行が要る** ——
   // `variantOf` が自分自身なので、既定の `baseBlock()` はアイテムの無い 121 を落とす。
   [WHEAT_CROP, { item: WHEAT_SEEDS, count: 1, chance: 1 }],
+  // 実った小麦は**小麦が 1 個**。**この 1 行が要る** —— `variantOf` は苗なので、
+  // 既定の `baseBlock()` に任せると実らせても種しか採れない。
+  // **種は戻らない**（1 ブロックにつき 1 山しか落とせないため。2 山落ちる器は別のタスク）。
+  [WHEAT_CROP_RIPE, { item: WHEAT, count: 1, chance: 1 }],
   // ポータルの面は壊せる（硬さ 0）が、何も落ちない。**持ち帰れると枠が要らなくなる。**
   [NETHER_PORTAL, { item: NO_ITEM, count: 0, chance: 0 }],
   // エンドクリスタルは砕けて消える（Minecraft では爆発する）。**拾えると、

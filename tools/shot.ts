@@ -17,7 +17,7 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { PerspectiveCamera, Scene, Vector3 } from "three";
-import { AIR, WATER } from "../src/blocks";
+import { AIR, DIRT, FARMLAND, GRASS, WATER, WHEAT_CROP, WHEAT_CROP_RIPE } from "../src/blocks";
 import { DayNight } from "../src/daynight";
 import { DIMENSIONS, END, NETHER, OVERWORLD, type DimensionId } from "../src/dimensions";
 import { MOB_KINDS, Mobs } from "../src/mobs";
@@ -173,6 +173,46 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
       camera: look(setup, spot, new Vector3(spot.x + widest + 8, spot.y - 2.5, spot.z)),
       dayNight: skyOf(OVERWORLD, setup.time),
       note: `水面 ${Math.round(spot.x)},${Math.round(spot.y)},${Math.round(spot.z)}（幅 ${widest}）`,
+    };
+  },
+
+  /**
+   * 畑。**苗（`WHEAT_CROP`）と実った小麦（`WHEAT_CROP_RIPE`）を並べて撮る。**
+   * 育つのに `GROW_SECONDS` 秒かかるので、**待たずに両方を見るにはここへ直に置く**しかない。
+   * 見るのは 2 つ: 十字の板が耕地の上に立っているか / **2 色が見分けられるか**（`TUNING.md`）。
+   */
+  crops(setup) {
+    const { scene, world } = makeWorld(OVERWORLD, 3);
+    const half = 4;
+    const pad = half + 3;
+    // **高さはこのあたりで一番高い地表に合わせる。** 低いほうに合わせると、畑が
+    // 隣の地面に埋まって 1 本も写らない（実際にそうなって撮り直した）。
+    let y = 0;
+    for (let dz = -pad; dz <= pad; dz++) {
+      for (let dx = -pad; dx <= pad; dx++) y = Math.max(y, world.surfaceY(dx, dz));
+    }
+    for (let dz = -pad; dz <= pad; dz++) {
+      for (let dx = -pad; dx <= pad; dx++) {
+        // 平らな台を作る。地形なりだと苗の高さがばらけて、2 色の比べようがない。
+        for (let h = y; h < y + 6; h++) world.setVoxel(dx, h, dz, AIR);
+        for (let h = y - 6; h < y; h++) world.setVoxel(dx, h, dz, DIRT);
+        const inField = Math.abs(dx) <= half && Math.abs(dz) <= half;
+        world.setVoxel(dx, y - 1, dz, inField ? FARMLAND : GRASS);
+        // **左半分が苗・右半分が実り。** 交互に混ぜると、どちらの色かが絵から読めない。
+        if (inField) world.setVoxel(dx, y, dz, dx < 0 ? WHEAT_CROP : WHEAT_CROP_RIPE);
+      }
+    }
+    // **書き換えたらメッシュ化をもう一度流すこと。** `setVoxel()` は「汚れた」印を
+    // 付けてキューに積むだけで、流すのは `primeAround()`（と `world.update()`）。
+    // 忘れると**編集前の地形がそのまま写る** —— 撮り直すまで気付けない（実際に 1 度撮った）。
+    world.primeAround(0.5, 0.5, 3);
+    return {
+      scene,
+      // 目の高さから畑をかすめて見る（真上からだと十字の板が線にしか写らない）。
+      // **台の縁に立たないこと。** 縁に立つと画の下半分が台の下（洞窟）になる。
+      camera: look(setup, new Vector3(-pad + 2.5, y + 1.7, -pad + 2.5), new Vector3(3, y + 0.5, 3)),
+      dayNight: skyOf(OVERWORLD, setup.time),
+      note: `畑 ${(half * 2 + 1) ** 2} マス（左 苗 ${WHEAT_CROP} / 右 実り ${WHEAT_CROP_RIPE}）y=${y}`,
     };
   },
 

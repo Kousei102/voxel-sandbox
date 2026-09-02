@@ -34,6 +34,8 @@ export interface StateSources {
     serialize(): Record<string, number[]> | undefined;
     serializeWear(): Record<string, number[]> | undefined;
   };
+  /** 苗の育ち具合。**器の中身と違って傷は無い**ので `serialize()` の 1 本だけ。 */
+  readonly crops: { serialize(): Record<string, number> | undefined };
 }
 
 /**
@@ -51,6 +53,7 @@ export function collectState(from: StateSources): DimensionState {
     furnaceWear: from.furnaces.serializeWear(),
     chests: from.chests.serialize(),
     chestWear: from.chests.serializeWear(),
+    crops: from.crops.serialize(),
   };
 }
 
@@ -122,6 +125,7 @@ export function buildSave(parts: SaveParts): SaveData {
     furnaceWear: parts.shape.top.furnaceWear,
     chests: parts.shape.top.chests,
     chestWear: parts.shape.top.chestWear,
+    crops: parts.shape.top.crops,
     bed: parts.bed,
     bedDim: parts.bedDim,
     edits: parts.shape.top.edits,
@@ -249,6 +253,7 @@ export interface SavedBelongings extends WorldBelongings {
   readonly drops: { clear(): void };
   readonly furnaces: { clear(): void };
   readonly chests: { clear(): void };
+  readonly crops: { clear(): void };
 }
 
 /**
@@ -271,6 +276,7 @@ export function forgetEverything(bag: SavedBelongings): void {
   bag.drops.clear();
   bag.furnaces.clear();
   bag.chests.clear();
+  bag.crops.clear();
 }
 
 /**
@@ -292,6 +298,7 @@ export function savedShape(saved: SaveData | null | undefined): {
       furnaceWear: saved?.furnaceWear,
       chests: saved?.chests,
       chestWear: saved?.chestWear,
+      crops: saved?.crops,
     },
     others: saved?.dims,
   };

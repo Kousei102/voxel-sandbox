@@ -10,10 +10,11 @@ import {
   STONE,
   TORCH,
   WHEAT_CROP,
+  WHEAT_CROP_RIPE,
   bedPartner,
 } from "../src/blocks";
 import { autoBreak, tryBreak, type BreakContainers } from "../src/breaking";
-import { FLINT, NO_ITEM, WHEAT_SEEDS, WOOD_PICKAXE, itemName } from "../src/items";
+import { FLINT, NO_ITEM, WHEAT, WHEAT_SEEDS, WOOD_PICKAXE, itemName } from "../src/items";
 import { Slab, sourceOf } from "./arena";
 import { check, describe } from "./harness";
 
@@ -226,6 +227,35 @@ export function run(): void {
       describeDrops(dropped),
     );
     check("クリエイティブでは落ちない", autoBreak(world, 0, 11, 0, WHEAT_CROP, true, 0.5).length === 0);
+  }
+
+  // --- 実った小麦（**`variantOf` は苗なので、`DROPS` を書き忘れると種しか出ない**） ---
+  {
+    const world = new Slab();
+    world.setVoxel(0, 11, 0, WHEAT_CROP_RIPE);
+    const out = tryBreak(world, containers(), order(WHEAT_CROP_RIPE, { tool: NO_ITEM }));
+    check(
+      "実った小麦を掘ると小麦が 1 個",
+      out.drops.length === 1 && out.drops[0].item === WHEAT && out.drops[0].count === 1,
+      describeDrops(out.drops),
+    );
+    // **種は戻らない**（1 ブロックにつき 1 山。2 山落ちる器は別のタスク）。
+    check("いまは種が戻らない", out.drops.every((d) => d.item !== WHEAT_SEEDS), describeDrops(out.drops));
+  }
+  {
+    // **耕地を掘ると実った小麦も一緒に壊れて小麦になる**（`autoBreak()` の経路）。
+    // 掘る経路だけ直すと、床を抜いたときだけ種が落ちる、という形で静かにずれる。
+    const world = new Slab();
+    const dropped = autoBreak(world, 0, 11, 0, WHEAT_CROP_RIPE, false, 0.5);
+    check(
+      "耕地を掘ると実った小麦も小麦になって落ちる",
+      dropped.length === 1 && dropped[0].item === WHEAT,
+      describeDrops(dropped),
+    );
+    check(
+      "クリエイティブでは落ちない",
+      autoBreak(world, 0, 11, 0, WHEAT_CROP_RIPE, true, 0.5).length === 0,
+    );
   }
 
   // 2 つの経路が**同じ規則**で落とすこと（片方だけ直すと静かにずれる）。

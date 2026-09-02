@@ -126,6 +126,11 @@ function mainStaysWiring(): void {
     // 種をどこに植えられるか。**`main.ts` が「耕地の上だけ」を書き始めると、
     // 置ける／置けないの規則が `placing.ts` と 2 か所に分かれる**（`tryTill()` と同じ）。
     ["苗を植える", "tryPlant("],
+    // 苗が育つところ。**`main.ts` が秒数を数え始めると、育つ条件（下が耕地か・列が
+    // 読み込まれているか）が `crops.ts` と二重管理になる**（`test/crops.test.ts` が
+    // `main.ts` に `GROW_SECONDS` も 180 も無いことを見ている）。
+    ["苗が育つ", "crops.update("],
+    ["植えたら覚える", "crops.plant("],
     ["食べ進み", "eating.advance("],
     ["まとめ捨ての判定", "bulkDiscard("],
     // リスポーンで**どの次元へ戻るか**。`main.ts` が自分で決め始めると、

@@ -296,6 +296,20 @@ export const FARMLAND = 116;
  */
 export const WHEAT_CROP = 121;
 
+/**
+ * 実った小麦。**苗（`WHEAT_CROP`）が `crops.ts` の `GROW_SECONDS` 秒で差し替わった姿**で、
+ * 点火中のかまど（`FURNACE_LIT`）とまったく同じ「状態違いを別のブロック ID で表す」形です。
+ *
+ * **`variantOf: WHEAT_CROP`**（苗と違って、大元にできる相手が居ます）。だから
+ * `items.ts` の for が飛ばして**アイテムも名前も増えません**が、そのぶん `dropOf()` の
+ * 既定は**大元＝苗**を返すので、**落ちるもの（小麦 1 個）は `items.ts` の `DROPS` に
+ * 必ず 1 行書くこと。** 書き忘れると、実らせても種しか採れません。
+ *
+ * **段階は 2 つだけ**にしてあります（本家は 8 段階 = ブロック ID 8 個）。
+ * 番号は 1 つも戻せないので、色 1 つで「まだか・実ったか」を伝える線に揃えました。
+ */
+export const WHEAT_CROP_RIPE = 123;
+
 /** 上付きハーフ。見た目と当たり判定だけが違うので、大元は下付きのハーフ。 */
 export const STONE_SLAB_TOP = 64;
 export const COBBLE_SLAB_TOP = 65;
@@ -1189,6 +1203,20 @@ export const BLOCKS: readonly BlockDef[] = [
   // ブロックを置いた拍子に消える）/ **`supportFace: FACE_YN`**（下の耕地を掘ると
   // 一緒に壊れて種が落ちる）/ **`variantOf` が自分自身**（アイテムを作らせない。上のコメント）。
   def(WHEAT_CROP, "小麦の苗", { top: 0x6f8f3f }, {
+    opaque: false,
+    solid: false,
+    hardness: 0,
+    sound: "grass",
+    model: "cross",
+    boxes: CROSS_BOX,
+    supportFace: FACE_YN,
+    variantOf: WHEAT_CROP,
+  }),
+
+  // 実った小麦。**苗とまったく同じ形で、違うのは色と `variantOf` の向き先だけ。**
+  // `replaceable` を付けないこと —— 付けると、実った畑の上にブロックを置いた拍子に
+  // 収穫できないまま消える（苗と同じ理由）。
+  def(WHEAT_CROP_RIPE, "実った小麦", { top: 0xd8c26a }, {
     opaque: false,
     solid: false,
     hardness: 0,

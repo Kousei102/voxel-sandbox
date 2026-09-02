@@ -20,6 +20,7 @@ import { autoBreak, tryBreak } from "./breaking";
 import { Chests } from "./chests";
 import { decideClick, decideKey, mobIsNearer } from "./controls";
 import { CraftScreen } from "./craftscreen";
+import { Crops } from "./crops";
 import { liveCrystals, shatterCrystal } from "./crystals";
 import { DayNight, WAKE_TIME, canSleep, environmentFor } from "./daynight";
 import { breakMessage, wearForAttack, wearForTill, wearForUse, wearSlot } from "./durability";
@@ -156,6 +157,7 @@ const furnaces = new Furnaces();
  * `update(dt)` は持たない（`furnaces.update()` に相当する呼び出しが要らない）。
  */
 const chests = new Chests();
+const crops = new Crops(); // 植えた苗の育ち具合。**判断（何秒で実るか）は全部 `crops.ts`。**
 /**
  * リスポーン地点。**「位置ごとに状態を持つブロック」ではなく、地点 1 つだけ**を持つ
  * （ベッドそのものは `edits` に入っている）。かまど・チェストと同じで `world` の外なので、
@@ -301,6 +303,7 @@ function startWorld(
   // かまど・チェスト・落ちたアイテムは次元ごとに持つ。**入れ替えはここだけ。**
   furnaces.deserialize(state.furnaces, state.furnaceWear);
   chests.deserialize(state.chests, state.chestWear);
+  crops.deserialize(state.crops);
   drops.deserialize(state.drops, state.dropWear);
   dropRender?.dispose();
   dropRender = new DropRenderer(scene, world.daylightUniform());
@@ -546,7 +549,7 @@ function placeAtSpawn(x: number, y: number, z: number): void {
 
 /** いま居る次元の「位置ごとの持ち物」。組み立ては `session.ts`（判断はあちら）。 */
 function liveState(): DimensionState {
-  return collectState({ world, drops, furnaces, chests });
+  return collectState({ world, drops, furnaces, chests, crops });
 }
 
 function currentSave(): SaveData {
@@ -588,7 +591,7 @@ const menu = new Menu({
     clearSave();
     // **何を空にするかは `session.ts`**（地面に落ちているぶんも器の中身も預かり物も。
     // 残すと、消したはずの持ち物が拾い直せてしまう）。
-    forgetEverything({ inventory, craft, drops, furnaces, chests, beds, dims });
+    forgetEverything({ inventory, craft, drops, furnaces, chests, crops, beds, dims });
     hud.refresh();
     saveDirty = false;
     hud.flash("保存データを削除しました");
@@ -933,6 +936,7 @@ function plantAt(x: number, y: number, z: number): void {
   if (planted.kind === "blocked") hud.flash(planted.message);
   if (planted.kind !== "placed") return;
   audio.play("place", blockSound(planted.id));
+  crops.plant(x, y + 1, z); // 育つのは苗の立ったマス（狙ったのは 1 つ下の耕地）
   if (!creative) inventory.consumeSelected(1);
   hud.refresh();
   saveDirty = true;
@@ -1228,6 +1232,7 @@ function frame(now: number): void {
   // 焼き上がるところを見ていられない（`playing` はポインタが外れると false になる）。
   // 落とし物と同じく `world.update()` の外で回す。
   if (playing || screen.isOpen) furnaces.update(dt);
+  if (playing && crops.update(dt, world)) saveDirty = true;
   syncFurnaceBlocks();
   refreshFurnaceUi(dt);
   // 水中のこもりに underwater を使うので、updateEnvironment のあとに回す
