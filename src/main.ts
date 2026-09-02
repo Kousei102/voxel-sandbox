@@ -22,7 +22,7 @@ import { decideClick, decideKey } from "./controls";
 import { CraftScreen } from "./craftscreen";
 import { liveCrystals, shatterCrystal } from "./crystals";
 import { DayNight, WAKE_TIME, canSleep, environmentFor } from "./daynight";
-import { breakMessage, wearSlot } from "./durability";
+import { breakMessage, wearForUse, wearSlot } from "./durability";
 import { eyeMessage, fitEye } from "./endportal";
 import { syncExitPortal } from "./exitportal";
 import { Dimensions, OVERWORLD, emptyState, type DimensionState } from "./dimensions";
@@ -868,12 +868,24 @@ function throwEye(): void {
   else hud.flash("要塞の見当が付きません");
 }
 
+/**
+ * 手に持っているものに傷を付ける。**何回で尽きるかも文言も `durability.ts`**
+ * （ここは渡された回数を貼るだけで、64 も 384 も知りません）。
+ */
+function wearHeld(uses: number): void {
+  const worn = wearSlot(inventory.selectedSlot, uses);
+  if (worn !== NO_ITEM) hud.flash(breakMessage(worn));
+}
+
 /** 火種で火を点ける。**どのマスに点くかも枠の判定も `placing.ts` / `portals.ts`。** */
 function igniteAt(aim: PlaceAim): void {
   const lit = tryIgnite(world, aim);
   if (lit.kind === "blocked") hud.flash(lit.message);
   if (lit.kind !== "placed") return;
   audio.play("place", "stone");
+  // **点いたときだけ**火種が減る（早期 return より後ろ）。帯が減るので描き直す。
+  wearHeld(wearForUse(inventory.selectedItem, creative));
+  hud.refresh();
   saveDirty = true;
 }
 
@@ -977,8 +989,7 @@ function breakBlock(x: number, y: number, z: number, blockId: number, tool: numb
   // 掘ると腹が減る。**どれだけ減るかは `vitals.ts`**（ここは種類を渡すだけ）。
   if (result.exhaust) vitals.exhaust("mine");
   // 道具に傷が付く。**いくつ付くか・壊れたかは `durability.ts`**（ここは戻り値を見るだけ）。
-  const worn = wearSlot(inventory.selectedSlot, result.wear);
-  if (worn !== NO_ITEM) hud.flash(breakMessage(worn));
+  wearHeld(result.wear);
   hud.refresh();
 }
 
@@ -1287,6 +1298,8 @@ function loose(): void {
   const at = player.position;
   projectiles.launch("arrow", at.x, at.y + SHOOT_HEIGHT, at.z, player.yaw, player.pitch, PLAYER_OWNER, shot.damage);
   audio.play("bow");
+  // **矢が飛んだときだけ**弓が減る（引きが足りない・矢が無いときは上で戻っている）。
+  wearHeld(wearForUse(inventory.selectedItem, creative));
   hud.refresh();
   saveDirty = true;
 }

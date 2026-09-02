@@ -7,6 +7,8 @@ import {
   type SlotArea,
 } from "../src/craftscreen";
 import {
+  BOW_USES,
+  FIRE_STARTER_USES,
   TOOL_USES,
   breakMessage,
   carryWear,
@@ -16,10 +18,22 @@ import {
   serializeWear,
   wearBar,
   wearForBreaking,
+  wearForUse,
   wearSlot,
+  wornValue,
 } from "../src/durability";
 import { HOTBAR_SIZE, INVENTORY_SIZE, Inventory, isEmpty, type Slot } from "../src/inventory";
-import { ARROW, DIAMOND_PICKAXE, IRON_PICKAXE, NO_ITEM, STICK, STONE_PICKAXE, WOOD_PICKAXE } from "../src/items";
+import {
+  ARROW,
+  BOW,
+  DIAMOND_PICKAXE,
+  FLINT_AND_STEEL,
+  IRON_PICKAXE,
+  NO_ITEM,
+  STICK,
+  STONE_PICKAXE,
+  WOOD_PICKAXE,
+} from "../src/items";
 import { applyRestore } from "../src/session";
 import type { SaveData } from "../src/storage";
 import { Slab, sourceOf } from "./arena";
@@ -524,4 +538,161 @@ export function run(): void {
     !inventoryUi.includes("./durability"),
     inventoryUi.includes("./durability") ? "import あり" : "",
   );
+
+  describe("使うと減るもの（火打石と打ち金・弓）");
+
+  // --- 試験場が効いているか（先に置く。`rules/testing.md`） ---
+  {
+    const fire = slot(FLINT_AND_STEEL);
+    const bow = slot(BOW);
+    console.log(
+      `      火種 ${maxUses(fire.item)} 回 / 弓 ${maxUses(bow.item)} 回 / ` +
+        `新品の傷 ${fire.damage} と ${bow.damage}`,
+    );
+    check(
+      "火打石と打ち金は 64 回、弓は 384 回",
+      maxUses(FLINT_AND_STEEL) === FIRE_STARTER_USES && maxUses(BOW) === BOW_USES,
+      `火種 ${maxUses(FLINT_AND_STEEL)} / 弓 ${maxUses(BOW)}`,
+    );
+    check("回数は Minecraft のまま", FIRE_STARTER_USES === 64 && BOW_USES === 384);
+    check(
+      "新品はどちらも傷 0",
+      (fire.damage ?? 0) === 0 && (bow.damage ?? 0) === 0,
+      `${fire.damage} / ${bow.damage}`,
+    );
+  }
+
+  // --- 回数の表（掘る道具と並べて出す。`maxUses()` は 1 本で両方に答える） ---
+  {
+    const all: [string, number, number][] = [
+      ["木", WOOD_PICKAXE, 59],
+      ["石", STONE_PICKAXE, 131],
+      ["鉄", IRON_PICKAXE, 250],
+      ["ダイヤ", DIAMOND_PICKAXE, 1561],
+      ["火種", FLINT_AND_STEEL, 64],
+      ["弓", BOW, 384],
+    ];
+    console.log(`      回数の表: ${all.map(([n, id]) => `${n} ${maxUses(id)}`).join(" / ")}`);
+    for (const [name, id, uses] of all) {
+      check(`${name}は ${uses} 回`, maxUses(id) === uses, `${maxUses(id)} 回`);
+    }
+  }
+
+  // --- `wearForUse()` の全ケース（減るのは「使って減るもの」だけ） ---
+  {
+    const cases: [string, number, boolean, number][] = [
+      ["火種で火を点ける（減る）", FLINT_AND_STEEL, false, 1],
+      ["弓を放つ（減る）", BOW, false, 1],
+      ["クリエイティブの火種", FLINT_AND_STEEL, true, 0],
+      ["クリエイティブの弓", BOW, true, 0],
+      ["ツルハシを右クリック", WOOD_PICKAXE, false, 0],
+      ["棒", STICK, false, 0],
+      ["空の枠", NO_ITEM, false, 0],
+    ];
+    console.log(
+      `      wearForUse: ${cases.map(([n, id, c]) => `${n} ${wearForUse(id, c)}`).join(" / ")}`,
+    );
+    for (const [name, item, creative, want] of cases) {
+      const got = wearForUse(item, creative);
+      check(`${name} → ${want}`, got === want, `${got}`);
+    }
+  }
+
+  // --- 掘っても減らない（逆向きの守り。弓で石を掘って弓が減っては困る） ---
+  {
+    const digging: [string, number][] = [["火種で掘る", FLINT_AND_STEEL], ["弓で掘る", BOW]];
+    console.log(
+      `      wearForBreaking: ${digging
+        .map(([n, id]) => `${n} ${wearForBreaking(STONE, id, false)}`)
+        .join(" / ")}`,
+    );
+    for (const [name, item] of digging) {
+      check(`${name} → 0`, wearForBreaking(STONE, item, false) === 0, `${wearForBreaking(STONE, item, false)}`);
+    }
+    // 掘る道具のほうは今までどおり（この行が落ちたら、守りを広げすぎている）。
+    check("ツルハシで掘るのは今までどおり 1", wearForBreaking(STONE, WOOD_PICKAXE, false) === 1);
+  }
+
+  // --- 使い切ると壊れる（64 回目・384 回目） ---
+  {
+    const wearOut = (item: number, max: number): { last: boolean; broke: number; after: Slot } => {
+      const held = slot(item);
+      for (let i = 0; i < max - 1; i++) wearSlot(held, wearForUse(held.item, false));
+      const last = held.item === item && held.damage === max - 1;
+      const broke = wearSlot(held, wearForUse(held.item, false));
+      return { last, broke, after: held };
+    };
+    const fire = wearOut(FLINT_AND_STEEL, FIRE_STARTER_USES);
+    const bow = wearOut(BOW, BOW_USES);
+    console.log(
+      `      使い切り: 火種 63 回目 ${fire.last ? "手に残る" : "消えた"} → 64 回目 ${fire.broke} / ` +
+        `弓 383 回目 ${bow.last ? "手に残る" : "消えた"} → 384 回目 ${bow.broke}`,
+    );
+    check("火種は 63 回目までは手に残る", fire.last);
+    check("火種は 64 回目で壊れる", fire.broke === FLINT_AND_STEEL && isEmpty(fire.after), `${fire.broke}`);
+    check("弓は 383 回目までは手に残る", bow.last);
+    check("弓は 384 回目で壊れる", bow.broke === BOW && isEmpty(bow.after), `${bow.broke}`);
+    check("壊れた枠の傷は 0 に戻る", (fire.after.damage ?? 0) === 0 && (bow.after.damage ?? 0) === 0);
+
+    const message = breakMessage(FLINT_AND_STEEL);
+    console.log(`      壊れたとき: ${message} / ${breakMessage(BOW)}`);
+    check("壊れた 1 行に名前が出る", message === "火打石と打ち金 が壊れました", message);
+  }
+
+  // --- 帯（新品では出さない。`ui.ts` は貼るだけ） ---
+  {
+    const bow = slot(BOW);
+    const fresh = wearBar(bow);
+    wearSlot(bow, wearForUse(bow.item, false));
+    const used = wearBar(bow);
+    console.log(`      帯: 新品の弓 ${fresh} → 1 回使うと ${used.toFixed(4)}（傷 ${bow.damage}）`);
+    check("無傷の弓は -1（帯を出さない）", fresh === -1, `${fresh}`);
+    check("1 回使うと 383/384", Math.abs(used - 383 / 384) < 1e-9, `${used}`);
+    check("無傷の火種も -1", wearBar(slot(FLINT_AND_STEEL)) === -1);
+  }
+
+  // --- セーブの往復（新しいキーは 1 つも要らない） ---
+  {
+    const bare = [slot(BOW, 1, 12), slot(FLINT_AND_STEEL, 1, 5)];
+    const flat = serializeWear(bare);
+    console.log(`      往復前: ${JSON.stringify(flat)}`);
+    check("傷ごと書き出せる", JSON.stringify(flat) === "[12,5]", JSON.stringify(flat));
+    const back = [slot(BOW), slot(FLINT_AND_STEEL)];
+    deserializeWear(back, flat);
+    console.log(`      往復後: 弓 ${back[0].damage} / 火種 ${back[1].damage}`);
+    check("往復しても傷が残る", back[0].damage === 12 && back[1].damage === 5);
+    // 壊れた値は「最大 - 1」に丸める（壊れているのに手に残る状態を作らない）。
+    console.log(`      wornValue(弓, 999) = ${wornValue(BOW, 999)}`);
+    check("最大以上は 383 に丸める", wornValue(BOW, 999) === 383, `${wornValue(BOW, 999)}`);
+    check("火種も同じ丸め方（63）", wornValue(FLINT_AND_STEEL, 999) === 63, `${wornValue(FLINT_AND_STEEL, 999)}`);
+  }
+
+  // --- `SaveData` のキーが 1 つも増えていない ---
+  {
+    const storage = sourceOf("src/storage.ts");
+    const keys = [...storage.matchAll(/\n\s*(\w*[Ww]ear)\?:/g)].map((m) => m[1]);
+    console.log(`      SaveData の傷のキー ${keys.length} 個: ${keys.join(" / ")}`);
+    check(
+      "傷のキーは今までの 5 つのまま",
+      keys.length === 5 && keys.join(",") === "wear,craftWear,dropWear,furnaceWear,chestWear",
+      keys.join(" / "),
+    );
+    check("version は 1 のまま", storage.includes("version: 1;"), "");
+  }
+
+  // 見張り 1: 回数を運ぶ側へ書き戻していない（`main.ts` は何回で尽きるかを知らない）。
+  const mainSource = sourceOf("src/main.ts");
+  const digits = [...mainSource.matchAll(/384/g)].length;
+  console.log(`      main.ts の 384 は ${digits} 件`);
+  check("main.ts に 384 が出てこない", digits === 0, `${digits} 件`);
+
+  // 見張り 2: 配線が 2 か所とも生きている（点火と発射）。**1 回だと片方を落としている。**
+  const uses = [...mainSource.matchAll(/wearForUse\(/g)].length;
+  console.log(`      main.ts の wearForUse( は ${uses} 回`);
+  check("main.ts は点火と発射の 2 か所から呼ぶ", uses === 2, `${uses} 回`);
+
+  // 見張り 3: どれが火種・どれが弓かは `items.ts` の表 1 本（`durability.ts` は知らない）。
+  const durabilitySource = sourceOf("src/durability.ts");
+  const named = [/\bBOW\b/, /\bFLINT_AND_STEEL\b/].filter((re) => re.test(durabilitySource));
+  check("durability.ts にアイテムの名前が出てこない", named.length === 0, named.join(" / "));
 }

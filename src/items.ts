@@ -82,7 +82,7 @@ export const FLINT = 87;
 
 /**
  * 火打石と打ち金。**ネザーポータルに火を付ける道具。**
- * 耐久値がまだ無いので、1 個あれば何度でも点けられる（Minecraft は 64 回）。
+ * **点けると 1 回減り、64 回で壊れる**（Minecraft のまま。回数は `durability.ts`）。
  * 積めるのは 1 個まで —— 道具と同じ扱い。
  */
 export const FLINT_AND_STEEL = 88;
@@ -126,7 +126,8 @@ export const ENDER_EYE = 92;
  *
  * 材料は棒 3 + 羊毛 3。**Minecraft の糸の代わりに羊毛**にしてあるのは、
  * 蜘蛛がまだ居ないから（羊はもう居て、ベッドで羊毛を集める導線もある）。
- * 積めるのは 1 個まで —— 道具と同じ扱い（耐久値はまだ無い）。
+ * 積めるのは 1 個まで —— 道具と同じ扱い。
+ * **放つと 1 回減り、384 回で壊れる**（Minecraft のまま。回数は `durability.ts`）。
  */
 export const BOW = 93;
 
@@ -207,7 +208,7 @@ item({ id: WATER_BUCKET, name: "水入りバケツ", block: AIR, stack: 1, color
 item({ id: LAVA_BUCKET, name: "溶岩入りバケツ", block: AIR, stack: 1, color: 0xe0601a, tool: null });
 
 item({ id: FLINT, name: "火打石", block: AIR, stack: MAX_STACK, color: 0x3c3733, tool: null });
-// 火打石と打ち金は道具と同じで積めない（耐久値が無いので、実質 1 個で足りる）。
+// 火打石と打ち金は道具と同じで積めない（傷が付くので、山にできない）。
 item({ id: FLINT_AND_STEEL, name: "火打石と打ち金", block: AIR, stack: 1, color: 0xa6a094, tool: null });
 
 item({ id: BLAZE_ROD, name: "ブレイズロッド", block: AIR, stack: MAX_STACK, color: 0xf2c033, tool: null });
@@ -218,7 +219,7 @@ item({ id: BLAZE_POWDER, name: "ブレイズパウダー", block: AIR, stack: MA
 // 意図的で、**エンドポータルに要る 12 個が 1 枠に収まる**ようにするため。
 item({ id: ENDER_EYE, name: "エンダーアイ", block: AIR, stack: MAX_STACK, color: 0x3fbf8c, tool: null });
 
-// 弓は道具と同じで積めない（耐久値が無いので、実質 1 本で足りる）。矢は普通に積める。
+// 弓は道具と同じで積めない（傷が付くので、山にできない）。矢は普通に積める。
 item({ id: BOW, name: "弓", block: AIR, stack: 1, color: 0xa9763c, tool: null });
 item({ id: ARROW, name: "矢", block: AIR, stack: MAX_STACK, color: 0xd9d2c4, tool: null });
 
