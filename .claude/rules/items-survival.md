@@ -20,12 +20,27 @@ paths:
   **新しいアイテムは 111 から**（`SHARED_ID_START`）。**95..110 は空けたままにすること** ——
   ブロック側の向き違いが使っている番号で、111 以降は**ブロックとアイテムで 1 本の番号列**です
   （`CLAUDE.md` の「ブロック ID の枠」）。番号は `ROADMAP.md` の予約表から取ります。
-- **何が落ちるかを決めるのは `rollDrop(blockId, roll)`**（純粋。乱数は呼ぶ側が作ります）。
-  **呼ぶのは `breaking.ts` の 1 か所**（掘って壊す `tryBreak()` と、支えを失って壊れる
-  `autoBreak()` が同じ `harvest()` を通ります）。**2 つの経路を別々に書かないこと** ——
-  片方だけ直すと、掘ったときと床を抜かれたときで落ちるものが食い違います。
-  **`main.ts` に確率の比較を書かないこと** —— `test/ui.test.ts` が `main.ts` に
-  `.chance` が、`test/breaking.test.ts` が `rollDrop(` / `canHarvest(` が
+- **何が落ちるかを決めるのは `items.ts`。** 山を全部（0〜2 山）返すのが
+  **`rollDrops(blockId, roll): readonly DropStack[]`** で、**呼ぶのは `breaking.ts` の
+  1 か所**（掘って壊す `tryBreak()` と、支えを失って壊れる `autoBreak()` が同じ
+  `harvest()` を通ります）。**2 つの経路を別々に書かないこと** —— 片方だけ直すと、
+  掘ったときと床を抜かれたときで落ちるものが食い違います。
+  **`rollDrop()`（1 山目だけを返す旧来の関数）は残してあります。** 既存の約 25 か所の
+  テストの根拠なので、名前も引数も戻り値も変えないこと。`rollDrops()` の 1 山目も
+  **`rollDrop()` を呼んで**作ります（`chance` / `otherwise` の判断を 2 か所に写さないため）。
+- **2 山目は `Drop.extra?: DropStack`**（`item` と `count` だけ）。**1 山目の当たり外れに
+  関係なく必ず落ちます** —— 別の山だからです。いま持っているのは**実った小麦の 1 行だけ**
+  （小麦 1 + 種 1）で、`test/blocks.test.ts` が「`extra` は 1 山目と別のアイテム」と
+  「どのブロックでも山は 2 つまで」を全ブロックで見張っています。
+- **`extra` に `chance` や個数の範囲（min / max）を持たせないこと。** 流れてくる乱数は
+  `BreakOrder.roll` の 1 本だけなので、付けると**1 山目の当たり外れと必ず相関します**
+  （砂利の火打石と種の個数が連動する形）。本家の「小麦 1 + 種 0〜3」に寄せたいなら、
+  **乱数をもう 1 本流す話が先**です（`BreakOrder` と `autoBreak()` の引数と `main.ts` に及びます）。
+- **山が 2 つでも、`harvest()` は同じ座標に貼るだけ**でよい。地面での散らばりは
+  `drops.ts` の `burst()` が乱数で付けるので、**`breaking.ts` や `drops.ts` に
+  「2 山を並べて置く」を書かないこと。**
+- **`main.ts` に確率の比較を書かないこと** —— `test/ui.test.ts` が `main.ts` に
+  `.chance` が、`test/breaking.test.ts` が `rollDrop(` / `rollDrops(` / `canHarvest(` が
   出てこないことを見張っています。`Drop.chance` を外したときに何が落ちるかは
   **`Drop.otherwise`**（省略すると何も落ちない）。**砂利がこれのためにあります** ——
   10% で火打石、外したら砂利そのもの。`otherwise` を落とすと、**掘ると 90% で消えるブロック**
@@ -77,15 +92,16 @@ paths:
 `wornValue()` 1 本**で、最大以上は `最大 - 1` に丸めます（そのまま入れると
 「壊れているのに手に残っている道具」になります）。**傷が消える経路はもう 1 つも残っていません。**
 
-**傷が付く物は 3 種類あって、減り方が違います**（判断は全部 `durability.ts`）。
+**傷が付く物は 4 種類あって、減り方が違います**（判断は全部 `durability.ts`）。
 
 | 減り方 | 何が | 何回 | どこで減るか |
 | --- | --- | --- | --- |
 | **掘って減る** | ツルハシ・斧・シャベル 12 本 | 木 59 / 石 131 / 鉄 250 / ダイヤ 1561 | `wearForBreaking()`（`breaking.ts` の `tryBreak()` が返す `wear`） |
-| **使って減る** | 火打石と打ち金・弓 | **64 / 384**（本家のまま） | `wearForUse()`（`main.ts` の `igniteAt()` と `loose()`） |
+| **使って減る** | 火打石と打ち金・弓・**シアーズ** | **64 / 384 / 238**（本家のまま） | `wearForUse()`（`main.ts` の `igniteAt()` と `loose()` と `shearMob()`） |
 | **殴って減る** | 剣 4 本 | 掘る道具と**同じ階層の表**（59 / 131 / 250 / 1561） | `wearForAttack()`（`main.ts` の `mousedown` の `attack`） |
+| **耕して減る** | クワ 4 本 | **59 / 131 / 250 / 1561**（掘る道具と同じ `TOOL_USES`） | `wearForTill()`（`main.ts` の `tillAt()`） |
 
-- **この 3 つを混ぜないこと。** 火種と弓に `tool:` を付けると `ToolDef` は
+- **この 4 つを混ぜないこと。** 火種と弓に `tool:` を付けると `ToolDef` は
   「掘る速さ」の表なので**弓で石が速く掘れます**し、`wearForBreaking()` から
   「掘る道具でなければ 0」を外すと**弓で石を掘って弓が減ります。**
   逆に `wearForUse()` が掘る道具に 1 を返すと、**ツルハシを右クリックしただけで減ります。**
@@ -112,16 +128,38 @@ paths:
   `main.ts` はその戻り値の中でだけ `wearHeld(wearForAttack(...))` を呼びます
   （**戻り値を捨てて呼ぶと、連打しただけで剣が減ります**）。
   `test/durability.test.ts` が `main.ts` の `wearForAttack(` を**1 回**と数えています。
-- **どれが火種・どれが弓かは `items.ts` の `isFireStarter()` / `isBow()` の表 1 本**です。
+- **どれが火種・弓・シアーズかは `items.ts` の `isFireStarter()` / `isBow()` / `isShears()` の表 1 本**です。
   `durability.ts` に `item === BOW` と書き始めると、種類が増えたときに
   「持てる側」と「減る側」の 2 か所を直すことになり、必ず片方を忘れます
   （`test/durability.test.ts` が `durability.ts` にアイテムの名前が出てこないことを見張っています）。
 - **減らすのは「効いたとき」だけ。** 矢が無い・引きが足りない・火が点かなかった
   （`blocked` / `none`）ときは 1 も減りません —— **`main.ts` は早期 return より後ろで
   `wearHeld(wearForUse(...))` を呼びます。** 前へ動かすと空撃ちで弓が減ります。
-- **`main.ts` に回数（64 / 384）と「弓かどうか」を書かないこと。**
+- **`main.ts` に回数（64 / 384 / 238）と「弓かどうか」を書かないこと。**
   `test/durability.test.ts` が `main.ts` に `384` が無いことと、`wearForUse(` が
-  **点火と発射の 2 か所から**呼ばれていることの両方を見ています（1 回だと片方の配線が落ちています）。
+  **点火・発射・刈るの 3 か所から**呼ばれていることの両方を見ています（減っていたら配線が落ちています）。
+- **どれがクワかは `items.ts` の `isHoe()` の表 1 本**です（`isSword()` と同じ形）。
+- **`wearForUse()` にクワを混ぜないこと。** あちらは「掘る道具でないもの」の表で、
+  クワは `toolOf()` を持つので 0 が返ります。**右クリックしても減らないのが正しい** ——
+  減るのは**耕せたときだけ**（`placing.ts` の `tryTill()` が `placed` を返したときだけ
+  `main.ts` が呼びます）。**逆に `wearForBreaking()` からは外さないこと** ——
+  **クワで掘れば減るのは剣と同じ**で、1 行も足さずに付いてきます。
+- **`main.ts` の `wearForTill(` は 1 か所だけ**（`test/durability.test.ts` が見張っています）。
+
+**シアーズに `tool:` を持たせないこと。** 剣は `ToolKind` に 1 語足すのがいちばん安かった
+（耐久値もセーブの 5 キーも 1 行も書かずに付いてくる）のですが、**シアーズで同じことを
+すると壊れます**: `mobs.ts` の `TOOL_ATTACK` に無い種類が入ると `attackDamage()` が
+`undefined + 0.5 * tier` = **NaN** を返し、`wearForBreaking()` は「掘る道具」として 1 を
+返すので**石を掘るたびに減ります。** **新しい道具を足すときは、`ToolKind` に足すかどうかより
+先に「減り方の 4 種類のどれか」を決めること。**
+
+**`ToolKind` に 1 語足すときは、その逆側にも注意が要ります。** 剣と同じくクワは
+`ToolKind` に足して正解でしたが、**`mobs.ts` の `TOOL_ATTACK` に `hoe: 1` を足すのを
+忘れると `attackDamage()` が `undefined + 0.5 * tier` = NaN を返し、クワで殴ったモブの体力が
+NaN になって二度と死にません。** `TOOL_ATTACK` は `Record<string, number>` なので
+**typecheck は通ります**（`TOOL_NAMES` は `Record<ToolKind, …>` なので教えてくれる、という
+非対称がここにあります）。**`test/mobs.test.ts` に「クワで殴っても NaN にならない」があります。
+次に `ToolKind` を増やす人も同じ 1 行を足してください。**
 - **セーブは 1 バイトも増えていません。** `serializeWear()` も `wornValue()` も
   `maxUses()` に聞くだけなので、**`maxUses()` が 0 でなくなった瞬間に
   `wear` / `craftWear` / `dropWear` / `chestWear` / `furnaceWear` の 5 つ全部に自動で載ります**
