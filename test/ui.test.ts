@@ -49,6 +49,17 @@ export function run(): void {
   const hintRule = css.match(/\n\.hint\s*\{([^}]*)\}/)?.[1] ?? "";
   check("注記の既定は流れに残してある", !/position:\s*absolute/.test(hintRule), hintRule.trim());
 
+  // 通知の帯（`#status`）は `bottom: 118px` 固定で、これは**ホットバーと体力の段**に
+  // 合わせた値。パネルはどれも画面の真ん中に組み上がるので、開いているあいだは
+  // 上へ逃がさないと下端とぶつかる（メニューのモード行が丸ごと隠れていた）。
+  // **ブラウザを開くまで気付けない**ので、規則があることだけここで押さえる。
+  const raised = css.match(/#status\.panelopen\s*\{([^}]*)\}/)?.[1] ?? "";
+  check("画面が開いているあいだの通知の位置が決めてある", raised !== "", raised.trim());
+  // `top` だけ足して `bottom` を残すと、上下とも指定した形になって帯が縦に伸びる。
+  check("そのとき bottom を外している", /bottom:\s*auto/.test(raised), raised.trim());
+  const ui = readFileSync("src/ui.ts", "utf8");
+  check("その付け外しが配線されている", ui.includes('"panelopen"'), "ui.ts の setPlaying");
+
   mainStaysWiring();
 }
 

@@ -205,6 +205,9 @@ export class Hud {
     this.hud.classList.toggle("hidden", !playing);
     this.crosshair.classList.toggle("hidden", !playing);
     this.menu.classList.toggle("hidden", !menuVisible);
+    // プレイ中でなければ何かのパネルが出ている（メニュー・インベントリ・死亡・クリア）。
+    // 通知は body 直下に残したまま、位置だけ上へ逃がす（重なる先は `style.css`）。
+    this.status.classList.toggle("panelopen", !playing);
   }
 
   toggleDebug(): void {
@@ -219,7 +222,11 @@ export class Hud {
     this.loading.classList.toggle("on", on);
   }
 
-  /** 画面下に数秒だけ出す通知。プレイ中でもメニュー中でも見える。 */
+  /**
+   * 数秒だけ出す通知。プレイ中でもメニュー中でも見える。
+   * **場所はプレイ中が画面の下、パネルが開いているあいだは上**（`setPlaying()` が
+   * `panelopen` を付け外しする。理由は `style.css`）。
+   */
   flash(message: string): void {
     this.status.textContent = message;
     this.status.classList.add("on");
