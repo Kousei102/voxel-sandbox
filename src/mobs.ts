@@ -15,6 +15,7 @@ import { MAX_LIGHT, WORLD_HEIGHT, columnOf } from "./constants";
 import {
   BLAZE_ROD,
   ENDER_PEARL,
+  FEATHER,
   NO_ITEM,
   RAW_CHICKEN,
   RAW_PORK,
@@ -74,12 +75,30 @@ export interface MobBox {
   readonly color: number;
 }
 
-/** 倒したときに出るもの。 */
-export interface MobDrop {
+/** 落ちる山ひとつ。**1 山目も 2 山目も同じ形。** */
+export interface MobDropStack {
   readonly item: number;
   readonly count: number;
   /** 落ちる確率。1 なら必ず。 */
   readonly chance: number;
+}
+
+/**
+ * 倒したときに出るもの。
+ *
+ * **2 山目は `extra`**（`items.ts` の `Drop.extra` と同じ名前・同じ意味）。
+ * **1 山目の当たり外れとは無関係に、別に引きます** —— 別の山だからです。
+ *
+ * **ブロック側（`items.ts` の `Drop.extra`）と 1 点だけ違って、こちらは
+ * `chance` を持てます。** あちらに確率を持たせられないのは、壊す側に流れてくる
+ * 乱数が `BreakOrder.roll` の**1 本だけ**だからで、モブの側は `random()` という
+ * 関数が流れてくるので 2 山目を別に引けます。
+ *
+ * **個数の範囲（min / max）は持たせないこと** —— 範囲が要るなら `ShearRule` の
+ * ような別の表の話です（本家の羽根 0〜2 は 1 個固定にしてあります。`TUNING.md`）。
+ */
+export interface MobDrop extends MobDropStack {
+  readonly extra?: MobDropStack;
 }
 
 /**
@@ -475,9 +494,10 @@ const CHICKEN: MobDef = {
   orbit: null,
   phases: null,
   regen: 0,
-  drop: { item: RAW_CHICKEN, count: 1, chance: 1 },
-  // **羽根はまだ出ません**（`MobDef.drop` は 1 つしか落とせないので、2 つ目の
-  // 落とし物を足す話が先。矢を本家の形へ戻すのも同じ周の仕事です）。
+  // **2 山落ちます** —— 生鶏肉 1 個（1 山目）と羽根 1 個（`extra`）。
+  // 羽根は矢の材料で、本家の 0〜2 個ではなく**1 個固定**です（`items.ts` の `FEATHER`）。
+  // **`mobs.ts` の色の定数 `CHICKEN_FEATHER` とは別物**（あちらは見た目の白）。
+  drop: { item: RAW_CHICKEN, count: 1, chance: 1, extra: { item: FEATHER, count: 1, chance: 1 } },
   shearing: null,
   // いちばん高い声（羊 1.25 / 豚 1.4 の上）。
   voice: 1.8,
@@ -2072,12 +2092,12 @@ export class Mobs {
     // **プレイヤーが撃ったものだけ落ちる**（`attack()` と同じ規則）。
     // モブ同士の流れ弾で肉が湧いてはいけない。
     if (shot.owner !== PLAYER_OWNER) return;
-    // **`dropFor()` を通すこと**（`attack()` と同じ 1 本）。ここだけ `def.drop` を
-    // 直に読むと、刈った羊を**弓で撃ったときだけ**羊毛が出ます。
-    const drop = dropFor(mob, def);
+    // **`dropsFor()` を通すこと**（`attack()` と同じ 1 本）。ここだけ `def.drop` を
+    // 直に読むと、刈った羊を**弓で撃ったときだけ**羊毛が出ます。確率の比較も
+    // 山の数（鶏は 2 山）もあちらの中だけにあります。
     const random = ctx.random ?? Math.random;
-    if (drop && drop.count > 0 && (drop.chance >= 1 || random() < drop.chance)) {
-      this.onDrop?.(drop.item, drop.count, mob.position.x, mob.position.y, mob.position.z);
+    for (const stack of dropsFor(mob, def, random)) {
+      this.onDrop?.(stack.item, stack.count, mob.position.x, mob.position.y, mob.position.z);
     }
   }
 
@@ -2308,11 +2328,11 @@ export class Mobs {
 
     this.onSound?.("mobdeath", def.voice);
     // **刈られた羊は羊毛を落とさない**（`hitByProjectile()` と同じ 1 本を通す）。
-    const drop = dropFor(mob, def);
-    if (drop && drop.count > 0 && (drop.chance >= 1 || random() < drop.chance)) {
+    // 山は 0〜2 個（鶏は生鶏肉 + 羽根の 2 山）。
+    for (const stack of dropsFor(mob, def, random)) {
       // **倒れた場所を渡すこと。** 受け取る側（`main.ts`）はそこに落とすので、
       // 座標が無いと「遠くで倒したものが足元に湧く」形に戻る。
-      this.onDrop?.(drop.item, drop.count, mob.position.x, mob.position.y, mob.position.z);
+      this.onDrop?.(stack.item, stack.count, mob.position.x, mob.position.y, mob.position.z);
     }
     return true;
   }
@@ -2413,6 +2433,39 @@ function clearShot(
 export function dropFor(mob: Mob, def: MobDef): MobDrop | null {
   if (mob.woolTimer > 0 && def.shearing?.item === def.drop.item) return null;
   return def.drop;
+}
+
+/**
+ * **倒したときに落ちる山を全部返す**（0〜2 山）。**確率の比較はここだけ。**
+ *
+ * `items.ts` の `rollDrops()` とまったく同じ形で、**1 山目は `dropFor()` に
+ * 作らせます** —— 刈った羊の抑えを 2 か所に写さないためです
+ * （`dropFor()` は残してあります。既存テストの根拠なので消さないこと）。
+ *
+ * **2 山目は 1 山目の当たり外れと無関係に、別に引きます**（外れても落ちる）。
+ * **`chance >= 1` の山では乱数を引きません** —— 引く形に変えると、種を固定した
+ * 既存テストの目がずれて、関係ない所が赤くなります。
+ *
+ * **呼ぶ側に `chance` の比較を残さないこと。** `attack()`（殴って倒す）と
+ * `hitByProjectile()`（撃って倒す）の 2 か所に散ると、
+ * **弓で撃ったときだけ羽根が出ない**形がそのまま戻ります。
+ */
+export function dropsFor(
+  mob: Mob,
+  def: MobDef,
+  random: () => number,
+): readonly { readonly item: number; readonly count: number }[] {
+  const stacks: { item: number; count: number }[] = [];
+  const drop = dropFor(mob, def);
+  if (drop) {
+    for (const stack of [drop, drop.extra]) {
+      if (!stack || stack.item === NO_ITEM || stack.count <= 0) continue;
+      if (stack.chance >= 1 || random() < stack.chance) {
+        stacks.push({ item: stack.item, count: stack.count });
+      }
+    }
+  }
+  return stacks;
 }
 
 /** プレイヤーに背を向ける向き。`aimHead` の「見る向き」の裏返し。 */

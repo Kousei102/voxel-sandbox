@@ -239,7 +239,23 @@ export const RAW_CHICKEN = 126;
  */
 export const COOKED_CHICKEN = 127;
 
-export const MAX_ITEM_ID = COOKED_CHICKEN;
+/**
+ * 羽根。**鶏を倒すと生鶏肉と一緒に 1 個**出ます（`mobs.ts` の `MobDrop.extra`。
+ * 2 山目なので、1 山目の当たり外れとは無関係に落ちます）。
+ *
+ * **矢の材料です**（火打石 + 棒 + 羽根で 4 本。`crafting.ts`）——
+ * 本家の形に戻すためだけに取った番号で、**食べ物でも道具でもありません。**
+ *
+ * **`block` は `AIR`**（置ける羽根は本家にありません）。
+ * **`tool:` を持たせないこと**（種・パン・肉と同じ罠。`ToolKind` が増えると
+ * `mobs.ts` の `TOOL_ATTACK` に無い種類が入って **NaN** が黙って通ります）。
+ *
+ * **本家の 0〜2 個ではなく 1 個固定です**（`MobDrop.extra` に個数の範囲を
+ * 持たせない、という線引き。`TUNING.md`）。
+ */
+export const FEATHER = 128;
+
+export const MAX_ITEM_ID = FEATHER;
 
 export const MAX_STACK = 64;
 
@@ -396,6 +412,10 @@ item({ id: BREAD, name: "パン", block: AIR, stack: MAX_STACK, color: 0xc49a5e,
 // 焼くと何になるかは `smelting.ts` の表 1 行、食べたときの値は下の `FOODS`。
 item({ id: RAW_CHICKEN, name: "生鶏肉", block: AIR, stack: MAX_STACK, color: 0xd3a08e, tool: null });
 item({ id: COOKED_CHICKEN, name: "焼き鳥", block: AIR, stack: MAX_STACK, color: 0xc98a4b, tool: null });
+
+// 羽根。**`block: AIR` / `tool: null`**（置けず・道具でもなく・**食べ物でもない**）。
+// 矢の材料になるだけなので `FOODS` にも `SMELTING` にも 1 行もありません。
+item({ id: FEATHER, name: "羽根", block: AIR, stack: MAX_STACK, color: 0xe8e4dc, tool: null });
 
 const EMPTY: ItemDef = ITEMS[NO_ITEM];
 

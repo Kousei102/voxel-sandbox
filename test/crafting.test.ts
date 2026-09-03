@@ -29,6 +29,7 @@ import {
   IRON_INGOT,
   DIAMOND_PICKAXE,
   DIAMOND_SWORD,
+  FEATHER,
   FLINT,
   FLINT_AND_STEEL,
   IRON_HOE,
@@ -66,7 +67,7 @@ export function run(): void {
 
   const P = {
     P: PLANK, S: STICK, W: WOOD, C: COBBLE, D: DIAMOND, A: SAND, O: COAL, T: STONE,
-    I: IRON_INGOT, F: FLINT, L: WOOL, H: WHEAT,
+    I: IRON_INGOT, F: FLINT, L: WOOL, H: WHEAT, N: FEATHER,
     R: BLAZE_ROD, B: BLAZE_POWDER, E: ENDER_PEARL, Y: ENDER_EYE,
   };
 
@@ -195,11 +196,19 @@ export function run(): void {
   const bowIn2 = findRecipe(grid(2, [".S", "S."], P), 2);
   check("2x2 では弓は作れない（作業台が要る）", bowIn2 === null, bowIn2?.name ?? "無し");
 
-  // 矢は火打石 + 棒（Minecraft は羽根も要るが、鶏がまだ居ない）。
-  // **1 列なので 2x2 でも作れる** —— 弓を持って出たまま矢を作り足せる。
-  const arrow = findRecipe(grid(2, ["F.", "S."], P), 2);
-  check("火打石 + 棒 → 矢 4 本", arrow?.out === ARROW && arrow.count === 4, `${arrow?.name} x${arrow?.count}`);
-  const arrowUpsideDown = findRecipe(grid(2, ["S.", "F."], P), 2);
+  // 矢は火打石 + 棒 + 羽根で 4 本（**本家と同じ形**。羽根は鶏が落とす）。
+  // **3 段になったので 2x2 では作れません** —— 弓を持って出たまま作り足すことは
+  // もうできない（本家の形に戻すのがこの周の目的。`TUNING.md`）。
+  const arrowRows = ["F..", "S..", "N.."];
+  console.log(`      矢の盤面（3 段）: ${arrowRows.join(" / ")}  火打石 / 棒 / 羽根`);
+  const arrow = findRecipe(grid(3, arrowRows, P), 3);
+  check("火打石 + 棒 + 羽根 → 矢 4 本", arrow?.out === ARROW && arrow.count === 4, `${arrow?.name} x${arrow?.count}`);
+  const arrowIn2 = findRecipe(grid(2, ["F.", "S."], P), 2);
+  check("2x2 では矢は作れない（3 段なので作業台が要る）", arrowIn2 === null, arrowIn2?.name ?? "無し");
+  // **羽根を抜くと作れないこと**を見ること —— 抜いても作れるなら、鶏を探す意味が消える。
+  const arrowNoFeather = findRecipe(grid(3, ["F..", "S..", "..."], P), 3);
+  check("羽根を抜いた 2 段（火打石 + 棒）では作れない", arrowNoFeather === null, arrowNoFeather?.name ?? "無し");
+  const arrowUpsideDown = findRecipe(grid(3, ["N..", "S..", "F.."], P), 3);
   check("上下を逆にすると矢にならない", arrowUpsideDown === null, arrowUpsideDown?.name ?? "無し");
   // **松明と取り違えないこと**（同じ「上に何か + 下に棒」の形で、上が石炭か火打石かだけが違う）。
   const torchAgain = findRecipe(grid(2, ["O.", "S."], P), 2);

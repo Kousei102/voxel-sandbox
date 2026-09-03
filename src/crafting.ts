@@ -37,6 +37,7 @@ import {
   DIAMOND_SWORD,
   ENDER_EYE,
   ENDER_PEARL,
+  FEATHER,
   FLINT,
   FLINT_AND_STEEL,
   IRON_AXE,
@@ -145,9 +146,16 @@ export const RECIPES: readonly Recipe[] = [
   // 羊を探す道のりがそのまま弓にも効く）。左右反転でも作れる。
   { name: "弓", out: BOW, count: 1, shape: [".SW", "S.W", ".SW"], key: { S: STICK, W: WOOL } },
 
-  // 矢は火打石 + 棒で 4 本（Minecraft は羽根も要るが、鶏がまだ居ない）。
-  // 1 列なので 2x2 でも作れる —— **弓を持って出たまま矢を作り足せる。**
-  { name: "矢", out: ARROW, count: 4, shape: ["F", "S"], key: { F: FLINT, S: STICK } },
+  // 矢は火打石 + 棒 + 羽根で 4 本（**本家と同じ形と並び**。羽根は鶏から出る）。
+  // **3 段になったので作業台が要ります** —— 弓を持って出たまま作り足すことは
+  // もうできません（本家の形に戻すのが目的。手触りの話は `TUNING.md`）。
+  {
+    name: "矢",
+    out: ARROW,
+    count: 4,
+    shape: ["F", "S", "E"],
+    key: { F: FLINT, S: STICK, E: FEATHER },
+  },
 
   // シアーズは鉄 2 個の斜め（Minecraft と同じ）。2x2 に収まるので**作業台が要らない**
   // —— 羊を見つけた場所で作り足せる。左右反転でも作れる。

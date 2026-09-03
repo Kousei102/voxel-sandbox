@@ -19,6 +19,7 @@ import {
   DIAMOND_AXE,
   DIAMOND_SWORD,
   ENDER_PEARL,
+  FEATHER,
   NO_ITEM,
   RAW_CHICKEN,
   RAW_PORK,
@@ -44,6 +45,7 @@ import {
   PLAYER_ATTACK_COOLDOWN,
   attackDamage,
   dropFor,
+  dropsFor,
   LOOK_DISTANCE,
   MAX_MOBS,
   MOBS,
@@ -60,8 +62,10 @@ import {
   sunlightBurns,
   teleportSpot,
   walkSwing,
+  type Mob,
   type MobContext,
   type MobDef,
+  type MobDropStack,
   type MobKind,
   type MobTarget,
   type MobPhase,
@@ -1664,11 +1668,10 @@ export function run(): void {
       if (fight.attack(victim, weapon, fightCtx)) hits++;
       advance(fight, arena, fightCtx, COOLDOWN_FRAMES);
     }
-    const drop = drops[0];
     console.log(
       `      ${MOBS[kind].name}    ${String(MOBS[kind].maxHealth).padStart(2)}  ${itemName(weapon).padEnd(8)}` +
         `  ${perHit.toFixed(1)}   ${String(hits).padStart(2)} 回     ` +
-        `${drop ? `${itemName(drop.item)} x${drop.count}` : "なし"}`,
+        `${drops.map((d) => `${itemName(d.item)} x${d.count}`).join(" + ") || "なし"}`,
     );
     check(
       `${MOBS[kind].name}: ceil(体力 / ダメージ) 回でちょうど倒れる`,
@@ -1676,14 +1679,27 @@ export function run(): void {
       `${hits} 回 / 期待 ${expected} 回`,
     );
     // 確率つきのドロップ（ゾンビの腐った肉）は出ないこともある。
-    // **出るなら 1 回だけ・中身は表どおり**が守るべきところ。
-    const certain = MOBS[kind].drop.chance >= 1;
+    // **出るなら山ごとに 1 回だけ・中身は表どおり**が守るべきところ。
+    // **2 山目（`extra`）を持つモブは 2 回まで**（鶏の羽根）——
+    // 上限をゆるめずに、**表が持っている山の数ぶんだけ**許す形にしてある。
+    const table = MOBS[kind].drop;
+    const expectedStacks = [table, table.extra].filter(
+      (s): s is MobDropStack => s !== undefined && s.item !== NO_ITEM && s.count > 0,
+    );
+    const certain = expectedStacks.filter((s) => s.chance >= 1).length;
+    // **並び順のまま、飛ばされることはあっても入れ替わらないこと**（表を前から食う）。
+    let cursor = 0;
+    const inOrder = drops.every((d) => {
+      while (cursor < expectedStacks.length) {
+        const s = expectedStacks[cursor++];
+        if (s.item === d.item && s.count === d.count) return true;
+      }
+      return false;
+    });
     check(
-      `${MOBS[kind].name}: ドロップは多くても 1 回で、中身は表どおり`,
-      drops.length <= 1 &&
-        (!drop || (drop.item === MOBS[kind].drop.item && drop.count === MOBS[kind].drop.count)) &&
-        (!certain || drops.length === 1),
-      `${drops.length} 回（確率 ${MOBS[kind].drop.chance}）`,
+      `${MOBS[kind].name}: ドロップは山ごとに多くても 1 回で、中身は表どおり`,
+      drops.length <= expectedStacks.length && inOrder && drops.length >= certain,
+      `${drops.length} 回 / 表の山 ${expectedStacks.length}（うち確率 1 が ${certain}）`,
     );
     check(
       `${MOBS[kind].name}: 殴った回数だけ悲鳴、倒した瞬間に断末魔`,
@@ -1945,16 +1961,22 @@ export function run(): void {
     check("矢で撃っても刈った羊からは出ない（2 か所とも塞がっている）", shorn.length === 0, `${shorn.length} 件`);
   }
   {
-    // --- 鶏を倒すと生鶏肉が 1 個（**殴った側と撃った側を並べて**） ---
-    // `dropFor()` の 1 本を通ることの確認。片方だけ通っていると、弓で撃ったときだけ
-    // 出ない／出るという形で静かに食い違う（刈った羊の 2 か所とまったく同じ話）。
-    check("表は生鶏肉 1 個・必ず落ちる", MOBS.chicken.drop.item === RAW_CHICKEN &&
-      MOBS.chicken.drop.count === 1 && MOBS.chicken.drop.chance === 1,
-      `${itemName(MOBS.chicken.drop.item)} x${MOBS.chicken.drop.count} / ${MOBS.chicken.drop.chance}`);
-    // **刈れないモブなので `dropFor()` は素通し。**
+    // --- 鶏を倒すと 2 山（生鶏肉 1 + 羽根 1。**殴った側と撃った側を並べて**） ---
+    // `dropsFor()` の 1 本を通ることの確認。片方だけ通っていると、
+    // **弓で撃ったときだけ羽根が出ない**という形で静かに食い違う（刈った羊と同じ話）。
+    const table = MOBS.chicken.drop;
+    console.log(
+      `      鶏の表: ${itemName(table.item)} x${table.count}/${table.chance} + ` +
+        `2 山目 ${itemName(table.extra?.item ?? NO_ITEM)} x${table.extra?.count}/${table.extra?.chance}`,
+    );
+    check("表は生鶏肉 1 個 + 羽根 1 個・どちらも必ず落ちる",
+      table.item === RAW_CHICKEN && table.count === 1 && table.chance === 1 &&
+        table.extra?.item === FEATHER && table.extra.count === 1 && table.extra.chance === 1,
+      `${itemName(table.item)} / ${itemName(table.extra?.item ?? NO_ITEM)}`);
+    // **刈れないモブなので `dropFor()`（1 山目だけを返す旧来の関数）は素通し。**
     const bare = new Mobs();
     const solo = bare.spawn("chicken", 0.5, 11, 2.5, 0, seeded(167));
-    check("dropFor も生鶏肉を返す", dropFor(solo, MOBS.chicken)?.item === RAW_CHICKEN,
+    check("dropFor も生鶏肉を返す（消していない）", dropFor(solo, MOBS.chicken)?.item === RAW_CHICKEN,
       itemName(dropFor(solo, MOBS.chicken)?.item ?? NO_ITEM));
 
     const arena = fightArena();
@@ -1984,10 +2006,63 @@ export function run(): void {
       `      鶏を倒す: 殴って ${punched.map(itemName).join(" ") || "なし"} / ` +
         `矢で ${shot.map(itemName).join(" ") || "なし"}`,
     );
-    check("殴って倒すと生鶏肉 1 個", punched.length === 1 && punched[0] === RAW_CHICKEN,
-      `${punched.length} 件`);
-    check("矢で倒しても生鶏肉 1 個（同じ 1 本を通る）",
-      shot.length === 1 && shot[0] === RAW_CHICKEN, `${shot.length} 件`);
+    check("殴って倒すと 2 山（生鶏肉 1・羽根 1）",
+      punched.length === 2 && punched[0] === RAW_CHICKEN && punched[1] === FEATHER,
+      `${punched.length} 件: ${punched.map(itemName).join(" ")}`);
+    check("矢で倒しても 2 山（同じ 1 本を通る。弓のときだけ羽根が消えない）",
+      shot.length === 2 && shot[0] === RAW_CHICKEN && shot[1] === FEATHER,
+      `${shot.length} 件: ${shot.map(itemName).join(" ")}`);
+  }
+  {
+    // --- `dropsFor()` が返す山の数の表 ---
+    // **豚 1 / 刈っていない羊 1 / 刈った羊 0 / 鶏 2。** 刈った羊の 0 は
+    // `dropFor()` の抑えがそのまま生きていることの証拠（写していない）。
+    // **山の中身も出すこと** —— 数だけ合わせると、羽根が肉に化けても緑になる。
+    const stacksOf = (mob: Mob, def: MobDef): [number, string] => {
+      const stacks = dropsFor(mob, def, seeded(191));
+      return [stacks.length, stacks.map((s) => `${itemName(s.item)} x${s.count}`).join(" + ")];
+    };
+    const pack = new Mobs();
+    const c = ctx({});
+    const pig = pack.spawn("pig", 0.5, 11, 2.5, 0, seeded(193));
+    const woolly = pack.spawn("sheep", 0.5, 11, 4.5, 0, seeded(197));
+    const shorn = pack.spawn("sheep", 0.5, 11, 6.5, 0, seeded(199));
+    pack.shear(shorn, c);
+    const bird = pack.spawn("chicken", 0.5, 11, 8.5, 0, seeded(211));
+    const rows: [string, number, string][] = [
+      ["豚", ...stacksOf(pig, MOBS.pig)],
+      ["刈っていない羊", ...stacksOf(woolly, MOBS.sheep)],
+      ["刈った羊", ...stacksOf(shorn, MOBS.sheep)],
+      ["鶏", ...stacksOf(bird, MOBS.chicken)],
+    ];
+    for (const [name, n, what] of rows) console.log(`      ${name}: ${n} 山 ${what || "（なし）"}`);
+    check("山の数は 豚 1 / 刈っていない羊 1 / 刈った羊 0 / 鶏 2",
+      rows[0][1] === 1 && rows[1][1] === 1 && rows[2][1] === 0 && rows[3][1] === 2,
+      rows.map(([name, n]) => `${name} ${n}`).join(" / "));
+  }
+  {
+    // --- `chance` が 1 の山では乱数を引かない ---
+    // **引く形に変えると、種を固定した既存テストの目がずれて関係ない所が赤くなる。**
+    // 数えるのは「何回引かれたか」なので、乱数そのものを包んで測る。
+    const pack = new Mobs();
+    const bird = pack.spawn("chicken", 0.5, 11, 2.5, 0, seeded(223));
+    const zombie = pack.spawn("zombie", 0.5, 11, 4.5, 0, seeded(227));
+    const counted = (mob: Mob, def: MobDef): [number, number] => {
+      let draws = 0;
+      const inner = seeded(229);
+      const stacks = dropsFor(mob, def, () => { draws++; return inner(); });
+      return [stacks.length, draws];
+    };
+    const [birdStacks, birdDraws] = counted(bird, MOBS.chicken);
+    const [zombieStacks, zombieDraws] = counted(zombie, MOBS.zombie);
+    console.log(
+      `      乱数を引いた回数: 鶏（2 山とも chance 1）${birdDraws} 回 / ` +
+        `ゾンビ（chance ${MOBS.zombie.drop.chance}）${zombieDraws} 回`,
+    );
+    check("chance 1 の山では乱数を引かない（鶏は 2 山とも 0 回）",
+      birdDraws === 0 && birdStacks === 2, `${birdDraws} 回 / ${birdStacks} 山`);
+    check("chance が 1 未満の山では今までどおり 1 回引く（ゾンビ）",
+      zombieDraws === 1 && zombieStacks <= 1, `${zombieDraws} 回 / ${zombieStacks} 山`);
   }
 
   describe("敵対モブの AI（追跡と日光）");
