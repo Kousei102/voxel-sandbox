@@ -1,118 +1,119 @@
-# 仕様: 1 回の採掘で 2 山落ちる器（収穫で種も戻る）
+# 仕様: パン（小麦 3 → パン）と、それを食べること
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-**キューの 14 番。** **数え直し済み**（2026-09-02・コードが根拠）: `Drop` は
-`{ item, count, chance, otherwise? }` の**1 山ぶんだけ**で、`extra` も `rollDrops` も
-`src/**` にも `test/**` にも 1 件もありません。`harvest()`（`breaking.ts:176`）の戻りは
-`Burst | null` の**1 山**で、`rollDrop()` を呼ぶのは `breaking.ts` の**この 1 か所だけ**です
-（実装前: **2783 件緑** / `main.ts` **1450 行**（`npm test` の数え方。`wc -l` の 1449 ではない）/ 空き 131）。
+**キューの 15 番。** **数え直し済み**（2026-09-03・コードが根拠）: `crafting.ts` の `RECIPES` に
+**パンは 1 本もなく**（43 本。小麦を材料にするレシピが 0 本）、`items.ts` の `FOODS` は
+**生豚肉・焼き豚・腐った肉の 3 行だけ**で、`WHEAT`(124) は `foodOf()` が null
+（`test/blocks.test.ts:1003` が見張っています）。実装前: **2798 件緑** / `main.ts` **1450 行**
+（`npm test` の数え方。`wc -l` の 1449 ではない）/ **111..255 の空き 131** / `MAX_ITEM_ID` 124。
 
 ## 1. 何を足すか / 完了の判定
 
-**1 つのブロックから 2 山落とせるようにして、実った小麦から小麦 1 個と種 1 個を返す。**
-これで**畑が自転します**（いまは植えるたびに種を食いつぶす。`TUNING.md`）。
-完了の判定 —— **`npm test` に次が増えて全部緑**（いま 2783 件。**減らさないこと**）:
+**小麦 3 個を横一列に並べるとパンが 1 個できて、それを食べると空腹が戻る。**
+これで**小麦に使い道ができます**（いまは掘れるだけで、持っていても何にもなりません）。
+完了の判定 —— **`npm test` に次が増えて全部緑**（いま 2798 件。**減らさないこと**）:
 
-- 「実った小麦を掘ると **2 山**（小麦 1 + 種 1）」を**掘る経路（`tryBreak`）と支えを失う経路
-  （`autoBreak`）の両方**で。「クリエイティブでは 0 山」も両方で
-- 「`rollDrops()` の山数: 石 1 / ガラス 0 / 葉（外れ）0 / 砂利（外れ）1 / 実った小麦 2」
-  （**数を出力してから判定すること**）
-- 「`rollDrop()` の戻りは今までどおり 1 山目だけ」（**既存の約 25 か所の根拠を変えない**）
-- 「`extra` を持つ行は 1 山目と**別のアイテム**」「どのブロックでも山は 2 つまで」
+- 「小麦 3 個の横一列 → パン 1 個」（**`findRecipe()` の戻りを出力してから**判定）と
+  「**2x2 では作れない**」（3 幅なので作業台が要る。本家と同じ）
+- 「パンを持って右クリック → `eat`」「満腹なら `flash`」「クリエイティブでは `none`」
+- 「パンを食べると空腹 +5・満腹度 +6・**毒ではない**」（値を出力してから）と
+  「**小麦そのものは今までどおり食べられない**」（`foodOf(WHEAT) === null`）
+- 「共有帯のアイテムが **12 個**（125 まで）」「`MAX_ITEM_ID` が 125」
 
 ## 2. 触るファイル / 触らないファイル
 
 | 触る | 何を |
 | --- | --- |
-| `items.ts` | `DropStack` 型 / `Drop.extra?` / `rollDrops()` / `DROPS` の**実った小麦の 1 行だけ** |
-| `breaking.ts` | `harvest()` の戻りを `Burst[]` に。`tryBreak` / `autoBreak` の受け方 |
-| `test/mining.test.ts` | `rollDrops()` の山数（既存の `rollDrop()` の節の隣） |
-| `test/blocks.test.ts` | 小麦の節に「種も戻る」/ `test/breaking.test.ts` に 2 経路ぶん |
-| `TUNING.md` / `ROADMAP.md` / `docs/autodev-log.md` | 下の 8 |
+| `items.ts` | `BREAD = 125` の定数 / `MAX_ITEM_ID` / `item({...})` 1 行 / `FOODS` に 1 行 |
+| `crafting.ts` | `RECIPES` に**パンの 1 行だけ**（`import` に `BREAD` / `WHEAT` を足す） |
+| `test/blocks.test.ts` | 共有帯の数え直し（11 → 12）と、パンの性質の節 |
+| `test/crafting.test.ts` | パンのレシピ（形・幅・反転） |
+| `test/vitals.test.ts` | パンを食べたときの値 |
+| `test/use.test.ts` | 右クリックの行き先（eat / flash / none） |
+| `TUNING.md` / `ROADMAP.md` / `AUTODEV-QUEUE.md` / `docs/autodev-log.md` / `HANDOFF.md` | 下の 8 |
 
 **1 行も書かないこと**: **`main.ts`（1450 行 = 停止条件ちょうど。この周は 0 行）** /
-`drops.ts` / `droprender.ts`（見た目も物理も変えません。2 山は `burst()` が勝手に散らします）/
-`blocks.ts` / `crops.ts` / `placing.ts` / `crafting.ts`（**パンは 15 番**）/ `vitals.ts` /
-`storage.ts` / `session.ts` / `dimensions.ts`（**セーブは 1 バイトも増えません**）/
-`mining.ts` / `durability.ts` / `mobs.ts` / `world.ts` / `ui.ts` / `inventoryui.ts` / `.claude/**`。
+`use.ts`（`foodOf()` を見る形がもうあるので、パンは**1 行も足さずに食べられます**）/
+`vitals.ts`（**`items.ts` を import しません**）/ `smelting.ts`（**焼いて作るものではない**）/
+`blocks.ts`（**ブロックは増えません**）/ `craftscreen.ts` / `inventoryui.ts`（クリエイティブ
+一覧は `allItemIds()` そのままなので**勝手に増えます**）/ `drops.ts` / `breaking.ts` /
+`crops.ts` / `placing.ts` / `durability.ts` / `storage.ts` / `session.ts`
+（**セーブは 1 バイトも増えません**）/ `.claude/**`。
 
 ## 3. 使う ID
 
-**0 個。** 既存の ID（実った小麦 123 / 小麦 124 / 種 122）の組み合わせだけで足ります。
-**`ROADMAP.md` の予約表から番号を取らないこと**（取ったら間違いの合図）。
-`MAX_ITEM_ID` も `SaveData.version`（1）も動きません。
+**アイテム 1 個: `BREAD = 125`。** `ROADMAP.md` の予約表の「125..255 予備」の**先頭**で、
+124（小麦）の次です。**ブロックは 0 個**（パンは置けません）。取ったあと `111..255 の空き` は
+**131 → 130**（`npm test` の出力で確かめること）。`MAX_ITEM_ID` は **124 → 125**。
+**`SaveData.version` は 1 のまま**（キーも増えません）。
 
 ## 4. 判断をどこに置くか
 
 | 判断 | 置き場 |
 | --- | --- |
-| 何が何山落ちるか（表そのもの） | `items.ts` の `DROPS`（**`extra` は表の 1 列**） |
-| 山を組み立てる（外れ・0 個を捨てる） | `items.ts` の `rollDrops()`（**純粋。乱数は受け取るだけ**） |
-| どこへ落ちるか（座標と跳ね上がり） | `breaking.ts` の `harvest()` |
-| 地面での散らばり | `drops.ts` の `burst()`（**既にある。触らない**） |
+| パンという物（名前・色・積める数・置けないこと） | `items.ts` の `item({...})` |
+| **何がどれだけ戻るか**（空腹 5 / 満腹度 6 / 毒でない） | `items.ts` の `FOODS`（**表の 1 行**） |
+| どう作るか（形と個数） | `crafting.ts` の `RECIPES`（**表の 1 行**） |
+| 右クリックが「食べる」に来るか | `use.ts` の `decideUse()`（**既にある。触らない**） |
+| 食べ終わるまでの長さ・満腹での中断 | `vitals.ts` の `Eating`（**既にある。触らない**） |
 
-**新しい「確かめられないもの」は 0** なので `unverifiable-pair` は不要。ブロックもアイテムも
-増えないので `add-block` も当たりません（**使うスキルはありません**）。
+**新しい「確かめられないもの」は 0** なので `unverifiable-pair` は不要（描画も音も増えません。
+咀嚼音は `sfx.ts` の既存の経路を通ります）。**使うスキルは `add-block`。**
 
 ## 5. 実装の要点（この順で）
 
-1. `items.ts` に **`export interface DropStack { readonly item: number; readonly count: number; }`**。
-   `Drop` に **`readonly extra?: DropStack;`** を 1 行（**`chance` も個数の範囲も持たせない**。
-   下の 7-1）。既存の 4 つのキーは 1 文字も変えないこと
-2. `DROPS` の **`WHEAT_CROP_RIPE` の行にだけ** `extra: { item: WHEAT_SEEDS, count: 1 }` を足す。
-   **他の行は触らない**（`extra` を書かなければ今までどおり 1 山）
-3. `items.ts` に **`rollDrops(blockId: number, roll: number): readonly DropStack[]`**:
-   - **1 山目は `rollDrop(blockId, roll)` を呼んで作ること**（`chance` / `otherwise` の判断を
-     写さない。**写した瞬間に「掘ったときと床を抜かれたときで落ちるものが違う」が戻ります**）
-   - `item === NO_ITEM` か `count <= 0` の山は**入れない**（ガラス・葉の外れが 0 山になる）
-   - **`extra` は 1 山目の当たり外れに関係なく必ず入れる**（別の山なので。**いま両方を持つ
-     ブロックは無い**が、この決めをコメントに残すこと）
-   - **`rollDrop()` はそのまま残すこと**（名前・引数・戻り値とも。既存のテストの根拠）
-4. `breaking.ts`: `harvest()` の戻りを **`Burst[]`**（`rollDrops()` を `for` で回して同じ
-   `x + 0.5 / y + dy / z + 0.5` を貼るだけ）。`tryBreak()` は
-   `drops.push(...harvest(id, order.roll, x, y, z, 0.35))`、`autoBreak()` は
-   `return harvest(id, roll, x, y, z, 0.25)`。**`import` を `rollDrop` → `rollDrops` に差し替える**
-5. **`main.ts` は 0 行**（`for (const out of result.drops)` も `onAutoBreak` の `for` も
-   もう山の数を知らないので、そのまま 2 山流れます）
+1. `items.ts` の `WHEAT`(124) の下に **`export const BREAD = 125;`** と説明を数行。
+   **`MAX_ITEM_ID` を `BREAD` に差し替える**（`export const MAX_ITEM_ID = BREAD;`）
+2. 小麦の `item({...})` の下に 1 行:
+   **`item({ id: BREAD, name: "パン", block: AIR, stack: MAX_STACK, color: 0xc49a5e, tool: null });`**
+   **`tool` を持たせないこと**（種・シアーズと同じ罠。`ToolKind` が増えると `mobs.ts` の
+   `TOOL_ATTACK` に無い種類が入って **NaN** が黙って通ります）
+3. `FOODS` に **`[BREAD, { hunger: 5, saturation: 6, poison: false }]`**（本家の値。
+   焼き豚 8 / 12.8 と生豚肉 3 / 1.8 の間で、**かまど無しで作れる中では一番強い**）
+4. `crafting.ts` の `RECIPES` に 1 行 —— **矢とシアーズの近く**（道具のループより上）に
+   **`{ name: "パン", out: BREAD, count: 1, shape: ["WWW"], key: { W: WHEAT } }`**。
+   **ハーフの `["MMM"]` と同じ形ですが材料が違うので重複しません**（既存の
+   「同じ形のレシピが重複していない」がそのまま見張ります）
+5. **`main.ts` は 0 行**（`foodOf()` を見る経路も、クリエイティブ一覧も、もう通っています）
 
 ## 6. 書くテスト（**値を出力してから判定すること**。`rules/testing.md`）
 
-- `test/mining.test.ts`（`rollDrop()` の節の隣に）: **山数の一覧を 1 行出力**してから
-  石 1 / ガラス 0 / 葉（0.5）0 / 砂利（0.5）1 / 砂利（0.05）1 / 実った小麦 2 を判定。
-  **`rollDrop(GRAVEL, 0.5).item === GRAVEL` などの既存の判定は 1 つも消さないこと**
-- `test/blocks.test.ts`（小麦の節）: 実った小麦の 2 山が **小麦 124 と種 122**（`itemName()` で
-  出力してから）/ **`rollDrop(WHEAT_CROP_RIPE, 0.5)` は今までどおり小麦 1 個だけ** /
-  **苗（`WHEAT_CROP`）は 1 山のまま**（種 1 個。実る前に刈っても得しない）
-- 不変条件（`test/blocks.test.ts`）: `DROPS` を全部回して **`extra.item !== 1 山目の item`** と
-  **`rollDrops()` の長さが 2 以下**（表が増えたとき勝手に 3 山になっていないこと）
-- `test/breaking.test.ts`: `tryBreak(実った小麦)` の `drops` が **2 山**（中身と個数も）/
-  **耕地を掘って `autoBreak(実った小麦)` でも 2 山**（`rules/items-survival.md` の
-  「2 つの経路を別々に書かない」）/ **クリエイティブは両方 0 山** /
-  **`backInMain` の並びに `"rollDrops("` を足す**（`main.ts` に戻っていないことの見張り）
+- `test/crafting.test.ts`: **小麦 3 個を横一列に置いた 3x3 盤面**の `findRecipe()` を
+  **`name` / `out` / `count` を出力してから**判定 / **2x2 の盤面では `null`**（3 幅なので
+  作業台が要る）/ **端に寄せた形でも成立する** / **小麦 2 個では `null`**
+- `test/blocks.test.ts`: **`sharedItems.length === 12`** と `sharedItems[11] === BREAD` と
+  `MAX_ITEM_ID === BREAD`（**ラベルの「11 個（124 まで）」も 12 個（125 まで）に直すこと。
+  ゆるめるのではなく数え直す**）/ パンは **`placedBlock(BREAD) === AIR`**・
+  **`toolOf(BREAD) === null`**・**`foodOf(BREAD) !== null`**（`itemName()` で出力してから）/
+  **`foodOf(WHEAT) === null` の既存の判定は 1 つも消さないこと**
+- `test/vitals.test.ts`: 空腹を減らしてからパンを食べ、**空腹 +5 / 満腹度 +6 / 毒つきでない**
+  （前後の値を出力してから。**`allFoodIds()` の既存の一覧出力には自動で乗ります**）
+- `test/use.test.ts`: パンを持って **`decideUse(null, facts(BREAD))` が `eat`**（`aim` 無しでも）/
+  **`canEat: false` なら `flash`** / **`creative: true` なら `none`**（焼き豚の 3 件と同じ形。
+  **既存の焼き豚の判定は残すこと**）
 
 ## 7. このタスク固有の禁じ手
 
-1. **`extra` に `chance` や個数の範囲（min / max）を持たせないこと。** 乱数は
-   `roll` 1 個しか流れていないので、付けると**1 山目と必ず相関します**（砂利の当たり外れと
-   種の個数が連動する）。本家の「種 0〜3」に寄せたくなったら、**乱数をもう 1 本
-   流す話を先に**すること（`BreakOrder` と `autoBreak()` の引数と `main.ts` に及びます）
+1. **小麦（124）を `FOODS` に足さないこと**（本家と同じで、**パンにしてから食べます**）
 2. **`main.ts` を 1 行も触らないこと**（**1450 行 = 停止条件ちょうど**。1 行でも足すと止まります）
-3. **`rollDrop()` を消す・名前を変える・戻り値を配列にすること**（既存の約 25 か所が根拠）。
-   **`breaking.ts` から `rollDrop(` を呼ばないこと**（`rollDrops(` だけ）
-4. **`Burst` / `BreakOutcome` / `BreakOrder` の形を変えないこと**（`damage` の素通しも同じ）
-5. **`drops.ts` に「2 山を並べて置く」を書かないこと**（`burst()` の乱数で散ります）
-6. **`DROPS` の既存の行・`otherwise` の意味を書き換えないこと**（砂利と草むらが壊れます）
-7. **パン・小麦を食べ物にする話を持ち込まないこと**（15 番）。**ID を取らない・
-   `SaveData` を触らない・判定をゆるめないこと**
+3. **`use.ts` / `vitals.ts` に「パン」と書かないこと。** 食べる経路はもう `foodOf()` 1 本で、
+   アイテムの名前を書いた瞬間に「食べ物を足すたびに 3 か所直す」形に戻ります
+4. **`smelting.ts` に足さない**（かまどは要らない）/ **`block:` を `AIR` 以外にしない**
+   （置けるパンは本家にない）/ **`stack` を 1 にしない**（傷が付く物ではない。64 個積める）
+5. **既存のレシピ・`FOODS` の 3 行・`DROPS` を 1 行も書き換えないこと**
+6. **126 以降を予約しない**（取るのは 125 の 1 個だけ）/ **`SaveData` を触らない・
+   テストの判定をゆるめないこと**
 
 ## 8. 終了条件
 
-`npm run typecheck` と `npm test` が緑（**2783 件から増えていること**）/ `npm run build` /
-**コミット 1 つ** / `TUNING.md` の**「収穫しても種が戻らない」の行を書き換える**
-（種 1 個固定にした。**本家は 0〜3 なので平均では本家より渋い**）/ `ROADMAP.md` の
-124 の行に「**種も 1 個戻る**」を追記（**番号は取らない**）/ **C-3: `npm run build` のあと
-`npm run shot -- crops` を撮り直し、`Read` で開いて苗と実りの見た目が変わっていないことを
-見る**（山が 1 → 2 に増えるだけで描画は触らないため、これで足ります）/
-`AUTODEV-QUEUE.md` の 14 番の行を消す / この仕様書を `済` に / `HANDOFF.md` を丸ごと書き直す。
+`npm run typecheck` と `npm test` が緑（**2798 件から増えていること**）/ `npm run build` /
+**コミット 1 つ** / `TUNING.md` に**「パン（AUTODEV 15）」の節を 1 つ**足す
+（空腹 5・満腹度 6 は本家 / 小麦 3 → パン 1 も本家 / **かまど無しで作れる中では一番強い**）/
+`ROADMAP.md` の予約表の 125 の行を「**パン。実装済み**」にして、**予備を 126..255 に直す**
+（`157` 行あたりの「アイテム ID は 125 から」も 126 からに直すこと）/
+**C-3: `npm run build` のあと `npm run shot -- crops` を撮り直し、`Read` で開いて畑の見た目が
+変わっていないことを見る**（描画は 1 行も触らない。**パンはインベントリの中でしか見えないので、
+色 `0xc49a5e` の見え方は `HANDOFF.md` の「ブラウザで見てほしいところ」へ**）/
+`AUTODEV-QUEUE.md` の 15 番の行を消す / この仕様書を `済` に / `HANDOFF.md` を丸ごと書き直す。
