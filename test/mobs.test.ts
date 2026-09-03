@@ -18,6 +18,7 @@ import { DayNight } from "../src/daynight";
 import {
   DIAMOND_AXE,
   DIAMOND_SWORD,
+  EGG,
   ENDER_PEARL,
   FEATHER,
   NO_ITEM,
@@ -165,6 +166,11 @@ export function run(): void {
     // 「誰が刈れるか・いつ戻るか」が描画側に生えると、羊を捕まえて刈るまで確かめられない。
     "shearing",
     "woolTimer",
+    // **産卵もここに足すこと。** 卵は見た目に出ない（落とし物は `droprender.ts`）が、
+    // 「誰が・どれだけの間隔で産むか」が描画側に生えると、鶏に張り付いて
+    // 5〜10 分待つまで確かめられない。
+    "laying",
+    "layTimer",
   ].filter((name) => renderSource.includes(name));
   check("mobrender.ts に判断が漏れていない", decisions.length === 0, decisions.join(" "));
 
@@ -2063,6 +2069,199 @@ export function run(): void {
       birdDraws === 0 && birdStacks === 2, `${birdDraws} 回 / ${birdStacks} 山`);
     check("chance が 1 未満の山では今までどおり 1 回引く（ゾンビ）",
       zombieDraws === 1 && zombieStacks <= 1, `${zombieDraws} 回 / ${zombieStacks} 山`);
+  }
+
+  describe("鶏が卵を産む（倒さずに取れる 2 つ目）");
+
+  // --- 誰が産むか（表 1 本。`kind === "chicken"` と書かない） ---
+  console.log(
+    `      産む: ${MOB_KINDS.map((k) => `${MOBS[k].name} ${MOBS[k].laying ? "○" : "×"}`).join(" / ")}`,
+  );
+  {
+    const layers = MOB_KINDS.filter((k) => MOBS[k].laying !== null);
+    check("産むのは鶏だけ", layers.length === 1 && layers[0] === "chicken", layers.join(" "));
+    const rule = MOBS.chicken.laying;
+    console.log(
+      `      鶏の表: ${itemName(rule?.item ?? NO_ITEM)} x${rule?.count} / ` +
+        `${rule?.min}〜${rule?.max} 秒ごと（倒したときは ${itemName(MOBS.chicken.drop.item)} + ` +
+        `${itemName(MOBS.chicken.drop.extra?.item ?? NO_ITEM)}）`,
+    );
+    check(
+      "産むのは卵 1 個・300〜600 秒ごと（本家の 6000〜12000 ティック）",
+      rule?.item === EGG && rule?.count === 1 && rule?.min === 300 && rule?.max === 600,
+      `${itemName(rule?.item ?? NO_ITEM)} x${rule?.count} / ${rule?.min}〜${rule?.max} 秒`,
+    );
+    // **`min` を 0 にしないこと** —— 毎フレーム産む。
+    check("次までの間がある（min > 0）", (rule?.min ?? 0) > 0 && (rule?.min ?? 0) <= (rule?.max ?? 0),
+      `${rule?.min}〜${rule?.max} 秒`);
+    // **倒したときの表は 1 行も動かしていない**（産卵とは別の話）。
+    check("倒したときの表は書き換えていない",
+      MOBS.chicken.drop.item === RAW_CHICKEN && MOBS.chicken.drop.extra?.item === FEATHER,
+      `${itemName(MOBS.chicken.drop.item)} + ${itemName(MOBS.chicken.drop.extra?.item ?? NO_ITEM)}`);
+  }
+
+  // --- 湧いた直後の時計は min..max（0 から始めない） ---
+  {
+    const rule = MOBS.chicken.laying!;
+    const pack = new Mobs();
+    const starts: number[] = [];
+    for (let i = 0; i < 20; i++) {
+      starts.push(pack.spawn("chicken", 0.5, 11, 2.5, 0, seeded(1009 + i * 2)).layTimer);
+    }
+    const pig = pack.spawn("pig", 0.5, 11, 4.5, 0, seeded(1013));
+    console.log(
+      `      湧いた直後の layTimer: ${starts.slice(0, 5).map((n) => n.toFixed(1)).join(" / ")} …` +
+        `（20 体で ${Math.min(...starts).toFixed(1)}〜${Math.max(...starts).toFixed(1)} 秒） / 豚 ${pig.layTimer}`,
+    );
+    // **0 から始めると、まとめ打ちで湧いた全員が最初のフレームで 1 個ずつ産む。**
+    check(
+      `湧いた直後の時計は ${rule.min}〜${rule.max} 秒に入る（0 から始めない）`,
+      starts.every((n) => n >= rule.min && n <= rule.max),
+      `${Math.min(...starts).toFixed(1)}〜${Math.max(...starts).toFixed(1)} 秒`,
+    );
+    check("2 体が同じ時計にならない（種ごとに散る）", new Set(starts).size > 1, `${new Set(starts).size} 通り`);
+    check("産まないモブの時計は 0 のまま", pig.layTimer === 0, `${pig.layTimer}`);
+  }
+
+  /** 産卵の試験場。**湧きを止めた平地**に鶏 1 体（落とし物と音の控えつき）。 */
+  function layArena(seed = 1019): {
+    pack: Mobs;
+    bird: Mob;
+    drops: { item: number; count: number }[];
+    sounds: Sfx[];
+    c: MobContext;
+    world: ReturnType<Arena["asWorld"]>;
+  } {
+    const pack = new Mobs();
+    const drops: { item: number; count: number }[] = [];
+    const sounds: Sfx[] = [];
+    pack.onDrop = (item, count) => drops.push({ item, count });
+    pack.onSound = (sfx) => sounds.push(sfx);
+    const c = ctx({ random: seeded(seed) });
+    const bird = pack.spawn("chicken", 0.5, 11, 2.5, 0, seeded(seed + 2));
+    return { pack, bird, drops, sounds, c, world: fightArena().asWorld() };
+  }
+
+  // --- 境目の 1 フレーム手前では産まず、その次のフレームで卵 1 個が 1 山 ---
+  // （`woolTimer` の戻りとまったく同じ測り方。`rules/testing.md`）
+  {
+    const { pack, bird, drops, sounds, c, world } = layArena();
+    // 時計そのものを短く詰め直して境目まで進める（**300 秒ぶん回すのは下の節**）。
+    bird.layTimer = 2;
+    // **フレーム数を数えて決め打ちにしないこと** —— 2 秒 = 120 フレームぶん引いても
+    // 浮動小数の端数（1e-15）が残って、その 1 フレームでは鳴らない。
+    // 「鳴った最初のフレーム」を探して、その 1 つ手前を見るのが正しい測り方。
+    let before = -1;
+    let remain = -1;
+    let frame = 0;
+    for (; frame < 3 * 60; frame++) {
+      before = drops.length;
+      remain = bird.layTimer;
+      pack.update(1 / 60, world, c);
+      if (drops.length > before) break;
+    }
+    const after = drops.length;
+    console.log(
+      `      境目: 2 秒（120 フレーム）→ ${frame + 1} フレーム目で鳴った。` +
+        `その 1 フレーム手前 ${before} 山（残り ${remain.toFixed(5)} 秒）→ ${after} 山` +
+        `（${drops.map((d) => `${itemName(d.item)} x${d.count}`).join(" ")}） / 音 ${sounds.join(" ") || "なし"}`,
+    );
+    check("境目の 1 フレーム手前ではまだ産まない", before === 0 && remain > 0, `${before} 山 / 残り ${remain}`);
+    check(
+      "その次のフレームで卵 x1 が 1 山",
+      after === 1 && drops[0].item === EGG && drops[0].count === 1,
+      `${after} 山: ${drops.map((d) => `${itemName(d.item)} x${d.count}`).join(" ")}`,
+    );
+    check("鳴るのは 2 秒ぶんのフレームを回したところ（早くも遅くもない）",
+      frame + 1 >= 2 * 60 && frame + 1 <= 2 * 60 + 1, `${frame + 1} フレーム目`);
+    // **音は足さない**（`onSound` を鳴らさないのが仕様。鳴らすと鶏が居るだけで鳴り続ける）。
+    check("産んでも音は鳴らない", sounds.length === 0, sounds.join(" "));
+    // **次の間隔を入れ直してから鳴らすこと** —— 入れ直さないと毎フレーム産む。
+    const next = bird.layTimer;
+    for (let i = 0; i < 60; i++) pack.update(1 / 60, world, c);
+    console.log(`      産んだ直後の次の間隔 ${next.toFixed(1)} 秒 → 1 秒回して ${drops.length} 山のまま`);
+    check(
+      `産んだあと次の間隔が ${MOBS.chicken.laying?.min}〜${MOBS.chicken.laying?.max} 秒に入り直す`,
+      next >= MOBS.chicken.laying!.min && next <= MOBS.chicken.laying!.max,
+      `${next.toFixed(1)} 秒`,
+    );
+    check("続けて 1 秒回しても 2 個目は出ない", drops.length === 1, `${drops.length} 山`);
+  }
+
+  // --- min 秒ぶんでは 0 山、max 秒で 1 山（表の値そのもので回す） ---
+  {
+    const rule = MOBS.chicken.laying!;
+    const { pack, bird, drops, c, world } = layArena(1031);
+    const start = bird.layTimer;
+    // **`dt` を大きめに取って回す**（産卵の時計は毎フレーム減るだけなので、
+    // 刻みを変えても測っているものは同じ。1/60 で 36000 回まわすと時間を捨てる）。
+    const dt = 1 / 20;
+    const home = new Vector3(0.5, 11, 2.5);
+    const runFor = (seconds: number): void => {
+      for (let i = 0; i < seconds / dt; i++) {
+        pack.update(dt, world, c);
+        // **その場に留め置くこと。** 10 分も回すと徘徊で草地（±80）を出て、
+        // 何も無い所へ落ちたあと `DESPAWN_DISTANCE`(72) で消える ——
+        // すると「動かないから産まない」で緑になる（`rules/testing.md`）。
+        bird.position.copy(home);
+        bird.velocity.set(0, 0, 0);
+      }
+    };
+    runFor(rule.min);
+    const atMin = drops.length;
+    const aliveAtMin = pack.count;
+    runFor(rule.max - rule.min);
+    const atMax = drops.length;
+    console.log(
+      `      最初の時計 ${start.toFixed(1)} 秒: ${rule.min} 秒で ${atMin} 山 → ${rule.max} 秒で ${atMax} 山` +
+        `（${drops.map((d) => `${itemName(d.item)} x${d.count}`).join(" ")}） / 残り ${pack.count} 体`,
+    );
+    // **先に「まだ居る」ことを見ること** —— 消えていたら下の 2 件は何も測っていない。
+    check("回しているあいだ鶏は消えていない", aliveAtMin === 1 && pack.count === 1, `${pack.count} 体`);
+    check(`${rule.min} 秒ぶん回しても 0 山（min より前には産まない）`, atMin === 0, `${atMin} 山`);
+    check(
+      `${rule.max} 秒で卵が 1 山（max までには必ず産む）`,
+      atMax === 1 && drops[0].item === EGG,
+      `${atMax} 山: ${drops.map((d) => itemName(d.item)).join(" ")}`,
+    );
+  }
+
+  // --- 産まないモブは max 秒ぶん回しても 1 度も鳴らない ---
+  {
+    const rule = MOBS.chicken.laying!;
+    const pack = new Mobs();
+    const drops: number[] = [];
+    const sounds: Sfx[] = [];
+    pack.onDrop = (item) => drops.push(item);
+    pack.onSound = (sfx) => sounds.push(sfx);
+    const c = ctx({ random: seeded(1039) });
+    const world = fightArena().asWorld();
+    // **表から取ること**（種類を足したときに書き忘れない）。ボスは自然に居ないので外す。
+    const barren = MOB_KINDS.filter((k) => MOBS[k].laying === null && !MOBS[k].boss);
+    const homes = barren.map((kind, i) => {
+      const mob = pack.spawn(kind, 0.5 + i * 2, 11, 2.5, 0, seeded(1049 + i * 2));
+      return [mob, new Vector3(mob.position.x, mob.position.y, mob.position.z)] as const;
+    });
+    const born = pack.count;
+    const dt = 1 / 20;
+    for (let i = 0; i < rule.max / dt; i++) {
+      pack.update(dt, world, c);
+      // **上と同じ理由でその場に留め置く**（消えると「動かないから落ちない」で緑になる）。
+      for (const [mob, home] of homes) {
+        mob.position.copy(home);
+        mob.velocity.set(0, 0, 0);
+      }
+    }
+    console.log(
+      `      産まないモブ ${barren.map((k) => MOBS[k].name).join(" / ")} を ${rule.max} 秒: ` +
+        `落とし物 ${drops.length} 件 / 音 ${sounds.length} 件（湧かせた ${born} 体・残り ${pack.count} 体）`,
+    );
+    // **先に「ちゃんと回った」ことを見ること**（`rules/testing.md`）——
+    // 全員デスポーンしていると「動かないから落ちない」で緑になる。
+    check("産まないモブを 5 種類そろえて回した", born === barren.length && pack.count > 0,
+      `${born} 体 → ${pack.count} 体`);
+    check(`豚・羊・ゾンビ・ブレイズ・エンダーマンは ${rule.max} 秒回しても 1 山も出ない`,
+      drops.length === 0, `${drops.length} 件`);
   }
 
   describe("敵対モブの AI（追跡と日光）");

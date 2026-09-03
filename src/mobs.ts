@@ -14,6 +14,7 @@ import { AIR, GRASS, NETHER_BRICK, WOOL, isHotLiquid, isLiquid, isSolid } from "
 import { MAX_LIGHT, WORLD_HEIGHT, columnOf } from "./constants";
 import {
   BLAZE_ROD,
+  EGG,
   ENDER_PEARL,
   FEATHER,
   NO_ITEM,
@@ -118,6 +119,29 @@ export interface ShearRule {
   readonly max: number;
   /** また刈れるようになるまでの秒数。**0 にしないこと** —— 連打で羊毛が無限に出ます。 */
   readonly regrow: number;
+}
+
+/**
+ * ひとりでに産み落とすもの。**持っているモブだけが産む**（無ければ `null`）。
+ *
+ * **`kind === "chicken"` と書かないこと**（`shearing` / `ranged` / `orbit` と同じ作法）——
+ * 産むモブが増えるたびに `update()` の中に分岐が生えます。
+ *
+ * **刈る（`ShearRule`）との違いは「誰が起こすか」だけ**です。刈るのはプレイヤーの
+ * 操作（`shear()`）で、こちらは**時計が 0 になったら勝手に**鳴ります。
+ * 出口は同じ `onDrop` なので、`mobs.ts` は `drops.ts` を知らないままです。
+ */
+export interface LayRule {
+  /** 産むもの。 */
+  readonly item: number;
+  /** 1 回に産む数。 */
+  readonly count: number;
+  /**
+   * 次に産むまでの秒数の幅（両端を含む）。**`min` を 0 にしないこと** ——
+   * 毎フレーム産みます。
+   */
+  readonly min: number;
+  readonly max: number;
 }
 
 /**
@@ -314,6 +338,13 @@ export interface MobDef {
   /** 刈って取れるものか。**刈れないモブは `null`。** */
   readonly shearing: ShearRule | null;
   /**
+   * ひとりでに産み落とすものか。**産まないモブは `null`。**
+   *
+   * **`MobDef.drop` とは別の話**です（あちらは倒したときに何が出るか）。
+   * 産卵は倒す必要がなく、`Mobs.lay()` の時計 1 本だけで決まります。
+   */
+  readonly laying: LayRule | null;
+  /**
    * 声の高さの倍率。**種類ごとに `Sfx` を増やさないこと**
    * （出来事 × 種類で膨らむ）。`recipeFor` が freq と cutoff に掛ける。
    */
@@ -365,6 +396,7 @@ const PIG: MobDef = {
   regen: 0,
   drop: { item: RAW_PORK, count: 1, chance: 1 },
   shearing: null,
+  laying: null,
   voice: 1.4,
   groups: [
     { motion: "fixed", pivot: [0, 0, 0], phase: 0 },
@@ -424,6 +456,7 @@ const SHEEP: MobDef = {
   // 戻るまでの 60 秒はこちらで決めた暫定（`TUNING.md`）。
   // **刈った羊を倒しても羊毛は出ません**（`dropFor()`）。
   shearing: { item: WOOL, min: 1, max: 3, regrow: 60 },
+  laying: null,
   voice: 1.25,
   groups: [
     { motion: "fixed", pivot: [0, 0, 0], phase: 0 },
@@ -499,6 +532,12 @@ const CHICKEN: MobDef = {
   // **`mobs.ts` の色の定数 `CHICKEN_FEATHER` とは別物**（あちらは見た目の白）。
   drop: { item: RAW_CHICKEN, count: 1, chance: 1, extra: { item: FEATHER, count: 1, chance: 1 } },
   shearing: null,
+  // **卵を産む唯一のモブ。** 倒さずに取れるという点は羊の羊毛と同じで、違うのは
+  // プレイヤーの操作ではなく時計が起こすところだけ（`LayRule` の説明）。
+  // 間隔は本家のまま（6000〜12000 ティック = 300〜600 秒）ですが、**モブは
+  // `DESPAWN_DISTANCE`(72) で消え、保存もされない**ので、実際に産むところまで
+  // 見届けられるのは近くに居続けたときだけです（`TUNING.md`）。
+  laying: { item: EGG, count: 1, min: 300, max: 600 },
   // いちばん高い声（羊 1.25 / 豚 1.4 の上）。
   voice: 1.8,
   groups: [
@@ -577,6 +616,7 @@ const ZOMBIE: MobDef = {
   regen: 0,
   drop: { item: ROTTEN_FLESH, count: 1, chance: 0.6 },
   shearing: null,
+  laying: null,
   voice: 0.7,
   groups: [
     { motion: "fixed", pivot: [0, 0, 0], phase: 0 },
@@ -658,6 +698,7 @@ const BLAZE: MobDef = {
   regen: 0,
   drop: { item: BLAZE_ROD, count: 1, chance: 0.5 },
   shearing: null,
+  laying: null,
   voice: 1.15,
   groups: [
     { motion: "fixed", pivot: [0, 0, 0], phase: 0 },
@@ -734,6 +775,7 @@ const ENDERMAN: MobDef = {
   regen: 0,
   drop: { item: ENDER_PEARL, count: 1, chance: 0.5 },
   shearing: null,
+  laying: null,
   // 本家の湧きの重み。ゾンビ (100) の 1/10 なので、夜に出会うのはたまに。
   spawnWeight: 10,
   voice: 0.6,
@@ -845,6 +887,7 @@ const DRAGON: MobDef = {
   // 体力バーとクリア画面（2-13b）の仕事で、地面に湧く物ではない。
   drop: { item: NO_ITEM, count: 0, chance: 0 },
   shearing: null,
+  laying: null,
   voice: 0.5,
   groups: [
     { motion: "fixed", pivot: [0, 0, 0], phase: 0 },
@@ -1082,6 +1125,17 @@ export interface Mob {
    * 刈れないモブでは 0 のまま動かない（`MobDef.shearing` が `null`）。
    */
   woolTimer: number;
+  /**
+   * 次に産み落とすまでの残り (秒)。**0 を切ったら 1 回産んで、次の間隔を入れ直す。**
+   *
+   * **保存しません**（`woolTimer` と同じ。モブそのものを保存しないので、
+   * セーブは 1 バイトも増えません）。産まないモブでは 0 のまま動かない
+   * （`MobDef.laying` が `null`）。
+   *
+   * **湧いた瞬間の 0 から始めないこと** —— まとめ打ちで湧いた全員が
+   * 最初のフレームで 1 個ずつ産みます（`spawn()` の初期値）。
+   */
+  layTimer: number;
   /** 逃げている残り (秒)。0 より大きいあいだは、プレイヤーと反対を向いて速く歩く。 */
   fleeTimer: number;
   /**
@@ -1367,9 +1421,15 @@ export class Mobs {
   private readonly summoned = new Set<string>();
 
   /**
-   * 倒したときの受け取り口。`screen.onChange` と同じ形で `main.ts` から繋ぐ。
-   * **プレイヤーが倒したときだけ発火させること**（遠くで勝手に焼け死んだモブの肉が
-   * 地面に湧いてはいけない）。座標は倒れた場所。
+   * 物が出たときの受け取り口。`screen.onChange` と同じ形で `main.ts` から繋ぐ。
+   *
+   * **鳴るのは 3 通り**: 倒したとき（`attack()` / `hitByProjectile()`）・
+   * 刈ったとき（`shear()`）・**産んだとき（`lay()`）**。座標はそのモブの居る所で、
+   * **山ごとに 1 回**鳴る（地面での散らばりは `drops.ts` の `burst()` の仕事）。
+   *
+   * **倒したぶんはプレイヤーが倒したときだけ発火させること**（遠くで勝手に
+   * 焼け死んだモブの肉が地面に湧いてはいけない）。**産卵はその縛りに掛からない** ——
+   * 誰も倒しておらず、鶏が生きたまま落とすものだから。
    *
    * **`mobs.ts` は `drops.ts` を import しない。** 座標を渡すだけにしておけば、
    * 落とし物の仕組みが変わってもモブの判断は動かない。
@@ -1387,6 +1447,9 @@ export class Mobs {
 
   /** モブを 1 体置く。位置は足の中心。 */
   spawn(kind: MobKind, x: number, y: number, z: number, yaw = 0, random = Math.random): Mob {
+    // **表を一度だけ引くこと。** `MOBS[kind].laying` を書くと、`kind` が
+    // union のままなので下の `.min` / `.max` で null 除外が効かない。
+    const laying = MOBS[kind].laying;
     const mob: Mob = {
       id: this.nextId++,
       kind,
@@ -1412,6 +1475,9 @@ export class Mobs {
       hurtTimer: 0,
       // 湧いた羊はすぐ刈れる（本家と同じ）。
       woolTimer: 0,
+      // **0 から始めないこと** —— 湧いた瞬間に全員が 1 個ずつ産む。
+      // 産まないモブでは 0 のまま読まれない。
+      layTimer: laying ? pick(random, [laying.min, laying.max]) : 0,
       fleeTimer: 0,
       burnTimer: 0,
       burnTick: 0,
@@ -1569,6 +1635,10 @@ export class Mobs {
 
       this.step(mob, def, world, dt, ctx);
 
+      // **産卵は毎フレーム**（判断は 5Hz なので、そこに置くと遠くて動かない個体の
+      // 時計が進まない。`woolTimer` を `step()` で減らしているのと同じ理由）。
+      this.lay(mob, def, dt, random);
+
       // **溶岩は敵味方の区別なく焼く**（日光は敵対だけ）。豚が溶岩の上を
       // 平気で歩いていると、プレイヤーだけが焼ける理由が無くなる。
       // **火に強いモブ（ブレイズ）だけは別** —— 溶岩の海の上を飛ぶので、
@@ -1608,6 +1678,28 @@ export class Mobs {
     // **撃つ番に入った瞬間の初弾を待たせること**（湧いた直後と同じ理屈）。
     // 待たせないと、前の番のあいだに溜まった間隔で 1 発目がいきなり飛ぶ。
     if (phases[mob.phase].shoot && def.ranged) mob.shootTimer = def.ranged.cooldown;
+  }
+
+  /**
+   * ひとりでに産み落とす（毎フレーム）。**表を持たないモブは何もしない。**
+   *
+   * **`update()` に条件を書き足さないこと** —— 「いつ産むか」はこの 1 本だけが持つ。
+   * 出口は倒したとき・刈ったときと同じ `onDrop` なので、**`mobs.ts` は
+   * `drops.ts` を知らないまま**（散らばりは `drops.ts` の `burst()` の仕事）。
+   *
+   * **音は鳴らさない**（出来事 × 種類で膨らむ。羽ばたきも鳴き声も足していない）。
+   */
+  private lay(mob: Mob, def: MobDef, dt: number, random: () => number): void {
+    const rule = def.laying;
+    if (!rule) return;
+
+    mob.layTimer -= dt;
+    if (mob.layTimer > 0) return;
+
+    // **次の間隔を先に入れ直すこと。** `onDrop` の中で何が起きても、
+    // 時計が 0 以下に留まって毎フレーム産み続ける形にはならない。
+    mob.layTimer = pick(random, [rule.min, rule.max]);
+    this.onDrop?.(rule.item, rule.count, mob.position.x, mob.position.y, mob.position.z);
   }
 
   /** いまの攻め方。**表を持たないモブは null**（＝どの判断も今までどおり）。 */

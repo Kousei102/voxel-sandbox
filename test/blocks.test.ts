@@ -63,6 +63,7 @@ import {
   BUCKET,
   COOKED_CHICKEN,
   DIAMOND_HOE,
+  EGG,
   FEATHER,
   IRON_INGOT,
   LAVA_BUCKET,
@@ -158,11 +159,11 @@ export function run(): void {
   // **ゆるめるのではなく数え直すこと。** 123 はブロック（実った小麦）なので、
   // 共有帯のアイテムは 122 と 124 の 2 つが飛び飛びに並ぶ（1 本の番号列だから正しい）。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根の 15 個（128 まで）",
-    sharedItems.length === 15 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵の 16 個（129 まで）",
+    sharedItems.length === 16 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
-      sharedItems[14] === FEATHER && MAX_ITEM_ID === FEATHER,
+      sharedItems[14] === FEATHER && sharedItems[15] === EGG && MAX_ITEM_ID === EGG,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -192,6 +193,24 @@ export function run(): void {
     "羽根は置けず・道具でもなく・食べ物でもない",
     placedBlock(FEATHER) === AIR && toolOf(FEATHER) === null && foodOf(FEATHER) === null,
     `block ${placedBlock(FEATHER)} / tool ${toolOf(FEATHER)} / food ${foodOf(FEATHER)}`,
+  );
+  // **卵も羽根と同じ「置けず・道具でもなく・食べ物でもない」もの**です。
+  // **投げるのは別の周**（`projectiles.ts` に 1 行もありません）。
+  console.log(
+    `      卵(${EGG}) 置ける ${placedBlock(EGG) !== AIR}` +
+      ` / 道具 ${toolOf(EGG) !== null} / 食べ物 ${foodOf(EGG) !== null}` +
+      ` / 1 山 ${itemStackLimit(EGG)} 個`,
+  );
+  check(
+    "卵は置けず・道具でもなく・食べ物でもない",
+    placedBlock(EGG) === AIR && toolOf(EGG) === null && foodOf(EGG) === null,
+    `block ${placedBlock(EGG)} / tool ${toolOf(EGG)} / food ${foodOf(EGG)}`,
+  );
+  // **バケツの 1 個と同じ測り方**（`MAX_STACK` を使っていないことの唯一の根拠）。
+  check(
+    "卵は 16 個までしか積めない（本家の値。64 ではない）",
+    itemStackLimit(EGG) === 16,
+    `${itemStackLimit(EGG)} 個`,
   );
 
   // **95..110 は空けたまま**（ブロック側の向き違いが使っている番号）。

@@ -255,7 +255,21 @@ export const COOKED_CHICKEN = 127;
  */
 export const FEATHER = 128;
 
-export const MAX_ITEM_ID = FEATHER;
+/**
+ * 卵。**鶏が一定の間隔で足元に産みます**（`mobs.ts` の `MobDef.laying`。
+ * 倒す必要はありません —— **倒したときのドロップ（`MobDef.drop`）とは別の話**です）。
+ *
+ * **まだ投げられません**（`projectiles.ts` に 1 行もありません）。
+ * **置けず・道具でもなく・食べ物でもありません**（`block: AIR` / `tool: null`。
+ * `FOODS` にも `SMELTING` にも行がありません）。
+ * **`tool:` を持たせないこと**（種・パン・肉・羽根と同じ罠。`ToolKind` が増えると
+ * `mobs.ts` の `TOOL_ATTACK` に無い種類が入って **NaN** が黙って通ります）。
+ *
+ * **積めるのは 16 個まで**（本家と同じ。`MAX_STACK` ではありません）。
+ */
+export const EGG = 129;
+
+export const MAX_ITEM_ID = EGG;
 
 export const MAX_STACK = 64;
 
@@ -416,6 +430,10 @@ item({ id: COOKED_CHICKEN, name: "焼き鳥", block: AIR, stack: MAX_STACK, colo
 // 羽根。**`block: AIR` / `tool: null`**（置けず・道具でもなく・**食べ物でもない**）。
 // 矢の材料になるだけなので `FOODS` にも `SMELTING` にも 1 行もありません。
 item({ id: FEATHER, name: "羽根", block: AIR, stack: MAX_STACK, color: 0xe8e4dc, tool: null });
+
+// 卵。**`block: AIR` / `tool: null`**（置けず・道具でもなく・**食べ物でもない**）。
+// **積めるのは 16 個まで**（本家の値。バケツの 1 と同じで `MAX_STACK` を使わない）。
+item({ id: EGG, name: "卵", block: AIR, stack: 16, color: 0xf7f0e0, tool: null });
 
 const EMPTY: ItemDef = ITEMS[NO_ITEM];
 
