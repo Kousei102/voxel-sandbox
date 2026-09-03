@@ -1,119 +1,119 @@
-# 仕様: パン（小麦 3 → パン）と、それを食べること
+# 仕様: 鶏（モブ本体）と、生鶏肉・焼き鳥
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-**キューの 15 番。** **数え直し済み**（2026-09-03・コードが根拠）: `crafting.ts` の `RECIPES` に
-**パンは 1 本もなく**（43 本。小麦を材料にするレシピが 0 本）、`items.ts` の `FOODS` は
-**生豚肉・焼き豚・腐った肉の 3 行だけ**で、`WHEAT`(124) は `foodOf()` が null
-（`test/blocks.test.ts:1003` が見張っています）。実装前: **2798 件緑** / `main.ts` **1450 行**
-（`npm test` の数え方。`wc -l` の 1449 ではない）/ **111..255 の空き 131** / `MAX_ITEM_ID` 124。
+**キューの 7 番の前半**（後半の「羽根と矢」「卵」は `AUTODEV-QUEUE.md` へ割って戻しました）。
+**数え直し済み**（2026-09-03・コードが根拠）: `MobKind` は **6 種類**（豚・羊・ゾンビ・ブレイズ・
+エンダーマン・ドラゴン）で**鶏は無し**、`PASSIVE_KINDS` は `["pig", "sheep"]`、`items.ts` に
+`CHICKEN` / `FEATHER` / `EGG` の名は**1 つも無く**、`FOODS` 4 行・`SMELTING` 5 行。実装前:
+**2818 件緑** / `main.ts` **1450 行** / **111..255 の空き 130** / `MAX_ITEM_ID` 125。
 
 ## 1. 何を足すか / 完了の判定
 
-**小麦 3 個を横一列に並べるとパンが 1 個できて、それを食べると空腹が戻る。**
-これで**小麦に使い道ができます**（いまは掘れるだけで、持っていても何にもなりません）。
-完了の判定 —— **`npm test` に次が増えて全部緑**（いま 2798 件。**減らさないこと**）:
+**草地に鶏が湧いて、倒すと生鶏肉が出て、かまどで焼くと焼き鳥になる**（**受動モブが 3 種類目**に
+なり、豚以外にも肉の出どころができます）。完了の判定 —— **`npm test` に次が増えて全部緑**
+（いま 2818 件。**減らさないこと**）:
 
-- 「小麦 3 個の横一列 → パン 1 個」（**`findRecipe()` の戻りを出力してから**判定）と
-  「**2x2 では作れない**」（3 幅なので作業台が要る。本家と同じ）
-- 「パンを持って右クリック → `eat`」「満腹なら `flash`」「クリエイティブでは `none`」
-- 「パンを食べると空腹 +5・満腹度 +6・**毒ではない**」（値を出力してから）と
-  「**小麦そのものは今までどおり食べられない**」（`foodOf(WHEAT) === null`）
-- 「共有帯のアイテムが **12 個**（125 まで）」「`MAX_ITEM_ID` が 125」
+- 「形が判定 0.4 x 0.7 に収まる」「体積が箱の合計と一致」「振る部位は軸からぶら下がる」（**既存の
+  `MOB_KINDS` の表に自動で乗ります**）/「昼の草地に湧く」「石の上には湧かない」「殴らない」
+- 「倒すと生鶏肉 1 個」「生鶏肉 → 焼き鳥」と食べたときの値（生 2 / 1.2・焼き 6 / 7.2・**毒なし**）
+- 「共有帯のアイテムが **14 個**（127 まで）」「`MAX_ITEM_ID` が 127」
 
 ## 2. 触るファイル / 触らないファイル
 
 | 触る | 何を |
 | --- | --- |
-| `items.ts` | `BREAD = 125` の定数 / `MAX_ITEM_ID` / `item({...})` 1 行 / `FOODS` に 1 行 |
-| `crafting.ts` | `RECIPES` に**パンの 1 行だけ**（`import` に `BREAD` / `WHEAT` を足す） |
-| `test/blocks.test.ts` | 共有帯の数え直し（11 → 12）と、パンの性質の節 |
-| `test/crafting.test.ts` | パンのレシピ（形・幅・反転） |
-| `test/vitals.test.ts` | パンを食べたときの値 |
-| `test/use.test.ts` | 右クリックの行き先（eat / flash / none） |
+| `src/mobs.ts` | `MobKind` に `"chicken"` / `CHICKEN` の `MobDef` 1 つ / `MOBS` / `MOB_KINDS` / `PASSIVE_KINDS` に 1 語ずつ |
+| `src/items.ts` | 定数 2 つ / `MAX_ITEM_ID` / `item({...})` 2 行 / `FOODS` に 2 行 |
+| `src/smelting.ts` | `SMELTING` に 1 行（`import` に肉 2 つ） |
+| `test/mobs.test.ts` | `census()` の `counts` に `鶏: 0` と `show()` / 鶏の節（湧き・ドロップ・殴らない） |
+| `test/blocks.test.ts` | 共有帯の数え直し（12 → 14）とラベル |
+| `test/vitals.test.ts` / `test/smelting.test.ts` | 肉 2 つを食べたときの値 / 「生鶏肉 → 焼き鳥」1 行 |
 | `TUNING.md` / `ROADMAP.md` / `AUTODEV-QUEUE.md` / `docs/autodev-log.md` / `HANDOFF.md` | 下の 8 |
 
 **1 行も書かないこと**: **`main.ts`（1450 行 = 停止条件ちょうど。この周は 0 行）** /
-`use.ts`（`foodOf()` を見る形がもうあるので、パンは**1 行も足さずに食べられます**）/
-`vitals.ts`（**`items.ts` を import しません**）/ `smelting.ts`（**焼いて作るものではない**）/
-`blocks.ts`（**ブロックは増えません**）/ `craftscreen.ts` / `inventoryui.ts`（クリエイティブ
-一覧は `allItemIds()` そのままなので**勝手に増えます**）/ `drops.ts` / `breaking.ts` /
-`crops.ts` / `placing.ts` / `durability.ts` / `storage.ts` / `session.ts`
-（**セーブは 1 バイトも増えません**）/ `.claude/**`。
+**`mobmesh.ts` と `mobrender.ts`**（**どちらも `MobDef` を回すだけの汎用で、モブを 1 種類足すのに
+0 行です** —— 形は `groups` / `boxes`、色は `mobRgb()`、光は `applyLight()` が種類を知らずに扱う）/
+`use.ts` / `vitals.ts` / `crafting.ts`（**矢の羽根は 7b**）/ `blocks.ts` / `drops.ts` /
+`craftscreen.ts` / `inventoryui.ts` / `storage.ts` / `session.ts` / `.claude/**`
+（**セーブは 1 バイトも増えません** —— モブは保存しないからです）。
 
 ## 3. 使う ID
 
-**アイテム 1 個: `BREAD = 125`。** `ROADMAP.md` の予約表の「125..255 予備」の**先頭**で、
-124（小麦）の次です。**ブロックは 0 個**（パンは置けません）。取ったあと `111..255 の空き` は
-**131 → 130**（`npm test` の出力で確かめること）。`MAX_ITEM_ID` は **124 → 125**。
-**`SaveData.version` は 1 のまま**（キーも増えません）。
+**アイテム 2 個: `RAW_CHICKEN = 126` / `COOKED_CHICKEN = 127`**（`ROADMAP.md` の予約表の
+「126..255 予備」の先頭 2 つ。125 = パンの次）。**ブロックは 0 個**（鶏は置けません）。取ったあと
+`111..255 の空き` は **130 → 128**（`npm test` の出力で確かめること）。`MAX_ITEM_ID` は
+**125 → 127**。**`SaveData.version` は 1 のまま**（キーも増えません）。
 
 ## 4. 判断をどこに置くか
 
 | 判断 | 置き場 |
 | --- | --- |
-| パンという物（名前・色・積める数・置けないこと） | `items.ts` の `item({...})` |
-| **何がどれだけ戻るか**（空腹 5 / 満腹度 6 / 毒でない） | `items.ts` の `FOODS`（**表の 1 行**） |
-| どう作るか（形と個数） | `crafting.ts` の `RECIPES`（**表の 1 行**） |
-| 右クリックが「食べる」に来るか | `use.ts` の `decideUse()`（**既にある。触らない**） |
-| 食べ終わるまでの長さ・満腹での中断 | `vitals.ts` の `Eating`（**既にある。触らない**） |
+| 鶏という生き物（大きさ・体力・速さ・湧きの重み・声・形と色） | `mobs.ts` の `CHICKEN`（**表の 1 つ**） |
+| 何を落とすか / どこに湧くか | `MobDef.drop`（`items.ts` の `DROPS` ではない）と `PASSIVE_KINDS` に 1 語（**`trySpawn()` に分岐を書かない**） |
+| 肉という物 / 何がどれだけ戻るか | `items.ts` の `item({...})` と `FOODS`（**表の 2 行**） |
+| 焼くと何になるか | `smelting.ts` の `SMELTING`（**表の 1 行**） |
+| 形 → 頂点 / 描画 | **既にある。1 行も触らない**（`mobmesh.ts` / `mobrender.ts`） |
 
-**新しい「確かめられないもの」は 0** なので `unverifiable-pair` は不要（描画も音も増えません。
-咀嚼音は `sfx.ts` の既存の経路を通ります）。**使うスキルは `add-block`。**
+**新しい「確かめられないもの」は 0 なので `unverifiable-pair` は不要**（描画も音も増えず、声は
+`MobDef.voice` が `sfx.ts` の既存の経路に掛かるだけ）。**使うスキルは `add-block`。**
 
 ## 5. 実装の要点（この順で）
 
-1. `items.ts` の `WHEAT`(124) の下に **`export const BREAD = 125;`** と説明を数行。
-   **`MAX_ITEM_ID` を `BREAD` に差し替える**（`export const MAX_ITEM_ID = BREAD;`）
-2. 小麦の `item({...})` の下に 1 行:
-   **`item({ id: BREAD, name: "パン", block: AIR, stack: MAX_STACK, color: 0xc49a5e, tool: null });`**
-   **`tool` を持たせないこと**（種・シアーズと同じ罠。`ToolKind` が増えると `mobs.ts` の
-   `TOOL_ATTACK` に無い種類が入って **NaN** が黙って通ります）
-3. `FOODS` に **`[BREAD, { hunger: 5, saturation: 6, poison: false }]`**（本家の値。
-   焼き豚 8 / 12.8 と生豚肉 3 / 1.8 の間で、**かまど無しで作れる中では一番強い**）
-4. `crafting.ts` の `RECIPES` に 1 行 —— **矢とシアーズの近く**（道具のループより上）に
-   **`{ name: "パン", out: BREAD, count: 1, shape: ["WWW"], key: { W: WHEAT } }`**。
-   **ハーフの `["MMM"]` と同じ形ですが材料が違うので重複しません**（既存の
-   「同じ形のレシピが重複していない」がそのまま見張ります）
-5. **`main.ts` は 0 行**（`foodOf()` を見る経路も、クリエイティブ一覧も、もう通っています）
+1. `items.ts` の `BREAD`(125) の下に **`RAW_CHICKEN = 126` / `COOKED_CHICKEN = 127`** と説明を
+   置き、**`MAX_ITEM_ID` を `COOKED_CHICKEN` に差し替える**
+2. `item({...})` 2 行（`block: AIR` / `stack: MAX_STACK` / **`tool: null`** —— `ToolKind` が
+   増えると `TOOL_ATTACK` に無い種類が入って **NaN**。色は生 `0xd3a08e` / 焼き `0xc98a4b`）
+3. `FOODS` に 2 行 —— 生 **`{ hunger: 2, saturation: 1.2, poison: false }`** / 焼き
+   **`{ hunger: 6, saturation: 7.2, poison: false }`**（本家の値。**焼き鳥はパン 5 / 6 より上・
+   焼き豚 8 / 12.8 より下**）。`SMELTING` に **`[RAW_CHICKEN, { out: COOKED_CHICKEN, count: 1 }]`**
+4. `mobs.ts` に `CHICKEN`（羊の下）。**`size: { half: 0.2, height: 0.7, step: 0.5 }` /
+   `maxHealth: 4` / `speed: 1.7` / `hostile: false` / `damage: 0` / `spawnWeight: 10` /
+   `voice: 1.8` / `drop: { item: RAW_CHICKEN, count: 1, chance: 1 }`**、`ranged` / `teleport` /
+   `orbit` / `phases` / `shearing` / `spawnOn` は **`null`**、`flying` / `fireproof` / `boss` は
+   **false**、`hover` / `regen` は **0**
+5. 形は **0 = 体（fixed）/ 1 = 頭（head。くちばし・とさか・目）/ 2..3 = 脚 / 4..5 = 翼（swing）**。
+   **0.4 x 0.7 は狭く、豚・羊と違って後ろもはみ出せません**（テストの `longBody` は豚と羊だけ）
+   —— **すべての箱を x ±3.2px・z ±3.2px・y 11.2px に収め、振る部位の箱は `y1 === 0`**。色は
+   体と翼 `0xf0f0f0` / くちばしと脚 `0xf0a020` / とさか `0xd63b2f` / 目 `0x2b1e1c`
+6. **`main.ts` は 0 行**（湧きも `KeyM` のデバッグ湧きも `MOB_KINDS` を回すので、もう通っています）
 
 ## 6. 書くテスト（**値を出力してから判定すること**。`rules/testing.md`）
 
-- `test/crafting.test.ts`: **小麦 3 個を横一列に置いた 3x3 盤面**の `findRecipe()` を
-  **`name` / `out` / `count` を出力してから**判定 / **2x2 の盤面では `null`**（3 幅なので
-  作業台が要る）/ **端に寄せた形でも成立する** / **小麦 2 個では `null`**
-- `test/blocks.test.ts`: **`sharedItems.length === 12`** と `sharedItems[11] === BREAD` と
-  `MAX_ITEM_ID === BREAD`（**ラベルの「11 個（124 まで）」も 12 個（125 まで）に直すこと。
-  ゆるめるのではなく数え直す**）/ パンは **`placedBlock(BREAD) === AIR`**・
-  **`toolOf(BREAD) === null`**・**`foodOf(BREAD) !== null`**（`itemName()` で出力してから）/
-  **`foodOf(WHEAT) === null` の既存の判定は 1 つも消さないこと**
-- `test/vitals.test.ts`: 空腹を減らしてからパンを食べ、**空腹 +5 / 満腹度 +6 / 毒つきでない**
-  （前後の値を出力してから。**`allFoodIds()` の既存の一覧出力には自動で乗ります**）
-- `test/use.test.ts`: パンを持って **`decideUse(null, facts(BREAD))` が `eat`**（`aim` 無しでも）/
-  **`canEat: false` なら `flash`** / **`creative: true` なら `none`**（焼き豚の 3 件と同じ形。
-  **既存の焼き豚の判定は残すこと**）
+- `test/mobs.test.ts`: `census()` の `counts` に **`鶏: 0` を足す**（**足さないと `counts[name]++`
+  が `NaN` になり、数えているつもりで何も見ていません**）。`show()` にも並べ、**「昼の草地に鶏が
+  湧く」と「石の上に受動は湧かない」に鶏を入れる**（既存の `inCave.豚 === 0 && inCave.羊 === 0`
+  は**消さずに足す**）/ 「受動モブは殴らない」に **`MOBS.chicken.damage === 0`** / **鶏を倒すと生
+  鶏肉 1 個**（**殴った側と撃った側を並べて**。`dropFor()` の 1 本を通ることの確認）
+- `test/blocks.test.ts`: **`sharedItems.length === 14`** と `sharedItems[12] === RAW_CHICKEN` /
+  `sharedItems[13] === COOKED_CHICKEN` / `MAX_ITEM_ID === COOKED_CHICKEN`（**ラベルの「12 個
+  （125 まで）」も 14 個（127 まで）に。ゆるめるのではなく数え直す**）/ 肉 2 つは
+  **`placedBlock() === AIR`・`toolOf() === null`・`foodOf() !== null`**
+- `test/vitals.test.ts`: **生鶏肉（+2 / 1.2）と焼き鳥（+6 / 7.2）**を食べた前後を出力してから
+  判定 / **どちらも毒つきでない**。`test/smelting.test.ts` に **「生鶏肉 → 焼き鳥」**を 1 行
 
 ## 7. このタスク固有の禁じ手
 
-1. **小麦（124）を `FOODS` に足さないこと**（本家と同じで、**パンにしてから食べます**）
-2. **`main.ts` を 1 行も触らないこと**（**1450 行 = 停止条件ちょうど**。1 行でも足すと止まります）
-3. **`use.ts` / `vitals.ts` に「パン」と書かないこと。** 食べる経路はもう `foodOf()` 1 本で、
-   アイテムの名前を書いた瞬間に「食べ物を足すたびに 3 か所直す」形に戻ります
-4. **`smelting.ts` に足さない**（かまどは要らない）/ **`block:` を `AIR` 以外にしない**
-   （置けるパンは本家にない）/ **`stack` を 1 にしない**（傷が付く物ではない。64 個積める）
-5. **既存のレシピ・`FOODS` の 3 行・`DROPS` を 1 行も書き換えないこと**
-6. **126 以降を予約しない**（取るのは 125 の 1 個だけ）/ **`SaveData` を触らない・
-   テストの判定をゆるめないこと**
+1. **`crafting.ts` を触らない**（矢を羽根の形に戻すのは 7b）/ **取る ID は 126 と 127 の 2 つだけ**
+2. **`MobDrop` に 2 つ目の落とし物（`extra` / 配列）を足さないこと**（羽根は 7b の話で、
+   表の形を変えるのはその周の仕事。`MobDef.drop` は 1 行のまま）
+3. **`test/mobs.test.ts` の `longBody` に `chicken` を足さないこと**（「胴が判定より長い四足」の
+   例外。**入れると形の点検が丸ごと外れます** —— **判定（`size`）ではなく形を削ること**）
+4. **`mobmesh.ts` / `mobrender.ts` / `main.ts` / `use.ts` / `vitals.ts` に「鶏」と書かない**
+5. **新しい `MobMotion` を足さない**（翼は脚と同じ `swing`）/ **`spawnOn` を付けない**（受動に
+   付けると `trySpawn()` 側にも手が要ります。`rules/mobs.md`）
+6. **既存の `FOODS` 4 行・`SMELTING` 5 行・他の `MobDef` を書き換えない** / **`SaveData` を
+   触らない**（モブは保存しません）/ **テストの判定をゆるめないこと**
 
 ## 8. 終了条件
 
-`npm run typecheck` と `npm test` が緑（**2798 件から増えていること**）/ `npm run build` /
-**コミット 1 つ** / `TUNING.md` に**「パン（AUTODEV 15）」の節を 1 つ**足す
-（空腹 5・満腹度 6 は本家 / 小麦 3 → パン 1 も本家 / **かまど無しで作れる中では一番強い**）/
-`ROADMAP.md` の予約表の 125 の行を「**パン。実装済み**」にして、**予備を 126..255 に直す**
-（`157` 行あたりの「アイテム ID は 125 から」も 126 からに直すこと）/
-**C-3: `npm run build` のあと `npm run shot -- crops` を撮り直し、`Read` で開いて畑の見た目が
-変わっていないことを見る**（描画は 1 行も触らない。**パンはインベントリの中でしか見えないので、
-色 `0xc49a5e` の見え方は `HANDOFF.md` の「ブラウザで見てほしいところ」へ**）/
-`AUTODEV-QUEUE.md` の 15 番の行を消す / この仕様書を `済` に / `HANDOFF.md` を丸ごと書き直す。
+`npm run typecheck` と `npm test` が緑（**2818 件から増えていること**）/ `npm run build` /
+**コミット 1 つ** / `TUNING.md` に「**鶏（AUTODEV 16）**」の節を 1 つ（**体力 4・速さ 1.7・
+湧きの重み 10・声 1.8** と、**生鶏肉の毒 —— 本家は 30% で食中毒だが `FoodDef` に確率が無いので
+毒なしにした**こと）/ `ROADMAP.md` の予約表に 126 / 127 の行を足して「**実装済み**」にし、
+**予備を 128..255 に直す**（`158` 行あたりの「アイテム ID は 126 から」も 128 からに）/
+**C-3: `npm run build` → `(npx --no-install http-server dist -p 8080 --silent &)` →
+`node tools/browsershot.mjs` と `npm run shot -- mobs` を撮り、`Read` で開いて「鶏の形が壊れて
+いないか（面の抜け・埋まり）」を自分の目で見る**（**撮っただけでは確かめたことになりません**。
+写った不具合は直す）/ `AUTODEV-QUEUE.md` の 7 番を消す / 仕様書を `済` に / `HANDOFF.md` を書き直す。
