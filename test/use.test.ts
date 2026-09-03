@@ -17,6 +17,7 @@ import {
 import {
   ARROW,
   BOW,
+  BREAD,
   COOKED_PORK,
   ENDER_EYE,
   ENDER_PEARL,
@@ -114,6 +115,9 @@ export function run(): void {
     ["種で耕地を狙う", aimAt(FARMLAND), facts(WHEAT_SEEDS)],
     ["種で作業台を狙う", aimAt(CRAFTING_TABLE), facts(WHEAT_SEEDS)],
     ["種だけ（空を向く）", null, facts(WHEAT_SEEDS)],
+    // パンも焼き豚と同じ `foodOf()` 1 本を通る（`use.ts` に「パン」とは書かれていない）。
+    ["パン（腹が減っている）", null, facts(BREAD)],
+    ["パン（満腹）", null, facts(BREAD, { canEat: false })],
   ];
   console.log("      狙い / 手                        起きること");
   const got = new Map<string, UseAction>();
@@ -176,6 +180,9 @@ export function run(): void {
   // --- 狙う先が要るもの・要らないもの ---
   // **`aim` が無くても食べられること**（空を向いたまま食べられないのはおかしい）。
   check("空を向いても食べられる", kindOf("焼き豚（腹が減っている）") === "eat");
+  // **食べ物を足しても `use.ts` は 1 行も増えない** —— `foodOf()` の表に載るだけで
+  // 右クリックが「食べる」に来る（アイテムの名前を書き始めた瞬間にこれが崩れます）。
+  check("パンも同じ経路で食べられる", kindOf("パン（腹が減っている）") === "eat", kindOf("パン（腹が減っている）"));
   check("空を向いても弓は引ける", kindOf("弓（矢あり）") === "draw");
   // 火種は「どのマスに点けるか」が要るので、狙う先が無ければ何も起きない。
   check("火種は狙う先が無ければ何も起きない", decideUse(null, facts(FLINT_AND_STEEL)).kind === "none");
@@ -196,6 +203,12 @@ export function run(): void {
       full?.kind === "flash" && full.message.includes("お腹"),
       describeAction(full ?? { kind: "none" }),
     );
+    const fullBread = got.get("パン（満腹）");
+    check(
+      "パンでも満腹なら理由を出す",
+      fullBread?.kind === "flash" && fullBread.message.includes("お腹"),
+      describeAction(fullBread ?? { kind: "none" }),
+    );
   }
 
   // --- クリエイティブ ---
@@ -208,6 +221,11 @@ export function run(): void {
   check(
     "クリエイティブでは食べない",
     decideUse(null, facts(COOKED_PORK, { creative: true })).kind === "none",
+  );
+  check(
+    "パンもクリエイティブでは食べない",
+    decideUse(null, facts(BREAD, { creative: true })).kind === "none",
+    decideUse(null, facts(BREAD, { creative: true })).kind,
   );
 
   // --- 置く ---

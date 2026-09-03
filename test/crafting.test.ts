@@ -19,6 +19,7 @@ import {
   BLAZE_POWDER,
   BLAZE_ROD,
   BOW,
+  BREAD,
   BUCKET,
   COAL,
   DIAMOND,
@@ -38,6 +39,7 @@ import {
   STONE_AXE,
   STONE_HOE,
   STONE_SWORD,
+  WHEAT,
   WOOD_HOE,
   WOOD_PICKAXE,
   WOOD_SHOVEL,
@@ -64,7 +66,7 @@ export function run(): void {
 
   const P = {
     P: PLANK, S: STICK, W: WOOD, C: COBBLE, D: DIAMOND, A: SAND, O: COAL, T: STONE,
-    I: IRON_INGOT, F: FLINT, L: WOOL,
+    I: IRON_INGOT, F: FLINT, L: WOOL, H: WHEAT,
     R: BLAZE_ROD, B: BLAZE_POWDER, E: ENDER_PEARL, Y: ENDER_EYE,
   };
 
@@ -212,6 +214,23 @@ export function run(): void {
     "矢はまとめて持てる（弓は道具と同じで 1 本）",
     itemStackLimit(ARROW) >= 64 && itemStackLimit(BOW) === 1,
   );
+
+  // --- パン（小麦に使い道ができる。Minecraft と同じ小麦 3 個の横一列） ---
+  const bread = findRecipe(grid(3, ["HHH"], P), 3);
+  console.log(
+    `      小麦 3 個の横一列 → ${bread?.name ?? "無し"} / out ${bread?.out ?? "無し"} x${bread?.count ?? 0}`,
+  );
+  check("小麦 3 個の横一列 → パン 1 個", bread?.out === BREAD && bread.count === 1, bread?.name ?? "無し");
+  const breadMoved = findRecipe(grid(3, ["...", "...", "HHH"], P), 3);
+  check("端に寄せてもパンになる", breadMoved?.out === BREAD, breadMoved?.name ?? "無し");
+  // **3 幅なので作業台が要る**（本家と同じ）。畑から戻る一手間が残る。
+  const breadIn2 = findRecipe(grid(2, ["HH", ".."], P), 2);
+  check("2x2 ではパンは作れない（作業台が要る）", breadIn2 === null, breadIn2?.name ?? "無し");
+  const twoWheat = findRecipe(grid(3, ["HH."], P), 3);
+  check("小麦 2 個ではパンにならない", twoWheat === null, twoWheat?.name ?? "無し");
+  // **ハーフの `["MMM"]` と形は同じで材料だけが違う** —— 取り違えていないことを見る。
+  const slabAgain = findRecipe(grid(3, ["TTT"], P), 3);
+  check("石 3 個のほうは今までどおりパンにならない", slabAgain?.out !== BREAD, slabAgain?.name ?? "無し");
 
   // --- 盤面の広さ ---
   const pickIn3 = findRecipe(grid(3, ["PPP", ".S.", ".S."], P), 3);

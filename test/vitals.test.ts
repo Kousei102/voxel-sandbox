@@ -33,7 +33,7 @@ import {
   fallDamage,
   type VitalsContext,
 } from "../src/vitals";
-import { COOKED_PORK, ROTTEN_FLESH, allFoodIds, foodOf, itemName } from "../src/items";
+import { BREAD, COOKED_PORK, ROTTEN_FLESH, WHEAT, allFoodIds, foodOf, itemName } from "../src/items";
 import { heartStates } from "../src/ui";
 import { check, describe } from "./harness";
 
@@ -551,6 +551,30 @@ export function run(): void {
   check("上限は超えない", fed.hunger === MAX_HUNGER, `空腹 ${fed.hunger}`);
   fed.hunger = MAX_HUNGER - 1;
   check("1 でも減っていれば食べられる", fed.canEat);
+
+  // --- パン（かまど無しで作れる中では一番強い。**焼き豚には届かない**） ---
+  const loaf = foodOf(BREAD);
+  if (!loaf) throw new Error("パンが食べ物の表に無い");
+  const baker = new Vitals();
+  baker.hunger = 8;
+  baker.saturation = 0;
+  console.log(
+    `      パンを食べる前: 空腹 ${baker.hunger} / 満腹度 ${baker.saturation}` +
+      `（パンは 空腹 +${loaf.hunger} / 満腹度 +${loaf.saturation} / 毒 ${loaf.poison}）`,
+  );
+  baker.eat(loaf);
+  console.log(`      食べた後: 空腹 ${baker.hunger} / 満腹度 ${baker.saturation}`);
+  check("パンは空腹 +5", loaf.hunger === 5 && baker.hunger === 13, `空腹 ${baker.hunger}`);
+  check("パンは満腹度 +6", loaf.saturation === 6 && baker.saturation === 6, `満腹度 ${baker.saturation}`);
+  check("パンに毒はない", !loaf.poison);
+  // **焼く見返りは残してある** —— 焼き豚（8 / 12.8）のほうが強い。
+  check(
+    "パンは焼き豚より弱い",
+    loaf.hunger < cooked.hunger && loaf.saturation < cooked.saturation,
+    `パン ${loaf.hunger}/${loaf.saturation} vs 焼き豚 ${cooked.hunger}/${cooked.saturation}`,
+  );
+  // **小麦そのものは今までどおり食べられない**（本家と同じで、パンにしてから食べる）。
+  check("小麦は食べられないまま", foodOf(WHEAT) === null, `${foodOf(WHEAT)}`);
 
   // --- 毒（腐った肉） ---
   const rotten = foodOf(ROTTEN_FLESH);

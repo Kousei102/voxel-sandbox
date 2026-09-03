@@ -206,7 +206,20 @@ export const WHEAT_SEEDS = 122;
  */
 export const WHEAT = 124;
 
-export const MAX_ITEM_ID = WHEAT;
+/**
+ * パン。**小麦 3 個を横一列**に並べると 1 個できます（`crafting.ts`）。3 幅なので
+ * **作業台が要ります**（本家と同じ）。
+ *
+ * **`block` は `AIR`**（置けるパンは本家にありません）。
+ * **`tool:` を持たせないこと**（種・シアーズと同じ罠。`ToolKind` が増えると
+ * `mobs.ts` の `TOOL_ATTACK` に無い種類が入って **NaN** が黙って通ります）。
+ *
+ * **食べ物です**（下の `FOODS`）。**かまど無しで作れる中では一番強い**ぶん、
+ * 焼き豚（8 / 12.8）には届きません —— 焼く見返りは残してあります。
+ */
+export const BREAD = 125;
+
+export const MAX_ITEM_ID = BREAD;
 
 export const MAX_STACK = 64;
 
@@ -353,8 +366,11 @@ for (let tier = TIER_WOOD; tier <= TIER_DIAMOND; tier++) {
 // 積めるのは普通のアイテムと同じ 64 個。
 item({ id: WHEAT_SEEDS, name: "小麦の種", block: AIR, stack: MAX_STACK, color: 0x9aa85a, tool: null });
 
-// 小麦。**`block: AIR`**（置けると畑を並べ直せる。上の説明）。パンにするのは別のタスク。
+// 小麦。**`block: AIR`**（置けると畑を並べ直せる。上の説明）。小麦 3 個でパンになる。
 item({ id: WHEAT, name: "小麦", block: AIR, stack: MAX_STACK, color: 0xd8c26a, tool: null });
+
+// パン。**`block: AIR`**（置けるパンは本家にない）。食べ物なので `FOODS` に 1 行ある。
+item({ id: BREAD, name: "パン", block: AIR, stack: MAX_STACK, color: 0xc49a5e, tool: null });
 
 const EMPTY: ItemDef = ITEMS[NO_ITEM];
 
@@ -413,6 +429,9 @@ const FOODS = new Map<number, FoodDef>([
   [RAW_PORK, { hunger: 3, saturation: 1.8, poison: false }],
   [COOKED_PORK, { hunger: 8, saturation: 12.8, poison: false }],
   [ROTTEN_FLESH, { hunger: 4, saturation: 0.8, poison: true }],
+  // パン。**かまど無しで作れる中では一番強い**が、焼き豚（8 / 12.8）には届かない。
+  // 小麦は食べ物ではない（本家と同じで、パンにしてから食べる）。
+  [BREAD, { hunger: 5, saturation: 6, poison: false }],
 ]);
 
 /** そのアイテムを食べたときの値。食べられないなら null。 */

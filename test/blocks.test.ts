@@ -59,6 +59,7 @@ import {
 import { MAX_LIGHT } from "../src/constants";
 import { PLAYER_SIZE } from "../src/physics";
 import {
+  BREAD,
   BUCKET,
   DIAMOND_HOE,
   IRON_INGOT,
@@ -154,9 +155,10 @@ export function run(): void {
   // **ゆるめるのではなく数え直すこと。** 123 はブロック（実った小麦）なので、
   // 共有帯のアイテムは 122 と 124 の 2 つが飛び飛びに並ぶ（1 本の番号列だから正しい）。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦の 11 個（124 まで）",
-    sharedItems.length === 11 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
-      sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && MAX_ITEM_ID === WHEAT,
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パンの 12 個（125 まで）",
+    sharedItems.length === 12 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+      sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
+      MAX_ITEM_ID === BREAD,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **95..110 は空けたまま**（ブロック側の向き違いが使っている番号）。
@@ -995,7 +997,7 @@ function ripeWheat(): void {
   check("実った小麦は上書きして置けない", !isReplaceable(WHEAT_CROP_RIPE));
   check("実った小麦も素手ですぐ壊せる", breakTime(WHEAT_CROP_RIPE) === 0, `${breakTime(WHEAT_CROP_RIPE)} 秒`);
 
-  // 小麦は「材料」だけ。**道具でも食べ物でもない**（パンにするのは別のタスク）。
+  // 小麦は「材料」だけ。**道具でも食べ物でもない**（食べるのはパンにしてから）。
   console.log(
     `      小麦: tool ${toolOf(WHEAT)} / food ${foodOf(WHEAT)} / ` +
       `置けるブロック ${placedBlock(WHEAT)} / 1 山 ${itemStackLimit(WHEAT)}`,
@@ -1004,6 +1006,21 @@ function ripeWheat(): void {
   // **`block: AIR`** —— 置けると、耕地も育つ時間も飛ばして畑を並べられる。
   check("小麦は置けるアイテムではない", placedBlock(WHEAT) === AIR, `${placedBlock(WHEAT)}`);
   check("小麦は 64 個まで積める", itemStackLimit(WHEAT) === 64, `${itemStackLimit(WHEAT)}`);
+
+  // パン（125）。**小麦と違って食べ物**で、道具でも置けるアイテムでもない。
+  const bread = foodOf(BREAD);
+  console.log(
+    `      ${itemName(BREAD)}(${BREAD}): tool ${toolOf(BREAD)} / ` +
+      `food ${bread ? `空腹 +${bread.hunger} / 満腹度 +${bread.saturation} / 毒 ${bread.poison}` : "null"} / ` +
+      `置けるブロック ${placedBlock(BREAD)} / 1 山 ${itemStackLimit(BREAD)}`,
+  );
+  check("パンは食べ物", bread !== null);
+  // **`tool:` を持たせない**（`ToolKind` が増えると `TOOL_ATTACK` に無い種類が入って NaN）。
+  check("パンは道具ではない", toolOf(BREAD) === null, `${toolOf(BREAD)}`);
+  // **置けるパンは本家にない。**
+  check("パンは置けるアイテムではない", placedBlock(BREAD) === AIR, `${placedBlock(BREAD)}`);
+  // 傷が付く物ではないので 1 山にしない。
+  check("パンは 64 個まで積める", itemStackLimit(BREAD) === 64, `${itemStackLimit(BREAD)}`);
 }
 
 /** エンドポータルの枠（向き 4 x アイの有無 2）。要塞が並べる（`stronghold.ts`）。 */

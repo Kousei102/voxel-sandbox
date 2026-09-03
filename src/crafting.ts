@@ -26,6 +26,7 @@ import {
   BLAZE_POWDER,
   BLAZE_ROD,
   BOW,
+  BREAD,
   BUCKET,
   COAL,
   DIAMOND,
@@ -52,6 +53,7 @@ import {
   STONE_PICKAXE,
   STONE_SHOVEL,
   STONE_SWORD,
+  WHEAT,
   WOOD_AXE,
   WOOD_HOE,
   WOOD_PICKAXE,
@@ -150,6 +152,11 @@ export const RECIPES: readonly Recipe[] = [
   // シアーズは鉄 2 個の斜め（Minecraft と同じ）。2x2 に収まるので**作業台が要らない**
   // —— 羊を見つけた場所で作り足せる。左右反転でも作れる。
   { name: "シアーズ", out: SHEARS, count: 1, shape: [".I", "I."], key: { I: IRON_INGOT } },
+
+  // パンは小麦 3 個の横一列（Minecraft と同じ）。**3 幅なので作業台が要る** ——
+  // 畑を作ってから食べられるようになるまでに、作業台の前へ戻る一手間が残る。
+  // ハーフの `["MMM"]` と形は同じだが材料が違うので、形の重複にはならない。
+  { name: "パン", out: BREAD, count: 1, shape: ["WWW"], key: { W: WHEAT } },
 
   ...toolRecipes("木", PLANK, WOOD_PICKAXE, WOOD_AXE, WOOD_SHOVEL, WOOD_SWORD, WOOD_HOE),
   ...toolRecipes("石", COBBLE, STONE_PICKAXE, STONE_AXE, STONE_SHOVEL, STONE_SWORD, STONE_HOE),
