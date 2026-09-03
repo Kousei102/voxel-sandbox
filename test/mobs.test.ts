@@ -20,6 +20,7 @@ import {
   DIAMOND_SWORD,
   ENDER_PEARL,
   NO_ITEM,
+  RAW_CHICKEN,
   RAW_PORK,
   ROTTEN_FLESH,
   STONE_AXE,
@@ -1338,7 +1339,22 @@ export function run(): void {
     `${seen.size} 体中 ${tooClose} 体が ${SPAWN_MIN_DISTANCE} ブロック以内（最短 ${nearest.toFixed(1)}）`,
   );
   check("デスポーン距離を超えて残らない", outOfRange === 0, `${outOfRange} 体`);
-  check("両方の種類が湧く", new Set(wild.list.map((m) => m.kind)).size === 2, [...new Set(wild.list.map((m) => m.kind))].join(" "));
+  // **数を決め打ちにしないこと**（受動が 2 種類だった頃は `=== 2` だった）。
+  // **表から数え直す**ので、受動を足したときに「表にあるのに湧かない」が赤で出る。
+  const passiveKinds = MOB_KINDS.filter((k) => !MOBS[k].hostile);
+  const wildKinds = new Set(wild.list.map((m) => m.kind));
+  check(
+    "受動の種類がひととおり湧く",
+    passiveKinds.every((k) => wildKinds.has(k)),
+    `${[...wildKinds].join(" ")} / 表 ${passiveKinds.join(" ")}`,
+  );
+  // **「ひととおり湧く」だけにすると、余計な種類が混じっても緑になる**
+  // （`=== 2` で数えていた頃はそこも拾えていた）。明るい草地なので敵対は 0 が正しい。
+  check(
+    "明るい草地に敵対は混じらない",
+    [...wildKinds].every((k) => !MOBS[k].hostile),
+    [...wildKinds].join(" "),
+  );
 
   // 暗い所には湧かない
   const dark = flatGrass();
@@ -1406,7 +1422,9 @@ export function run(): void {
     const world = arena.asWorld();
     const c = ctx(over);
     for (let f = 0; f < frames; f++) group.update(1 / 60, world, c);
-    const counts: Record<string, number> = { 豚: 0, 羊: 0, ゾンビ: 0 };
+    // **種類を足したらここにも 1 行足すこと。** 無い名前だと `counts[name]++` が
+    // `NaN` になり、数えているつもりで何も見ていない状態で緑になる。
+    const counts: Record<string, number> = { 豚: 0, 羊: 0, 鶏: 0, ゾンビ: 0 };
     for (const mob of group.list) counts[MOBS[mob.kind].name]++;
     return counts;
   }
@@ -1418,7 +1436,8 @@ export function run(): void {
   const atNoon = census(flatGrass(), { brightness: noon, random: seeded(41) });
   const torchlit = census((() => { const a = flatGrass(); a.block = 14; return a; })(), { brightness: midnight, random: seeded(41) });
   const inCave = census(stone, { brightness: noon, random: seeded(41) });
-  const show = (c: Record<string, number>) => `豚 ${c.豚} / 羊 ${c.羊} / ゾンビ ${c.ゾンビ}`;
+  const show = (c: Record<string, number>) =>
+    `豚 ${c.豚} / 羊 ${c.羊} / 鶏 ${c.鶏} / ゾンビ ${c.ゾンビ}`;
   console.log(`      夜の草地      ${show(atNight)}`);
   console.log(`      昼の草地      ${show(atNoon)}`);
   console.log(`      夜+松明の草地 ${show(torchlit)}`);
@@ -1429,8 +1448,15 @@ export function run(): void {
   check("昼の地表にはゾンビが湧かない", atNoon.ゾンビ === 0, show(atNoon));
   check("松明を置いた所には湧かない", torchlit.ゾンビ === 0, show(torchlit));
   check("昼でも暗い洞窟には湧く", inCave.ゾンビ > 0, show(inCave));
+  // **受動が 3 種類目（鶏）になったので、湧く側も数えること。** `PASSIVE_KINDS` に
+  // 足し忘れると、表にあるのに 1 体も湧かないモブが黙って残る。
+  check("昼の草地に鶏が湧く", atNoon.鶏 > 0, show(atNoon));
   // 草でない地面には受動が湧かない（暗さで敵対に振り分けたあとも変わらない）
-  check("石の上に受動は湧かない", inCave.豚 === 0 && inCave.羊 === 0, show(inCave));
+  check(
+    "石の上に受動は湧かない",
+    inCave.豚 === 0 && inCave.羊 === 0 && inCave.鶏 === 0,
+    show(inCave),
+  );
 
   describe("モブの AI");
 
@@ -1918,6 +1944,51 @@ export function run(): void {
     check("矢でも刈っていない羊なら羊毛が落ちる", woolly.length === 1 && woolly[0] === WOOL, `${woolly.length} 件`);
     check("矢で撃っても刈った羊からは出ない（2 か所とも塞がっている）", shorn.length === 0, `${shorn.length} 件`);
   }
+  {
+    // --- 鶏を倒すと生鶏肉が 1 個（**殴った側と撃った側を並べて**） ---
+    // `dropFor()` の 1 本を通ることの確認。片方だけ通っていると、弓で撃ったときだけ
+    // 出ない／出るという形で静かに食い違う（刈った羊の 2 か所とまったく同じ話）。
+    check("表は生鶏肉 1 個・必ず落ちる", MOBS.chicken.drop.item === RAW_CHICKEN &&
+      MOBS.chicken.drop.count === 1 && MOBS.chicken.drop.chance === 1,
+      `${itemName(MOBS.chicken.drop.item)} x${MOBS.chicken.drop.count} / ${MOBS.chicken.drop.chance}`);
+    // **刈れないモブなので `dropFor()` は素通し。**
+    const bare = new Mobs();
+    const solo = bare.spawn("chicken", 0.5, 11, 2.5, 0, seeded(167));
+    check("dropFor も生鶏肉を返す", dropFor(solo, MOBS.chicken)?.item === RAW_CHICKEN,
+      itemName(dropFor(solo, MOBS.chicken)?.item ?? NO_ITEM));
+
+    const arena = fightArena();
+    const punched: number[] = [];
+    {
+      const pack = new Mobs();
+      pack.onDrop = (item) => punched.push(item);
+      const c = ctx({ random: seeded(173) });
+      const bird = pack.spawn("chicken", 0.5, 11, 1.5, 0, seeded(179));
+      while (pack.count > 0) {
+        pack.attack(bird, DIAMOND_SWORD, c);
+        advance(pack, arena, c, COOLDOWN_FRAMES);
+      }
+    }
+    const shot: number[] = [];
+    {
+      const pack = new Mobs();
+      const flying = new Projectiles();
+      pack.onDrop = (item) => shot.push(item);
+      const c = ctx({ random: seeded(181) });
+      const bird = pack.spawn("chicken", 3.5, 11, 0.5, 0, seeded(191));
+      const target = pack.projectileTargets(c).find((t) => t.owner === bird.id)!;
+      const arrow = flying.spawn("arrow", 0.5, 12, 0.5, 0, 0, -1, PLAYER_OWNER, 100);
+      pack.hitByProjectile(arrow!, target, c);
+    }
+    console.log(
+      `      鶏を倒す: 殴って ${punched.map(itemName).join(" ") || "なし"} / ` +
+        `矢で ${shot.map(itemName).join(" ") || "なし"}`,
+    );
+    check("殴って倒すと生鶏肉 1 個", punched.length === 1 && punched[0] === RAW_CHICKEN,
+      `${punched.length} 件`);
+    check("矢で倒しても生鶏肉 1 個（同じ 1 本を通る）",
+      shot.length === 1 && shot[0] === RAW_CHICKEN, `${shot.length} 件`);
+  }
 
   describe("敵対モブの AI（追跡と日光）");
 
@@ -2230,7 +2301,11 @@ export function run(): void {
       MOBS.zombie.damage === 2 && MOBS.blaze.damage === 6,
       `ゾンビ ${MOBS.zombie.damage} / ブレイズ ${MOBS.blaze.damage}`,
     );
-    check("受動モブは殴らない", MOBS.pig.damage === 0 && MOBS.sheep.damage === 0);
+    check(
+      "受動モブは殴らない",
+      MOBS.pig.damage === 0 && MOBS.sheep.damage === 0 && MOBS.chicken.damage === 0,
+      `豚 ${MOBS.pig.damage} / 羊 ${MOBS.sheep.damage} / 鶏 ${MOBS.chicken.damage}`,
+    );
     const ranged = MOBS.blaze.ranged;
     // **回るモブには当てはまらない線**（下でドラゴンぶんを別に見ている）。
     // ブレイズは自分から寄っていくので、見えた瞬間に撃たれないことが要る。

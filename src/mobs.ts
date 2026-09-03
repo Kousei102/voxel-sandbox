@@ -12,7 +12,15 @@
 import { Color, Vector3 } from "three";
 import { AIR, GRASS, NETHER_BRICK, WOOL, isHotLiquid, isLiquid, isSolid } from "./blocks";
 import { MAX_LIGHT, WORLD_HEIGHT, columnOf } from "./constants";
-import { BLAZE_ROD, ENDER_PEARL, NO_ITEM, RAW_PORK, ROTTEN_FLESH, toolOf } from "./items";
+import {
+  BLAZE_ROD,
+  ENDER_PEARL,
+  NO_ITEM,
+  RAW_CHICKEN,
+  RAW_PORK,
+  ROTTEN_FLESH,
+  toolOf,
+} from "./items";
 import { BLOCK_LIGHT, SKY_LIGHT } from "./lighting";
 import { PLAYER_SIZE, type BodySize, boxBlocked, groundBelow, moveBody } from "./physics";
 import {
@@ -29,7 +37,7 @@ import type { World } from "./world";
 
 // --- 種類の表 -----------------------------------------------------------
 
-export type MobKind = "pig" | "sheep" | "zombie" | "blaze" | "enderman" | "dragon";
+export type MobKind = "pig" | "sheep" | "chicken" | "zombie" | "blaze" | "enderman" | "dragon";
 
 /** 部位の動き方。 */
 export type MobMotion =
@@ -423,6 +431,90 @@ const SHEEP: MobDef = {
   ],
 };
 
+const CHICKEN_FEATHER = 0xf0f0f0;
+const CHICKEN_BEAK = 0xf0a020;
+const CHICKEN_COMB = 0xd63b2f;
+const CHICKEN_EYE = 0x2b1e1c;
+
+/**
+ * 鶏。**3 種類目の受動モブ**で、豚以外に肉の出どころができる（生鶏肉 → 焼き鳥）。
+ *
+ * **当たり判定は Minecraft と同じ 0.4 x 0.7 で、豚・羊よりずっと狭い。**
+ * だから**胴を後ろへはみ出させられません**（`test/mobs.test.ts` の `longBody` の例外は
+ * 豚と羊だけ。**そこへ鶏を足すと形の点検が丸ごと外れます** —— 判定を広げるのでも
+ * 例外に加えるのでもなく、**形のほうを判定に収めること**）。
+ * すべての箱が x ±3.2px・z ±3.2px・y 11.2px の中に入っている。
+ *
+ * **翼は脚とまったく同じ `swing`。** 新しい `MobMotion` は 1 つも足していない
+ * （羽ばたきと足踏みは、位相の違う同じ振り）。**振る部位の箱は `y1 === 0`**。
+ *
+ * グループの並び: 0 = 体（固定）、1 = 頭（くちばし・とさか・目）、2..3 = 脚、4..5 = 翼。
+ */
+const CHICKEN: MobDef = {
+  kind: "chicken",
+  name: "鶏",
+  // 高さ 0.7 でも段差は受動モブと同じ 0.5（ハーフは登れる）。
+  size: { half: 0.2, height: 0.7, step: 0.5 },
+  // 本家と同じ 4。**受動でいちばん脆い**（羊 8 / 豚 10）。
+  maxHealth: 4,
+  speed: 1.7,
+  hostile: false,
+  damage: 0,
+  ranged: null,
+  teleport: null,
+  // 本家の湧きの重み（豚 10 / 羊 12 と同じ土俵）。
+  spawnWeight: 10,
+  // **飛びません。** 本家の「ゆっくり落ちる」は `flying` とは別の話（重力を受けない
+  // 飛び方しか無いので、入れると壁も崖も無視して飛んでいきます）。
+  flying: false,
+  hover: 0,
+  fireproof: false,
+  // **受動に `spawnOn` を付けないこと**（`trySpawn()` 側にも手が要ります。`rules/mobs.md`）。
+  spawnOn: null,
+  boss: false,
+  orbit: null,
+  phases: null,
+  regen: 0,
+  drop: { item: RAW_CHICKEN, count: 1, chance: 1 },
+  // **羽根はまだ出ません**（`MobDef.drop` は 1 つしか落とせないので、2 つ目の
+  // 落とし物を足す話が先。矢を本家の形へ戻すのも同じ周の仕事です）。
+  shearing: null,
+  // いちばん高い声（羊 1.25 / 豚 1.4 の上）。
+  voice: 1.8,
+  groups: [
+    { motion: "fixed", pivot: [0, 0, 0], phase: 0 },
+    { motion: "head", pivot: [0, px(7), px(-1)], phase: 0 },
+    // 脚は左右で逆位相（そろえると跳ねて見える）。
+    { motion: "swing", pivot: [px(-1.5), px(3.5), px(0.5)], phase: 0 },
+    { motion: "swing", pivot: [px(1.5), px(3.5), px(0.5)], phase: Math.PI },
+    // 翼も左右で逆位相。**脚と同じ `swing`。**
+    { motion: "swing", pivot: [px(-2.6), px(8), px(0.5)], phase: Math.PI },
+    { motion: "swing", pivot: [px(2.6), px(8), px(0.5)], phase: 0 },
+  ],
+  boxes: [
+    // 体（前後 5.5px。**後ろも判定の中**に収める）。**幅は翼より狭くすること** ——
+    // 翼（x 2.3..3.1）と同じ ±3 にすると、白い体に白い翼が埋まって振れても見えない
+    // （絵に撮って気付いた。判定の縁 ±3.2 には触れていないので、狭めるだけで済む）。
+    { group: 0, box: [px(-2.5), px(3.5), px(-2.5), px(2.5), px(8.5), px(3)], color: CHICKEN_FEATHER },
+    // 頭（軸は首の付け根。箱は軸からの相対）
+    { group: 1, box: [px(-2), 0, px(-1.5), px(2), px(3), px(1.5)], color: CHICKEN_FEATHER },
+    // くちばし（前へ。**-Z の端が判定の縁 ±0.2 の内側**）
+    { group: 1, box: [px(-1), px(0.6), px(-2.1), px(1), px(1.8), px(-1.5)], color: CHICKEN_BEAK },
+    // とさか（**上端 7 + 4 = 11px < 高さ 11.2px**）
+    { group: 1, box: [px(-0.6), px(3), px(-1.2), px(0.6), px(4), px(0.3)], color: CHICKEN_COMB },
+    // 目（頭の前面から 0.1px だけ出す。豚・羊とまったく同じ作り）
+    { group: 1, box: [px(-1.8), px(1.6), px(-1.6), px(-0.6), px(2.4), px(-1.5)], color: CHICKEN_EYE },
+    { group: 1, box: [px(0.6), px(1.6), px(-1.6), px(1.8), px(2.4), px(-1.5)], color: CHICKEN_EYE },
+    // 脚（**軸からぶら下げる = y1 が 0**。0 でないと足首で回る）
+    { group: 2, box: [px(-0.8), px(-3.5), px(-0.8), px(0.8), 0, px(0.8)], color: CHICKEN_BEAK },
+    { group: 3, box: [px(-0.8), px(-3.5), px(-0.8), px(0.8), 0, px(0.8)], color: CHICKEN_BEAK },
+    // 翼（**ここも y1 が 0**。0 でないと翼の真ん中で折れて回る）。
+    // **外端 2.6 + 0.6 = 3.2px = 判定の縁ちょうど**で、体（±2.5）より 0.7px 外に出る。
+    { group: 4, box: [px(-0.6), px(-4), px(-1.5), px(0.6), 0, px(1.5)], color: CHICKEN_FEATHER },
+    { group: 5, box: [px(-0.6), px(-4), px(-1.5), px(0.6), 0, px(1.5)], color: CHICKEN_FEATHER },
+  ],
+};
+
 const ZOMBIE_SKIN = 0x5f9e46;
 const ZOMBIE_SHIRT = 0x2f6b6b;
 const ZOMBIE_PANTS = 0x3b4a86;
@@ -767,6 +859,7 @@ const DRAGON: MobDef = {
 export const MOBS: Record<MobKind, MobDef> = {
   pig: PIG,
   sheep: SHEEP,
+  chicken: CHICKEN,
   zombie: ZOMBIE,
   blaze: BLAZE,
   enderman: ENDERMAN,
@@ -775,13 +868,14 @@ export const MOBS: Record<MobKind, MobDef> = {
 export const MOB_KINDS: readonly MobKind[] = [
   "pig",
   "sheep",
+  "chicken",
   "zombie",
   "blaze",
   "enderman",
   "dragon",
 ];
 /** 湧きの抽選に使う受動モブ。**敵対と混ぜないこと**（湧く条件も上限も別）。 */
-const PASSIVE_KINDS: readonly MobKind[] = ["pig", "sheep"];
+const PASSIVE_KINDS: readonly MobKind[] = ["pig", "sheep", "chicken"];
 /**
  * 湧きの抽選に使う敵対モブ。**表から作ること**（足したときに書き忘れる）。
  * **ボスは外す** —— 抽選に残すと、夜のオーバーワールドにドラゴンが湧く。

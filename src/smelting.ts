@@ -24,10 +24,12 @@ import { deserializeWear, serializeWear } from "./durability";
 import { clearSlot, isEmpty, type Slot } from "./inventory";
 import {
   COAL,
+  COOKED_CHICKEN,
   COOKED_PORK,
   GOLD_INGOT,
   IRON_INGOT,
   NO_ITEM,
+  RAW_CHICKEN,
   RAW_PORK,
   STICK,
   itemStackLimit,
@@ -54,6 +56,8 @@ export const SMELTING: ReadonlyMap<number, SmeltResult> = new Map([
   [SAND, { out: GLASS, count: 1 }],
   [COBBLE, { out: STONE, count: 1 }],
   [RAW_PORK, { out: COOKED_PORK, count: 1 }],
+  // 鶏。**豚とまったく同じ形の 1 行**（焼く見返りは `items.ts` の `FOODS` が持つ）。
+  [RAW_CHICKEN, { out: COOKED_CHICKEN, count: 1 }],
 ]);
 
 /**

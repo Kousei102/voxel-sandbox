@@ -61,11 +61,13 @@ import { PLAYER_SIZE } from "../src/physics";
 import {
   BREAD,
   BUCKET,
+  COOKED_CHICKEN,
   DIAMOND_HOE,
   IRON_INGOT,
   LAVA_BUCKET,
   MAX_ITEM_ID,
   NO_ITEM,
+  RAW_CHICKEN,
   SHEARS,
   STICK,
   WATER_BUCKET,
@@ -155,12 +157,29 @@ export function run(): void {
   // **ゆるめるのではなく数え直すこと。** 123 はブロック（実った小麦）なので、
   // 共有帯のアイテムは 122 と 124 の 2 つが飛び飛びに並ぶ（1 本の番号列だから正しい）。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パンの 12 個（125 まで）",
-    sharedItems.length === 12 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つの 14 個（127 まで）",
+    sharedItems.length === 14 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
-      MAX_ITEM_ID === BREAD,
+      sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
+      MAX_ITEM_ID === COOKED_CHICKEN,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
+  // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
+  // 付ければ置ける肉になり、`tool:` を付ければ `TOOL_ATTACK` に無い種類が入って NaN、
+  // `FOODS` に無ければ拾えるだけの飾りになる（どれも型では止まらない）。
+  const meats: [string, number][] = [["生鶏肉", RAW_CHICKEN], ["焼き鳥", COOKED_CHICKEN]];
+  for (const [name, id] of meats) {
+    const food = foodOf(id);
+    console.log(
+      `      ${name}(${id}) 置ける ${placedBlock(id) !== AIR} / 道具 ${toolOf(id) !== null}` +
+        ` / 食べ物 空腹 +${food?.hunger} 満腹度 +${food?.saturation} 毒 ${food?.poison}`,
+    );
+    check(
+      `${name}は置けず・道具でもなく・食べられる`,
+      placedBlock(id) === AIR && toolOf(id) === null && food !== null,
+      `block ${placedBlock(id)} / tool ${toolOf(id)} / food ${food === null ? "なし" : "あり"}`,
+    );
+  }
   // **95..110 は空けたまま**（ブロック側の向き違いが使っている番号）。
   const inGap = allItemIds().filter((id) => id > VARIANT_BAND_MAX - 16 && id <= VARIANT_BAND_MAX);
   check("95..110 にアイテムを置いていない", inGap.length === 0, inGap.join(" "));

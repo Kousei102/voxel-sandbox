@@ -33,7 +33,17 @@ import {
   fallDamage,
   type VitalsContext,
 } from "../src/vitals";
-import { BREAD, COOKED_PORK, ROTTEN_FLESH, WHEAT, allFoodIds, foodOf, itemName } from "../src/items";
+import {
+  BREAD,
+  COOKED_CHICKEN,
+  COOKED_PORK,
+  RAW_CHICKEN,
+  ROTTEN_FLESH,
+  WHEAT,
+  allFoodIds,
+  foodOf,
+  itemName,
+} from "../src/items";
 import { heartStates } from "../src/ui";
 import { check, describe } from "./harness";
 
@@ -575,6 +585,53 @@ export function run(): void {
   );
   // **小麦そのものは今までどおり食べられない**（本家と同じで、パンにしてから食べる）。
   check("小麦は食べられないまま", foodOf(WHEAT) === null, `${foodOf(WHEAT)}`);
+
+  // --- 鶏の肉（生 2 / 1.2 → 焼き 6 / 7.2。**焼く見返りがいちばん大きい肉**） ---
+  const rawBird = foodOf(RAW_CHICKEN);
+  const roastBird = foodOf(COOKED_CHICKEN);
+  if (!rawBird || !roastBird) throw new Error("鶏の肉が食べ物の表に無い");
+  for (const [name, food] of [["生鶏肉", rawBird], ["焼き鳥", roastBird]] as const) {
+    const eater2 = new Vitals();
+    eater2.hunger = 8;
+    eater2.saturation = 0;
+    console.log(
+      `      ${name}を食べる前: 空腹 ${eater2.hunger} / 満腹度 ${eater2.saturation}` +
+        `（空腹 +${food.hunger} / 満腹度 +${food.saturation} / 毒 ${food.poison}）`,
+    );
+    eater2.eat(food);
+    console.log(`      食べた後: 空腹 ${eater2.hunger} / 満腹度 ${eater2.saturation}`);
+    check(
+      `${name}を食べると空腹が +${food.hunger}`,
+      eater2.hunger === 8 + food.hunger,
+      `空腹 ${eater2.hunger}`,
+    );
+    // **満腹度は空腹の値を超えない**（`Vitals.eat()` が捨てる）ので、
+    // 焼き鳥（+7.2）は空腹 14 で頭打ちにならない 7.2 がそのまま乗る。
+    check(
+      `${name}の満腹度は表どおり`,
+      eater2.saturation === Math.min(food.saturation, eater2.hunger),
+      `満腹度 ${eater2.saturation} / 表 +${food.saturation}`,
+    );
+  }
+  check("生鶏肉は 2 / 1.2", rawBird.hunger === 2 && rawBird.saturation === 1.2);
+  check("焼き鳥は 6 / 7.2", roastBird.hunger === 6 && roastBird.saturation === 7.2);
+  // **本家は生鶏肉が 30% で食中毒だが、`FoodDef` に確率が無いので毒なしにしてある**
+  // （`TUNING.md`）。腐った肉の「必ず毒」と一緒にしないこと。
+  check("鶏の肉はどちらも毒つきでない", !rawBird.poison && !roastBird.poison);
+  // 焼く見返りは残す（生 → 焼きで空腹も満腹度も増える）。
+  check(
+    "焼くと強くなる",
+    roastBird.hunger > rawBird.hunger && roastBird.saturation > rawBird.saturation,
+    `生 ${rawBird.hunger}/${rawBird.saturation} → 焼き ${roastBird.hunger}/${roastBird.saturation}`,
+  );
+  // **焼き豚がいちばん強い立場は動いていない**（パン 5/6 < 焼き鳥 6/7.2 < 焼き豚 8/12.8）。
+  check(
+    "焼き鳥はパンより上・焼き豚より下",
+    roastBird.hunger > loaf.hunger && roastBird.hunger < cooked.hunger &&
+      roastBird.saturation > loaf.saturation && roastBird.saturation < cooked.saturation,
+    `パン ${loaf.hunger}/${loaf.saturation} < 焼き鳥 ${roastBird.hunger}/${roastBird.saturation}` +
+      ` < 焼き豚 ${cooked.hunger}/${cooked.saturation}`,
+  );
 
   // --- 毒（腐った肉） ---
   const rotten = foodOf(ROTTEN_FLESH);

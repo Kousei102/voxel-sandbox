@@ -18,10 +18,12 @@ import { Furnaces, litVoxel } from "../src/furnaces";
 import { INVENTORY_SIZE, Inventory, isEmpty, type Slot } from "../src/inventory";
 import {
   COAL,
+  COOKED_CHICKEN,
   COOKED_PORK,
   IRON_INGOT,
   MAX_STACK,
   NO_ITEM,
+  RAW_CHICKEN,
   RAW_PORK,
   WOOD_PICKAXE,
   dropOf,
@@ -109,6 +111,7 @@ export function run(): void {
   check("砂 → ガラス", SMELTING.get(SAND)?.out === GLASS);
   check("丸石 → 石", SMELTING.get(COBBLE)?.out === STONE);
   check("生豚肉 → 焼き豚", SMELTING.get(RAW_PORK)?.out === COOKED_PORK);
+  check("生鶏肉 → 焼き鳥", SMELTING.get(RAW_CHICKEN)?.out === COOKED_CHICKEN);
 
   // **木から作れる燃料を必ず残すこと。** 石炭が見つかる前に鉄を焼けないと、
   // かまどを作った意味が最初の数十分ぶん遅れる。

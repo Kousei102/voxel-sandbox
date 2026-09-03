@@ -219,7 +219,27 @@ export const WHEAT = 124;
  */
 export const BREAD = 125;
 
-export const MAX_ITEM_ID = BREAD;
+/**
+ * 生鶏肉。**鶏（`mobs.ts` の `CHICKEN`）を倒すと 1 個**出ます（`MobDef.drop`）。
+ *
+ * **`block` は `AIR`**（置ける肉は本家にありません）。
+ * **`tool:` を持たせないこと**（種・パンと同じ罠。`ToolKind` が増えると
+ * `mobs.ts` の `TOOL_ATTACK` に無い種類が入って **NaN** が黙って通ります）。
+ *
+ * **毒はありません。** 本家は 30% で食中毒ですが、`FoodDef` に確率が無いので
+ * 表せません（確率を足すと `vitals.ts` まで及びます。`TUNING.md`）。
+ */
+export const RAW_CHICKEN = 126;
+
+/**
+ * 焼き鳥。**かまどで生鶏肉を焼くと 1 個**（`smelting.ts` の `SMELTING`）。
+ *
+ * **パン（5 / 6）より上・焼き豚（8 / 12.8）より下**にしてあります ——
+ * 焼き豚がいちばん強い立場は保ったまま、豚以外にも肉の出どころができました。
+ */
+export const COOKED_CHICKEN = 127;
+
+export const MAX_ITEM_ID = COOKED_CHICKEN;
 
 export const MAX_STACK = 64;
 
@@ -372,6 +392,11 @@ item({ id: WHEAT, name: "小麦", block: AIR, stack: MAX_STACK, color: 0xd8c26a,
 // パン。**`block: AIR`**（置けるパンは本家にない）。食べ物なので `FOODS` に 1 行ある。
 item({ id: BREAD, name: "パン", block: AIR, stack: MAX_STACK, color: 0xc49a5e, tool: null });
 
+// 生鶏肉と焼き鳥。**どちらも `block: AIR` / `tool: null`**（上の説明）。
+// 焼くと何になるかは `smelting.ts` の表 1 行、食べたときの値は下の `FOODS`。
+item({ id: RAW_CHICKEN, name: "生鶏肉", block: AIR, stack: MAX_STACK, color: 0xd3a08e, tool: null });
+item({ id: COOKED_CHICKEN, name: "焼き鳥", block: AIR, stack: MAX_STACK, color: 0xc98a4b, tool: null });
+
 const EMPTY: ItemDef = ITEMS[NO_ITEM];
 
 export function itemDef(id: number): ItemDef {
@@ -432,6 +457,11 @@ const FOODS = new Map<number, FoodDef>([
   // パン。**かまど無しで作れる中では一番強い**が、焼き豚（8 / 12.8）には届かない。
   // 小麦は食べ物ではない（本家と同じで、パンにしてから食べる）。
   [BREAD, { hunger: 5, saturation: 6, poison: false }],
+  // 鶏の肉。本家の値のまま（生 2 / 1.2・焼き 6 / 7.2）。**焼き鳥はパン（5 / 6）より上・
+  // 焼き豚（8 / 12.8）より下**なので、焼き豚がいちばん強い立場は動いていない。
+  // **生鶏肉に毒は付けていません** —— 本家は 30% で食中毒だが、`FoodDef` に確率が無い。
+  [RAW_CHICKEN, { hunger: 2, saturation: 1.2, poison: false }],
+  [COOKED_CHICKEN, { hunger: 6, saturation: 7.2, poison: false }],
 ]);
 
 /** そのアイテムを食べたときの値。食べられないなら null。 */
