@@ -1,113 +1,119 @@
-# 仕様: 雪玉（雪ブロックを掘ると出て、右クリックで投げられる）
+# 仕様: 鉄・金・ダイヤのブロック（9 個 → 1 個、戻すと 9 個）
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-**キューの 13 番。数え直し済み**（2026-09-04・コードが根拠）: `src/items.ts` に `SNOWBALL` は
-**0 行**（`grep -i snow src/items.ts` が 1 行も出ません）、`DROPS`（`items.ts:623`）に `SNOW` の
-行は**無く**（掘ると雪ブロックがそのまま出る）、`PROJECTILE_KINDS`（`projectiles.ts:149`）は
-**5 種類**（火球・矢・アイ・ブレス・卵）、`THROWN`（`items.ts:818`）は**卵 1 行だけ**です。
+**キューの先頭 14 番。** 2026-09-04 にコードで数え直しました —— `blocks.ts` に
+`IRON_ORE`(15) / `GOLD_ORE`(16) / `DIAMOND_ORE`(17) はありますが、**「しまう形」の
+立方体は 3 つとも 1 つもなく**、`crafting.ts` にも該当レシピは 0 本です。
 
 ## 1. 何を足すか / 完了の判定
 
-**雪ブロック（`SNOW` = 9）を掘ると雪玉 4 個が出て、右クリックで投げられる。雪玉 4 個を
-2x2 に並べると雪ブロック 1 個に戻る**（本家と同じ個数）。**当たっても何も起きません**（卵と同じ）。
+**インゴットとダイヤを 9 個で 1 個の立方体にしまえて、その立方体から 9 個に戻せる。**
+本家と同じで、**倉庫の枠を 9 分の 1 にするためだけの機能**です。
+**ダイヤに初めて「持ち物以外の行き場」ができます。**
 
-完了は `npm test` が**すべて緑**で、次の 4 つが増えていること（値を出してから判定する形）:
+完了の判定（`npm test` が全部緑のまま、次が増えていること）:
 
-- 「雪を掘ると雪玉 4 個」（`test/blocks.test.ts` の「ドロップ」）
-- 「雪玉を投げると雪玉が飛ぶ」（`test/blocks.test.ts` の「投げるもの」）
-- 「雪玉 4 個で雪ブロック 1 個に戻る」（`test/crafting.test.ts`）
-- 「6 種類ある（火球・矢・エンダーアイ・ブレス・卵・雪玉）」（`test/projectiles.test.ts:115` を
-  **5 → 6 に直す**。これは数の書き換えであって、判定をゆるめるものではありません）
+- `test/crafting.test.ts` に **「鉄・金・ダイヤは 9 個でブロックになる」** と
+  **「ブロックを崩すと 9 個に戻る」** と **「しまって戻すと個数が変わらない」** の 3 項目
+- `test/blocks.test.ts` に **「鉄・金・ダイヤのブロックは立方体で、掘ると自分が落ちる」** の 1 項目
+- `npm test` の **「111..255 の空き」が 121 → 118**、**「立方体 36」が 39**、
+  **アイテム一覧が 99 → 102 種類**、**`MAX_ITEM_ID` が 134 → 137**
+- **クラフトは 45 本 → 51 本**（6 本増える）
 
-## 2. 触るファイル / 触らないファイル
+## 2. 触るファイルと、触らないファイル
 
-**触るのは 3 本 + テスト 3 本 + `ROADMAP.md` だけです。**
+**触るのはこの 5 つだけです。**
 
-| ファイル | 足すもの |
+| ファイル | 何を |
 | --- | --- |
-| `src/items.ts` | `SNOWBALL` の `export const` と説明 / `item({...})` 1 行 / `MAX_ITEM_ID` の付け替え / `DROPS` に `SNOW` 1 行 / `THROWN` に 1 行 |
-| `src/projectiles.ts` | `ProjectileKind` に `"snowball"` / `PROJECTILE_KINDS` に 1 行 |
-| `src/crafting.ts` | 戻すレシピ 1 本 |
-| `test/blocks.test.ts` | ドロップ 1 件 / `throwable` に雪玉 1 行 / `MAX_ITEM_ID === STRING`（177 行）を `SNOWBALL` に |
-| `test/crafting.test.ts` | 戻すレシピ 1 件 |
-| `test/projectiles.test.ts` | 種類の数 5 → 6 / 色の突き合わせ 1 件 |
-| `ROADMAP.md` | 予約表に 134 の行（「実装済み」まで書く） |
+| `src/blocks.ts` | `export const` 3 行 + `BLOCKS` 配列の末尾に `def(...)` 3 つ |
+| `src/crafting.ts` | `RECIPES` に 6 行（しまう 3・戻す 3）と import |
+| `test/crafting.test.ts` | 上の 3 項目 |
+| `test/blocks.test.ts` | 上の 1 項目 |
+| `ROADMAP.md` / `TUNING.md` / `AUTODEV-QUEUE.md` / `docs/autodev-log.md` / `HANDOFF.md` | C-4 の記録 |
 
-**触らないファイル**: `src/use.ts`（`thrownProjectile()` を通るので**1 行も要りません**。
-`held === SNOWBALL` と書いたら差し戻し）/ `src/blocks.ts` / `src/mobs.ts` / `src/smelting.ts` /
-`src/projectilerender.ts` / `src/ui.ts` / `src/inventoryui.ts` / `src/placing.ts`。
+**1 行も触らないファイル**（触ったら差し戻し）:
 
-**`src/main.ts` は 1464 行**（止まる目安 1450 を越えたまま）。**判断を 1 行も書かないこと。**
-唯一許すのは `throwItem()`（895 行）の見出しコメントの「（卵）」を「（卵・雪玉）」にする
-**1 語だけ**で、**`git diff --stat` の `main.ts` が 1 行を超えたら差し戻し**です。
-**`throwItem()` は `damage` を渡さないまま**にすること（既定の 0 = 当たっても減らない）。
+- **`src/items.ts`** —— **アイテムは自動で付いてきます。** `items.ts` の 386 行目の
+  `for (const block of BLOCKS)` が **`variantOf === AIR` のブロック全部に同じ番号の
+  アイテムを作る**ので、`item({...})` を手で足すと**同じ番号が二重に登録されます**
+- **`src/main.ts`**（**いま 1464 行。この周は 1 行も足しません**）/ `src/use.ts` /
+  `src/placing.ts` / `src/mining.ts` / `src/breaking.ts` /
+  `src/*render.ts` / `src/ui.ts` / `src/inventoryui.ts`（判断を書かない）
+- `src/worldgen.ts`（**地形に埋めません。** 本家でも自然生成しません）
+- `src/smelting.ts`（**精錬に 1 行も足さない。** かまどで焼く物ではありません）
 
 ## 3. 使う ID
 
-**`SNOWBALL = 134` を 1 個だけ**（`ROADMAP.md` の予約表「134..255 予備 122 個」の先頭。
-`MAX_ITEM_ID` は 133 = 糸 なので、次の空きは 134 です）。**ほかの番号を取らないこと。**
-**既存の ID を 1 つも振り直さないこと**（`SNOW` は 9 のまま）。
-`MAX_ITEM_ID` を `STRING` から `SNOWBALL` に付け替えます（`test/blocks.test.ts:177` も同じ）。
+**`ROADMAP.md` の予約表（111..255 の共有帯）から、次の空き 3 つを順に取ります。**
 
-## 4. 判断をどこに置くか
+| ID | 名前 | 定数名 |
+| --- | --- | --- |
+| **135** | 鉄ブロック | `IRON_BLOCK` |
+| **136** | 金ブロック | `GOLD_BLOCK` |
+| **137** | ダイヤブロック | `DIAMOND_BLOCK` |
 
-**新しく「確かめられないもの」は 1 つも足しません**（`unverifiable-pair` は要りません）。
-`projectilerender.ts` は表を貼るだけなので、**種類が増えても 0 行**です。
+**134（雪玉）まで使用済みで、135 が次の空きです。** **111 以降はブロックとアイテムで
+1 本の番号列**なので、**この 3 つはアイテム側の番号も同時に埋めます**（2 節のとおり
+`items.ts` のループが作るぶん）。**既存の番号を 1 つも振り直さないこと。**
 
-- **何を投げると何が飛ぶか** → `items.ts` の `THROWN`（表 1 本。`rules/projectiles.md`）
-- **どう飛ぶか（速さ・重力・寿命・色・大きさ）** → `projectiles.ts` の `PROJECTILE_KINDS` 1 行
-- **何が何個落ちるか** → `items.ts` の `DROPS` 1 行
-- **戻す形と個数** → `crafting.ts` 1 行
+## 4. 判断をどのファイルに置くか
 
-**数値は本家の値をそのまま入れること**（`TUNING.md` に 1 行足して止まらずに進む）:
+**確かめられないものは 1 つも増えません**（描画も音も DOM も GLSL も足しません）。
+だから `unverifiable-pair` スキルは要りません。使うのは **`add-block` スキル**です。
 
-- 積める数 **16**（本家。卵・バケツと同じで `MAX_STACK` を使わない）
-- 飛び方は**卵と同じ**（`gravityScale: 1` / `drag: 0` / `speed: 20` / `life: 30` /
-  `half: 0.125` / `onBlock: "vanish"` / `glows: false` / `aims: false`）。本家の雪玉と卵は
-  同じ速さ（1.5 ブロック/tick）です
-- 色は **`0xbcd8ef`**（**卵 `0xf7f0e0`・羽根 `0xe8e4dc`・糸から離した青白**。一覧で
-  白っぽいものが 4 つ並ぶので、青みで見分けます）。**`PROJECTILE_KINDS` の色も同じ値**に
-  すること（`test/projectiles.test.ts` が突き合わせます）
-- **ダメージは 0**（本家の雪玉もブレイズ以外には効きません。表に書かず、渡さないこと）
+- **硬さ・道具・階層は `blocks.ts` の `def` の中だけ**（本家の値）:
+  - `IRON_BLOCK` = 硬さ **5** / `tool: "pickaxe"` / `minTier: TIER_STONE` / 色 `0xd8d2c8`
+  - `GOLD_BLOCK` = 硬さ **3** / `tool: "pickaxe"` / `minTier: TIER_IRON` / 色 `0xf2d15c`
+  - `DIAMOND_BLOCK` = 硬さ **5** / `tool: "pickaxe"` / `minTier: TIER_IRON` / 色 `0x4fe3d8`
+  - **色は 3 つともインゴット・ダイヤのアイテム色をそのまま写すこと**（`items.ts` の 401..403 行）
+  - **`sound` を書かないこと** —— 既定の `"stone"` で通します（**金属の音はありません。
+    足すと `audio.ts` / `sfx.ts` の話になり、この周の枠を越えます**）
+  - **`variantOf` を書かないこと**（既定の `AIR`。書くとアイテムが作られません）
+  - **`DROPS` に 1 行も足さないこと** —— `variantOf` が `AIR` なので**掘ると自分が落ちます**
+- **しまう／戻すの個数は `crafting.ts` の 6 行だけ**:
+  - しまう（形あり・3x3 なので作業台が要る）: `shape: ["III","III","III"], key: { I: IRON_INGOT }`
+    → `out: IRON_BLOCK, count: 1`（金・ダイヤも同じ形で材料だけ差し替え）
+  - 戻す（形なし）: `ingredients: [IRON_BLOCK]` → `out: IRON_INGOT, count: 9`
+  - **9 と 9 を食い違わせないこと** —— 片方を 8 にすると、しまって戻すだけで目減りします
+    （`rules/items-survival.md` の「落ちる 4 個と戻す 4 個」と同じ罠）
 
 ## 5. 書くテスト
 
-**どれも値を `console.log` で出してから判定すること**（`rules/testing.md`）。
+**値を出してから判定すること**（`rules/testing.md`）。`check(名前, 条件, 出す値)` の形で、
+`grid(3, [...], key)` と `findRecipe` は `test/crafting.test.ts` に既にあります。
 
-- `test/blocks.test.ts`「ドロップ」に: `rollDrop(SNOW, 0.5)` を出して
-  **`item === SNOWBALL && count === 4`**。**`otherwise` は要りません**（確率 1 なので）
-- `test/blocks.test.ts`「投げるもの」の `throwable` に `["雪玉", SNOWBALL]` を足し、
-  **`thrownProjectile(SNOWBALL) === "snowball"`**。「それ以外は投げられない（null）」の
-  除外を **`id !== EGG` → `id !== EGG && id !== SNOWBALL`** に直すこと
-- `test/crafting.test.ts` に: 2x2 に雪玉 4 個を並べた結果を出して **雪ブロック 1 個**。
-  **3 個や斜めでは出来ないこと**も 1 件
-- `test/projectiles.test.ts`: 数を 6 にし、**`projectileDef("snowball").color === itemColor(SNOWBALL)`**
+1. **「鉄・金・ダイヤは 9 個でブロックになる」** —— 3 つとも `grid(3, ["III","III","III"], ...)`
+   を `findRecipe` に通し、`out` と `count` を**出してから**判定
+2. **「ブロックを崩すと 9 個に戻る」** —— 3 つとも 1 個だけ置いた盤面で `count === 9` を、
+   **数を出してから**判定
+3. **「しまって戻すと個数が変わらない」** —— 9 → 1 → 9 を 3 つとも通し、
+   **入れた数と戻った数の両方を出す**
+4. **`test/blocks.test.ts`**: 3 つとも `model` が既定の立方体・`variantOf === AIR`・
+   同じ番号のアイテムが `itemOf` で引ける・`rollDrop(id, 0)` が自分を返す・
+   `minTier` が上の表どおり。**値を出してから**判定
 
 ## 6. このタスク固有の禁じ手
 
-- **`DROPS` の既存の行を 1 つも書き換えないこと**（触るのは `SNOW` の新しい 1 行だけ）
-- **雪玉を `FOODS` にも `SMELTING` にも入れないこと**（食べ物でも焼けるものでもありません）
-- **`tool:` を持たせないこと**（`ToolKind` が増えると `mobs.ts` の `TOOL_ATTACK` に無い
-  種類が入って **NaN** が黙って通ります。種・シアーズと同じ罠）
-- **`block:` は `AIR`**（雪玉を置けるようにしないこと。置けると戻すレシピが要らなくなります）
-- **`use.ts` と `main.ts` に `SNOWBALL` の名前を出さないこと**（2 のとおり）
-- **戻すレシピを忘れないこと** —— 落とし物を差し替えるので、**これが無いと雪が置けなくなります**
-- **既存のテストの判定をゆるめないこと**（直してよいのは数の 5 → 6 と `MAX_ITEM_ID` の
-  付け替え、`throwable` の除外条件の 3 か所だけ）
+- **`items.ts` に `item({ id: IRON_BLOCK, ... })` を手で足さないこと**（2 節。二重登録）
+- **`DROPS` にも `SMELTING` にも `FOODS` にも 1 行も足さないこと**
+- **`worldgen.ts` に埋めないこと**（本家にない自然生成を作ることになります）
+- **`PALETTE`（クリエイティブのホットバー 9 個）を触らないこと** —— 9 枠しかなく、
+  溢れたぶんは黙って消えます（`rules/items-survival.md`）
+- **既存のレシピを 1 本も書き換えないこと**（とくにバケツ・シアーズ・道具 20 本の
+  `IRON_INGOT` の行。`test/crafting.test.ts` の「同じ形のレシピが重複していない」が
+  唯一の足場です）
+- **`main.ts` に 1 行も足さないこと**（1464 行。15 番より前に空ける話は別件）
 
 ## 7. 終了条件
 
-`npm run typecheck` 緑 / `npm test` **すべて緑** / `npm run build` 緑（`src/**` を触るため）/
-**コミット 1 つ** / `AUTODEV-QUEUE.md` の 13 番の行を消す / この仕様書を `状態: 済` に /
-`ROADMAP.md` の 134 を「実装済み」に / `docs/autodev-log.md` に 1 節 /
-**`TUNING.md` に 1 行**（雪玉の積み数 16・色 `0xbcd8ef`・飛び方は卵と同じ）/
-`HANDOFF.md` を丸ごと書き直す / **`master` へ push**。
-
-**見た目に出ます**（投げた雪玉が飛ぶ・一覧に青白いアイテムが並ぶ）。**`npm run shot` か
-`node tools/browsershot.mjs` で撮って `Read` で見ること**（`AUTODEV.md` の C-3）。
-
-使えるスキル: **`add-block`**（アイテムを 1 個足す手順）。
-読む決まりごと: **`rules/items-survival.md` / `rules/projectiles.md` / `rules/testing.md`**
-（`src/use.ts` は触らないので `rules/use.md` は読むだけでよい）。
+- `npm run typecheck` 緑 / **`npm test` 全部緑** / `npm run build` 緑（`src/**` を触るため）
+- **`npm run bench` は不要**（生成もメッシュ化も触りません）
+- **コミット 1 つ**で `master` へ push
+- **見た目に出ます**（一覧に 3 つ増え、置ける立方体が 3 つ増える）ので **C-3 は必須**:
+  `node tools/browsershot.mjs` か `npm run shot` で撮り、**`Read` で開いて見ること**
+- **`TUNING.md` に 1 節**（硬さ 5 / 3 / 5 と `minTier`、色を写した根拠）
+- `ROADMAP.md` の予約表に 135..137 を「実装済み」/ キューの 14 番を消す /
+  この仕様書の `状態:` を `済` に / `docs/autodev-log.md` に 1 節 / `HANDOFF.md` を書き直す
