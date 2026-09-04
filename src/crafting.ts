@@ -54,6 +54,7 @@ import {
   STONE_PICKAXE,
   STONE_SHOVEL,
   STONE_SWORD,
+  STRING,
   WHEAT,
   WOOD_AXE,
   WOOD_HOE,
@@ -141,10 +142,10 @@ export const RECIPES: readonly Recipe[] = [
   // （パウダーの 1 → 2 が消えて、要塞に通う回数が倍になる）。
   { name: "エンダーアイ", out: ENDER_EYE, count: 1, ingredients: [BLAZE_POWDER, ENDER_PEARL] },
 
-  // 弓は棒 3 + 糸 3 の形（Minecraft と同じ並び）。**糸の代わりが羊毛**で、
-  // 蜘蛛がまだ居ないぶんを羊で代用している（ベッドと同じ材料なので、
-  // 羊を探す道のりがそのまま弓にも効く）。左右反転でも作れる。
-  { name: "弓", out: BOW, count: 1, shape: [".SW", "S.W", ".SW"], key: { S: STICK, W: WOOL } },
+  // 弓は棒 3 + 糸 3（**本家と同じ材料・形・並び**）。**糸はクモしか落とさない**ので、
+  // 「クモを 3 匹倒す」がそのまま弓への道のりになる（羊毛の代用だった頃と違い、
+  // ベッドと材料を取り合わない）。左右反転でも作れる。
+  { name: "弓", out: BOW, count: 1, shape: [".SW", "S.W", ".SW"], key: { S: STICK, W: STRING } },
 
   // 矢は火打石 + 棒 + 羽根で 4 本（**本家と同じ形と並び**。羽根は鶏から出る）。
   // **3 段になったので作業台が要ります** —— 弓を持って出たまま作り足すことは

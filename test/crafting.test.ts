@@ -1,4 +1,5 @@
 import {
+  BED,
   COBBLE,
   CRAFTING_TABLE,
   PLANK,
@@ -40,6 +41,7 @@ import {
   STONE_AXE,
   STONE_HOE,
   STONE_SWORD,
+  STRING,
   WHEAT,
   WOOD_HOE,
   WOOD_PICKAXE,
@@ -67,7 +69,7 @@ export function run(): void {
 
   const P = {
     P: PLANK, S: STICK, W: WOOD, C: COBBLE, D: DIAMOND, A: SAND, O: COAL, T: STONE,
-    I: IRON_INGOT, F: FLINT, L: WOOL, H: WHEAT, N: FEATHER,
+    I: IRON_INGOT, F: FLINT, L: WOOL, H: WHEAT, N: FEATHER, G: STRING,
     R: BLAZE_ROD, B: BLAZE_POWDER, E: ENDER_PEARL, Y: ENDER_EYE,
   };
 
@@ -188,13 +190,32 @@ export function run(): void {
   );
 
   // --- 弓と矢（エンドクリスタルを離れた所から壊す手段） ---
-  // **糸の代わりが羊毛**（蜘蛛がまだ居ない）。羊はもう居るので、ベッドと同じ材料で作れる。
-  const bow = findRecipe(grid(3, [".SL", "S.L", ".SL"], P), 3);
-  check("棒 3 + 羊毛 3 → 弓 1 本", bow?.out === BOW && bow.count === 1, bow?.name ?? "無し");
-  const bowMirrored = findRecipe(grid(3, ["LS.", "L.S", "LS."], P), 3);
+  // **材料は棒 3 + 糸 3（本家と同じ）。糸はクモしか落とさない**ので、
+  // 弓を作るにはクモを 3 匹倒すことになる（羊毛の代用だった頃と違い、ベッドと取り合わない）。
+  const bow = findRecipe(grid(3, [".SG", "S.G", ".SG"], P), 3);
+  check("棒 3 + 糸 3 → 弓 1 本", bow?.out === BOW && bow.count === 1, bow?.name ?? "無し");
+  const bowMirrored = findRecipe(grid(3, ["GS.", "G.S", "GS."], P), 3);
   check("弓は左右どちらの向きでも作れる", bowMirrored?.out === BOW, bowMirrored?.name ?? "無し");
   const bowIn2 = findRecipe(grid(2, [".S", "S."], P), 2);
   check("2x2 では弓は作れない（作業台が要る）", bowIn2 === null, bowIn2?.name ?? "無し");
+  // **羊毛の道が消えていること** —— 残っていると、クモを探さずに羊だけで弓が作れる。
+  const bowFromWool = findRecipe(grid(3, [".SL", "S.L", ".SL"], P), 3);
+  check("羊毛では弓が作れない（糸だけ）", bowFromWool === null, bowFromWool?.name ?? "無し");
+  // **羊毛の使い道が消えていないこと** —— 弓から抜けたので、残るのはベッド 1 本だけ。
+  const bed = findRecipe(grid(3, ["LLL", "PPP"], P), 3);
+  check("ベッドは今までどおり羊毛 3 + 板 3", bed?.out === BED && bed.count === 1, `${bed?.name ?? "無し"} x${bed?.count ?? 0}`);
+
+  // **糸を使うレシピはちょうど 1 本（弓）**。2 本目を足すのは別件（防具・本・釣り竿）。
+  const stringRecipes = RECIPES.filter(
+    (r) =>
+      Object.values(r.key ?? {}).includes(STRING) || (r.ingredients ?? []).includes(STRING),
+  );
+  console.log(`      糸(${STRING}) を使うレシピ: ${stringRecipes.length} 本 [${stringRecipes.map((r) => r.name).join(", ") || "無し"}]`);
+  check(
+    "糸を使うレシピはちょうど 1 本（弓）",
+    stringRecipes.length === 1 && stringRecipes[0].out === BOW,
+    stringRecipes.map((r) => r.name).join(", ") || "無し",
+  );
 
   // 矢は火打石 + 棒 + 羽根で 4 本（**本家と同じ形**。羽根は鶏が落とす）。
   // **3 段になったので 2x2 では作れません** —— 弓を持って出たまま作り足すことは
