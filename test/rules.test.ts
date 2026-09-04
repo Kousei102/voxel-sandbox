@@ -149,4 +149,27 @@ export function run(): void {
     stale.length === 0,
     stale.length ? `${stale.join(" / ")} —— rules/ へ直すこと` : "",
   );
+
+  // --- 6. 層 2 が `RULES-INBOX.md` へ書き置かれていないか ---
+  //
+  // **これは「決まりごとの本文を次の周に当てさせる」形をここで止めるためのものです。**
+  // 受け渡しを 1 周空けると本文どうしが食い違い、取り込む側が毎回それを捌くことになります
+  // （5 周ぶんの実例が `docs/rules-inbox-archive.md`）。`RULES-INBOX.md` が要るのは
+  // **`.claude/skills/**` だけ** —— あそこは書き込みに確認が出て無人の周が止まるからで、
+  // `rules/` は `.claude/` の外なので**その周が自分で `Edit` して据えられます。**
+  //
+  // **リポジトリの外にある定期実行のプロンプトが古いと、ここへ戻ってきます**（2026-09-04 に
+  // 2 度: AUTODEV 19 は書き置き、AUTODEV 20 は据えたうえで食い違いを報告）。
+  // **書いた周がその場で気付けるのはここだけ**です（`HANDOFF.md` は人が読むまで誰も見ない）。
+  const inbox = readFileSync("RULES-INBOX.md", "utf8").split("\n");
+  const misrouted = inbox.filter(
+    (line) => /^##\s/.test(line) && (line.includes("rules/") || files.some((name) => line.includes(name))),
+  );
+  check(
+    "RULES-INBOX.md に層 2 が書き置かれていない",
+    misrouted.length === 0,
+    misrouted.length
+      ? `${misrouted.map((line) => line.trim()).join(" / ")} —— 決まりごとは rules/ を Edit で直すこと（ここはスキル専用）`
+      : "",
+  );
 }
