@@ -11,6 +11,7 @@ import {
   type ProjectileKind,
   type ProjectileTarget,
 } from "../src/projectiles";
+import { EGG, itemColor } from "../src/items";
 import { buildBoxMesh } from "../src/mobmesh";
 import { mobRgb } from "../src/mobs";
 import { VOID_Y } from "../src/vitals";
@@ -111,7 +112,19 @@ export function run(): void {
     );
     if (def.half > 0 && def.speed > 0 && def.life > 0 && def.gravityScale >= 0) sane++;
   }
-  check("4 種類ある（火球・矢・エンダーアイ・ブレス）", PROJECTILE_KINDS.length === 4);
+  check("5 種類ある（火球・矢・エンダーアイ・ブレス・卵）", PROJECTILE_KINDS.length === 5);
+  check(
+    "卵の行がある",
+    PROJECTILE_KINDS.some((def) => def.kind === "egg"),
+    PROJECTILE_KINDS.map((def) => def.kind).join(" "),
+  );
+  // **持っている卵と飛んでいる卵の色が揃っていること。** ずれると、投げた瞬間に
+  // 別のものに化けて見える（表を写した側が古くなる、いちばんありがちな壊れ方）。
+  console.log(
+    `      卵の色: 表 0x${projectileDef("egg").color.toString(16)} / ` +
+      `持ち物 0x${itemColor(EGG).toString(16)}`,
+  );
+  check("卵の色は itemColor(EGG) と同じ", projectileDef("egg").color === itemColor(EGG));
   check("どれも寸法と速さと寿命が正の数", sane === PROJECTILE_KINDS.length);
   check("名前が重複していない", names.size === PROJECTILE_KINDS.length);
   check(
@@ -244,6 +257,29 @@ export function run(): void {
   }
 
   {
+    // **卵は落ちる**（`gravityScale: 1`）。手で投げるものなので山なりが正しく、
+    // 火球のようにまっすぐ飛ぶと「投げた」感じにならない。
+    const arena = field();
+    const p = new Projectiles();
+    p.launch("egg", 0.5, 40, 0.5, 0, 0);
+    advance(p, arena, 1);
+    const egg = p.list[0];
+    const drop = 40 - egg.position.y;
+    const flown = 0.5 - egg.position.z;
+    const def = projectileDef("egg");
+    console.log(
+      `      卵 1 秒: 落ち ${drop.toFixed(3)}m  進み ${flown.toFixed(2)}m（速さ ${def.speed}m/s。` +
+        `矢 ${projectileDef("arrow").speed} の ${(def.speed / projectileDef("arrow").speed).toFixed(1)} 倍）` +
+        `  pitch ${egg.pitch.toFixed(3)}`,
+    );
+    check("卵は落ちる", drop > 10 && drop < 20);
+    check("速さのぶんだけ進む（抵抗なし）", Math.abs(flown - def.speed) < 1e-3);
+    check("速さは矢の半分", Math.abs(def.speed - projectileDef("arrow").speed / 2) < 1e-6);
+    // **向きを持たずに回る**（`aims: false`）。尖っていないので、進む向きを向かない。
+    check("卵は向きを持たない（回るだけ）", egg.pitch === 0 && egg.yaw === 0);
+  }
+
+  {
     // ボクセルの無い列では動かさない。無いと `getVoxel` が AIR を返して壁を抜ける。
     const arena = field();
     arena.missingColumns.add("0,0");
@@ -342,6 +378,19 @@ export function run(): void {
     console.log(`      エンダーアイ: z ${p.list[0]?.position.z.toFixed(2)}  当たり ${hits} 回`);
     check("エンダーアイは壁を抜けて飛び続ける", p.count === 1 && p.list[0].position.z < -5);
     check("抜けるものは当たりを知らせない", hits === 0);
+  }
+
+  {
+    // **卵は薄い壁で消える**（`onBlock: "vanish"`）。矢と同じ `stick` にすると、
+    // 当たった卵が壁に貼り付いたまま寿命（30 秒）まで残る。
+    const arena = walled();
+    const p = new Projectiles();
+    let hits = 0;
+    p.onHitBlock = () => hits++;
+    p.launch("egg", 0.5, 20, 0.5, 0, 0);
+    advance(p, arena, 1);
+    console.log(`      卵 → 壁: 当たり ${hits} 回  残り ${p.count} 個  刺さり ${p.list[0]?.stuck}`);
+    check("卵は壁に当たって消える（刺さらない）", p.count === 0 && hits === 1);
   }
 
   {
@@ -449,6 +498,23 @@ export function run(): void {
     advance(p, arena, 0.5, 1 / 60, [dummy(3, 0.5, 19.2, -8.5)]);
     console.log(`      矢 → モブ: 当たり ${hits} 回  残り ${p.count} 個`);
     check("矢は相手に刺さらず消える", hits === 1 && p.count === 0);
+  }
+
+  {
+    // **卵も相手に当たって消える。** ただし重みは 0 のまま —— 本家の卵も
+    // ダメージを与えないので、`mobs.ts` の `hitByProjectile()` が
+    // `shot.damage <= 0` で戻り、当たった相手は何も減らない。
+    const arena = field();
+    const p = new Projectiles();
+    const hits: number[] = [];
+    p.onHitTarget = (shot) => hits.push(shot.damage);
+    p.launch("egg", 0.5, 20, 0.5, 0, 0);
+    // **的の高さは落ちたぶんに合わせてある**（6m 先で 1.35m ほど落ちる。矢の的が
+    // 19.2 なのに卵が 18 なのは、遅くて重力なりに落ちるぶんだけ低い所に届くため）。
+    advance(p, arena, 0.5, 1 / 60, [dummy(3, 0.5, 18, -5.5)]);
+    console.log(`      卵 → モブ: 当たり ${hits.length} 回  重み ${JSON.stringify(hits)}  残り ${p.count} 個`);
+    check("卵は相手に当たって消える", hits.length === 1 && p.count === 0);
+    check("卵の重みは 0（当たっても減らない）", hits[0] === 0);
   }
 
   {

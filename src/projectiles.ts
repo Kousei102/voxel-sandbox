@@ -57,7 +57,7 @@ const LIQUID_GRAVITY = 0.3;
 /** 見た目の回転の速さ (rad/s)。**描画が読むだけ**（`drops.ts` の `SPIN_RATE` と同じ役)。 */
 export const PROJECTILE_SPIN = 2.2;
 
-export type ProjectileKind = "fireball" | "arrow" | "eye" | "breath";
+export type ProjectileKind = "fireball" | "arrow" | "eye" | "breath" | "egg";
 
 /**
  * 撃った本人の印。**0 はプレイヤー**で、モブは自分の `id`（1 から）を使う。
@@ -204,6 +204,27 @@ export const PROJECTILE_KINDS: readonly ProjectileDef[] = [
     life: 3,
     onBlock: "vanish",
     glows: true,
+    aims: false,
+  },
+  {
+    kind: "egg",
+    name: "卵",
+    half: 0.125,
+    // **持っている卵と同じ色**（`items.ts` の `EGG`）。飛んでいるあいだだけ別の色に
+    // 見えると、何を投げたのか分からない（`test/projectiles.test.ts` が突き合わせています）。
+    color: 0xf7f0e0,
+    // **矢と同じで落ちる**（手で投げるものなので山なりが正しい）。
+    gravityScale: 1,
+    drag: 0,
+    // **矢（40）の半分。** 本家の卵は矢の半分の速さ（1.5 対 3.0 ブロック/tick）で、
+    // その比をそのまま持ってきた値。
+    speed: 20,
+    life: 30,
+    // **刺さらないこと。** `stick` にすると、当たった卵が壁に貼り付いたまま
+    // 寿命（30 秒）まで残る。
+    onBlock: "vanish",
+    glows: false,
+    // **向きを持たずに回る**（火球・ブレスと同じ）。矢のように尖っていない。
     aims: false,
   },
 ];

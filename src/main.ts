@@ -47,7 +47,7 @@ import {
   portalAt,
   type PortalHere,
 } from "./portaltravel";
-import { PLAYER_OWNER, PROJECTILE_KINDS, Projectiles } from "./projectiles";
+import { PLAYER_OWNER, PROJECTILE_KINDS, Projectiles, type ProjectileKind } from "./projectiles";
 import { ProjectileRenderer } from "./projectilerender";
 import { raycastVoxels, type RaycastHit } from "./raycast";
 import { eyeShot } from "./stronghold";
@@ -868,6 +868,7 @@ function useOrPlace(m: { mob: Mob } | null): void {
     case "bucket": useBucket(act.item); return;
     case "fitEye": fitEndPortalEye(act.at.x, act.at.y, act.at.z); return;
     case "throwEye": throwEye(); return;
+    case "throw": throwItem(act.projectile); return;
     case "ignite": igniteAt(act.aim); return;
     case "draw": drawing.begin(act.item); return;
     case "eat": eating.begin(act.item); return;
@@ -884,6 +885,19 @@ function throwEye(): void {
   const shot = eyeShot(worldSeed, camera.position.x, camera.position.y, camera.position.z);
   if (shot) projectiles.fire(shot);
   else hud.flash("要塞の見当が付きません");
+}
+
+/**
+ * 手のものを投げる（卵）。**何が飛ぶかは `items.ts` の表、どう飛ぶかは
+ * `projectiles.ts` の表**で、ここは目線の高さから飛ばして 1 個減らすだけ。
+ * **`damage` を渡さない**（既定の 0。卵は当たっても何も起きない）。
+ */
+function throwItem(kind: ProjectileKind): void {
+  const at = player.position;
+  projectiles.launch(kind, at.x, at.y + SHOOT_HEIGHT, at.z, player.yaw, player.pitch, PLAYER_OWNER);
+  if (!creative) inventory.consumeSelected(1);
+  hud.refresh();
+  saveDirty = true;
 }
 
 /**

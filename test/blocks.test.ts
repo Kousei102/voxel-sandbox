@@ -59,6 +59,8 @@ import {
 import { MAX_LIGHT } from "../src/constants";
 import { PLAYER_SIZE } from "../src/physics";
 import {
+  ARROW,
+  BOW,
   BREAD,
   BUCKET,
   COOKED_CHICKEN,
@@ -90,8 +92,10 @@ import {
   placedBlock,
   rollDrop,
   rollDrops,
+  thrownProjectile,
   toolOf,
 } from "../src/items";
+import { PROJECTILE_KINDS } from "../src/projectiles";
 import { breakTime } from "../src/mining";
 import { Player } from "../src/player";
 import { raycastVoxels } from "../src/raycast";
@@ -843,6 +847,38 @@ export function run(): void {
 
   // バケツでないものを渡しても何も起きない（`main.ts` が誤って呼んでも安全）
   check("バケツ以外では何も起きない", bucketUse(IRON_INGOT, WATER) === null && bucketUse(NO_ITEM, LAVA) === null);
+
+  describe("投げるもの");
+
+  // **表 1 本**（`FILLED_BUCKETS` / `FIRE_STARTERS` / `BOWS` と同じ作法）。
+  // `held === EGG` と書き始めると、投げるものが増えるたびに `use.ts` の
+  // `decideUse()` に分岐が 1 本ずつ生える。
+  const throwable: [string, number][] = [
+    ["卵", EGG],
+    ["石", STONE],
+    ["弓", BOW],
+    ["矢", ARROW],
+    ["棒", STICK],
+    ["パン", BREAD],
+  ];
+  console.log(
+    `      thrownProjectile: ${throwable.map(([n, id]) => `${n} → ${thrownProjectile(id) ?? "null"}`).join(" / ")}`,
+  );
+  check("卵を投げると卵が飛ぶ", thrownProjectile(EGG) === "egg", `${thrownProjectile(EGG)}`);
+  {
+    const wrong = throwable.filter(([, id]) => id !== EGG && thrownProjectile(id) !== null);
+    check("それ以外は投げられない（null）", wrong.length === 0, wrong.map(([n]) => n).join(" "));
+  }
+  // **綴りのずれをここで止める。** 表の行き先が `PROJECTILE_KINDS` に無いと、
+  // 投げた瞬間に `projectileDef()` が落ちる（ブラウザを開くまで気付けない）。
+  {
+    const kinds = new Set(PROJECTILE_KINDS.map((def) => def.kind));
+    const missing = allItemIds()
+      .map((id) => thrownProjectile(id))
+      .filter((kind): kind is NonNullable<typeof kind> => kind !== null)
+      .filter((kind) => !kinds.has(kind));
+    check("投げた先が全部 PROJECTILE_KINDS にある", missing.length === 0, missing.join(" "));
+  }
 
   describe("耕地とクワ");
 

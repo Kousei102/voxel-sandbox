@@ -19,6 +19,7 @@ import {
   BOW,
   BREAD,
   COOKED_PORK,
+  EGG,
   ENDER_EYE,
   ENDER_PEARL,
   FLINT_AND_STEEL,
@@ -87,6 +88,10 @@ export function run(): void {
     "isHoe(",
     // 種かどうかも同じ（`plant` の注文だけが `main.ts` に届く）。
     "isSeed(",
+    // 何を投げると何が飛ぶかも同じ（`items.ts` の `THROWN` の表 1 本）。
+    // **`main.ts` が受け取るのは「何が飛ぶか」だけ**で、卵の名前は出てこない。
+    "EGG",
+    "thrownProjectile(",
   ].filter((name) => main.includes(name));
   check("main.ts に振り分けが戻っていない", backInMain.length === 0, backInMain.join(" "));
 
@@ -118,6 +123,10 @@ export function run(): void {
     // パンも焼き豚と同じ `foodOf()` 1 本を通る（`use.ts` に「パン」とは書かれていない）。
     ["パン（腹が減っている）", null, facts(BREAD)],
     ["パン（満腹）", null, facts(BREAD, { canEat: false })],
+    // 卵。**狙う先が要らない**（空へ投げられるのが正しい）。
+    ["卵（空を向く）", null, facts(EGG)],
+    ["卵で地面を狙う", aimAt(GRASS), facts(EGG)],
+    ["卵で作業台を狙う", aimAt(CRAFTING_TABLE), facts(EGG)],
   ];
   console.log("      狙い / 手                        起きること");
   const got = new Map<string, UseAction>();
@@ -328,6 +337,32 @@ export function run(): void {
     decideUse(aimAt(FARMLAND), facts(STONE)).kind === "place",
     decideUse(aimAt(FARMLAND), facts(STONE)).kind,
   );
+
+  // --- 投げる（卵。アイの次・火種より前） ---
+  {
+    const thrown = got.get("卵（空を向く）");
+    check(
+      "卵は狙う先が無くても投げる",
+      thrown?.kind === "throw" && thrown.projectile === "egg",
+      describeAction(thrown ?? { kind: "none" }),
+    );
+    check(
+      "投げるものが何かはそのまま渡る（どう飛ぶかは projectiles.ts）",
+      thrown?.kind === "throw" && thrown.item === EGG,
+      thrown?.kind === "throw" ? `${thrown.item}` : thrown?.kind,
+    );
+    // **地面を狙っていても投げる。** `place` に落ちると、卵が地面に「置ける」ことになる。
+    check("卵で地面を狙っても投げる（置かない）", kindOf("卵で地面を狙う") === "throw", kindOf("卵で地面を狙う"));
+    // **器が先。** 出す順を器より前にすると、作業台の上に立って卵を持っている
+    // あいだ作業台が開かなくなる（`rules/use.md` の並びの 2 番目）。
+    check("卵 + 作業台 → craft（器が先）", kindOf("卵で作業台を狙う") === "craft", kindOf("卵で作業台を狙う"));
+    // **別のアイテムからは何も奪わないこと**（投げるのは表に載っているものだけ）。
+    check(
+      "投げられないものは今までどおり（石は置く）",
+      decideUse(aimAt(GRASS), facts(STONE)).kind === "place",
+      decideUse(aimAt(GRASS), facts(STONE)).kind,
+    );
+  }
 
   // --- 落とし物のアイテムは何も起きない（投げるのは Q） ---
   check("エンダーパールは右クリックでは何も起きない", decideUse(null, facts(ENDER_PEARL)).kind === "none");

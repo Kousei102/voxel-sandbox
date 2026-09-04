@@ -2,7 +2,7 @@
  * 右クリックで**何が起きるか**の振り分け。**判断だけのファイル**で、three も DOM も
  * `World` も持ち物も出てこない（`placing.ts` / `bow.ts` / `endportal.ts` と同じ形）。
  *
- * もとは `main.ts` の `useOrPlace()` にあった `if` の列（いまは 14 通り）。**順番そのものが
+ * もとは `main.ts` の `useOrPlace()` にあった `if` の列（いまは 15 通り）。**順番そのものが
  * 判断です** —— 並べ替えると静かに壊れるものが 3 つあり、どれもブラウザを開いて
  * 現物を狙うまで気付けません:
  *
@@ -27,7 +27,21 @@ import {
   isEndPortalFrame,
   type PlaceAim,
 } from "./blocks";
-import { ENDER_EYE, foodOf, isBow, isBucket, isFireStarter, isHoe, isSeed, isShears, placedBlock } from "./items";
+import {
+  ENDER_EYE,
+  foodOf,
+  isBow,
+  isBucket,
+  isFireStarter,
+  isHoe,
+  isSeed,
+  isShears,
+  placedBlock,
+  thrownProjectile,
+} from "./items";
+// **型だけ。** `Projectiles` を値で取ると、判断だけのこのファイルに three 側の
+// 都合が流れ込みます（`test/projectiles.test.ts` の見張り）。
+import type { ProjectileKind } from "./projectiles";
 
 /** 右クリックした瞬間の事実。**`main.ts` は集めて渡すだけ**（判断はこの中）。 */
 export interface UseFacts {
@@ -74,6 +88,8 @@ export type UseAction =
   | { readonly kind: "bucket"; readonly item: number }
   | { readonly kind: "fitEye"; readonly at: UseSpot }
   | { readonly kind: "throwEye" }
+  /** 手のものを投げる（何が飛ぶかは `items.ts` の `thrownProjectile()`）。 */
+  | { readonly kind: "throw"; readonly item: number; readonly projectile: ProjectileKind }
   | { readonly kind: "ignite"; readonly aim: PlaceAim }
   | { readonly kind: "draw"; readonly item: number }
   | { readonly kind: "eat"; readonly item: number }
@@ -119,6 +135,13 @@ export function decideUse(aim: PlaceAim | null, facts: UseFacts): UseAction {
   if (aim && held === ENDER_EYE && isEndPortalFrame(aim.id)) return { kind: "fitEye", at: aim.block };
   // 投げたアイは視線ではなく要塞のほうを向く案内役なので、狙う先は要らない。
   if (held === ENDER_EYE) return { kind: "throwEye" };
+
+  // 投げるもの（卵）。**アイの次・火種より前**（投げるものどうしを並べておくと読める）。
+  // **`aim` は見ない** —— 空へ投げられるのが正しい（食べる・弓と同じ扱い）。
+  // **器より前に出さないこと** —— 出すと、作業台の上に立って卵を持っているあいだ
+  // 作業台が開きません（`rules/use.md` の並びの 2 番目）。
+  const thrown = thrownProjectile(held);
+  if (thrown) return { kind: "throw", item: held, projectile: thrown };
 
   // 火打石と打ち金。**どのマスに火を点けるかも枠の判定も `placing.ts` / `portals.ts`。**
   if (aim && isFireStarter(held)) return { kind: "ignite", aim };

@@ -25,6 +25,8 @@ import {
   isLiquid,
   type ToolKind,
 } from "./blocks";
+// **型だけ取ること。** 値で入れると `projectiles.ts` → `blocks.ts` → … と輪になります。
+import type { ProjectileKind } from "./projectiles";
 
 /**
  * アイテム ID の空間。**ブロック ID と同じ番号列**（`blocks.ts` の「ブロック ID の枠」）。
@@ -732,6 +734,23 @@ const SEEDS: readonly number[] = [WHEAT_SEEDS];
 
 export function isSeed(item: number): boolean {
   return SEEDS.includes(item);
+}
+
+/**
+ * 投げるものと、飛んでいく飛び道具の対応。**投げるものを増やすときはここ 1 行。**
+ * `FILLED_BUCKETS` / `FIRE_STARTERS` / `BOWS` とまったく同じ表 1 本の作法で、
+ * `held === EGG` と書き始めると、投げるものが増えるたびに `use.ts` の
+ * `decideUse()` に分岐が 1 本ずつ生えます。
+ *
+ * **どう飛ぶか（速さ・重力・寿命・当たったらどうなるか）は見ません** ——
+ * それは `projectiles.ts` の `PROJECTILE_KINDS` の 1 行です。ここが持つのは
+ * 「どのアイテムが何になるか」だけなので、**運ぶのは型だけ**で済みます。
+ */
+const THROWN: ReadonlyMap<number, ProjectileKind> = new Map([[EGG, "egg"]]);
+
+/** 投げると何が飛ぶか。投げられないものは null。 */
+export function thrownProjectile(item: number): ProjectileKind | null {
+  return THROWN.get(item) ?? null;
 }
 
 /**
