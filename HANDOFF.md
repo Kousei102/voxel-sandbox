@@ -55,6 +55,8 @@
 - **`AUTODEV.md`**: 作業ブランチを `master` に。周の終わりに push（`deploy.yml` が
   `npm test` → `npm run build` を通してから Pages へ。**`deploy` は `needs: build` なので
   赤い周は載りません**）。**巻き戻しは人**がやる（`git revert` → push）
+- **初回のデプロイは通っています**（`master` `9a01889` / run 33840549573 / **5m0s** で成功。
+  配信中の `index-50pK8tSX.js` がローカルの `npm run build` と一致するのを確かめました）
 - **`LOOP.md`**: 変えていません（`loop/endgame` は今までどおり `master` に触らない）。
   **7. に 1 行だけ足しました** —— `master` は AUTODEV が毎周進めるので、
   **`loop/endgame` を再開するときは `git merge origin/master` から**

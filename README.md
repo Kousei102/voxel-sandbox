@@ -242,7 +242,8 @@ world.update    平均 3.4 ms / 最悪 10.7 ms（歩行中のストリーミン�
 を通ってから `dist/` が GitHub Pages に配信されます。テストが落ちればデプロイはされません。
 手動で回すときは Actions タブの "Run workflow"、または `gh workflow run deploy.yml` です。
 
-公開先は https://kousei102.github.io/voxel-sandbox/ 、push から約 2 分で入れ替わります。
+公開先は https://kousei102.github.io/voxel-sandbox/ 、push から **5 分ほど**で入れ替わります
+（2026-09-04 の実測で 5m0s。`npm ci` とテスト 2934 件がそのうちの大半です）。
 **`master` は AUTODEV のループ（`AUTODEV.md`）が 1 周 1 コミットで進めるので、1 周 = 1 デプロイです。**
 `deploy` ジョブは `needs: build` なので、テストか型が落ちた周はサイトに出ません。
 **変な周が載ってしまったときは人が戻します**（`git revert <sha>` → push。また 2 分で戻ります）。
