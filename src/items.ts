@@ -3,6 +3,7 @@ import {
   BLOCKS,
   COAL_ORE,
   COBBLE,
+  DIAMOND_BLOCK,
   DIAMOND_ORE,
   DIRT,
   END_CRYSTAL,
@@ -339,7 +340,16 @@ export const STRING = 133;
  */
 export const SNOWBALL = 134;
 
-export const MAX_ITEM_ID = SNOWBALL;
+/**
+ * 一覧を作るときに数え上げる上限（`allItemIds()`）。**アイテムの番号だけでなく、
+ * ブロックが自動で作るアイテム（上の for）の番号も含みます。**
+ *
+ * **だから 111 以降にブロックを足したときも、ここを伸ばすこと。** 伸ばし忘れると
+ * `ITEMS` には入っているのに `allItemIds()` が返さず、**クリエイティブの一覧
+ * （`craftscreen.ts` の `CREATIVE_ITEMS`）にだけ出てこないブロック**ができます
+ * （置けるし掘れるので、型でも `typecheck` でも止まりません）。
+ */
+export const MAX_ITEM_ID = DIAMOND_BLOCK;
 
 export const MAX_STACK = 64;
 

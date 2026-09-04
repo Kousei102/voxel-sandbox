@@ -310,6 +310,22 @@ export const WHEAT_CROP = 121;
  */
 export const WHEAT_CROP_RIPE = 123;
 
+/**
+ * 鉱物をしまう立方体（鉄・金・ダイヤ）。**インゴット／ダイヤ 9 個で 1 個、崩すと 9 個**
+ * （`crafting.ts` の 6 行）。本家と同じで、**倉庫の枠を 9 分の 1 にするためだけ**にあります。
+ *
+ * **`variantOf` を書かないこと**（既定の `AIR`）。そのおかげで
+ * (a) `items.ts` の for が同じ番号のアイテムを自動で作り（**手で `item({...})` を
+ * 足すと二重登録になります**）、(b) `dropOf()` の既定が自分を返すので
+ * **掘ると自分が落ちます**（`items.ts` の `DROPS` に 1 行も要りません）。
+ *
+ * **`sound` も書きません** —— 既定の `"stone"` で通します（金属の音は無く、
+ * 足すと `audio.ts` / `sfx.ts` の話になります）。
+ */
+export const IRON_BLOCK = 135;
+export const GOLD_BLOCK = 136;
+export const DIAMOND_BLOCK = 137;
+
 /** 上付きハーフ。見た目と当たり判定だけが違うので、大元は下付きのハーフ。 */
 export const STONE_SLAB_TOP = 64;
 export const COBBLE_SLAB_TOP = 65;
@@ -1225,6 +1241,25 @@ export const BLOCKS: readonly BlockDef[] = [
     boxes: CROSS_BOX,
     supportFace: FACE_YN,
     variantOf: WHEAT_CROP,
+  }),
+
+  // 鉱物をしまう立方体 3 つ（上のコメント）。**色はインゴット・ダイヤのアイテム色を
+  // そのまま写してある**ので、一覧で山と立方体が同じ色に並ぶ。硬さと `minTier` は本家の値
+  // （鉄と金の `minTier` が食い違うのは本家どおり —— 金は鉄のツルハシが要る）。
+  def(IRON_BLOCK, "鉄ブロック", { top: 0xd8d2c8 }, {
+    hardness: 5,
+    tool: "pickaxe",
+    minTier: TIER_STONE,
+  }),
+  def(GOLD_BLOCK, "金ブロック", { top: 0xf2d15c }, {
+    hardness: 3,
+    tool: "pickaxe",
+    minTier: TIER_IRON,
+  }),
+  def(DIAMOND_BLOCK, "ダイヤブロック", { top: 0x4fe3d8 }, {
+    hardness: 5,
+    tool: "pickaxe",
+    minTier: TIER_IRON,
   }),
 ];
 

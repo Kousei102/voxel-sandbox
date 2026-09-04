@@ -2,6 +2,9 @@ import {
   BED,
   COBBLE,
   CRAFTING_TABLE,
+  DIAMOND_BLOCK,
+  GOLD_BLOCK,
+  IRON_BLOCK,
   PLANK,
   PLANK_SLAB,
   PLANK_STAIRS,
@@ -34,6 +37,7 @@ import {
   FEATHER,
   FLINT,
   FLINT_AND_STEEL,
+  GOLD_INGOT,
   IRON_HOE,
   IRON_SWORD,
   NO_ITEM,
@@ -399,6 +403,49 @@ export function run(): void {
     board[0].count === 2 && isEmpty(board[1]) && isEmpty(board[3]),
     `左上 ${board[0].count} 個`,
   );
+
+  describe("鉱物をしまう／戻す（鉄・金・ダイヤ）");
+
+  // **9 個 → 1 個 → 9 個。** 倉庫の枠を 9 分の 1 にするためだけの機能なので、
+  // **しまう数と戻る数が食い違ったら壊れます**（片方が 8 なら、しまって戻すだけで目減り）。
+  const stored: [string, number, number][] = [
+    ["鉄", IRON_INGOT, IRON_BLOCK],
+    ["金", GOLD_INGOT, GOLD_BLOCK],
+    ["ダイヤ", DIAMOND, DIAMOND_BLOCK],
+  ];
+  for (const [name, ingot, block] of stored) {
+    const key = { X: ingot, Z: block };
+    const packed = findRecipe(grid(3, ["XXX", "XXX", "XXX"], key), 3);
+    check(
+      `${name} 9 個 → ブロック 1 個`,
+      packed?.out === block && packed.count === 1,
+      `${packed?.name ?? "無し"} x${packed?.count ?? 0}`,
+    );
+    const unpacked = findRecipe(grid(2, ["Z."], key), 2);
+    check(
+      `${name}ブロック 1 個 → ${name} 9 個`,
+      unpacked?.out === ingot && unpacked.count === 9,
+      `${unpacked?.name ?? "無し"} x${unpacked?.count ?? 0}`,
+    );
+    // **入れた数と戻った数の両方を出すこと。** 片方だけだと、9 → 1 → 8 に気付けない。
+    const inCount = 9;
+    const backCount = unpacked?.count ?? 0;
+    console.log(`      ${name}: 入れた ${inCount} 個 → ブロック ${packed?.count ?? 0} 個 → 戻り ${backCount} 個`);
+    check(`${name}はしまって戻すと個数が変わらない`, inCount === backCount, `${inCount} → ${backCount}`);
+  }
+  // **しまう側は 3x3 なので作業台が要る**（2x2 では作れない）。本家と同じ非対称で、
+  // 戻す側は形なしなので手持ちの 2x2 でもできる。
+  const packedIn2 = findRecipe(grid(2, ["II", "II"], P), 2);
+  check(
+    "2x2 では鉄ブロックにならない（作業台が要る）",
+    packedIn2?.out !== IRON_BLOCK,
+    packedIn2?.name ?? "無し",
+  );
+  // 8 個では成立しないこと（3x3 が埋まっていることが条件）。
+  const eight = findRecipe(grid(3, ["III", "III", "II."], P), 3);
+  check("鉄 8 個ではブロックにならない", eight === null, eight?.name ?? "無し");
+
+  describe("クラフト");
 
   // --- レシピ表の健全性 ---
   const bad = RECIPES.filter((r) => {

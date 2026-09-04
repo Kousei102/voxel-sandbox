@@ -20,6 +20,16 @@ paths:
   **新しいアイテムは 111 から**（`SHARED_ID_START`）。**95..110 は空けたままにすること** ——
   ブロック側の向き違いが使っている番号で、111 以降は**ブロックとアイテムで 1 本の番号列**です
   （`CLAUDE.md` の「ブロック ID の枠」）。番号は `ROADMAP.md` の予約表から取ります。
+- **111 以降にブロックを足したら、`items.ts` の `MAX_ITEM_ID` も伸ばすこと。**
+  ブロックのアイテムは `items.ts` の `for (const block of BLOCKS)` が
+  **`variantOf === AIR` のブロック全部に自動で作ります**（だから `item({...})` を
+  手で足すと**同じ番号が二重に登録されます**）。ところが一覧を作る `allItemIds()` は
+  **`1..MAX_ITEM_ID` を数え上げるだけ**なので、伸ばし忘れると
+  **`ITEMS` には入っているのにクリエイティブの一覧（`craftscreen.ts` の
+  `CREATIVE_ITEMS`）にだけ出てこないブロック**ができます。置けるし掘れるし
+  レシピも通るので、**型でも `npm run typecheck` でも止まりません**
+  （2026-09-04・鉄／金／ダイヤのブロックの周。`test/blocks.test.ts` の
+  「共有帯のアイテムは…24 個」と `MAX_ITEM_ID` の突き合わせが唯一の足場です）。
 - **何が落ちるかを決めるのは `items.ts`。** 山を全部（0〜2 山）返すのが
   **`rollDrops(blockId, roll): readonly DropStack[]`** で、**呼ぶのは `breaking.ts` の
   1 か所**（掘って壊す `tryBreak()` と、支えを失って壊れる `autoBreak()` が同じ

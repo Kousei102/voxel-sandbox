@@ -6,6 +6,7 @@ import {
   BLOCKS,
   CACTUS,
   COBBLE_SLAB,
+  DIAMOND_BLOCK,
   DIRT,
   END_PORTAL_FRAME,
   FACE_XN,
@@ -16,7 +17,9 @@ import {
   FACE_ZP,
   FARMLAND,
   FRAME_HEIGHT,
+  GOLD_BLOCK,
   GRASS,
+  IRON_BLOCK,
   LAVA,
   LOW_BAND_MAX,
   MAX_BLOCK_ID,
@@ -31,6 +34,8 @@ import {
   STONE_SLAB_TOP,
   STONE_STAIRS,
   TALL_GRASS,
+  TIER_IRON,
+  TIER_STONE,
   TORCH,
   VARIANT_BAND_MAX,
   WALL_TORCH_ZN,
@@ -65,9 +70,11 @@ import {
   BREAD,
   BUCKET,
   COOKED_CHICKEN,
+  DIAMOND,
   DIAMOND_HOE,
   EGG,
   FEATHER,
+  GOLD_INGOT,
   IRON_INGOT,
   LAVA_BUCKET,
   LEATHER,
@@ -92,6 +99,7 @@ import {
   isBucket,
   isHoe,
   isSeed,
+  itemColor,
   itemName,
   itemStackLimit,
   liquidOf,
@@ -168,24 +176,27 @@ export function run(): void {
   );
   // **ゆるめるのではなく数え直すこと。** 123 はブロック（実った小麦）なので、
   // 共有帯のアイテムは 122 と 124 の 2 つが飛び飛びに並ぶ（1 本の番号列だから正しい）。
+  // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
+  // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉の 21 個（134 まで）",
-    sharedItems.length === 21 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つの 24 個（137 まで）",
+    sharedItems.length === 24 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
       sharedItems[16] === RAW_BEEF && sharedItems[17] === STEAK &&
       sharedItems[18] === LEATHER && sharedItems[19] === STRING &&
-      sharedItems[20] === SNOWBALL &&
-      MAX_ITEM_ID === SNOWBALL,
+      sharedItems[20] === SNOWBALL && sharedItems[21] === IRON_BLOCK &&
+      sharedItems[22] === GOLD_BLOCK && sharedItems[23] === DIAMOND_BLOCK &&
+      MAX_ITEM_ID === DIAMOND_BLOCK,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 121（雪玉 1 個で 122 から減った）",
-    sharedFree === 121,
+    "111..255 の空きは 118（鉱物の立方体 3 個で 121 から減った）",
+    sharedFree === 118,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1008,6 +1019,7 @@ export function run(): void {
   wheatCrop(world, ground);
 
   endPortalFrames();
+  storedBlocks();
 
   world.dispose();
 }
@@ -1264,4 +1276,68 @@ function endPortalFrames(): void {
   );
   // 上面が丸ごと埋まっていないので、松明は載らない（下付きハーフと同じ理由）。
   check("枠の上面は支えにならない", !canSupport(END_PORTAL_FRAME, FACE_YP));
+}
+
+/**
+ * 鉱物をしまう立方体（135 鉄 / 136 金 / 137 ダイヤ）。**9 個 → 1 個 → 9 個**の
+ * 個数そのものは `test/crafting.test.ts` が見ていて、ここは**ブロックの側**だけ。
+ */
+function storedBlocks(): void {
+  describe("鉱物をしまう立方体（鉄・金・ダイヤ）");
+
+  // **`variantOf` を書いていないこと（既定の `AIR`）が全部の足場です。** これ 1 つで
+  // (a) `items.ts` の for が同じ番号のアイテムを作り（手で足すと二重登録）、
+  // (b) `dropOf()` の既定が自分を返すので**掘ると自分が落ちます**（`DROPS` に 0 行）。
+  const stored: [string, number, number, number][] = [
+    ["鉄ブロック", IRON_BLOCK, IRON_INGOT, TIER_STONE],
+    ["金ブロック", GOLD_BLOCK, GOLD_INGOT, TIER_IRON],
+    ["ダイヤブロック", DIAMOND_BLOCK, DIAMOND, TIER_IRON],
+  ];
+  for (const [name, block, ingot, tier] of stored) {
+    const d = blockDef(block);
+    const dropped = rollDrop(block, 0.5);
+    console.log(
+      `      ${name}(${block}): model ${d.model} / variantOf ${d.variantOf} / 硬さ ${d.hardness} / ` +
+        `道具 ${d.tool} 階層 ${d.minTier} / 色 0x${d.top.toString(16)}（材料 0x${itemColor(ingot).toString(16)}）/ ` +
+        `掘ると ${itemName(dropped.item)} x${dropped.count} / アイテム名「${itemName(block)}」`,
+    );
+    check(
+      `${name}は立方体で、向き違いではない（アイテムが自動で付く）`,
+      d.model === "cube" && d.variantOf === AIR,
+      `${d.model} / variantOf ${d.variantOf}`,
+    );
+    check(
+      `${name}は同じ番号のアイテムとして持てて、置くと自分に戻る`,
+      itemName(block) === name && placedBlock(block) === block,
+      `「${itemName(block)}」→ ${placedBlock(block)}`,
+    );
+    check(
+      `${name}は掘ると自分が 1 個落ちる（DROPS に 1 行も要らない）`,
+      dropped.item === block && dropped.count === 1 && rollDrops(block, 0.5).length === 1,
+      `${itemName(dropped.item)} x${dropped.count}（山 ${rollDrops(block, 0.5).length} 個）`,
+    );
+    check(
+      `${name}はツルハシ専用で、階層は ${tier}`,
+      d.tool === "pickaxe" && d.minTier === tier,
+      `${d.tool} / ${d.minTier}`,
+    );
+    // **色は材料の山と同じ**（一覧で「9 個ぶんの色」に見えることが唯一の手掛かり）。
+    check(
+      `${name}の色は材料の色をそのまま写している`,
+      d.top === itemColor(ingot),
+      `0x${d.top.toString(16)} vs 0x${itemColor(ingot).toString(16)}`,
+    );
+  }
+  // **音は既定の "stone" のまま**（金属の音を足すと `audio.ts` / `sfx.ts` の話になる）。
+  check(
+    "3 つとも石の音のまま（金属の音は無い）",
+    stored.every(([, block]) => blockDef(block).sound === "stone"),
+    stored.map(([name, block]) => `${name} ${blockDef(block).sound}`).join(" / "),
+  );
+  // **食べ物でも道具でもない**（`FOODS` にも `ToolDef` にも 1 行も足していない）。
+  check(
+    "3 つとも食べ物でも道具でもない",
+    stored.every(([, block]) => foodOf(block) === null && toolOf(block) === null),
+    stored.map(([name, block]) => `${name} ${foodOf(block) ? "食べ物" : "-"}${toolOf(block) ? "道具" : "-"}`).join(" / "),
+  );
 }

@@ -5,7 +5,10 @@ import {
   COBBLE_SLAB,
   COBBLE_STAIRS,
   CRAFTING_TABLE,
+  DIAMOND_BLOCK,
   FURNACE,
+  GOLD_BLOCK,
+  IRON_BLOCK,
   PLANK,
   PLANK_SLAB,
   PLANK_STAIRS,
@@ -41,6 +44,7 @@ import {
   FEATHER,
   FLINT,
   FLINT_AND_STEEL,
+  GOLD_INGOT,
   IRON_AXE,
   IRON_HOE,
   IRON_INGOT,
@@ -173,6 +177,18 @@ export const RECIPES: readonly Recipe[] = [
   // **掘ると雪玉 4 個が落ちるようになった対の片割れ**で、これが無いと雪が二度と置けない
   // （`items.ts` の `DROPS` の `SNOW` の行）。形は作業台（板 4 枚）と同じだが材料が違う。
   { name: "雪ブロック", out: SNOW, count: 1, shape: ["BB", "BB"], key: { B: SNOWBALL } },
+
+  // 鉱物をしまう／戻す 3 対（Minecraft と同じ 9 個 ↔ 1 個）。**倉庫の枠を 9 分の 1 に
+  // するためだけ**の機能なので、**しまう 9 と戻す 9 を食い違わせないこと** ——
+  // 片方を 8 にすると、しまって戻すだけで目減りします（雪玉の 4 個と同じ罠。
+  // `rules/items-survival.md`）。しまう側は 3x3 なので作業台が要り、戻す側は形なし
+  // なので手持ちの 2x2 でもよい（本家と同じ非対称）。
+  { name: "鉄ブロック", out: IRON_BLOCK, count: 1, shape: ["III", "III", "III"], key: { I: IRON_INGOT } },
+  { name: "金ブロック", out: GOLD_BLOCK, count: 1, shape: ["GGG", "GGG", "GGG"], key: { G: GOLD_INGOT } },
+  { name: "ダイヤブロック", out: DIAMOND_BLOCK, count: 1, shape: ["DDD", "DDD", "DDD"], key: { D: DIAMOND } },
+  { name: "鉄インゴット", out: IRON_INGOT, count: 9, ingredients: [IRON_BLOCK] },
+  { name: "金インゴット", out: GOLD_INGOT, count: 9, ingredients: [GOLD_BLOCK] },
+  { name: "ダイヤモンド", out: DIAMOND, count: 9, ingredients: [DIAMOND_BLOCK] },
 
   ...toolRecipes("木", PLANK, WOOD_PICKAXE, WOOD_AXE, WOOD_SHOVEL, WOOD_SWORD, WOOD_HOE),
   ...toolRecipes("石", COBBLE, STONE_PICKAXE, STONE_AXE, STONE_SHOVEL, STONE_SWORD, STONE_HOE),
