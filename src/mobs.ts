@@ -23,6 +23,7 @@ import {
   RAW_CHICKEN,
   RAW_PORK,
   ROTTEN_FLESH,
+  STRING,
   toolOf,
 } from "./items";
 import { BLOCK_LIGHT, SKY_LIGHT } from "./lighting";
@@ -47,6 +48,7 @@ export type MobKind =
   | "chicken"
   | "cow"
   | "zombie"
+  | "spider"
   | "blaze"
   | "enderman"
   | "dragon";
@@ -749,6 +751,113 @@ const ZOMBIE: MobDef = {
   ],
 };
 
+const SPIDER_BODY = 0x4a3b32;
+const SPIDER_LEG = 0x2e241e;
+const SPIDER_EYE = 0xd03a2a;
+
+/**
+ * クモ。**2 種類目の地表の敵対モブ。** 表の作りはゾンビとまったく同じで、
+ * 違うのは**横に広い当たり判定と脚 8 本**だけ（`update()` にも `step()` にも
+ * 「クモなら」は 1 行もない）。
+ *
+ * 当たり判定は本家と同じ 1.4 x 0.9 で、**自然に湧くモブではいちばん横に広い**
+ * （次は豚・羊・牛の 0.9。ボスのドラゴンだけが 4 で上）。
+ * 段差はゾンビと同じ 0.6 —— **プレイヤーが登れる所には付いてくる。**
+ *
+ * **`fireproof: true` にしないこと。** 本家のクモは日光で燃えないが、ここでは
+ * `fireproof` が**溶岩と日光の両方**を止める 1 つの印で、`sunlightBurns()` の呼び口が
+ * `!def.fireproof` だけを見ている。**`sunproof` のような列を足すのも禁止**
+ * （`MobDef` に 1 列増えると 9 種類ぜんぶに手が要る）—— **クモは朝に燃える**（`TUNING.md`）。
+ *
+ * **`spawnWeight` はゾンビと同じ 100**（本家と同じ重み）なので、**夜の「どこでも」の
+ * 敵対はゾンビとクモで半々**になる。エンダーマン（10）はいままでどおりときどき。
+ *
+ * グループの並び: 0 = 胴（固定）、1 = 頭、2..9 = 脚 8 本。
+ * 脚は**前後で互い違い・左右も互い違い**（そろえると 8 本が 1 枚の板に見える）。
+ *
+ * **脚は胴より外へ出すこと。** 胴（±5px）の中に納めると、暗い体に暗い脚が埋まって
+ * 1 画素も見えない（鶏の翼・牛の顔で 2 度踏んだ罠。`rules/mobs.md`）——
+ * 足先は ±10.6px で、判定の縁 ±11.2px には触れていない。目も同じ理屈で、
+ * **頭の前面から 0.1px 出した赤い箱**にしてある。
+ */
+const SPIDER: MobDef = {
+  kind: "spider",
+  name: "クモ",
+  // 本家と同じ 1.4 x 0.9。**`longBody` に足さない / 広げないこと** ——
+  // 収まらないときは形のほうを削る（`rules/mobs.md`）。
+  size: { half: 0.7, height: 0.9, step: 0.6 },
+  maxHealth: 16,
+  // 本家の 0.3（ゾンビ 0.23 → ここでは 4.6）と同じ比。**歩き 5.2 より速く、
+  // 走り 8.4 より遅い** = 見つかっても走れば振り切れる。
+  speed: 6.0,
+  hostile: true,
+  damage: 2,
+  ranged: null,
+  teleport: null,
+  // **ゾンビと同じ重み**（本家のまま）。夜の敵対はゾンビとクモが半々になる。
+  spawnWeight: 100,
+  flying: false,
+  hover: 0,
+  // **false のまま**（上の説明）。朝になると日光で燃える。
+  fireproof: false,
+  // **付けないこと** —— 付けると、その地面で「どこでも」の敵対に勝ってしまう。
+  spawnOn: null,
+  boss: false,
+  orbit: null,
+  phases: null,
+  regen: 0,
+  // **1 個固定**（本家の 0〜2 個ではない。羽根・革と同じ線引き）。`extra` は持たない。
+  drop: { item: STRING, count: 1, chance: 1 },
+  shearing: null,
+  laying: null,
+  // ゾンビ（0.7）より高い。小さくて速いものの声（`TUNING.md`）。
+  voice: 1.5,
+  groups: [
+    { motion: "fixed", pivot: [0, 0, 0], phase: 0 },
+    { motion: "head", pivot: [0, px(7.5), px(-3)], phase: 0 },
+    // 脚 8 本。**前後で互い違い、左右も互い違い**にする。
+    { motion: "swing", pivot: [px(-4), px(8), px(-2.5)], phase: 0 },
+    { motion: "swing", pivot: [px(-4), px(8), px(-0.5)], phase: Math.PI },
+    { motion: "swing", pivot: [px(-4), px(8), px(1.5)], phase: 0 },
+    { motion: "swing", pivot: [px(-4), px(8), px(3.5)], phase: Math.PI },
+    { motion: "swing", pivot: [px(4), px(8), px(-2.5)], phase: Math.PI },
+    { motion: "swing", pivot: [px(4), px(8), px(-0.5)], phase: 0 },
+    { motion: "swing", pivot: [px(4), px(8), px(1.5)], phase: Math.PI },
+    { motion: "swing", pivot: [px(4), px(8), px(3.5)], phase: 0 },
+  ],
+  boxes: [
+    // 腹（後ろの大きいほう）と胸（脚が付くほう）
+    { group: 0, box: [px(-5), px(4), px(1), px(5), px(12), px(9)], color: SPIDER_BODY },
+    { group: 0, box: [px(-4), px(4.5), px(-3), px(4), px(10.5), px(1)], color: SPIDER_BODY },
+    // 頭（軸は胸の前。箱は軸からの相対）
+    { group: 1, box: [px(-4), px(-3.5), px(-8), px(4), px(2.5), 0], color: SPIDER_BODY },
+    // 目 4 つ。**頭の前面から 0.1px 出す**（同じ色の箱を中に置くと 1 画素も見えない）
+    { group: 1, box: [px(-3.5), px(0), px(-8.1), px(-2.2), px(1.3), px(-8)], color: SPIDER_EYE },
+    { group: 1, box: [px(-1.5), px(0), px(-8.1), px(-0.2), px(1.3), px(-8)], color: SPIDER_EYE },
+    { group: 1, box: [px(0.2), px(0), px(-8.1), px(1.5), px(1.3), px(-8)], color: SPIDER_EYE },
+    { group: 1, box: [px(2.2), px(0), px(-8.1), px(3.5), px(1.3), px(-8)], color: SPIDER_EYE },
+    // 脚 8 本 x（外へ伸びる太もも + 外端で下りるすね）。
+    // **どちらも軸からぶら下げる = y1 が 0**（0 でないと膝で回る）。
+    // 脚の外端 ±10.6px は胴の ±5px より外なので、暗い体に暗い脚が埋まらない。
+    { group: 2, box: [px(-5.6), px(-1.4), px(-1), 0, 0, px(1)], color: SPIDER_LEG },
+    { group: 2, box: [px(-6.6), px(-8), px(-1), px(-5), 0, px(1)], color: SPIDER_LEG },
+    { group: 3, box: [px(-5.6), px(-1.4), px(-1), 0, 0, px(1)], color: SPIDER_LEG },
+    { group: 3, box: [px(-6.6), px(-8), px(-1), px(-5), 0, px(1)], color: SPIDER_LEG },
+    { group: 4, box: [px(-5.6), px(-1.4), px(-1), 0, 0, px(1)], color: SPIDER_LEG },
+    { group: 4, box: [px(-6.6), px(-8), px(-1), px(-5), 0, px(1)], color: SPIDER_LEG },
+    { group: 5, box: [px(-5.6), px(-1.4), px(-1), 0, 0, px(1)], color: SPIDER_LEG },
+    { group: 5, box: [px(-6.6), px(-8), px(-1), px(-5), 0, px(1)], color: SPIDER_LEG },
+    { group: 6, box: [0, px(-1.4), px(-1), px(5.6), 0, px(1)], color: SPIDER_LEG },
+    { group: 6, box: [px(5), px(-8), px(-1), px(6.6), 0, px(1)], color: SPIDER_LEG },
+    { group: 7, box: [0, px(-1.4), px(-1), px(5.6), 0, px(1)], color: SPIDER_LEG },
+    { group: 7, box: [px(5), px(-8), px(-1), px(6.6), 0, px(1)], color: SPIDER_LEG },
+    { group: 8, box: [0, px(-1.4), px(-1), px(5.6), 0, px(1)], color: SPIDER_LEG },
+    { group: 8, box: [px(5), px(-8), px(-1), px(6.6), 0, px(1)], color: SPIDER_LEG },
+    { group: 9, box: [0, px(-1.4), px(-1), px(5.6), 0, px(1)], color: SPIDER_LEG },
+    { group: 9, box: [px(5), px(-8), px(-1), px(6.6), 0, px(1)], color: SPIDER_LEG },
+  ],
+};
+
 const BLAZE_CORE = 0xd8890f;
 const BLAZE_ROD_COLOR = 0xffd83d;
 const BLAZE_EYE = 0x4a2408;
@@ -1033,6 +1142,7 @@ export const MOBS: Record<MobKind, MobDef> = {
   chicken: CHICKEN,
   cow: COW,
   zombie: ZOMBIE,
+  spider: SPIDER,
   blaze: BLAZE,
   enderman: ENDERMAN,
   dragon: DRAGON,
@@ -1043,6 +1153,7 @@ export const MOB_KINDS: readonly MobKind[] = [
   "chicken",
   "cow",
   "zombie",
+  "spider",
   "blaze",
   "enderman",
   "dragon",

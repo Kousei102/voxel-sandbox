@@ -304,7 +304,21 @@ export const STEAK = 131;
  */
 export const LEATHER = 132;
 
-export const MAX_ITEM_ID = LEATHER;
+/**
+ * 糸。**クモ（`mobs.ts` の `SPIDER`）を倒すと 1 個**出ます（`MobDef.drop` の 1 山目。
+ * 2 山目は持たないので、羽根や革とは違って**必ず 1 個だけ**です）。
+ *
+ * **使い道はまだありません** —— 弓を「棒 3 + 糸 3」に戻すのは次の周
+ * （`AUTODEV-QUEUE.md` の 10 番）で、いまは `crafting.ts` に 1 行もありません。
+ * **置けず・道具でもなく・食べ物でもありません**（革・羽根とまったく同じ扱い）。
+ * **`tool:` を持たせないこと**（種・パン・肉・羽根と同じ罠。`ToolKind` が増えると
+ * `mobs.ts` の `TOOL_ATTACK` に無い種類が入って **NaN** が黙って通ります）。
+ *
+ * **本家の 0〜2 個ではなく 1 個固定です**（羽根・革と同じ線引き。`TUNING.md`）。
+ */
+export const STRING = 133;
+
+export const MAX_ITEM_ID = STRING;
 
 export const MAX_STACK = 64;
 
@@ -479,6 +493,12 @@ item({ id: STEAK, name: "ステーキ", block: AIR, stack: MAX_STACK, color: 0x8
 // 革。**`block: AIR` / `tool: null`**（置けず・道具でもなく・**食べ物でもない**）。
 // **使い道がまだ無い**ので `FOODS` にも `SMELTING` にも `crafting.ts` にも 1 行もありません。
 item({ id: LEATHER, name: "革", block: AIR, stack: MAX_STACK, color: 0xa06a41, tool: null });
+
+// 糸。**`block: AIR` / `tool: null`**（置けず・道具でもなく・**食べ物でもない**）。
+// **使い道がまだ無い**ので `FOODS` にも `SMELTING` にも `crafting.ts` にも 1 行もありません
+// （弓を「棒 3 + 糸 3」に戻すのは次の周）。**色は羽根 0xe8e4dc・卵 0xf7f0e0 から離した
+// 冷たい灰**にしてあります —— 3 つとも白っぽいので、一覧で並ぶと見分けが付きません。
+item({ id: STRING, name: "糸", block: AIR, stack: MAX_STACK, color: 0xb8bcc8, tool: null });
 
 const EMPTY: ItemDef = ITEMS[NO_ITEM];
 

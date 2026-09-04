@@ -28,6 +28,7 @@ import {
   RAW_PORK,
   ROTTEN_FLESH,
   STONE_AXE,
+  STRING,
   WOOD_AXE,
   WOOD_HOE,
   WOOD_PICKAXE,
@@ -70,6 +71,7 @@ import {
   type MobDef,
   type MobDropStack,
   type MobKind,
+  type MobMotion,
   type MobTarget,
   type MobPhase,
   type OrbitRule,
@@ -251,6 +253,33 @@ export function run(): void {
     }
     check(`${def.name}: 色が 0..1 に収まる`, badColor === 0, `${badColor} 件`);
     check(`${def.name}: 光の属性が頂点数 x 2`, badLight === 0);
+  }
+
+  // **クモの脚は胴より外へ出ていること。** 箱としては正しくても、暗い胴の中に
+  // 暗い脚を納めると 1 画素も見えない（鶏の翼・牛の顔で 2 度踏んだ罠。`rules/mobs.md`）。
+  // **両方の値を出してから**判定する。
+  {
+    const def = MOBS.spider;
+    const reach = (pick: (m: MobMotion) => boolean): number => {
+      let max = 0;
+      for (const b of def.boxes) {
+        const g = def.groups[b.group];
+        if (!pick(g.motion)) continue;
+        max = Math.max(max, Math.abs(g.pivot[0] + b.box[0]), Math.abs(g.pivot[0] + b.box[3]));
+      }
+      return max;
+    };
+    const legs = reach((m) => m === "swing");
+    const body = reach((m) => m !== "swing");
+    console.log(
+      `      クモの横幅: 脚の先 ±${legs.toFixed(3)} / 胴と頭 ±${body.toFixed(3)}` +
+        ` / 当たり判定 ±${def.size.half}`,
+    );
+    check(
+      "クモの脚の先が胴より外へ出ている",
+      legs > body && legs <= def.size.half + 1e-9,
+      `脚 ${legs.toFixed(3)} / 胴 ${body.toFixed(3)} / 判定 ${def.size.half}`,
+    );
   }
 
   describe("モブの歩行位相");
@@ -1233,10 +1262,32 @@ export function run(): void {
       anywhere.every((k) => (onStone[k] ?? 0) > 0) && Math.max(...off) < 0.03,
       `${anywhere.length} 種類 / ずれ ${(Math.max(...off) * 100).toFixed(1)} ポイント`,
     );
+    // **クモ（100）が入って表が 3 種類になった。** ゾンビとクモは同じ重みなので
+    // **ほぼ同数**になり、エンダーマン（10）だけがその 1/10 —— 「ゾンビがいちばん」は
+    // もう成り立たない。**ゆるめるのではなく、3 つの実測値を出してから数え直すこと。**
+    const zombies = onStone.zombie ?? 0;
+    const spiders = onStone.spider ?? 0;
+    const endermen = onStone.enderman ?? 0;
+    console.log(
+      `      ゾンビ ${zombies} / クモ ${spiders} / エンダーマン ${endermen}` +
+        `（ゾンビとクモの差 ${Math.abs(zombies - spiders)} 回）`,
+    );
     check(
-      "ゾンビがいちばん出やすい（エンダーマンはたまに）",
-      (onStone.zombie ?? 0) > (onStone.enderman ?? 0) * 5,
-      `ゾンビ ${onStone.zombie ?? 0} / エンダーマン ${onStone.enderman ?? 0}`,
+      "ゾンビとクモがほぼ同数で、エンダーマンはその 1/10",
+      Math.abs(zombies - spiders) < ROLLS * 0.05 &&
+        zombies > endermen * 5 && spiders > endermen * 5 && endermen > 0,
+      `ゾンビ ${zombies} / クモ ${spiders} / エンダーマン ${endermen}`,
+    );
+  }
+  // **「どこでも」の敵対が 3 種類・ボスを除く敵対が 4 種類**であること。
+  // 種類の数そのものを 1 件にしておくと、`MOB_KINDS` へ足し忘れた新しい敵対に気付ける。
+  {
+    const hostiles = MOB_KINDS.filter((k) => MOBS[k].hostile && !MOBS[k].boss);
+    console.log(`      敵対（ボスを除く）: ${hostiles.map((k) => MOBS[k].name).join(" / ")}`);
+    check(
+      "敵対はゾンビ・クモ・ブレイズ・エンダーマンの 4 種類",
+      hostiles.length === 4 && hostiles.includes("spider"),
+      `${hostiles.length} 種類: ${hostiles.join(" ")}`,
     );
   }
   check(
@@ -1447,7 +1498,7 @@ export function run(): void {
     for (let f = 0; f < frames; f++) group.update(1 / 60, world, c);
     // **種類を足したらここにも 1 行足すこと。** 無い名前だと `counts[name]++` が
     // `NaN` になり、数えているつもりで何も見ていない状態で緑になる。
-    const counts: Record<string, number> = { 豚: 0, 羊: 0, 鶏: 0, 牛: 0, ゾンビ: 0 };
+    const counts: Record<string, number> = { 豚: 0, 羊: 0, 鶏: 0, 牛: 0, ゾンビ: 0, クモ: 0 };
     for (const mob of group.list) counts[MOBS[mob.kind].name]++;
     return counts;
   }
@@ -1460,16 +1511,27 @@ export function run(): void {
   const torchlit = census((() => { const a = flatGrass(); a.block = 14; return a; })(), { brightness: midnight, random: seeded(41) });
   const inCave = census(stone, { brightness: noon, random: seeded(41) });
   const show = (c: Record<string, number>) =>
-    `豚 ${c.豚} / 羊 ${c.羊} / 鶏 ${c.鶏} / 牛 ${c.牛} / ゾンビ ${c.ゾンビ}`;
+    `豚 ${c.豚} / 羊 ${c.羊} / 鶏 ${c.鶏} / 牛 ${c.牛} / ゾンビ ${c.ゾンビ} / クモ ${c.クモ}`;
   console.log(`      夜の草地      ${show(atNight)}`);
   console.log(`      昼の草地      ${show(atNoon)}`);
   console.log(`      夜+松明の草地 ${show(torchlit)}`);
   console.log(`      昼の洞窟(石)  ${show(inCave)}`);
 
   check("夜の地表にゾンビが湧く", atNight.ゾンビ > 0, show(atNight));
-  check("敵対の上限を超えない", atNight.ゾンビ <= MAX_HOSTILE, `${atNight.ゾンビ} / ${MAX_HOSTILE}`);
+  // **2 種類目の「どこでも」の敵対（クモ）も 1 件で見張る。** `MOB_KINDS` に足し忘れると、
+  // 表にあるのに 1 体も湧かないモブが黙って残る（受動側の鶏・牛とまったく同じ話）。
+  check("夜の草地にクモが湧く", atNight.クモ > 0, show(atNight));
+  // **上限は敵対の合計で見ること。** ゾンビだけを数えていると、重みが半々になったぶん
+  // （クモ 100 / ゾンビ 100）が素通りして、上限が 2 倍にゆるんでも緑のまま通る。
+  const hostileAtNight = atNight.ゾンビ + atNight.クモ;
+  check(
+    "敵対の上限を超えない（ゾンビ + クモ）",
+    hostileAtNight <= MAX_HOSTILE,
+    `ゾンビ ${atNight.ゾンビ} + クモ ${atNight.クモ} = ${hostileAtNight} / ${MAX_HOSTILE}`,
+  );
   check("昼の地表にはゾンビが湧かない", atNoon.ゾンビ === 0, show(atNoon));
-  check("松明を置いた所には湧かない", torchlit.ゾンビ === 0, show(torchlit));
+  check("昼の草地にはクモも湧かない", atNoon.クモ === 0, show(atNoon));
+  check("松明を置いた所には湧かない", torchlit.ゾンビ + torchlit.クモ === 0, show(torchlit));
   check("昼でも暗い洞窟には湧く", inCave.ゾンビ > 0, show(inCave));
   // **受動が 3 種類目（鶏）になったので、湧く側も数えること。** `PASSIVE_KINDS` に
   // 足し忘れると、表にあるのに 1 体も湧かないモブが黙って残る。
@@ -2081,6 +2143,54 @@ export function run(): void {
       `${punched.length} 件: ${punched.map(itemName).join(" ")}`);
     check("矢で倒しても 2 山（同じ 1 本を通る。弓のときだけ革が消えない）",
       shot.length === 2 && shot[0] === RAW_BEEF && shot[1] === LEATHER,
+      `${shot.length} 件: ${shot.map(itemName).join(" ")}`);
+  }
+  {
+    // --- クモを倒すと糸 1 個（**殴った側と撃った側を並べて**） ---
+    // 鶏・牛とまったく同じ測り方。**片方だけ直すと弓で撃ったときだけ落ちない**という
+    // 形が戻るので、2 山目を持たないモブでも並べて測る（`rules/mobs.md`）。
+    // **`chance` は 1**（本家の 0〜2 個ではなく 1 個固定。羽根・革と同じ線引き）。
+    const table = MOBS.spider.drop;
+    console.log(
+      `      クモの表: ${itemName(table.item)} x${table.count}/${table.chance}` +
+        ` + 2 山目 ${table.extra ? itemName(table.extra.item) : "なし"}`,
+    );
+    check("表は糸 1 個・必ず落ちる・2 山目は無い",
+      table.item === STRING && table.count === 1 && table.chance === 1 && table.extra === undefined,
+      `${itemName(table.item)} x${table.count}/${table.chance} / extra ${table.extra ? "あり" : "なし"}`);
+
+    const arena = fightArena();
+    const punched: number[] = [];
+    {
+      const pack = new Mobs();
+      pack.onDrop = (item) => punched.push(item);
+      const c = ctx({ random: seeded(263) });
+      const spider = pack.spawn("spider", 0.5, 11, 3.5, 0, seeded(269));
+      while (pack.count > 0) {
+        pack.attack(spider, DIAMOND_SWORD, c);
+        advance(pack, arena, c, COOLDOWN_FRAMES);
+      }
+    }
+    const shot: number[] = [];
+    {
+      const pack = new Mobs();
+      const flying = new Projectiles();
+      pack.onDrop = (item) => shot.push(item);
+      const c = ctx({ random: seeded(271) });
+      const spider = pack.spawn("spider", 3.5, 11, 0.5, 0, seeded(277));
+      const target = pack.projectileTargets(c).find((t) => t.owner === spider.id)!;
+      const arrow = flying.spawn("arrow", 0.5, 12, 0.5, 0, 0, -1, PLAYER_OWNER, 100);
+      pack.hitByProjectile(arrow!, target, c);
+    }
+    console.log(
+      `      クモを倒す: 殴って ${punched.map(itemName).join(" ") || "なし"} / ` +
+        `矢で ${shot.map(itemName).join(" ") || "なし"}`,
+    );
+    check("殴って倒すと糸 1 個",
+      punched.length === 1 && punched[0] === STRING,
+      `${punched.length} 件: ${punched.map(itemName).join(" ")}`);
+    check("矢で倒しても糸 1 個（同じ 1 本を通る。弓のときだけ消えない）",
+      shot.length === 1 && shot[0] === STRING,
       `${shot.length} 件: ${shot.map(itemName).join(" ")}`);
   }
   {

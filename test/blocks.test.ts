@@ -77,6 +77,7 @@ import {
   SHEARS,
   STEAK,
   STICK,
+  STRING,
   WATER_BUCKET,
   WHEAT,
   WHEAT_SEEDS,
@@ -166,21 +167,22 @@ export function run(): void {
   // **ゆるめるのではなく数え直すこと。** 123 はブロック（実った小麦）なので、
   // 共有帯のアイテムは 122 と 124 の 2 つが飛び飛びに並ぶ（1 本の番号列だから正しい）。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革の 19 個（132 まで）",
-    sharedItems.length === 19 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸の 20 個（133 まで）",
+    sharedItems.length === 20 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
       sharedItems[16] === RAW_BEEF && sharedItems[17] === STEAK &&
-      sharedItems[18] === LEATHER && MAX_ITEM_ID === LEATHER,
+      sharedItems[18] === LEATHER && sharedItems[19] === STRING &&
+      MAX_ITEM_ID === STRING,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 123（牛の 3 個で 126 から減った）",
-    sharedFree === 123,
+    "111..255 の空きは 122（クモの糸 1 個で 123 から減った）",
+    sharedFree === 122,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -229,6 +231,18 @@ export function run(): void {
     "革は置けず・道具でもなく・食べ物でもない",
     placedBlock(LEATHER) === AIR && toolOf(LEATHER) === null && foodOf(LEATHER) === null,
     `block ${placedBlock(LEATHER)} / tool ${toolOf(LEATHER)} / food ${foodOf(LEATHER)}`,
+  );
+  // **糸も革・羽根とまったく同じ「置けず・道具でもなく・食べ物でもない」もの**です。
+  // **使い道はまだありません** —— 弓を「棒 3 + 糸 3」に戻すのは次の周なので、
+  // レシピも精錬も 0 行です（`AUTODEV-SPEC.md` の禁じ手 1）。
+  console.log(
+    `      糸(${STRING}) 置ける ${placedBlock(STRING) !== AIR}` +
+      ` / 道具 ${toolOf(STRING) !== null} / 食べ物 ${foodOf(STRING) !== null}`,
+  );
+  check(
+    "糸は置けず・道具でもなく・食べ物でもない",
+    placedBlock(STRING) === AIR && toolOf(STRING) === null && foodOf(STRING) === null,
+    `block ${placedBlock(STRING)} / tool ${toolOf(STRING)} / food ${foodOf(STRING)}`,
   );
   // **卵も羽根と同じ「置けず・道具でもなく・食べ物でもない」もの**です。
   // **投げるのは別の周**（`projectiles.ts` に 1 行もありません）。
