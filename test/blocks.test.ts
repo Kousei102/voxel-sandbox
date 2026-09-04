@@ -25,6 +25,7 @@ import {
   PLANK_STAIRS,
   SANDSTONE_SLAB,
   SHARED_ID_START,
+  SNOW,
   STONE,
   STONE_SLAB,
   STONE_SLAB_TOP,
@@ -75,6 +76,7 @@ import {
   RAW_BEEF,
   RAW_CHICKEN,
   SHEARS,
+  SNOWBALL,
   STEAK,
   STICK,
   STRING,
@@ -167,22 +169,23 @@ export function run(): void {
   // **ゆるめるのではなく数え直すこと。** 123 はブロック（実った小麦）なので、
   // 共有帯のアイテムは 122 と 124 の 2 つが飛び飛びに並ぶ（1 本の番号列だから正しい）。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸の 20 個（133 まで）",
-    sharedItems.length === 20 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉の 21 個（134 まで）",
+    sharedItems.length === 21 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
       sharedItems[16] === RAW_BEEF && sharedItems[17] === STEAK &&
       sharedItems[18] === LEATHER && sharedItems[19] === STRING &&
-      MAX_ITEM_ID === STRING,
+      sharedItems[20] === SNOWBALL &&
+      MAX_ITEM_ID === SNOWBALL,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 122（クモの糸 1 個で 123 から減った）",
-    sharedFree === 122,
+    "111..255 の空きは 121（雪玉 1 個で 122 から減った）",
+    sharedFree === 121,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -894,6 +897,45 @@ export function run(): void {
   // バケツでないものを渡しても何も起きない（`main.ts` が誤って呼んでも安全）
   check("バケツ以外では何も起きない", bucketUse(IRON_INGOT, WATER) === null && bucketUse(NO_ITEM, LAVA) === null);
 
+  describe("雪ブロックと雪玉");
+
+  // **雪は自分ではなく雪玉 4 個になって落ちる**（Minecraft と同じ個数）。
+  // 確率 1 なので `otherwise` は要らない —— 外れる目が無い。
+  console.log(
+    `      雪のドロップ: ${itemName(rollDrop(SNOW, 0.5).item)} x${rollDrop(SNOW, 0.5).count}` +
+      `（確率 ${dropOf(SNOW).chance}） / 雪玉 1 枠 ${itemStackLimit(SNOWBALL)} 個`,
+  );
+  check(
+    "雪を掘ると雪玉 4 個",
+    rollDrop(SNOW, 0.5).item === SNOWBALL && rollDrop(SNOW, 0.5).count === 4 &&
+      dropOf(SNOW).chance === 1,
+    `${itemName(rollDrop(SNOW, 0.5).item)} x${rollDrop(SNOW, 0.5).count}`,
+  );
+  // **雪ブロックそのものは落ちない。** ここが緑のまま雪も落ちていると、
+  // 戻すレシピが「増やす仕掛け」になる（掘るたびに 4 個 + 1 ブロック）。
+  check(
+    "雪を掘っても雪ブロックは落ちない（戻すのはクラフト）",
+    rollDrop(SNOW, 0.5).item !== SNOW && rollDrops(SNOW, 0.5).length === 1,
+    `${rollDrops(SNOW, 0.5).map((s) => `${itemName(s.item)} x${s.count}`).join(" + ")}`,
+  );
+  // 雪玉は置けず・道具でもなく・食べ物でもない（羽根・革・糸と同じ扱い）。
+  console.log(
+    `      雪玉: 置くと ${placedBlock(SNOWBALL)}（AIR=${AIR}） / 道具 ${toolOf(SNOWBALL) ? "あり" : "null"} / ` +
+      `食べ物 ${foodOf(SNOWBALL) ? "あり" : "null"}`,
+  );
+  check(
+    "雪玉は置けず・道具でもなく・食べ物でもない",
+    placedBlock(SNOWBALL) === AIR && toolOf(SNOWBALL) === null && foodOf(SNOWBALL) === null,
+    `${placedBlock(SNOWBALL)} / ${toolOf(SNOWBALL) ? "道具" : "null"} / ${foodOf(SNOWBALL) ? "食べ物" : "null"}`,
+  );
+  // **積めるのは 16 個**（卵と同じ。本家の値）。掘ると 4 個ずつ増えるので、
+  // 64 にすると 1 枠が 16 ブロックぶんになる。
+  check(
+    "雪玉は 1 枠 16 個（卵と同じ）",
+    itemStackLimit(SNOWBALL) === 16 && itemStackLimit(SNOWBALL) === itemStackLimit(EGG),
+    `雪玉 ${itemStackLimit(SNOWBALL)} / 卵 ${itemStackLimit(EGG)}`,
+  );
+
   describe("投げるもの");
 
   // **表 1 本**（`FILLED_BUCKETS` / `FIRE_STARTERS` / `BOWS` と同じ作法）。
@@ -901,6 +943,7 @@ export function run(): void {
   // `decideUse()` に分岐が 1 本ずつ生える。
   const throwable: [string, number][] = [
     ["卵", EGG],
+    ["雪玉", SNOWBALL],
     ["石", STONE],
     ["弓", BOW],
     ["矢", ARROW],
@@ -911,8 +954,15 @@ export function run(): void {
     `      thrownProjectile: ${throwable.map(([n, id]) => `${n} → ${thrownProjectile(id) ?? "null"}`).join(" / ")}`,
   );
   check("卵を投げると卵が飛ぶ", thrownProjectile(EGG) === "egg", `${thrownProjectile(EGG)}`);
+  check(
+    "雪玉を投げると雪玉が飛ぶ",
+    thrownProjectile(SNOWBALL) === "snowball",
+    `${thrownProjectile(SNOWBALL)}`,
+  );
   {
-    const wrong = throwable.filter(([, id]) => id !== EGG && thrownProjectile(id) !== null);
+    const wrong = throwable.filter(
+      ([, id]) => id !== EGG && id !== SNOWBALL && thrownProjectile(id) !== null,
+    );
     check("それ以外は投げられない（null）", wrong.length === 0, wrong.map(([n]) => n).join(" "));
   }
   // **綴りのずれをここで止める。** 表の行き先が `PROJECTILE_KINDS` に無いと、

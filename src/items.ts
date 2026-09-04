@@ -12,6 +12,7 @@ import {
   LEAVES,
   LOW_BAND_MAX,
   NETHER_PORTAL,
+  SNOW,
   SPRUCE_LEAVES,
   STONE,
   TALL_GRASS,
@@ -318,7 +319,27 @@ export const LEATHER = 132;
  */
 export const STRING = 133;
 
-export const MAX_ITEM_ID = STRING;
+/**
+ * 雪玉。**雪ブロック（`SNOW`）を掘ると 4 個**出ます（`DROPS` の 1 行。本家と同じ個数）。
+ * **4 個を 2x2 に並べると雪ブロックへ戻ります**（`crafting.ts`）——
+ * 落とし物を差し替えたので、**この戻すレシピが無いと雪が置けなくなります。**
+ *
+ * **右クリックで投げられます**（`THROWN` の 1 行 → `projectiles.ts` の `"snowball"`）。
+ * **当たっても何も起きません** —— 卵とまったく同じで、`main.ts` の `throwItem()` が
+ * `damage` を渡さないことがそのまま「当たっても減らない」になります
+ * （本家の雪玉もブレイズ以外には効きません。`rules/projectiles.md`）。
+ *
+ * **置けず・道具でもなく・食べ物でもありません**（`block: AIR` / `tool: null`。
+ * `FOODS` にも `SMELTING` にも行がありません）。**`block:` に `SNOW` を入れないこと** ——
+ * 置けると戻すレシピが要らなくなり、4 個 → 4 ブロックに増えます。
+ * **`tool:` を持たせないこと**（種・パン・肉・羽根と同じ罠。`ToolKind` が増えると
+ * `mobs.ts` の `TOOL_ATTACK` に無い種類が入って **NaN** が黙って通ります）。
+ *
+ * **積めるのは 16 個まで**（本家と同じ。卵・バケツと同じで `MAX_STACK` ではありません）。
+ */
+export const SNOWBALL = 134;
+
+export const MAX_ITEM_ID = SNOWBALL;
 
 export const MAX_STACK = 64;
 
@@ -500,6 +521,13 @@ item({ id: LEATHER, name: "革", block: AIR, stack: MAX_STACK, color: 0xa06a41, 
 // 冷たい灰**にしてあります —— 3 つとも白っぽいので、一覧で並ぶと見分けが付きません。
 item({ id: STRING, name: "糸", block: AIR, stack: MAX_STACK, color: 0xb8bcc8, tool: null });
 
+// 雪玉。**`block: AIR` / `tool: null`**（置けず・道具でもなく・**食べ物でもない**）。
+// **積めるのは 16 個まで**（本家の値。卵・バケツと同じで `MAX_STACK` を使わない）。
+// **色は青白**（羽根 0xe8e4dc・卵 0xf7f0e0・糸 0xb8bcc8 から離した値）——
+// 白っぽいものが 4 つ並ぶので、青みだけで見分ける。**`PROJECTILE_KINDS` の
+// `"snowball"` も同じ値**にすること（`test/projectiles.test.ts` が突き合わせる）。
+item({ id: SNOWBALL, name: "雪玉", block: AIR, stack: 16, color: 0xbcd8ef, tool: null });
+
 const EMPTY: ItemDef = ITEMS[NO_ITEM];
 
 export function itemDef(id: number): ItemDef {
@@ -626,6 +654,10 @@ const DROPS = new Map<number, Drop>([
   [COAL_ORE, { item: COAL, count: 1, chance: 1 }],
   [DIAMOND_ORE, { item: DIAMOND, count: 1, chance: 1 }],
   [GLASS, { item: NO_ITEM, count: 0, chance: 0 }],
+  // 雪は**雪玉 4 個**になって落ちる（Minecraft と同じ個数）。**この 1 行で雪ブロックが
+  // そのままでは手に入らなくなる**ので、`crafting.ts` の「雪玉 4 個 → 雪ブロック 1 個」が
+  // 必ず対で要る（無いと雪が二度と置けない）。
+  [SNOW, { item: SNOWBALL, count: 4, chance: 1 }],
   // 苗木がまだ無いので、葉からはたまに棒だけ出る
   [LEAVES, { item: STICK, count: 1, chance: 0.1 }],
   [SPRUCE_LEAVES, { item: STICK, count: 1, chance: 0.1 }],
@@ -815,7 +847,10 @@ export function isSeed(item: number): boolean {
  * それは `projectiles.ts` の `PROJECTILE_KINDS` の 1 行です。ここが持つのは
  * 「どのアイテムが何になるか」だけなので、**運ぶのは型だけ**で済みます。
  */
-const THROWN: ReadonlyMap<number, ProjectileKind> = new Map([[EGG, "egg"]]);
+const THROWN: ReadonlyMap<number, ProjectileKind> = new Map([
+  [EGG, "egg"],
+  [SNOWBALL, "snowball"],
+]);
 
 /** 投げると何が飛ぶか。投げられないものは null。 */
 export function thrownProjectile(item: number): ProjectileKind | null {

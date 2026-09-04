@@ -6,6 +6,7 @@ import {
   PLANK_SLAB,
   PLANK_STAIRS,
   SAND,
+  SNOW,
   STONE,
   STONE_SLAB,
   STONE_STAIRS,
@@ -37,6 +38,7 @@ import {
   IRON_SWORD,
   NO_ITEM,
   SHEARS,
+  SNOWBALL,
   STICK,
   STONE_AXE,
   STONE_HOE,
@@ -69,7 +71,7 @@ export function run(): void {
 
   const P = {
     P: PLANK, S: STICK, W: WOOD, C: COBBLE, D: DIAMOND, A: SAND, O: COAL, T: STONE,
-    I: IRON_INGOT, F: FLINT, L: WOOL, H: WHEAT, N: FEATHER, G: STRING,
+    I: IRON_INGOT, F: FLINT, L: WOOL, H: WHEAT, N: FEATHER, G: STRING, K: SNOWBALL,
     R: BLAZE_ROD, B: BLAZE_POWDER, E: ENDER_PEARL, Y: ENDER_EYE,
   };
 
@@ -122,6 +124,26 @@ export function run(): void {
   check("3x3 の作業台でも同じ形で作れる", shearsIn3?.out === SHEARS, shearsIn3?.name ?? "無し");
   const ironPair = findRecipe(grid(2, ["II"], P), 2);
   check("横に並べただけではシアーズにならない", ironPair?.out !== SHEARS, ironPair?.name ?? "無し");
+
+  // --- 雪ブロック（掘って出た雪玉を戻す） ---
+  // **落とし物を差し替えた対の片割れ。** 雪を掘ると雪玉 4 個になるので、
+  // これが無いと雪ブロックが二度と置けない（`items.ts` の `DROPS` の `SNOW`）。
+  const snowBlock = findRecipe(grid(2, ["KK", "KK"], P), 2);
+  console.log(
+    `      雪玉 2x2 → ${snowBlock?.name ?? "無し"} x${snowBlock?.count ?? 0}` +
+      `（3 個: ${findRecipe(grid(2, ["KK", "K."], P), 2)?.name ?? "無し"} / ` +
+      `斜め 2 個: ${findRecipe(grid(2, ["K.", ".K"], P), 2)?.name ?? "無し"}）`,
+  );
+  check(
+    "雪玉 4 個（2x2）→ 雪ブロック 1 個",
+    snowBlock?.out === SNOW && snowBlock.count === 1,
+    `${snowBlock?.name ?? "無し"} x${snowBlock?.count ?? 0}`,
+  );
+  // **3 個でも斜めでも出来ないこと。** 出来ると 4 個 → 1 個の交換比が崩れる。
+  const snowThree = findRecipe(grid(2, ["KK", "K."], P), 2);
+  check("雪玉 3 個では作れない", snowThree === null, snowThree?.name ?? "無し");
+  const snowDiagonal = findRecipe(grid(2, ["K.", ".K"], P), 2);
+  check("雪玉 2 個の斜めでは作れない", snowDiagonal?.out !== SNOW, snowDiagonal?.name ?? "無し");
 
   // --- 火打石と打ち金 ---
   // **ネザーポータルの点火手段。** 形なしなので 2x2（手持ち）でも作れる ——

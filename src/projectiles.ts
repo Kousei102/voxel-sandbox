@@ -57,7 +57,7 @@ const LIQUID_GRAVITY = 0.3;
 /** 見た目の回転の速さ (rad/s)。**描画が読むだけ**（`drops.ts` の `SPIN_RATE` と同じ役)。 */
 export const PROJECTILE_SPIN = 2.2;
 
-export type ProjectileKind = "fireball" | "arrow" | "eye" | "breath" | "egg";
+export type ProjectileKind = "fireball" | "arrow" | "eye" | "breath" | "egg" | "snowball";
 
 /**
  * 撃った本人の印。**0 はプレイヤー**で、モブは自分の `id`（1 から）を使う。
@@ -225,6 +225,24 @@ export const PROJECTILE_KINDS: readonly ProjectileDef[] = [
     onBlock: "vanish",
     glows: false,
     // **向きを持たずに回る**（火球・ブレスと同じ）。矢のように尖っていない。
+    aims: false,
+  },
+  {
+    kind: "snowball",
+    name: "雪玉",
+    // **卵とまったく同じ飛び方**（本家でも雪玉と卵は同じ速さ 1.5 ブロック/tick）。
+    // 手で投げるものなので山なりが正しく、値を写しているのはそのため。
+    half: 0.125,
+    // **持っている雪玉と同じ色**（`items.ts` の `SNOWBALL`）。飛んでいるあいだだけ
+    // 別の色に見えると何を投げたのか分からない（`test/projectiles.test.ts` が突き合わせる）。
+    color: 0xbcd8ef,
+    gravityScale: 1,
+    drag: 0,
+    speed: 20,
+    life: 30,
+    // **刺さらないこと**（卵と同じ。`stick` にすると壁に貼り付いたまま寿命まで残る）。
+    onBlock: "vanish",
+    glows: false,
     aims: false,
   },
 ];

@@ -12,6 +12,7 @@ import {
   SANDSTONE,
   SANDSTONE_SLAB,
   SANDSTONE_STAIRS,
+  SNOW,
   SPRUCE_WOOD,
   STONE,
   STONE_SLAB,
@@ -48,6 +49,7 @@ import {
   IRON_SWORD,
   NO_ITEM,
   SHEARS,
+  SNOWBALL,
   STICK,
   STONE_AXE,
   STONE_HOE,
@@ -166,6 +168,11 @@ export const RECIPES: readonly Recipe[] = [
   // 畑を作ってから食べられるようになるまでに、作業台の前へ戻る一手間が残る。
   // ハーフの `["MMM"]` と形は同じだが材料が違うので、形の重複にはならない。
   { name: "パン", out: BREAD, count: 1, shape: ["WWW"], key: { W: WHEAT } },
+
+  // 雪玉 4 個 → 雪ブロック 1 個（Minecraft と同じ）。2x2 に収まるので作業台が要らない。
+  // **掘ると雪玉 4 個が落ちるようになった対の片割れ**で、これが無いと雪が二度と置けない
+  // （`items.ts` の `DROPS` の `SNOW` の行）。形は作業台（板 4 枚）と同じだが材料が違う。
+  { name: "雪ブロック", out: SNOW, count: 1, shape: ["BB", "BB"], key: { B: SNOWBALL } },
 
   ...toolRecipes("木", PLANK, WOOD_PICKAXE, WOOD_AXE, WOOD_SHOVEL, WOOD_SWORD, WOOD_HOE),
   ...toolRecipes("石", COBBLE, STONE_PICKAXE, STONE_AXE, STONE_SHOVEL, STONE_SWORD, STONE_HOE),

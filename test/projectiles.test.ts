@@ -11,7 +11,7 @@ import {
   type ProjectileKind,
   type ProjectileTarget,
 } from "../src/projectiles";
-import { EGG, itemColor } from "../src/items";
+import { EGG, SNOWBALL, itemColor } from "../src/items";
 import { buildBoxMesh } from "../src/mobmesh";
 import { mobRgb } from "../src/mobs";
 import { VOID_Y } from "../src/vitals";
@@ -112,7 +112,7 @@ export function run(): void {
     );
     if (def.half > 0 && def.speed > 0 && def.life > 0 && def.gravityScale >= 0) sane++;
   }
-  check("5 種類ある（火球・矢・エンダーアイ・ブレス・卵）", PROJECTILE_KINDS.length === 5);
+  check("6 種類ある（火球・矢・エンダーアイ・ブレス・卵・雪玉）", PROJECTILE_KINDS.length === 6);
   check(
     "卵の行がある",
     PROJECTILE_KINDS.some((def) => def.kind === "egg"),
@@ -125,6 +125,34 @@ export function run(): void {
       `持ち物 0x${itemColor(EGG).toString(16)}`,
   );
   check("卵の色は itemColor(EGG) と同じ", projectileDef("egg").color === itemColor(EGG));
+  // 雪玉も同じ突き合わせ。**投げるものが増えるたびにここへ 1 件足すこと** ——
+  // 表を写した側が古くなるのが、飛び道具でいちばんありがちな壊れ方。
+  console.log(
+    `      雪玉の色: 表 0x${projectileDef("snowball").color.toString(16)} / ` +
+      `持ち物 0x${itemColor(SNOWBALL).toString(16)}`,
+  );
+  check(
+    "雪玉の色は itemColor(SNOWBALL) と同じ",
+    projectileDef("snowball").color === itemColor(SNOWBALL),
+  );
+  // **卵と同じ飛び方**（本家でも雪玉と卵は同じ速さ）。写し間違えると、
+  // 同じ手で投げたのに片方だけ手前に落ちる。
+  {
+    const egg = projectileDef("egg");
+    const ball = projectileDef("snowball");
+    console.log(
+      `      雪玉: 速さ ${ball.speed}m/s  重力 x${ball.gravityScale}  寿命 ${ball.life}s  ` +
+        `半径 ${ball.half}  壁 ${ball.onBlock}（卵: ${egg.speed} / ${egg.gravityScale} / ` +
+        `${egg.life} / ${egg.half} / ${egg.onBlock}）`,
+    );
+    check(
+      "雪玉は卵と同じ飛び方（速さ・重力・抵抗・寿命・大きさ・壁）",
+      ball.speed === egg.speed && ball.gravityScale === egg.gravityScale &&
+        ball.drag === egg.drag && ball.life === egg.life && ball.half === egg.half &&
+        ball.onBlock === egg.onBlock && ball.glows === egg.glows && ball.aims === egg.aims,
+      `${ball.speed} / ${ball.gravityScale} / ${ball.life} / ${ball.half} / ${ball.onBlock}`,
+    );
+  }
   check("どれも寸法と速さと寿命が正の数", sane === PROJECTILE_KINDS.length);
   check("名前が重複していない", names.size === PROJECTILE_KINDS.length);
   check(
