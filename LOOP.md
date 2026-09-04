@@ -159,7 +159,7 @@ npm test                       # 始める前に緑であることを確かめ�
   既存プレイヤーのワールドが別のブロックに化けます。**番号は足すだけ**
 - **`SaveData.version` を上げること。** `load()` が弾くので、全員のワールドが読めなくなります
 - **`master` への push。** 公開サイト（GitHub Pages）が差し替わる外向きの操作です。
-  ループが push してよいのは **`loop/endgame` だけ**（下の「7.」）。
+  **このループ**が push してよいのは **`loop/endgame` だけ**（下の「7.」。`AUTODEV.md` は別）。
   `master` へのマージと push はユーザーが確認してからやります
 - **テストの判定をゆるめて緑にすること。** とくに `world.test.ts` の p99 の上限を
   `constants.ts` の予算から計算する形に戻さないこと（予算そのものを壊す退行を見逃します）
@@ -181,9 +181,9 @@ npm test                       # 始める前に緑であることを確かめ�
 - **1 周の終わりに `loop/endgame` へ push すること。** 無人で回っているので、
   push しないと次の周（別のマシン・別のセッション）から成果が見えません。
   周の頭の `git pull --rebase` と対です
-- **`master` への push は禁止**（公開サイトが差し替わる外向きの操作。ユーザーがやります）。
-  `.github/workflows/deploy.yml` は `main` / `master` への push でしか走らないので、
-  `loop/endgame` へ push してもデプロイは起きません
+- **`master` への push は禁止**（ユーザーがやります）。`deploy.yml` は `main` / `master` への
+  push でしか走らないので、`loop/endgame` へ push してもデプロイは起きません
+- **`master` は AUTODEV のループ（`AUTODEV.md`）が毎周進めます。再開するときは `git merge origin/master` から**
 
 ## 8. 使えるもの
 

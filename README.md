@@ -242,6 +242,12 @@ world.update    平均 3.4 ms / 最悪 10.7 ms（歩行中のストリーミン�
 を通ってから `dist/` が GitHub Pages に配信されます。テストが落ちればデプロイはされません。
 手動で回すときは Actions タブの "Run workflow"、または `gh workflow run deploy.yml` です。
 
+公開先は https://kousei102.github.io/voxel-sandbox/ 、push から約 2 分で入れ替わります。
+**`master` は AUTODEV のループ（`AUTODEV.md`）が 1 周 1 コミットで進めるので、1 周 = 1 デプロイです。**
+`deploy` ジョブは `needs: build` なので、テストか型が落ちた周はサイトに出ません。
+**変な周が載ってしまったときは人が戻します**（`git revert <sha>` → push。また 2 分で戻ります）。
+クリア導線のループ（`LOOP.md` / `loop/endgame`）は今までどおり `master` に触りません。
+
 サーバーも DB も無く、セーブは localStorage なので、置くものは `dist/` の 3 ファイル
 （`index.html` と JS・CSS 各 1 つ、合計 511 kB / gzip 134 kB）だけです。JS のほとんどは three.js 本体で、
 初回だけ一括ダウンロードになります。
