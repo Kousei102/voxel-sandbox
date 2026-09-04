@@ -69,10 +69,13 @@ import {
   FEATHER,
   IRON_INGOT,
   LAVA_BUCKET,
+  LEATHER,
   MAX_ITEM_ID,
   NO_ITEM,
+  RAW_BEEF,
   RAW_CHICKEN,
   SHEARS,
+  STEAK,
   STICK,
   WATER_BUCKET,
   WHEAT,
@@ -163,17 +166,34 @@ export function run(): void {
   // **ゆるめるのではなく数え直すこと。** 123 はブロック（実った小麦）なので、
   // 共有帯のアイテムは 122 と 124 の 2 つが飛び飛びに並ぶ（1 本の番号列だから正しい）。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵の 16 個（129 まで）",
-    sharedItems.length === 16 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革の 19 個（132 まで）",
+    sharedItems.length === 19 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
-      sharedItems[14] === FEATHER && sharedItems[15] === EGG && MAX_ITEM_ID === EGG,
+      sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
+      sharedItems[16] === RAW_BEEF && sharedItems[17] === STEAK &&
+      sharedItems[18] === LEATHER && MAX_ITEM_ID === LEATHER,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
+  );
+  // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
+  // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
+  // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
+  check(
+    "111..255 の空きは 123（牛の 3 個で 126 から減った）",
+    sharedFree === 123,
+    `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
   // 付ければ置ける肉になり、`tool:` を付ければ `TOOL_ATTACK` に無い種類が入って NaN、
   // `FOODS` に無ければ拾えるだけの飾りになる（どれも型では止まらない）。
-  const meats: [string, number][] = [["生鶏肉", RAW_CHICKEN], ["焼き鳥", COOKED_CHICKEN]];
+  const meats: [string, number][] = [
+    ["生鶏肉", RAW_CHICKEN],
+    ["焼き鳥", COOKED_CHICKEN],
+    // 牛の肉も鶏とまったく同じ 3 点で見る（**ステーキは焼き豚と同点**なので、
+    // 数値そのものは `vitals` 側ではなく上の出力で読む）。
+    ["生牛肉", RAW_BEEF],
+    ["ステーキ", STEAK],
+  ];
   for (const [name, id] of meats) {
     const food = foodOf(id);
     console.log(
@@ -197,6 +217,18 @@ export function run(): void {
     "羽根は置けず・道具でもなく・食べ物でもない",
     placedBlock(FEATHER) === AIR && toolOf(FEATHER) === null && foodOf(FEATHER) === null,
     `block ${placedBlock(FEATHER)} / tool ${toolOf(FEATHER)} / food ${foodOf(FEATHER)}`,
+  );
+  // **革も羽根とまったく同じ「置けず・道具でもなく・食べ物でもない」もの**です
+  // （肉と同じ山から出るので、`FOODS` に紛れ込んでも型では止まりません）。
+  // **使い道はまだありません** —— 防具も本も別件なので、レシピも精錬も 0 行です。
+  console.log(
+    `      革(${LEATHER}) 置ける ${placedBlock(LEATHER) !== AIR}` +
+      ` / 道具 ${toolOf(LEATHER) !== null} / 食べ物 ${foodOf(LEATHER) !== null}`,
+  );
+  check(
+    "革は置けず・道具でもなく・食べ物でもない",
+    placedBlock(LEATHER) === AIR && toolOf(LEATHER) === null && foodOf(LEATHER) === null,
+    `block ${placedBlock(LEATHER)} / tool ${toolOf(LEATHER)} / food ${foodOf(LEATHER)}`,
   );
   // **卵も羽根と同じ「置けず・道具でもなく・食べ物でもない」もの**です。
   // **投げるのは別の周**（`projectiles.ts` に 1 行もありません）。

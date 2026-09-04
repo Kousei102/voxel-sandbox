@@ -17,7 +17,9 @@ import {
   EGG,
   ENDER_PEARL,
   FEATHER,
+  LEATHER,
   NO_ITEM,
+  RAW_BEEF,
   RAW_CHICKEN,
   RAW_PORK,
   ROTTEN_FLESH,
@@ -39,7 +41,15 @@ import type { World } from "./world";
 
 // --- 種類の表 -----------------------------------------------------------
 
-export type MobKind = "pig" | "sheep" | "chicken" | "zombie" | "blaze" | "enderman" | "dragon";
+export type MobKind =
+  | "pig"
+  | "sheep"
+  | "chicken"
+  | "cow"
+  | "zombie"
+  | "blaze"
+  | "enderman"
+  | "dragon";
 
 /** 部位の動き方。 */
 export type MobMotion =
@@ -574,6 +584,104 @@ const CHICKEN: MobDef = {
   ],
 };
 
+const COW_HIDE = 0x4a3728;
+const COW_PATCH = 0xe4ddd0;
+const COW_SNOUT = 0xefb9b0;
+const COW_HORN = 0xd9d0b4;
+const COW_EYE = 0x2b1e1c;
+
+/**
+ * 牛。**4 種類目の受動モブ**で、**倒すと 2 山落ちる 2 体目**（生牛肉 1 + 革 1）。
+ * 形も表も鶏（`CHICKEN`）とまったく同じ作りで、違うのは
+ * **2 山目（`MobDrop.extra`）が最初から付いている**ところだけ。
+ *
+ * **当たり判定は Minecraft と同じ 0.9 x 1.4。** 豚（0.9 x 0.9）より背が高いぶん
+ * 胴を上げられるが、**前後は判定に収めること** —— `test/mobs.test.ts` の
+ * `longBody`（胴が後ろへはみ出してよい例外）は**豚と羊だけ**で、
+ * **そこへ牛を足すと形の点検が丸ごと外れる**（判定を広げるのでもなく、
+ * 例外に加えるのでもなく、**形のほうを削る**）。本家の胴は 18px あるが、
+ * ここでは 12px（-5..7）に詰めてある。
+ *
+ * **角・鼻・白い斑・顔の白い筋は体と違う色**にしてある —— 鶏の翼を体と同じ白・同じ幅に
+ * 置いたら、振れても 1 画素も動かなかった（`rules/mobs.md`）。**斑と筋は目とまったく
+ * 同じ作り**（面から 0.1px 出した薄い箱）で、**顔の筋が無いと、頭と体が同じ茶色の
+ * 1 枚の板に見える**（頭は体より 1.1px しか前に出ておらず、面の向きも同じなので
+ * 陰でも分かれない。撮って気付いた）。
+ *
+ * グループの並び: 0 = 体（固定）、1 = 頭（鼻・角・目）、2..5 = 脚 4 本。
+ */
+const COW: MobDef = {
+  kind: "cow",
+  name: "牛",
+  size: { half: 0.45, height: 1.4, step: 0.5 },
+  // 本家と同じ 10（豚と同じ。受動でいちばん硬い側）。
+  maxHealth: 10,
+  // 本家の 0.2（豚・鶏 0.25 / 羊 0.23）に合わせて、受動でいちばん遅い（`TUNING.md`）。
+  speed: 1.4,
+  hostile: false,
+  damage: 0,
+  ranged: null,
+  teleport: null,
+  // 本家の湧きの重み（豚 10 / 羊 12 / 鶏 10 と同じ土俵）。
+  spawnWeight: 8,
+  flying: false,
+  hover: 0,
+  fireproof: false,
+  // **受動に `spawnOn` を付けないこと**（`trySpawn()` 側にも手が要ります。`rules/mobs.md`）。
+  spawnOn: null,
+  boss: false,
+  orbit: null,
+  phases: null,
+  regen: 0,
+  // **2 山落ちます** —— 生牛肉 1 個（1 山目）と革 1 個（`extra`）。
+  // 革は本家の 0〜2 個ではなく**1 個固定**（`extra` に個数の範囲を持たせない線引き。
+  // 羽根とまったく同じ。`items.ts` の `LEATHER`）。**革の使い道はまだありません。**
+  drop: { item: RAW_BEEF, count: 1, chance: 1, extra: { item: LEATHER, count: 1, chance: 1 } },
+  shearing: null,
+  laying: null,
+  // いちばん低い声（鶏 1.8 / 豚 1.4 / 羊 1.25 の下）。体の大きさの順に並ぶ。
+  voice: 0.9,
+  groups: [
+    { motion: "fixed", pivot: [0, 0, 0], phase: 0 },
+    { motion: "head", pivot: [0, px(17), px(-4.5)], phase: 0 },
+    // 前脚は胴の前寄り、後ろ脚は後端に合わせる（豚・羊と同じ作法）。
+    { motion: "swing", pivot: [px(-3), px(12), px(-3)], phase: 0 },
+    { motion: "swing", pivot: [px(3), px(12), px(-3)], phase: Math.PI },
+    { motion: "swing", pivot: [px(-3), px(12), px(5)], phase: Math.PI },
+    { motion: "swing", pivot: [px(3), px(12), px(5)], phase: 0 },
+  ],
+  boxes: [
+    // 体（前後 12px。**後ろも判定 ±7.2px の中**に収める。本家の 18px は入らない）
+    { group: 0, box: [px(-5), px(12), px(-5), px(5), px(22), px(7)], color: COW_HIDE },
+    // 白い斑（胴の横から 0.1px だけ出す。**目とまったく同じ作り** ——
+    // 同じ色の箱を体の中に置くと、輪郭が出ずに 1 画素も見えない）
+    { group: 0, box: [px(-5.1), px(14), px(-2), px(-5), px(19), px(3)], color: COW_PATCH },
+    { group: 0, box: [px(5), px(14), px(-2), px(5.1), px(19), px(3)], color: COW_PATCH },
+    // 頭（軸は首の付け根。箱は軸からの相対）
+    { group: 1, box: [px(-3.5), px(-3), px(-1.6), px(3.5), px(3), 0], color: COW_HIDE },
+    // 顔の白い筋（**頭の前面から 0.1px。目とまったく同じ作り**）。**これが無いと、
+    // 頭も体も同じ茶色で前から見ると 1 枚の板に見える** —— 頭は体より 1.1px しか
+    // 前に出ておらず、面の向きも同じなので陰でも分かれない（絵に撮って気付いた。
+    // 鶏の翼が白い体に埋まったのと同じ罠。`rules/mobs.md`）。
+    // **幅は目（x ±1.8..3）と角に触れない ±1.5 まで** —— 頭の幅いっぱいに広げると
+    // 角と 1 本の白い帯になって、角が角に見えなくなる（これも撮って気付いた）。
+    { group: 1, box: [px(-1.5), px(0.2), px(-1.7), px(1.5), px(3), px(-1.6)], color: COW_PATCH },
+    // 鼻（前へ。**-Z の端 -7.1px が判定の縁 -7.2px の内側**）
+    { group: 1, box: [px(-2), px(-2.2), px(-2.6), px(2), px(0.2), px(-1.6)], color: COW_SNOUT },
+    // 角（頭の横へ 1.3px 出す。**体と違う色**なので輪郭が出る）
+    { group: 1, box: [px(-4.8), px(2), px(-1.4), px(-3.5), px(2.8), px(-0.4)], color: COW_HORN },
+    { group: 1, box: [px(3.5), px(2), px(-1.4), px(4.8), px(2.8), px(-0.4)], color: COW_HORN },
+    // 目（頭の前面から 0.1px だけ出す。豚・羊・鶏とまったく同じ作り）
+    { group: 1, box: [px(-3), px(0.6), px(-1.7), px(-1.8), px(1.6), px(-1.6)], color: COW_EYE },
+    { group: 1, box: [px(1.8), px(0.6), px(-1.7), px(3), px(1.6), px(-1.6)], color: COW_EYE },
+    // 脚（**軸からぶら下げる = y1 が 0**。0 でないと足首で回る）
+    { group: 2, box: [px(-2), px(-12), px(-2), px(2), 0, px(2)], color: COW_HIDE },
+    { group: 3, box: [px(-2), px(-12), px(-2), px(2), 0, px(2)], color: COW_HIDE },
+    { group: 4, box: [px(-2), px(-12), px(-2), px(2), 0, px(2)], color: COW_HIDE },
+    { group: 5, box: [px(-2), px(-12), px(-2), px(2), 0, px(2)], color: COW_HIDE },
+  ],
+};
+
 const ZOMBIE_SKIN = 0x5f9e46;
 const ZOMBIE_SHIRT = 0x2f6b6b;
 const ZOMBIE_PANTS = 0x3b4a86;
@@ -923,6 +1031,7 @@ export const MOBS: Record<MobKind, MobDef> = {
   pig: PIG,
   sheep: SHEEP,
   chicken: CHICKEN,
+  cow: COW,
   zombie: ZOMBIE,
   blaze: BLAZE,
   enderman: ENDERMAN,
@@ -932,13 +1041,14 @@ export const MOB_KINDS: readonly MobKind[] = [
   "pig",
   "sheep",
   "chicken",
+  "cow",
   "zombie",
   "blaze",
   "enderman",
   "dragon",
 ];
 /** 湧きの抽選に使う受動モブ。**敵対と混ぜないこと**（湧く条件も上限も別）。 */
-const PASSIVE_KINDS: readonly MobKind[] = ["pig", "sheep", "chicken"];
+const PASSIVE_KINDS: readonly MobKind[] = ["pig", "sheep", "chicken", "cow"];
 /**
  * 湧きの抽選に使う敵対モブ。**表から作ること**（足したときに書き忘れる）。
  * **ボスは外す** —— 抽選に残すと、夜のオーバーワールドにドラゴンが湧く。

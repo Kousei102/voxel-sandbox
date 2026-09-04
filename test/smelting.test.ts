@@ -23,8 +23,10 @@ import {
   IRON_INGOT,
   MAX_STACK,
   NO_ITEM,
+  RAW_BEEF,
   RAW_CHICKEN,
   RAW_PORK,
+  STEAK,
   WOOD_PICKAXE,
   dropOf,
   itemName,
@@ -112,6 +114,14 @@ export function run(): void {
   check("丸石 → 石", SMELTING.get(COBBLE)?.out === STONE);
   check("生豚肉 → 焼き豚", SMELTING.get(RAW_PORK)?.out === COOKED_PORK);
   check("生鶏肉 → 焼き鳥", SMELTING.get(RAW_CHICKEN)?.out === COOKED_CHICKEN);
+  check(
+    "生牛肉 → ステーキ 1 個",
+    SMELTING.get(RAW_BEEF)?.out === STEAK && SMELTING.get(RAW_BEEF)?.count === 1,
+    `${itemName(SMELTING.get(RAW_BEEF)?.out ?? NO_ITEM)} x${SMELTING.get(RAW_BEEF)?.count}`,
+  );
+  // **`FUEL` は 1 行も増えていないこと**（革を燃料にすると、牛が薪になる）。
+  // 表そのものを数える —— 「革が燃料でない」だけだと、別のものが紛れても緑になる。
+  check("燃料の表は 8 行のまま（牛では 1 行も増えていない）", FUEL.size === 8, `${FUEL.size} 行`);
 
   // **木から作れる燃料を必ず残すこと。** 石炭が見つかる前に鉄を焼けないと、
   // かまどを作った意味が最初の数十分ぶん遅れる。

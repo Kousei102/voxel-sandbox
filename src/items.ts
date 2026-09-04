@@ -271,7 +271,40 @@ export const FEATHER = 128;
  */
 export const EGG = 129;
 
-export const MAX_ITEM_ID = EGG;
+/**
+ * 生牛肉。**牛（`mobs.ts` の `COW`）を倒すと 1 個**出ます（`MobDef.drop` の 1 山目）。
+ *
+ * **`block` は `AIR`**（置ける肉は本家にありません）。
+ * **`tool:` を持たせないこと**（種・パン・鶏の肉と同じ罠。`ToolKind` が増えると
+ * `mobs.ts` の `TOOL_ATTACK` に無い種類が入って **NaN** が黙って通ります）。
+ *
+ * **毒はありません**（本家も生牛肉に食中毒はありません。生鶏肉との違いはそこです）。
+ */
+export const RAW_BEEF = 130;
+
+/**
+ * ステーキ。**かまどで生牛肉を焼くと 1 個**（`smelting.ts` の `SMELTING`）。
+ *
+ * **焼き豚（8 / 12.8）と同点です** —— 本家がそうなので下げていません。
+ * 「いちばん強い食べ物」が 2 つに増えたぶん、**豚を探すか牛を探すかが選べる**
+ * ようになりました（劣化版を足しても拾うかどうかの判断は生まれません）。
+ */
+export const STEAK = 131;
+
+/**
+ * 革。**牛を倒すと生牛肉と一緒に 1 個**出ます（`mobs.ts` の `MobDrop.extra`。
+ * 2 山目なので、1 山目の当たり外れとは無関係に落ちます）。
+ *
+ * **使い道はまだありません** —— 防具も本も無いので、`crafting.ts` にも
+ * `SMELTING` にも 1 行もありません（`AUTODEV-SPEC.md` の禁じ手 1）。
+ * **置けず・道具でもなく・食べ物でもありません**（羽根とまったく同じ扱い）。
+ *
+ * **本家の 0〜2 個ではなく 1 個固定です**（`MobDrop.extra` に個数の範囲を
+ * 持たせない、という線引き。羽根と同じ。`TUNING.md`）。
+ */
+export const LEATHER = 132;
+
+export const MAX_ITEM_ID = LEATHER;
 
 export const MAX_STACK = 64;
 
@@ -437,6 +470,16 @@ item({ id: FEATHER, name: "羽根", block: AIR, stack: MAX_STACK, color: 0xe8e4d
 // **積めるのは 16 個まで**（本家の値。バケツの 1 と同じで `MAX_STACK` を使わない）。
 item({ id: EGG, name: "卵", block: AIR, stack: 16, color: 0xf7f0e0, tool: null });
 
+// 生牛肉とステーキ。**どちらも `block: AIR` / `tool: null`**（豚・鶏の肉と同じ）。
+// 色は豚（0xe08f8f / 0xc4763f）・鶏（0xd3a08e / 0xc98a4b）と**並べて違って見えること**
+// （どれも肉なので、赤みと焼き色の差だけで見分ける。`TUNING.md`）。
+item({ id: RAW_BEEF, name: "生牛肉", block: AIR, stack: MAX_STACK, color: 0xc8564f, tool: null });
+item({ id: STEAK, name: "ステーキ", block: AIR, stack: MAX_STACK, color: 0x8f5230, tool: null });
+
+// 革。**`block: AIR` / `tool: null`**（置けず・道具でもなく・**食べ物でもない**）。
+// **使い道がまだ無い**ので `FOODS` にも `SMELTING` にも `crafting.ts` にも 1 行もありません。
+item({ id: LEATHER, name: "革", block: AIR, stack: MAX_STACK, color: 0xa06a41, tool: null });
+
 const EMPTY: ItemDef = ITEMS[NO_ITEM];
 
 export function itemDef(id: number): ItemDef {
@@ -502,6 +545,12 @@ const FOODS = new Map<number, FoodDef>([
   // **生鶏肉に毒は付けていません** —— 本家は 30% で食中毒だが、`FoodDef` に確率が無い。
   [RAW_CHICKEN, { hunger: 2, saturation: 1.2, poison: false }],
   [COOKED_CHICKEN, { hunger: 6, saturation: 7.2, poison: false }],
+  // 牛の肉。本家の値のまま（生 3 / 1.8・ステーキ 8 / 12.8）。**ステーキは焼き豚と同点**で、
+  // **本家がそうなので下げていません** —— 「いちばん強い食べ物」が 2 つになるだけで、
+  // 焼く見返り（生 3 / 1.8 → 8 / 12.8）は焼き豚とまったく同じに残ります。
+  // **革は食べ物ではないので、ここに行はありません**（羽根と同じ扱い）。
+  [RAW_BEEF, { hunger: 3, saturation: 1.8, poison: false }],
+  [STEAK, { hunger: 8, saturation: 12.8, poison: false }],
 ]);
 
 /** そのアイテムを食べたときの値。食べられないなら null。 */

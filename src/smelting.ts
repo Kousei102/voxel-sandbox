@@ -29,8 +29,10 @@ import {
   GOLD_INGOT,
   IRON_INGOT,
   NO_ITEM,
+  RAW_BEEF,
   RAW_CHICKEN,
   RAW_PORK,
+  STEAK,
   STICK,
   itemStackLimit,
 } from "./items";
@@ -58,6 +60,9 @@ export const SMELTING: ReadonlyMap<number, SmeltResult> = new Map([
   [RAW_PORK, { out: COOKED_PORK, count: 1 }],
   // 鶏。**豚とまったく同じ形の 1 行**（焼く見返りは `items.ts` の `FOODS` が持つ）。
   [RAW_CHICKEN, { out: COOKED_CHICKEN, count: 1 }],
+  // 牛。**豚・鶏とまったく同じ形の 1 行**（焼く見返りは `items.ts` の `FOODS` が持つ）。
+  // **`FUEL` には 1 行も足していない**（革は燃料ではありません）。
+  [RAW_BEEF, { out: STEAK, count: 1 }],
 ]);
 
 /**

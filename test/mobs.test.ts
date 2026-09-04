@@ -21,7 +21,9 @@ import {
   EGG,
   ENDER_PEARL,
   FEATHER,
+  LEATHER,
   NO_ITEM,
+  RAW_BEEF,
   RAW_CHICKEN,
   RAW_PORK,
   ROTTEN_FLESH,
@@ -1353,6 +1355,17 @@ export function run(): void {
   // **表から数え直す**ので、受動を足したときに「表にあるのに湧かない」が赤で出る。
   const passiveKinds = MOB_KINDS.filter((k) => !MOBS[k].hostile);
   const wildKinds = new Set(wild.list.map((m) => m.kind));
+  // **表そのものも数えること。** 「ひととおり湧く」は表と湧いたものを突き合わせるだけなので、
+  // 表から 1 種類こぼれても（`MOBS` に足して `MOB_KINDS` に足し忘れても）緑のまま通る。
+  console.log(
+    `      受動 ${passiveKinds.length} 種類: ` +
+      passiveKinds.map((k) => `${MOBS[k].name}(重み ${MOBS[k].spawnWeight})`).join(" / "),
+  );
+  check(
+    "受動モブは 4 種類（豚・羊・鶏・牛）",
+    passiveKinds.length === 4,
+    passiveKinds.map((k) => MOBS[k].name).join(" "),
+  );
   check(
     "受動の種類がひととおり湧く",
     passiveKinds.every((k) => wildKinds.has(k)),
@@ -1434,7 +1447,7 @@ export function run(): void {
     for (let f = 0; f < frames; f++) group.update(1 / 60, world, c);
     // **種類を足したらここにも 1 行足すこと。** 無い名前だと `counts[name]++` が
     // `NaN` になり、数えているつもりで何も見ていない状態で緑になる。
-    const counts: Record<string, number> = { 豚: 0, 羊: 0, 鶏: 0, ゾンビ: 0 };
+    const counts: Record<string, number> = { 豚: 0, 羊: 0, 鶏: 0, 牛: 0, ゾンビ: 0 };
     for (const mob of group.list) counts[MOBS[mob.kind].name]++;
     return counts;
   }
@@ -1447,7 +1460,7 @@ export function run(): void {
   const torchlit = census((() => { const a = flatGrass(); a.block = 14; return a; })(), { brightness: midnight, random: seeded(41) });
   const inCave = census(stone, { brightness: noon, random: seeded(41) });
   const show = (c: Record<string, number>) =>
-    `豚 ${c.豚} / 羊 ${c.羊} / 鶏 ${c.鶏} / ゾンビ ${c.ゾンビ}`;
+    `豚 ${c.豚} / 羊 ${c.羊} / 鶏 ${c.鶏} / 牛 ${c.牛} / ゾンビ ${c.ゾンビ}`;
   console.log(`      夜の草地      ${show(atNight)}`);
   console.log(`      昼の草地      ${show(atNoon)}`);
   console.log(`      夜+松明の草地 ${show(torchlit)}`);
@@ -1461,10 +1474,13 @@ export function run(): void {
   // **受動が 3 種類目（鶏）になったので、湧く側も数えること。** `PASSIVE_KINDS` に
   // 足し忘れると、表にあるのに 1 体も湧かないモブが黙って残る。
   check("昼の草地に鶏が湧く", atNoon.鶏 > 0, show(atNoon));
+  // **4 種類目（牛）も同じ 1 件で見張る。** `PASSIVE_KINDS` に足し忘れると、
+  // 表にあるのに 1 体も湧かない牛が黙って残る（重み 8 なので数は少なめに出る）。
+  check("昼の草地に牛が湧く", atNoon.牛 > 0, show(atNoon));
   // 草でない地面には受動が湧かない（暗さで敵対に振り分けたあとも変わらない）
   check(
     "石の上に受動は湧かない",
-    inCave.豚 === 0 && inCave.羊 === 0 && inCave.鶏 === 0,
+    inCave.豚 === 0 && inCave.羊 === 0 && inCave.鶏 === 0 && inCave.牛 === 0,
     show(inCave),
   );
 
@@ -2020,6 +2036,54 @@ export function run(): void {
       `${shot.length} 件: ${shot.map(itemName).join(" ")}`);
   }
   {
+    // --- 牛を倒すと 2 山（生牛肉 1 + 革 1。**殴った側と撃った側を並べて**） ---
+    // 鶏とまったく同じ測り方。**片方だけ通っていると弓で撃ったときだけ革が出ない**
+    // という形で静かに食い違うので、2 種類目でも並べて測る（`rules/mobs.md`）。
+    const table = MOBS.cow.drop;
+    console.log(
+      `      牛の表: ${itemName(table.item)} x${table.count}/${table.chance} + ` +
+        `2 山目 ${itemName(table.extra?.item ?? NO_ITEM)} x${table.extra?.count}/${table.extra?.chance}`,
+    );
+    check("表は生牛肉 1 個 + 革 1 個・どちらも必ず落ちる",
+      table.item === RAW_BEEF && table.count === 1 && table.chance === 1 &&
+        table.extra?.item === LEATHER && table.extra.count === 1 && table.extra.chance === 1,
+      `${itemName(table.item)} / ${itemName(table.extra?.item ?? NO_ITEM)}`);
+
+    const arena = fightArena();
+    const punched: number[] = [];
+    {
+      const pack = new Mobs();
+      pack.onDrop = (item) => punched.push(item);
+      const c = ctx({ random: seeded(233) });
+      const cow = pack.spawn("cow", 0.5, 11, 1.5, 0, seeded(239));
+      while (pack.count > 0) {
+        pack.attack(cow, DIAMOND_SWORD, c);
+        advance(pack, arena, c, COOLDOWN_FRAMES);
+      }
+    }
+    const shot: number[] = [];
+    {
+      const pack = new Mobs();
+      const flying = new Projectiles();
+      pack.onDrop = (item) => shot.push(item);
+      const c = ctx({ random: seeded(241) });
+      const cow = pack.spawn("cow", 3.5, 11, 0.5, 0, seeded(251));
+      const target = pack.projectileTargets(c).find((t) => t.owner === cow.id)!;
+      const arrow = flying.spawn("arrow", 0.5, 12, 0.5, 0, 0, -1, PLAYER_OWNER, 100);
+      pack.hitByProjectile(arrow!, target, c);
+    }
+    console.log(
+      `      牛を倒す: 殴って ${punched.map(itemName).join(" ") || "なし"} / ` +
+        `矢で ${shot.map(itemName).join(" ") || "なし"}`,
+    );
+    check("殴って倒すと 2 山（生牛肉 1・革 1）",
+      punched.length === 2 && punched[0] === RAW_BEEF && punched[1] === LEATHER,
+      `${punched.length} 件: ${punched.map(itemName).join(" ")}`);
+    check("矢で倒しても 2 山（同じ 1 本を通る。弓のときだけ革が消えない）",
+      shot.length === 2 && shot[0] === RAW_BEEF && shot[1] === LEATHER,
+      `${shot.length} 件: ${shot.map(itemName).join(" ")}`);
+  }
+  {
     // --- `dropsFor()` が返す山の数の表 ---
     // **豚 1 / 刈っていない羊 1 / 刈った羊 0 / 鶏 2。** 刈った羊の 0 は
     // `dropFor()` の抑えがそのまま生きていることの証拠（写していない）。
@@ -2035,15 +2099,18 @@ export function run(): void {
     const shorn = pack.spawn("sheep", 0.5, 11, 6.5, 0, seeded(199));
     pack.shear(shorn, c);
     const bird = pack.spawn("chicken", 0.5, 11, 8.5, 0, seeded(211));
+    const cow = pack.spawn("cow", 0.5, 11, 10.5, 0, seeded(257));
     const rows: [string, number, string][] = [
       ["豚", ...stacksOf(pig, MOBS.pig)],
       ["刈っていない羊", ...stacksOf(woolly, MOBS.sheep)],
       ["刈った羊", ...stacksOf(shorn, MOBS.sheep)],
       ["鶏", ...stacksOf(bird, MOBS.chicken)],
+      ["牛", ...stacksOf(cow, MOBS.cow)],
     ];
     for (const [name, n, what] of rows) console.log(`      ${name}: ${n} 山 ${what || "（なし）"}`);
-    check("山の数は 豚 1 / 刈っていない羊 1 / 刈った羊 0 / 鶏 2",
-      rows[0][1] === 1 && rows[1][1] === 1 && rows[2][1] === 0 && rows[3][1] === 2,
+    check("山の数は 豚 1 / 刈っていない羊 1 / 刈った羊 0 / 鶏 2 / 牛 2",
+      rows[0][1] === 1 && rows[1][1] === 1 && rows[2][1] === 0 && rows[3][1] === 2 &&
+        rows[4][1] === 2,
       rows.map(([name, n]) => `${name} ${n}`).join(" / "));
   }
   {
