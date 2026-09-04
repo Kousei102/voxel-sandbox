@@ -5,7 +5,7 @@ description: ブロックまたはアイテムを新しく足すときの手順�
 
 # ブロック / アイテムを足す
 
-決まりごとの本体は `CLAUDE.md` の「ブロック ID の枠」と `.claude/rules/blocks-shapes.md`。
+決まりごとの本体は `CLAUDE.md` の「ブロック ID の枠」と `rules/blocks-shapes.md`。
 ここは**手順**だけです。
 
 ## 1. ID を取る
@@ -37,7 +37,7 @@ description: ブロックまたはアイテムを新しく足すときの手順�
 - 屋根になるものは `blocksSky: true`、草のように置いたら消えてよいものは `replaceable: true`。
 - 向き違いは `variantOf` を大元へ向ける。こうするとアイテム・ドロップ・名前が増えません。
 
-形・支え・当たり判定の決まりは `.claude/rules/blocks-shapes.md` を読むこと（`boxes` が
+形・支え・当たり判定の決まりは `rules/blocks-shapes.md` を読むこと（`boxes` が
 狙う判定・当たり判定・見た目の 3 つを兼ねます）。
 
 ## 3. アイテムとして持てるようにする

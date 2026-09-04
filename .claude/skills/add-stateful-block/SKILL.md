@@ -6,7 +6,7 @@ description: 「位置ごとに状態を持つブロック」や新しい器（�
 # 位置ごとに状態を持つブロック / 器を足す
 
 先例は**かまど**（`smelting.ts` + `furnaces.ts`）と**チェスト**（`chests.ts` 1 本）。
-決まりごとの本体は `.claude/rules/stateful-blocks.md` と `.claude/rules/inventory-screen.md`。
+決まりごとの本体は `rules/stateful-blocks.md` と `rules/inventory-screen.md`。
 ここは**手順**だけです。
 
 ## 1. ファイルを分けるかどうかを決める

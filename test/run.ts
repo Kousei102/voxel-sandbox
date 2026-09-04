@@ -16,7 +16,7 @@ import { run as debugtext } from "./debugtext.test";
 import { run as dimensions } from "./dimensions.test";
 import { run as docs } from "./docs.test";
 import { run as drops } from "./drops.test";
-import { run as rulesinstall } from "./rulesinstall.test";
+import { run as rules } from "./rules.test";
 import { run as durability } from "./durability.test";
 import { run as fortress } from "./fortress.test";
 import { run as gravity } from "./gravity.test";
@@ -98,7 +98,7 @@ debugspawn();
 ui();
 shot();
 docs();
-rulesinstall();
+rules();
 // **音だけは非同期。** `OfflineAudioContext` の書き出しを待つ必要があるので、
 // ここで await する（`summary()` より前に終わらせること）。
 await audio();

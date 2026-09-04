@@ -32,8 +32,8 @@ npm run build      # typecheck + dist/ に静的ファイル一式
 **クリア導線（ネザー → エンド → エンダードラゴン）はループで進めています。**
 1 周の手順と禁じ手は `LOOP.md`、タスクの並びは `TASKS.md`、**ユーザーが通しで遊んで
 見つけた不具合は `REVIEW.md`**、**あとで決める手触りの数値は `TUNING.md`**、
-**層 2（`.claude/rules/`）を直すときは `npm run rules:install` で据えること**（`Edit` で
-触ると確認待ちで止まります。層 3・スキルの更新待ちは `RULES-INBOX.md`）。進み具合は `npm test` の「進行（クリア導線）」が「達成 N / 13」で出します
+**層 2（`rules/`）は普通に `Edit` で直すこと**（無人の周も同じ。層 3・スキルの
+更新待ちだけが `RULES-INBOX.md`）。進み具合は `npm test` の「進行（クリア導線）」が「達成 N / 13」で出します
 （`test/progression.test.ts`）。**ブロック ID とアイテム ID は `ROADMAP.md` の予約表から取ること。**
 **`HANDOFF.md` は消さずに、セッションの終わりに丸ごと書き直して次へ渡すこと**
 （引き写さず、`git fetch` と `npm test` で裏を取ってから）。
@@ -46,27 +46,26 @@ npm run build      # typecheck + dist/ に静的ファイル一式
 | 層 | 場所 | いつ読まれるか | 置くもの |
 | --- | --- | --- | --- |
 | 1 | **`CLAUDE.md`（ここ）** | 毎回 | どの作業でも要るもの。**200 行以内** |
-| 2 | **`.claude/rules/*.md`** | `paths` に合うファイルを触ったときだけ | 領域別の決まりごと |
+| 2 | **`rules/*.md`** | **触る前に自分で引いて読む**（下） | 領域別の決まりごと |
 | 3 | **`.claude/skills/*/SKILL.md`** | その作業をするときだけ | 手順書 |
 
-いまある層 2（`paths` は各ファイルの先頭）:
+**層 2 は自動では読み込まれません。** 触るファイルに当たるものを、先に引いて読むこと:
 
-`blocks-shapes.md`（形・支え・液体・置く判断・ID の細部）/ `items-survival.md` / `inventory-screen.md` /
-`vitals.md`（体力と空腹）/ `mobs.md` / `drops.md` / `projectiles.md`（飛び道具）/
-`stateful-blocks.md`（かまど・チェスト）/
-`beds.md` / `lighting.md`（光・昼夜・GLSL）/ `meshing-render.md` / `audio.md` / `dom-ui.md` /
-`testing.md` / `worldgen.md`（地形・バイオーム）/ `dimensions.md`（次元・ポータルで移る・セーブの形）
+```bash
+grep -l '"src/player.ts"' rules/*.md   # → blocks-shapes.md mobs.md vitals.md
+```
+
+**二重引用符ごと**引くこと（`paths` の行は `  - "src/player.ts"` の形）。
+**`test/**` を触るなら `testing.md` も**（`paths` が glob なので上では出ません）。
+20 本の一覧と、直すときの決まりは **`rules/README.md`**。
 
 いまある層 3: `add-block`（ブロック / アイテムを足す）/ `add-stateful-block`（位置ごとに
 状態を持つブロック・器を足す）/ `unverifiable-pair`（確かめられないものを足す）
 
 ### この形を保つための決まり
 
-- **`src/**` と `test/**` のファイルは `Read` / `Edit` ツールで開くこと。**
-  `cat` や `sed` で読むと**層 2 が読み込まれません**（実測で確認済み。`paths` は
-  `Read` と `Edit` で効き、Bash 経由の読み出しでは効きません）。
-- **層 2 のファイルには必ず `paths` を書くこと。** 無いと常時読み込みになり、
-  ここに直接書いたのと同じことになります。
+- **層 2 のファイルには必ず `paths` を書くこと**（無いと引けません。`npm test` が落とします）。
+  **足したら `rules/README.md` の一覧にも 1 行**（突き合わせも `npm test`）。
 - **同じことを 2 つの層に書かないこと。** 食い違ったときにどちらが勝つか決まりません。
   層 1 は要点だけを持ち、細部は層 2 へ置いて名前で参照します。
 - 新しい節を足したくなったら、まず**どの層か**を決めます。判断はこの順:
@@ -75,7 +74,7 @@ npm run build      # typecheck + dist/ に静的ファイル一式
   3. **手順（順番に沿ってやること）か** → 層 3
 - **層 2 は `paths` を広めに取ってよい。** `player.ts` を触ったときに `mobs.md` の
   「水中 0.6 倍」が目に入る、という**横断的な気付きが実際にバグを見つけています。**
-  関わるファイルは削らないこと。
+  関わるファイルは削らないこと（**消すのと狭めるのは人に聞くこと。足す・直すのは自由**）。
 - **このファイルが 200 行を超えたら、分割ではなくまず層 2 へ動かすこと。**
   `/context` で実際の読み込み量を確かめられます。
 - **毎周読まれる文書には行数の上限があります**（`CLAUDE.md` / `LOOP.md` 200・
@@ -104,7 +103,7 @@ DOM の画面**で、そこと「気持ちいいかどうか」は今までど�
 - TS が `getElementById` で引く id が `index.html` に実在するか
   （`as HTMLElement` で null が握りつぶされるので、触るまで壊れに気付けない）
 
-GLSL を触るときの制約は `.claude/rules/lighting.md`。
+GLSL を触るときの制約は `rules/lighting.md`。
 
 ## 確かめられないものは、確かめられるものから切り離す
 
@@ -151,7 +150,7 @@ GLSL を触るときの制約は `.claude/rules/lighting.md`。
 **次に取る番号は `ROADMAP.md` の予約表から。**
 
 足すときの手順は `add-block` スキル。細部（`isProp()` と 64 以降の関係・立方体の状態違い・
-水平 4 向きの表）は `.claude/rules/blocks-shapes.md`。
+水平 4 向きの表）は `rules/blocks-shapes.md`。
 
 ## 座標とインデックスの規約
 
@@ -189,7 +188,7 @@ GLSL を触るときの制約は `.claude/rules/lighting.md`。
 現状の実測: 平均 3.4ms / 最悪 10〜17ms（GC 込み）。`npm run bench` で再測できます。
 **`npm run bench` の値は 1 回では当てになりません**（同じコードで generateChunk が
 0.93〜1.40ms に振れます）。比べるときは数回まわして中央値を見てください。
-テスト側がどう判定しているかは `.claude/rules/meshing-render.md`。
+テスト側がどう判定しているかは `rules/meshing-render.md`。
 
 ### 3. 面の巡回順
 

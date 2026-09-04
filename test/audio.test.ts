@@ -191,7 +191,7 @@ async function body(): Promise<void> {
   check("どれも長さぶんで鳴り止む（余韻が残らない）", all && overrun === 0, `${rendered}/${SFX_EVENTS.length} 本を測って はみ出し ${overrun} 件`);
 
   // --- 音量 ---
-  // **0 で完全に切れること**（`.claude/rules/audio.md`。好みが分かれるので必ず切れる手段を残す）。
+  // **0 で完全に切れること**（`rules/audio.md`。好みが分かれるので必ず切れる手段を残す）。
   const muted = await shot((e) => e.play("break", "stone"), (e) => e.setVolume(0));
   check("音量 0 では 1 サンプルも鳴らない", peak(muted) === 0, `ピーク ${peak(muted)}`);
 
