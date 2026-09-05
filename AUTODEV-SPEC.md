@@ -1,119 +1,118 @@
-# 仕様: 鉄・金・ダイヤのブロック（9 個 → 1 個、戻すと 9 個）
+# 仕様: 画面の開け閉めを `src/panels.ts` へ出す（15 番の前半）
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-**キューの先頭 14 番。** 2026-09-04 にコードで数え直しました —— `blocks.ts` に
-`IRON_ORE`(15) / `GOLD_ORE`(16) / `DIAMOND_ORE`(17) はありますが、**「しまう形」の
-立方体は 3 つとも 1 つもなく**、`crafting.ts` にも該当レシピは 0 本です。
+**キューの先頭 15 番（ミルクバケツ）を 2 件に割った前半**（`AUTODEV.md` の B の
+「120 行に収まらない仕様は 2 件に割る」）。後半 15b はキューに書き戻してあります。
 
-## 1. 何を足すか / 完了の判定
+**割った理由**: `main.ts` が **1463 行**（上限 1500・止まる目安 1450）で、15b は
+`use.ts` の注文を貼る関数が 12〜15 行要ります。**先に空けないと 16 番で上限に当たります。**
+2026-09-05 に数え直したところ、`milk` は `src/**` にも `test/**` にも 0 件でした。
 
-**インゴットとダイヤを 9 個で 1 個の立方体にしまえて、その立方体から 9 個に戻せる。**
-本家と同じで、**倉庫の枠を 9 分の 1 にするためだけの機能**です。
-**ダイヤに初めて「持ち物以外の行き場」ができます。**
+## 1. 何を出すか / 完了の判定
+
+**「画面を 1 つ開ける手順」と「閉じたらロックし直す」を判断だけのファイルへ出す。**
+いま `main.ts` 711..760 にある 7 つの関数がそれで、**手を止める → 出す → メニューを
+隠す → ロックを外す**の 4 手が揃っているかは**ブラウザを開くまで確かめられません**。
+出すと 4 経路ともヘッドレスで見られます（`CLAUDE.md` の背骨）。**振る舞いは変えません。**
 
 完了の判定（`npm test` が全部緑のまま、次が増えていること）:
 
-- `test/crafting.test.ts` に **「鉄・金・ダイヤは 9 個でブロックになる」** と
-  **「ブロックを崩すと 9 個に戻る」** と **「しまって戻すと個数が変わらない」** の 3 項目
-- `test/blocks.test.ts` に **「鉄・金・ダイヤのブロックは立方体で、掘ると自分が落ちる」** の 1 項目
-- `npm test` の **「111..255 の空き」が 121 → 118**、**「立方体 36」が 39**、
-  **アイテム一覧が 99 → 102 種類**、**`MAX_ITEM_ID` が 134 → 137**
-- **クラフトは 45 本 → 51 本**（6 本増える）
+- **`test/panels.test.ts` が新しくあり**、次の 5 項目が緑:
+  - 「4 つの画面はどれも、開ける前に手を止める」
+  - 「開いているあいだは二重に開かない（手も止め直さない）」
+  - 「開けるとロックが外れ、閉じるとロックし直す」
+  - 「閉じるのは開いているときだけ（閉じているのに `hide()` を呼ばない）」
+  - 「ロックが外れたときメニューを出すのは、画面も死亡もクリアも閉じているときだけ」
+- **`npm test` の「main.ts N 行」が 1430 行以下**（いま 1463。消す 50 行 ＞ 足す 10 行前後）
+- `test/ui.test.ts` の「main.ts は出した判断を呼び直している」が**緑のまま**（6 の禁じ手）
 
-## 2. 触るファイルと、触らないファイル
+## 2. 触るファイル / 触らないファイル
 
-**触るのはこの 5 つだけです。**
+**触る:**
 
-| ファイル | 何を |
-| --- | --- |
-| `src/blocks.ts` | `export const` 3 行 + `BLOCKS` 配列の末尾に `def(...)` 3 つ |
-| `src/crafting.ts` | `RECIPES` に 6 行（しまう 3・戻す 3）と import |
-| `test/crafting.test.ts` | 上の 3 項目 |
-| `test/blocks.test.ts` | 上の 1 項目 |
-| `ROADMAP.md` / `TUNING.md` / `AUTODEV-QUEUE.md` / `docs/autodev-log.md` / `HANDOFF.md` | C-4 の記録 |
+- **`src/panels.ts`（新規）** —— 判断だけ。**DOM も three も `World` も持ち込まない**
+- `src/main.ts` —— 711..760 の 7 関数を消し、`const panels = new Panels({...})` を 1 つ置いて
+  呼び出しを貼り替えるだけ（`openInventory(3)` → `panels.openInventory(3)` など）。
+  **判断を 1 行も書かないこと。** 690 行の menu を出す条件も `panels.ts` の関数へ差し替える
+- **`test/panels.test.ts`（新規）**
+- `rules/dom-ui.md` の `paths` に `"src/panels.ts"` と `"test/panels.test.ts"` の 2 行
+  （`rules/README.md` の一覧は本数が増えないので触りません）
 
-**1 行も触らないファイル**（触ったら差し戻し）:
-
-- **`src/items.ts`** —— **アイテムは自動で付いてきます。** `items.ts` の 386 行目の
-  `for (const block of BLOCKS)` が **`variantOf === AIR` のブロック全部に同じ番号の
-  アイテムを作る**ので、`item({...})` を手で足すと**同じ番号が二重に登録されます**
-- **`src/main.ts`**（**いま 1464 行。この周は 1 行も足しません**）/ `src/use.ts` /
-  `src/placing.ts` / `src/mining.ts` / `src/breaking.ts` /
-  `src/*render.ts` / `src/ui.ts` / `src/inventoryui.ts`（判断を書かない）
-- `src/worldgen.ts`（**地形に埋めません。** 本家でも自然生成しません）
-- `src/smelting.ts`（**精錬に 1 行も足さない。** かまどで焼く物ではありません）
+**触らない（1 行も）:** `src/inventoryui.ts` / `src/craftscreen.ts` / `src/ui.ts` /
+`src/furnaces.ts` / `src/chests.ts` / 上に挙げた以外の `src/**` 全部 / **`test/ui.test.ts`** /
+`ROADMAP.md` / `TUNING.md`。
 
 ## 3. 使う ID
 
-**`ROADMAP.md` の予約表（111..255 の共有帯）から、次の空き 3 つを順に取ります。**
+**0 個。** ブロックもアイテムも足しません（`ROADMAP.md` の予約表は次の空き **138** のまま）。
 
-| ID | 名前 | 定数名 |
-| --- | --- | --- |
-| **135** | 鉄ブロック | `IRON_BLOCK` |
-| **136** | 金ブロック | `GOLD_BLOCK` |
-| **137** | ダイヤブロック | `DIAMOND_BLOCK` |
+## 4. 判断をどこに置くか
 
-**134（雪玉）まで使用済みで、135 が次の空きです。** **111 以降はブロックとアイテムで
-1 本の番号列**なので、**この 3 つはアイテム側の番号も同時に埋めます**（2 節のとおり
-`items.ts` のループが作るぶん）。**既存の番号を 1 つも振り直さないこと。**
+`panels.ts` は**開け閉めの手順だけ**を持ち、DOM の受け口は**構造的な型で受ける**
+（`inventoryui.ts` も `ui.ts` も import しない。型だけは `craftscreen.ts` /
+`furnaces.ts` / `chests.ts` から取ってよい —— `use.ts` が `ProjectileKind` を
+`import type` で取っているのと同じ形）:
 
-## 4. 判断をどのファイルに置くか
+```ts
+export interface PanelScreen {          // 中身は inventoryui.ts の InventoryScreen
+  readonly isOpen: boolean;
+  show(size: CraftSize): void;
+  showCreative(): void;
+  showFurnace(state: FurnaceState): void;
+  showChest(state: ChestState): void;
+  hide(): void;
+}
+export interface PanelHost {
+  readonly screen: PanelScreen;
+  stopHands(): void;   // 掘りかけ・食べかけ・引きかけ。**main.ts に残す**（`breaking` は向こうの状態）
+  setPlaying(playing: boolean, menuVisible: boolean): void;  // ui.ts の hud
+  refresh(): void;
+  lock(): void;        // requestLock（DOM は main.ts 側）
+  unlock(): void;      // document.exitPointerLock()
+}
+export class Panels {                   // openInventory / openCreative /
+  constructor(host: PanelHost);         // openFurnace / openChest / close
+}
+/** ロックが外れたときメインメニューを出すか。**`playing` は呼ぶ側**（`main.ts` 690 行）。 */
+export function menuVisibleWhenUnlocked(f: {
+  screenOpen: boolean; dead: boolean; victoryOpen: boolean;
+}): boolean;
+```
 
-**確かめられないものは 1 つも増えません**（描画も音も DOM も GLSL も足しません）。
-だから `unverifiable-pair` スキルは要りません。使うのは **`add-block` スキル**です。
+- **器の中身を引くのは呼ぶ側。** `furnaces.at()` / `chests.open(world, …)` は `main.ts` に
+  残し、`panels.openFurnace(state)` へ**引いた結果を渡す** —— `panels.ts` が `world` を
+  持った瞬間、画面の手順を確かめるのに世界を作る羽目になります
+- `menuVisibleWhenUnlocked()` は 690 行の後ろ 3 つ（`!screen.isOpen && !vitals.dead &&
+  !hud.victoryOpen`）だけ。**`!playing` は `main.ts` に残す**
 
-- **硬さ・道具・階層は `blocks.ts` の `def` の中だけ**（本家の値）:
-  - `IRON_BLOCK` = 硬さ **5** / `tool: "pickaxe"` / `minTier: TIER_STONE` / 色 `0xd8d2c8`
-  - `GOLD_BLOCK` = 硬さ **3** / `tool: "pickaxe"` / `minTier: TIER_IRON` / 色 `0xf2d15c`
-  - `DIAMOND_BLOCK` = 硬さ **5** / `tool: "pickaxe"` / `minTier: TIER_IRON` / 色 `0x4fe3d8`
-  - **色は 3 つともインゴット・ダイヤのアイテム色をそのまま写すこと**（`items.ts` の 401..403 行）
-  - **`sound` を書かないこと** —— 既定の `"stone"` で通します（**金属の音はありません。
-    足すと `audio.ts` / `sfx.ts` の話になり、この周の枠を越えます**）
-  - **`variantOf` を書かないこと**（既定の `AIR`。書くとアイテムが作られません）
-  - **`DROPS` に 1 行も足さないこと** —— `variantOf` が `AIR` なので**掘ると自分が落ちます**
-- **しまう／戻すの個数は `crafting.ts` の 6 行だけ**:
-  - しまう（形あり・3x3 なので作業台が要る）: `shape: ["III","III","III"], key: { I: IRON_INGOT }`
-    → `out: IRON_BLOCK, count: 1`（金・ダイヤも同じ形で材料だけ差し替え）
-  - 戻す（形なし）: `ingredients: [IRON_BLOCK]` → `out: IRON_INGOT, count: 9`
-  - **9 と 9 を食い違わせないこと** —— 片方を 8 にすると、しまって戻すだけで目減りします
-    （`rules/items-survival.md` の「落ちる 4 個と戻す 4 個」と同じ罠）
+## 5. 書くテスト（`test/panels.test.ts`）
 
-## 5. 書くテスト
-
-**値を出してから判定すること**（`rules/testing.md`）。`check(名前, 条件, 出す値)` の形で、
-`grid(3, [...], key)` と `findRecipe` は `test/crafting.test.ts` に既にあります。
-
-1. **「鉄・金・ダイヤは 9 個でブロックになる」** —— 3 つとも `grid(3, ["III","III","III"], ...)`
-   を `findRecipe` に通し、`out` と `count` を**出してから**判定
-2. **「ブロックを崩すと 9 個に戻る」** —— 3 つとも 1 個だけ置いた盤面で `count === 9` を、
-   **数を出してから**判定
-3. **「しまって戻すと個数が変わらない」** —— 9 → 1 → 9 を 3 つとも通し、
-   **入れた数と戻った数の両方を出す**
-4. **`test/blocks.test.ts`**: 3 つとも `model` が既定の立方体・`variantOf === AIR`・
-   同じ番号のアイテムが `itemOf` で引ける・`rollDrop(id, 0)` が自分を返す・
-   `minTier` が上の表どおり。**値を出してから**判定
+`test/harness.ts` の `check` に合わせ、**偽の `PanelHost` に呼ばれた順を配列で記録し、
+その配列を `console.log` で出してから判定する**こと（`rules/testing.md`。
+「値を出してから判定」。`test/craftscreen.test.ts` が手本）。**画面の中身は見ません**
+（それは `craftscreen.ts` の担当）—— 見るのは**呼ぶ順と、呼ばないこと**の 2 つだけ。
 
 ## 6. このタスク固有の禁じ手
 
-- **`items.ts` に `item({ id: IRON_BLOCK, ... })` を手で足さないこと**（2 節。二重登録）
-- **`DROPS` にも `SMELTING` にも `FOODS` にも 1 行も足さないこと**
-- **`worldgen.ts` に埋めないこと**（本家にない自然生成を作ることになります）
-- **`PALETTE`（クリエイティブのホットバー 9 個）を触らないこと** —— 9 枠しかなく、
-  溢れたぶんは黙って消えます（`rules/items-survival.md`）
-- **既存のレシピを 1 本も書き換えないこと**（とくにバケツ・シアーズ・道具 20 本の
-  `IRON_INGOT` の行。`test/crafting.test.ts` の「同じ形のレシピが重複していない」が
-  唯一の足場です）
-- **`main.ts` に 1 行も足さないこと**（1464 行。15 番より前に空ける話は別件）
+- **振る舞いを 1 つも変えないこと。** ついでの直しや改良を混ぜない（差分が読めなくなる）
+- **`test/ui.test.ts` を 1 行も直さないこと。** あの一覧は `main.ts` に残るべき呼び出しを
+  40 件見張っています。**しかも回数まで数える見張りが別にあります**（`durability` の
+  「`main.ts` の `wearForUse(` は 3 回」など）—— **動かす関数の中身を `grep -rn '<語>' test/`
+  で先に当たること。1 件でも当たったら、その関数は動かさずに置いていくこと**
+  （2026-09-05 に確かめた範囲では、**今回動かす 7 関数はどれも 0 件**です）
+- **`panels.ts` に `document` / `HTMLElement` / `Mesh` / `World` を持ち込まないこと**
+- **`main.ts` の行数をコメントを削って減らさないこと**（あそこの注意書きは記録です）
+- 画面を足さないこと・`CraftScreen` の中身に触らないこと
 
 ## 7. 終了条件
 
-- `npm run typecheck` 緑 / **`npm test` 全部緑** / `npm run build` 緑（`src/**` を触るため）
-- **`npm run bench` は不要**（生成もメッシュ化も触りません）
-- **コミット 1 つ**で `master` へ push
-- **見た目に出ます**（一覧に 3 つ増え、置ける立方体が 3 つ増える）ので **C-3 は必須**:
-  `node tools/browsershot.mjs` か `npm run shot` で撮り、**`Read` で開いて見ること**
-- **`TUNING.md` に 1 節**（硬さ 5 / 3 / 5 と `minTier`、色を写した根拠）
-- `ROADMAP.md` の予約表に 135..137 を「実装済み」/ キューの 14 番を消す /
-  この仕様書の `状態:` を `済` に / `docs/autodev-log.md` に 1 節 / `HANDOFF.md` を書き直す
+`npm run typecheck` 緑 / `npm test` **全部緑**（新しい 5 項目ぶんだけ件数が増える）/
+`npm run build` 緑 / **コミット 1 つ**。**手触りの数値は 0 個**なので `TUNING.md` は触りません。
+
+**見た目は変わりませんが、`main.ts` の配線を貼り替えるので**、`npm run build` のあと
+`node tools/browsershot.mjs` を 1 回だけ回し、**タイトル画面が今までどおり出る**ことを
+`Read` で見ること（起動で例外が出ると真っ黒な絵になるので、そこだけは分かります）。
+**ヘッドレスではポインタロックが掛からず、インベントリを開いた絵は撮れません**
+（`docs/browser-shots/README.md`）—— **開けるかどうかは `HANDOFF.md` で人に頼むこと。**
