@@ -1232,3 +1232,24 @@ for が作ります。**
 `rules/dom-ui.md` に **「画面の開け閉め（`panels.ts`）」** の節を足し、`paths` に
 `src/panels.ts` と `test/panels.test.ts` の 2 行を足しました（`openPanel()` を指していた
 既存の 1 行も `panels.open()` へ）。**本数が増えないので `rules/README.md` は触っていません。**
+
+### 点検（C-2）で直したこと
+
+**点検役は「重大な問題 0 件」。** ただし**私が書いた見張りの弱点を 2 つ**拾ってくれたので、
+その場で直しました（`test/**` だけの直しなので、配信されるものは変わりません）:
+
+- **`panels.ts` の漏れ検査が `"new World"` を探していました** —— `import type { World }` も
+  `world: World` というフィールドも**素通りします**。`"World"` へ広げました
+  （`sourceOf()` がコメントを落とすので、説明文の `World` で赤くはなりません）。
+  **`CLAUDE.md` と `rules/dom-ui.md` の文言は `World`** なので、そちらに揃うのが正解でした
+- **末尾の 2 件が「値を出してから判定」になっていませんでした**（`rules/testing.md`）。
+  `console.log` を足し、**`main.ts` からの呼び出し 7 か所を並べて出す**ようにしました
+
+**点検役は `main.ts` の `victoryClosed: !hud.victoryOpen` を `true` に書き換えて
+`test/ui.test.ts` の `routed` が実際に落ちることを確かめています** —— 引数名を反転させた
+解き方が「テストをごまかしただけ」ではないことの裏です（`tsc` と `test/panels.test.ts` も
+落ちるので、守りは 3 方向で捕まります）。
+
+**反省: コミットが点検より先に出ました。** サブエージェントは `run_in_background: false` を
+渡しても背景に回ることがあり、`AUTODEV.md` の代替（親が `git diff` を読む）で閉じたためです。
+**次の C の周は、点検役を立てるなら結果を待てる形かを先に確かめること。**

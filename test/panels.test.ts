@@ -171,9 +171,13 @@ export function run(): void {
   {
     // `panels.ts` に DOM・three・`World` が入った瞬間、開け閉めを確かめるのに
     // ブラウザか世界が要るようになる（`CLAUDE.md` の対の表）。
+    // **`World` は `new World` で探さないこと** —— `import type { World }` も
+    // `world: World` というフィールドも素通りします（`CLAUDE.md` と
+    // `rules/dom-ui.md` の文言も `World`）。`sourceOf()` がコメントを落とすので、
+    // 説明文に書いた `World` で赤くなることはありません。
     const source = sourceOf("src/panels.ts");
-    const leaked = ["document", "HTMLElement", "Mesh", "new World"].filter((w) => source.includes(w));
-    console.log(`      panels.ts に紛れているもの: ${leaked.length} 件`);
+    const leaked = ["document", "HTMLElement", "Mesh", "World"].filter((w) => source.includes(w));
+    console.log(`      panels.ts に紛れているもの: ${leaked.length} 件 [${leaked.join(" ")}]`);
     check("panels.ts が判断だけでできている", leaked.length === 0, leaked.join(" "));
 
     // 出したのに `main.ts` にも書き戻した、を止める。
@@ -181,6 +185,9 @@ export function run(): void {
     const backInMain = ["function openPanel(", "function closeInventory("].filter((w) =>
       main.includes(w),
     );
+    const calls = [...main.matchAll(/panels\.\w+\(/g)].map((m) => m[0]);
+    console.log(`      main.ts に戻っている定義: ${backInMain.length} 件`);
+    console.log(`      main.ts からの呼び出し: ${calls.join(" ")}`);
     check("main.ts に開け閉めが戻っていない", backInMain.length === 0, backInMain.join(" "));
     check("main.ts は出した手順を呼び直している", main.includes("panels.open"));
   }
