@@ -158,12 +158,29 @@ paths:
 `def.solid` と「その面がマスいっぱいに広がっていること」の**両方**を見るので、
 `CROSS_BOX`（`[[0.1, 0, 0.1, 0.9, 0.8, 0.9]]`）は `box[u] = 0.1 > 0` で落ちます ——
 **`solid: true` にしても、箱の上端を 1 まで伸ばしても通りません。**
-だから **`canPlaceAt()` は「十字の上に十字」を必ず断ります**（`supportFace: FACE_YN` が
-真下に `canSupport(…, FACE_YP)` を求めるため）。**積み上がる生えもの
-（本家のサトウキビ・竹・サボテン）を足すときは、`canSupport()` の外に
-「自分の上には自分を置いてよい」という別の決まりが要ります** —— 2026-09-05 の
-B の周に数えて、サトウキビを「1 マスぶん（18a）」と「積める・伸びる（18b）」に割りました。
 **`canSupport()` の側をゆるめて通さないこと** —— あれは壁掛けの松明とベッドの足場です。
+
+**だから「積み上がる生えもの」の支えは `canSupport()` の外側の `supportsBlock()` が持ちます**
+（2026-09-05 のサトウキビ = 18b。本家の竹・サボテンも足すならこの形です）:
+
+```ts
+export function supportsBlock(supporter: number, face: number, id: number): boolean {
+  if (supporter === id && stacksOnSelf(id)) return true;   // 自分の上には自分を置ける
+  return canSupport(supporter, face);
+}
+```
+
+- **置く側（`World.canPlaceAt`）と壊す側（`World.breakUnsupported`）が同じこれを通すこと。**
+  片方だけにすると、**積めるのに下を壊しても上が落ちない**形で静かに壊れます。
+  **`test/arena.ts` の写しも同じ式にすること**（写しはあそこ 1 か所だけ）。
+  `test/blocks.test.ts` が**本物の `World` で 3 段積んで下を壊し、`onAutoBreak` が
+  2 回出る**ことを見ています（偽の試験場は `breakUnsupported` を持ちません）。
+- **`stacksOnSelf` を付けるブロックからは `replaceable` を外すこと。** これが積める鍵です ——
+  `placeSpot()` は狙ったブロックが `replaceable` なら**そのマス自身**を返すので、
+  付いたままだと上面を狙っても 1 本目に重なり、`setVoxel` が「同じ値」で false を返して
+  **永久に積めません**（`placing.ts` は 1 行も直さずに済みます）。
+  外すと**木の葉より強くなる**ので、積んだ列の途中を葉に抜かれて上が浮くこともありません。
+- **段の違いを ID で表さないこと**（3 段なら 3 番号になります）。**同じ ID を積むだけ**です。
 
 **水平の 4 向きを持つブロックは、向きの表を `HORIZONTAL_FACINGS` /
 `HORIZONTAL_FACING_INDEX` / `HORIZONTAL_STEP` から引くこと**（階段とベッドが共有しています）。

@@ -6,8 +6,10 @@ import {
   GRASS,
   LAVA,
   OBSIDIAN,
+  SAND,
   STONE,
   STONE_SLAB,
+  SUGAR_CANE,
   TALL_GRASS,
   TORCH,
   WATER,
@@ -160,6 +162,64 @@ export function run(): void {
   }
 
   check("空の手では何も起きない", tryPlace(field(), nobody, aimAt(0, 10, 0, GRASS), 0, AIR).kind === "none");
+
+  // --- サトウキビを積む（18b） ---
+  // **`placing.ts` は 1 行も変えていない。** 効いているのは `blocks.ts` の 2 つ:
+  // `replaceable` を外したこと（`placeSpot()` が狙ったマス自身ではなく法線の側を返す）と
+  // `supportsBlock()`（`Slab.canPlaceAt` も同じものを通す）。
+  //
+  /** 平らな浜（上面 y=10）に、サトウキビが `tall` 段。 */
+  function beach(tall: number): Slab {
+    const slab = new Slab();
+    slab.fill(-4, 4, 1, 10, -4, 4, SAND);
+    if (tall > 0) slab.fill(0, 0, 11, 10 + tall, 0, 0, SUGAR_CANE);
+    return slab;
+  }
+
+  {
+    const slab = beach(1);
+    const out = tryPlace(slab, nobody, aimAt(0, 11, 0, SUGAR_CANE), 0, SUGAR_CANE);
+    console.log(
+      `      サトウキビの上面を狙う: ${out.kind}  y11 ${slab.getVoxel(0, 11, 0)} / y12 ${slab.getVoxel(0, 12, 0)}`,
+    );
+    check(
+      "上面を狙うと 1 つ上に立つ（1 本目は消えない）",
+      out.kind === "placed" && slab.getVoxel(0, 12, 0) === SUGAR_CANE &&
+        slab.getVoxel(0, 11, 0) === SUGAR_CANE,
+      `${out.kind} / y11 ${slab.getVoxel(0, 11, 0)} / y12 ${slab.getVoxel(0, 12, 0)}`,
+    );
+  }
+
+  {
+    // 横面は今までどおり隣のマス（砂の上）。**積まれない。**
+    const slab = beach(1);
+    const out = tryPlace(slab, nobody, aimAt(0, 11, 0, SUGAR_CANE, [1, 0, 0]), 0, SUGAR_CANE);
+    console.log(
+      `      サトウキビの横面を狙う: ${out.kind}  隣 ${slab.getVoxel(1, 11, 0)} / 真上 ${slab.getVoxel(0, 12, 0)}`,
+    );
+    check(
+      "横面を狙うと隣のマスに立つ（積まれない）",
+      out.kind === "placed" && slab.getVoxel(1, 11, 0) === SUGAR_CANE &&
+        slab.getVoxel(0, 12, 0) === AIR,
+      `${out.kind} / 隣 ${slab.getVoxel(1, 11, 0)} / 真上 ${slab.getVoxel(0, 12, 0)}`,
+    );
+  }
+
+  {
+    // 2 段目の横（＝真下が空中）は理由を出して断る。**`canSupport()` の外側に
+    // 足した例外が「自分の上」だけに効いていること**の裏取り。
+    const slab = beach(2);
+    const out = tryPlace(slab, nobody, aimAt(0, 12, 0, SUGAR_CANE, [1, 0, 0]), 0, SUGAR_CANE);
+    console.log(
+      `      支えの無い空中へ: ${out.kind}  ${out.kind === "blocked" ? out.message : ""}`,
+    );
+    check(
+      "真下が空中なら blocked（理由に名前が出る）",
+      out.kind === "blocked" && out.message.includes(blockName(SUGAR_CANE)) &&
+        slab.getVoxel(1, 12, 0) === AIR,
+      `${out.kind} / 置いた先 ${slab.getVoxel(1, 12, 0)}`,
+    );
+  }
 
   describe("バケツで汲む／流す（tryBucket）");
 

@@ -7,10 +7,10 @@ import {
   blockEmission,
   blocksSky,
   NO_SUPPORT,
-  canSupport,
   isOpaque,
   oppositeFace,
   supportFace,
+  supportsBlock,
 } from "./blocks";
 import { Chunk, chunkKey, localIndex } from "./chunk";
 import {
@@ -214,8 +214,10 @@ export class World {
     const face = supportFace(id);
     if (face === NO_SUPPORT) return true;
     const [dx, dy, dz] = OFFSETS[face];
-    // 支えになる側から見ると、こちらを向いた面が埋まっている必要がある
-    return canSupport(this.getVoxel(wx + dx, wy + dy, wz + dz), oppositeFace(face));
+    // 支えになる側から見ると、こちらを向いた面が埋まっている必要がある。
+    // **`canSupport()` ではなく `supportsBlock()` に聞くこと** —— 積める生えもの
+    // （サトウキビ）の「自分の上には自分」はあちらの外側にある。
+    return supportsBlock(this.getVoxel(wx + dx, wy + dy, wz + dz), oppositeFace(face), id);
   }
 
   /**
@@ -236,7 +238,9 @@ export class World {
       if (neighbor === AIR) continue;
       // 隣が「こちら側」に支えを求めているなら、今の中身で支えられるか見る
       if (supportFace(neighbor) !== oppositeFace(face)) continue;
-      if (canSupport(id, face)) continue;
+      // **置く側（`canPlaceAt`）とまったく同じ式であること。** 片方だけ
+      // `canSupport()` のままにすると、積めるのに下を壊しても上が落ちない。
+      if (supportsBlock(id, face, neighbor)) continue;
       // **壊す前に知らせること。** あとにすると、連鎖で更に壊れたぶんと順番が入れ替わる。
       this.onAutoBreak?.(nx, ny, nz, neighbor);
       this.setVoxel(nx, ny, nz, AIR);

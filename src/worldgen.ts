@@ -3,6 +3,7 @@ import {
   BEDROCK,
   BROWN_MUSHROOM,
   CACTUS,
+  CANE_HEIGHT_MAX,
   COAL_ORE,
   DIAMOND_ORE,
   GOLD_ORE,
@@ -291,8 +292,8 @@ export class WorldGen {
         const h = height[at];
         // 内側の 16 段で毎回引かないよう、ここで取り出しておく
         const { surface, filler, grass, mushroom, cane } = biomeDef(biome[at]);
-        // 生えもの（サトウキビかキノコか草むら）は地表のすぐ上の 1 マスだけ。
-        // 列ごとに 1 回引けば済む。
+        // 生えもの（サトウキビかキノコか草むら）は地表のすぐ上から上へ `tall` マス
+        // （**サトウキビだけが 1〜3 で、あとは 1 マス**）。列ごとに 1 回引けば済む。
         //
         // **表どおりの確率になるのは、いちばん先に引いたものだけ。** あとのものは
         // 前のものが生えなかったマスだけを候補にするので、**biomes.ts に書いた値と
@@ -318,13 +319,22 @@ export class WorldGen {
               : sprouted && grass > 0 && hash2(wx, wz, this.seed ^ 0x6a55) < grass
                 ? TALL_GRASS
                 : AIR;
+        // **サトウキビだけが 1..CANE_HEIGHT_MAX 段。** キノコと草むらは 1 マスのまま。
+        // **塩は他の 4 本（0x7c39 / 0x4d17 / 0x2f8b / 0x6a55）と重ねないこと** ——
+        // 重ねると段数が密度と相関する（濃い所ほど高い、という形で偏る）。
+        // **段の上のほうは別のチャンクに入る**が、`h` も `tuft` も `tall` も
+        // 列のキャッシュとハッシュから決まるので、どの段を生成しても同じ答えになる。
+        const tall =
+          tuft === SUGAR_CANE
+            ? 1 + Math.floor(hash2(wx, wz, this.seed ^ 0x5b27) * CANE_HEIGHT_MAX)
+            : 1;
 
         for (let ly = 0; ly < CHUNK_SIZE; ly++) {
           const wy = baseY + ly;
           const index = (ly * CHUNK_SIZE + lz) * CHUNK_SIZE + lx;
 
           if (wy > h) {
-            data[index] = wy <= SEA_LEVEL ? WATER : wy === h + 1 ? tuft : AIR;
+            data[index] = wy <= SEA_LEVEL ? WATER : wy <= h + tall ? tuft : AIR;
             continue;
           }
           if (wy === 0) {

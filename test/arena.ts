@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { AIR, BEDROCK, NO_SUPPORT, canSupport, oppositeFace, supportFace } from "../src/blocks";
+import { AIR, BEDROCK, NO_SUPPORT, oppositeFace, supportFace, supportsBlock } from "../src/blocks";
 import { WORLD_HEIGHT } from "../src/constants";
 import { OFFSETS, SKY_LIGHT } from "../src/lighting";
 import type { World } from "../src/world";
@@ -106,13 +106,15 @@ export class Slab {
   /**
    * 支えのある所か。**`World.canPlaceAt()` と同じ式**（`supportFace` → 反対の面が
    * 埋まっているか）。写しているのはここ 1 か所だけで、見ている表は本物と同じ
-   * （`blocks.ts` の `canSupport`）。
+   * （`blocks.ts` の `supportsBlock`。**`canSupport` を直に呼ばないこと** ——
+   * 積める生えもの（サトウキビ）の「自分の上には自分」があちらの外側にあるので、
+   * 直に呼ぶと本物では積めるのに試験場だけ断ります）。
    */
   canPlaceAt(x: number, y: number, z: number, id: number): boolean {
     const face = supportFace(id);
     if (face === NO_SUPPORT) return true;
     const [dx, dy, dz] = OFFSETS[face];
-    return canSupport(this.getVoxel(x + dx, y + dy, z + dz), oppositeFace(face));
+    return supportsBlock(this.getVoxel(x + dx, y + dy, z + dz), oppositeFace(face), id);
   }
 
   /** 置いてあるマスの数（足場や枠が本当に書かれたかを数える）。 */

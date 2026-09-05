@@ -28,6 +28,7 @@ import {
   PLANK_SLAB_TOP,
   PLANK_STAIRS,
   RED_MUSHROOM,
+  SAND,
   SANDSTONE_SLAB,
   SHARED_ID_START,
   SNOW,
@@ -64,6 +65,8 @@ import {
   placeSpot,
   placedVariant,
   shapeBoxes,
+  stacksOnSelf,
+  supportsBlock,
   tilled,
 } from "../src/blocks";
 import { MAX_LIGHT } from "../src/constants";
@@ -1053,7 +1056,7 @@ export function run(): void {
   storedBlocks();
   mushrooms();
   bowlAndStew();
-  sugarCane();
+  sugarCane(world, ground);
 
   world.dispose();
 }
@@ -1062,9 +1065,13 @@ export function run(): void {
  * サトウキビ（ブロック 143）と砂糖（アイテム 144）。**サトウキビはキノコの定義を
  * 写した生えもの**なので、ここで見るのは「写し間違えていないか」「掘ると自分が
  * 落ちるか」「砂糖が持ち物として正しいか」「一覧の色で見分けが付くか」の 4 つ。
- * **どこに生えるか（浜）は `test/worldgen.test.ts`、レシピは `test/crafting.test.ts`。**
+ * **どこに生えるか（浜）と何段で立つかは `test/worldgen.test.ts`、
+ * レシピは `test/crafting.test.ts`、置く経路は `test/placing.test.ts`。**
+ *
+ * **積める（18b）ぶんの見張りもここ**: `supportsBlock()` の真理値表と、
+ * 本物の `World` で 3 段積んで下を壊す経路。
  */
-function sugarCane(): void {
+function sugarCane(world: World, ground: number): void {
   describe("サトウキビと砂糖");
 
   const d = blockDef(SUGAR_CANE);
@@ -1075,14 +1082,23 @@ function sugarCane(): void {
       `支え ${d.supportFace} / 箱 ${JSON.stringify(d.boxes)} / ` +
       `掘ると ${itemName(dropped.item)} x${dropped.count} / アイテム名「${itemName(SUGAR_CANE)}」`,
   );
-  // **キノコと同じ 6 点。** `variantOf` を書くとアイテムが作られず（一覧にも
-  // 持ち物にも出ない）、`replaceable` を落とすと浜へ張り出した森の葉に穴が空く。
+  // **キノコと同じ 6 点。ただし `replaceable` だけは逆**（18b で外した）。
+  // `variantOf` を書くとアイテムが作られない（一覧にも持ち物にも出ない）。
+  //
+  // **`replaceable` が付いていると永久に積めない** —— `placeSpot()` が狙ったマス
+  // 自身を返すので、上面を狙っても 1 本目に重なり、`setVoxel` が「同じ値」で
+  // false を返す。**苗（`WHEAT_CROP`）と同じ側**で、草むら・キノコとは逆。
   check(
-    "サトウキビは十字・通り抜けられる・上書きされる・硬さ 0・向き違いではない",
-    d.model === "cross" && !d.solid && !d.opaque && isReplaceable(SUGAR_CANE) &&
-      d.hardness === 0 && d.variantOf === AIR,
-    `model ${d.model} / solid ${d.solid} / opaque ${d.opaque} / replaceable ${isReplaceable(SUGAR_CANE)} / ` +
+    "サトウキビは十字・通り抜けられる・硬さ 0・向き違いではない",
+    d.model === "cross" && !d.solid && !d.opaque && d.hardness === 0 && d.variantOf === AIR,
+    `model ${d.model} / solid ${d.solid} / opaque ${d.opaque} / ` +
       `硬さ ${d.hardness} / variantOf ${d.variantOf}`,
+  );
+  check(
+    "サトウキビは上書きされない（積むために外した。苗と同じ側・草むらとは逆）",
+    !isReplaceable(SUGAR_CANE) && !isReplaceable(WHEAT_CROP) && isReplaceable(TALL_GRASS),
+    `サトウキビ ${isReplaceable(SUGAR_CANE)} / 苗 ${isReplaceable(WHEAT_CROP)} / ` +
+      `草むら ${isReplaceable(TALL_GRASS)}`,
   );
   check(
     "サトウキビの支えは真下（浮いたまま残らない）",
@@ -1145,6 +1161,75 @@ function sugarCane(): void {
     worst >= 20,
     `いちばん近い組で ${worst.toFixed(1)}`,
   );
+
+  // --- 積める（18b） ---
+  // **支えの表は `supportsBlock()` 1 本。** `canSupport()` の側はゆるめていない
+  // （松明とベッドの足場）ので、**十字の上に十字**は今までどおり断られる。
+  // **4 通りを 1 行に出してから判定する。**
+  const supportCases: [string, number, number][] = [
+    ["サトウキビの上のサトウキビ", SUGAR_CANE, SUGAR_CANE],
+    ["サトウキビの上の松明", SUGAR_CANE, TORCH],
+    ["石の上のサトウキビ", STONE, SUGAR_CANE],
+    ["空気の上のサトウキビ", AIR, SUGAR_CANE],
+  ];
+  console.log(
+    `      supportsBlock(真下, FACE_YP, 置くもの): ` +
+      supportCases
+        .map(([n, s, i]) => `${n} ${supportsBlock(s, FACE_YP, i)}`)
+        .join(" / ") +
+      `  （canSupport(サトウキビ, FACE_YP) は ${canSupport(SUGAR_CANE, FACE_YP)} のまま）`,
+  );
+  check(
+    "サトウキビの上のサトウキビは置ける（canSupport はゆるめていない）",
+    supportsBlock(SUGAR_CANE, FACE_YP, SUGAR_CANE) && !canSupport(SUGAR_CANE, FACE_YP) &&
+      stacksOnSelf(SUGAR_CANE),
+    `supportsBlock ${supportsBlock(SUGAR_CANE, FACE_YP, SUGAR_CANE)} / ` +
+      `canSupport ${canSupport(SUGAR_CANE, FACE_YP)} / stacksOnSelf ${stacksOnSelf(SUGAR_CANE)}`,
+  );
+  check(
+    "サトウキビの上の松明は置けない・石の上のサトウキビは置ける・空気の上は置けない",
+    !supportsBlock(SUGAR_CANE, FACE_YP, TORCH) && supportsBlock(STONE, FACE_YP, SUGAR_CANE) &&
+      !supportsBlock(AIR, FACE_YP, SUGAR_CANE) && !stacksOnSelf(TALL_GRASS),
+    `松明 ${supportsBlock(SUGAR_CANE, FACE_YP, TORCH)} / 石 ${supportsBlock(STONE, FACE_YP, SUGAR_CANE)} / ` +
+      `空気 ${supportsBlock(AIR, FACE_YP, SUGAR_CANE)} / 草むら stacksOnSelf ${stacksOnSelf(TALL_GRASS)}`,
+  );
+
+  // **本物の `World` で 3 段積んで、いちばん下を壊す**（偽の試験場は
+  // `breakUnsupported` を持たない。手本は上の小麦の節）。置く側だけを
+  // `supportsBlock()` にして壊す側を `canSupport()` のまま残すと、
+  // **積めるのに下を壊しても上 2 段が宙に残る。**
+  {
+    const cx = 5;
+    const cz = 5;
+    world.setVoxel(cx, ground - 1, cz, SAND);
+    for (let y = ground; y < ground + 5; y++) world.setVoxel(cx, y, cz, AIR);
+    let stacked = 0;
+    for (let k = 0; k < 3; k++) {
+      if (world.setVoxel(cx, ground + k, cz, SUGAR_CANE)) stacked++;
+    }
+    console.log(
+      `      3 段積み: 置けたのは ${stacked} 段 / 中身 ` +
+        [0, 1, 2, 3].map((k) => world.getVoxel(cx, ground + k, cz)).join(","),
+    );
+    check(
+      "砂の上にサトウキビを 3 段積める",
+      stacked === 3 && world.getVoxel(cx, ground + 2, cz) === SUGAR_CANE &&
+        world.getVoxel(cx, ground + 3, cz) === AIR,
+      `${stacked} 段 / 3 段目 ${world.getVoxel(cx, ground + 2, cz)}`,
+    );
+
+    let broke = 0;
+    world.onAutoBreak = (_x, _y, _z, id) => { if (id === SUGAR_CANE) broke++; };
+    world.setVoxel(cx, ground, cz, AIR); // いちばん下を壊す
+    check(
+      "いちばん下を壊すと上 2 段も落ちる（合図が 2 回）",
+      broke === 2 && world.getVoxel(cx, ground + 1, cz) === AIR &&
+        world.getVoxel(cx, ground + 2, cz) === AIR,
+      `合図 ${broke} 回 / 2 段目 ${world.getVoxel(cx, ground + 1, cz)} / ` +
+        `3 段目 ${world.getVoxel(cx, ground + 2, cz)}`,
+    );
+    world.onAutoBreak = undefined;
+  }
 }
 
 /**

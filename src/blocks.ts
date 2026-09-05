@@ -350,11 +350,18 @@ export const BROWN_MUSHROOM = 140;
  *
  * **箱は `CANE_BOX`（上端 1）** —— `CROSS_BOX` は上端 0.8 なので、上へ積むと継ぎ目が空きます。
  *
- * **いまは 1 マスぶんで、積めも伸びもしません。** `canSupport()` は `def.solid` と
+ * **自分の上には自分を積めます**（`stacksOnSelf: true`。18b）。`canSupport()` は `def.solid` と
  * 「面がマスいっぱい」の両方を見るので、**十字の箱はどう書いても支えになれません**
- * （`rules/blocks-shapes.md`）。「サトウキビの上にサトウキビ」には `canSupport()` の外に
- * 別の決まりが要るので、そこは 18b へ回してあります。**`canSupport()` の側を
- * ゆるめて通さないこと** —— あれは壁掛けの松明とベッドの足場です。
+ * （`rules/blocks-shapes.md`）。だから支えの判定は `canSupport()` の**外側**の
+ * `supportsBlock()` が持ちます。**`canSupport()` の側をゆるめて通さないこと** ——
+ * あれは壁掛けの松明とベッドの足場です。
+ *
+ * **`replaceable` は付けません**（18a では付いていました）。付いていると `placeSpot()` が
+ * 狙ったマス自身を返すので、**上面を狙っても 1 本目に重なって永久に積めません**
+ * （`setVoxel` が「同じ値」で false を返す）。外すと法線の側（＝真上）が返るので、
+ * `placing.ts` に 1 行も書かずに積めます。**葉より強くなる**ぶん、積んだ列の途中を
+ * 木の葉に抜かれて上が浮くこともありません（18a が `replaceable` を付けた理由
+ * ——「浜へ張り出した森の葉が欠ける」—— は実測で 0 件でした。`docs/autodev-log.md`）。
  *
  * **`variantOf` を書かないこと**（既定の `AIR`）。キノコ（139 / 140）と同じで、
  * (a) `items.ts` の for が同じ番号のアイテムを自動で作り（手で `item({...})` を足すと
@@ -362,6 +369,14 @@ export const BROWN_MUSHROOM = 140;
  * （`DROPS` に 1 行も要りません）。**`items.ts` の `MAX_ITEM_ID` だけは伸ばすこと。**
  */
 export const SUGAR_CANE = 143;
+
+/**
+ * 生成でサトウキビが立つ段数の上限（本家と同じ 3）。**手で積む高さに上限はありません**
+ * —— 本家も 3 で止まるのは「伸びる」ほうだけです（18c もこの値を見ます）。
+ * **`worldgen.ts` に数値を書かないこと**（2 か所に持つと、片方だけ変えたときに
+ * 「生成は 4 段なのに伸びるのは 3 段まで」という形で静かに食い違います）。
+ */
+export const CANE_HEIGHT_MAX = 3;
 
 /** 上付きハーフ。見た目と当たり判定だけが違うので、大元は下付きのハーフ。 */
 export const STONE_SLAB_TOP = 64;
@@ -585,6 +600,18 @@ export interface BlockDef {
    */
   readonly supportFace: number;
   /**
+   * 自分の上に自分を積めるか（サトウキビ）。**`supportFace` と対で効きます** ——
+   * 支えは真下のままで、そこに自分が居てもよくなるだけです。
+   *
+   * **`canSupport()` の側をゆるめる代わりではありません。** 十字の箱は
+   * どう書いても支えになれない（`rules/blocks-shapes.md`）ので、この 1 つを
+   * **`canSupport()` の外側**の `supportsBlock()` が見ます。置く側
+   * （`World.canPlaceAt`）と壊す側（`World.breakUnsupported`）が**同じ
+   * `supportsBlock()` を通すこと** —— 片方だけにすると、積めるのに下を壊しても
+   * 上が落ちない形で静かに壊れます。
+   */
+  readonly stacksOnSelf: boolean;
+  /**
    * 見た目だけが違う別置き版なら、その大元のブロック。0 なら大元そのもの。
    * アイテムもドロップも名前も大元に揃うので、置き方を増やしても
    * アイテム欄が増えない。
@@ -682,6 +709,7 @@ function def(
     model: opts.model ?? "cube",
     boxes: opts.boxes ?? FULL_BOX,
     supportFace: opts.supportFace ?? NO_SUPPORT,
+    stacksOnSelf: opts.stacksOnSelf ?? false,
     variantOf: opts.variantOf ?? AIR,
   };
 }
@@ -1341,17 +1369,19 @@ export const BLOCKS: readonly BlockDef[] = [
     supportFace: FACE_YN,
   }),
 
-  // サトウキビ（上のコメント）。**キノコの定義をそのまま写したもの**で、違うのは
-  // 色と **箱（`CANE_BOX`。上端が 0.8 ではなく 1）** の 2 つだけ。
+  // サトウキビ（上のコメント）。キノコの定義から違うのは 3 つ:
+  // **色** / **箱（`CANE_BOX`。上端が 0.8 ではなく 1）** / **積める（`stacksOnSelf`）**。
+  // **`replaceable` は付けないこと** —— 付けると `placeSpot()` が狙ったマス自身を
+  // 返すので、上面を狙っても 1 本目に重なって永久に積めない（上のコメント）。
   def(SUGAR_CANE, "サトウキビ", { top: 0x9ad14f }, {
     opaque: false,
     solid: false,
-    replaceable: true,
     hardness: 0,
     sound: "grass",
     model: "cross",
     boxes: CANE_BOX,
     supportFace: FACE_YN,
+    stacksOnSelf: true,
   }),
 ];
 
@@ -1428,6 +1458,8 @@ const HOT = new Uint8Array(ID_LIMIT);
 const FALLS = new Uint8Array(ID_LIMIT);
 /** 1 = 触れていると刺さる（サボテン）。どのマスに効くかは `player.ts`。 */
 const SPIKY = new Uint8Array(ID_LIMIT);
+/** 1 = 自分の上に自分を積める（サトウキビ）。引くのは `supportsBlock()` だけ。 */
+const STACKS_ON_SELF = new Uint8Array(ID_LIMIT);
 const VARIANT_OF = new Uint8Array(ID_LIMIT);
 /** ID から定義を引く表。ID が飛び飛びなので、BLOCKS の並びとは別に持つ。 */
 const BY_ID: BlockDef[] = [];
@@ -1444,6 +1476,7 @@ for (const block of BLOCKS) {
   HOT[block.id] = block.hot ? 1 : 0;
   FALLS[block.id] = block.falls ? 1 : 0;
   SPIKY[block.id] = block.spiky ? 1 : 0;
+  STACKS_ON_SELF[block.id] = block.stacksOnSelf ? 1 : 0;
   VARIANT_OF[block.id] = block.variantOf;
 }
 // 定義の無い ID を引くと undefined が伝播して原因が遠くに出るので、ここで落とす
@@ -1671,6 +1704,28 @@ export function canSupport(id: number, face: number): boolean {
     return true;
   }
   return false;
+}
+
+/**
+ * 自分の上に自分を積めるブロックか（サトウキビ）。**`id === SUGAR_CANE` と
+ * 書かないこと** —— `isLiquid()` / `fallsDown()` / `isSpiky()` と同じ表 1 本に聞く。
+ */
+export function stacksOnSelf(id: number): boolean {
+  return STACKS_ON_SELF[id] === 1;
+}
+
+/**
+ * `supporter` は、`face` の側に `id` を置くだけの支えになれるか。
+ * **置く側（`World.canPlaceAt`）と壊す側（`World.breakUnsupported`）は必ずこれを通すこと。**
+ *
+ * ふつうは `canSupport()` そのものだが、**自分の上には自分を置いてよい**という
+ * 例外がここに 1 行だけある（サトウキビ）。十字の箱はどう書いても `canSupport()` を
+ * 通れない（`rules/blocks-shapes.md`）ので、**あちらをゆるめる代わりに外側で足す** ——
+ * `canSupport()` は壁掛けの松明とベッドの足場なので、ゆるめると松明が草むらに刺さる。
+ */
+export function supportsBlock(supporter: number, face: number, id: number): boolean {
+  if (supporter === id && stacksOnSelf(id)) return true;
+  return canSupport(supporter, face);
 }
 
 /** 置くときに向きが変わるブロックを決める材料。 */

@@ -3,6 +3,7 @@ import {
   BEDROCK,
   BROWN_MUSHROOM,
   CACTUS,
+  CANE_HEIGHT_MAX,
   COAL_ORE,
   DIAMOND_ORE,
   GOLD_ORE,
@@ -428,12 +429,27 @@ export function run(): void {
       if (biomeDef(gen.biomeAt(x, z)).cane === 0) strayCanes++;
     }
   }
+  // 段数の分布（18b）。**添字が段数**で、0 は使わない。4 段以上は `tooTall` に落ちる。
+  const caneTalls = [0, 0, 0, 0];
+  let tooTall = 0;
+  let brokenStack = 0;
   for (const [x, z] of canePlots) {
     const h = gen.heightAt(x, z);
     if (voxel(x, h + 1, z) !== SUGAR_CANE) continue;
     canes++;
     // 浜の地表は砂。**真下が砂であること**（浮いていない）。
     if (voxel(x, h, z) !== biomeDef(BEACH).surface) floatingCanes++;
+    // 上へ舐めて段数を数える（**止まらないよう 8 で切る**）。
+    let tall = 0;
+    while (tall < 8 && voxel(x, h + 1 + tall, z) === SUGAR_CANE) tall++;
+    // **どの段の真下も砂かサトウキビ**（森の葉に抜かれて上が浮いていない）。
+    // `replaceable` を外したので葉より強いはずで、ここが 0 でなければ外し損ねている。
+    for (let k = 0; k < tall; k++) {
+      const below = voxel(x, h + k, z);
+      if (below !== biomeDef(BEACH).surface && below !== SUGAR_CANE) brokenStack++;
+    }
+    if (tall < caneTalls.length) caneTalls[tall]++;
+    else tooTall++;
   }
   const caneRate = canes / Math.max(1, canePlots.length);
   const caneWant = biomeDef(BEACH).cane;
@@ -459,6 +475,25 @@ export function run(): void {
     "サトウキビの密度が BiomeDef.cane の 0.7〜1.3 倍に収まる",
     caneRate > caneWant * 0.7 && caneRate < caneWant * 1.3,
     `${(caneRate * 100).toFixed(2)}% / 表は ${(caneWant * 100).toFixed(0)}%（${(caneRate / caneWant).toFixed(2)} 倍）`,
+  );
+  // **段数（18b）。** 1..CANE_HEIGHT_MAX が一様に出るか。
+  const tallShare = (n: number) => caneTalls[n] / Math.max(1, canes);
+  console.log(
+    `      段数の分布: ` +
+      [1, 2, 3].map((n) => `${n} 段 ${caneTalls[n]} 本（${(tallShare(n) * 100).toFixed(0)}%）`).join(" / ") +
+      `  4 段以上 ${tooTall} 本 / 上限 ${CANE_HEIGHT_MAX}`,
+  );
+  check(
+    "サトウキビは 1・2・3 段がどれも 2 割以上（4 段以上は 1 本も無い）",
+    tallShare(1) >= 0.2 && tallShare(2) >= 0.2 && tallShare(3) >= 0.2 && tooTall === 0 &&
+      caneTalls[0] === 0,
+    `1 段 ${(tallShare(1) * 100).toFixed(0)}% / 2 段 ${(tallShare(2) * 100).toFixed(0)}% / ` +
+      `3 段 ${(tallShare(3) * 100).toFixed(0)}% / 4 段以上 ${tooTall} 本`,
+  );
+  check(
+    "どの段の真下も砂かサトウキビ（葉に負けて浮いていない）",
+    brokenStack === 0,
+    `${brokenStack} 段`,
   );
 
   describe("バイオーム");
