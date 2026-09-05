@@ -32,7 +32,7 @@ import { DropRenderer } from "./droprender";
 import { Furnaces, litVoxel } from "./furnaces";
 import { Inventory, bulkDiscard } from "./inventory";
 import { InventoryScreen } from "./inventoryui";
-import { ARROW, NO_ITEM, foodOf, itemName } from "./items";
+import { ARROW, BUCKET, MILK_BUCKET, NO_ITEM, foodOf, itemName } from "./items";
 import { debugMob, nextShot } from "./debugspawn";
 import { debugText } from "./debugtext";
 import { Mining } from "./mining";
@@ -52,7 +52,7 @@ import { PLAYER_OWNER, PROJECTILE_KINDS, Projectiles, type ProjectileKind } from
 import { ProjectileRenderer } from "./projectilerender";
 import { raycastVoxels, type RaycastHit } from "./raycast";
 import { eyeShot } from "./stronghold";
-import { DigCadence, Footsteps } from "./sfx";
+import { DigCadence, Footsteps, type Sfx } from "./sfx";
 import {
   applyRestore,
   buildSave,
@@ -810,7 +810,7 @@ function fitHighlight(target: RaycastHit): void {
 const bounds = [0, 0, 0, 1, 1, 1];
 
 /**
- * 右クリック。**何が起きるかの振り分けは `use.ts` の `decideUse()`**（12 通りの
+ * 右クリック。**何が起きるかの振り分けは `use.ts` の `decideUse()`**（17 通りの
  * 並び順そのものが判断なので、ここに戻さないこと）。ここは注文を受けて貼るだけ。
  *
  * `m` は**手前に居るモブ**（居なければ null。どちらが手前かは `mobIsNearer()`）。
@@ -818,12 +818,15 @@ const bounds = [0, 0, 0, 1, 1, 1];
 function useOrPlace(m: { mob: Mob } | null): void {
   const held = inventory.selectedItem;
   const hasArrow = creative || inventory.has(ARROW);
-  // 「刈れるか」は `mobs.ts`、「手前か」は `controls.ts`。込みにするのは呼ぶ側の仕事。
+  // 「刈れるか」「搾れるか」は `mobs.ts`、「手前か」は `controls.ts`。込みにするのは呼ぶ側の仕事。
   const shearable = m !== null && mobs.canShear(m.mob);
-  const act = decideUse(hit, { held, creative, canEat: vitals.canEat, hasArrow, shearable });
+  const milkable = m !== null && mobs.canMilk(m.mob);
+  const act = decideUse(hit, { held, creative, canEat: vitals.canEat, hasArrow, shearable, milkable });
   switch (act.kind) {
     case "flash": hud.flash(act.message); return;
     case "shear": if (m) shearMob(m.mob); return;
+    case "milk": swapBucket(MILK_BUCKET, "splash", "ミルクを搾った"); return;
+    case "drink": swapBucket(BUCKET, "eat", vitals.drinkMilk() ? "毒が消えた" : "ミルクを飲んだ"); return;
     case "craft": panels.openInventory(3); return;
     case "furnace": panels.openFurnace(furnaces.at(act.at.x, act.at.y, act.at.z)); return;
     case "chest": panels.openChest(chests.open(world, act.at.x, act.at.y, act.at.z)); return;
@@ -883,6 +886,18 @@ function shearMob(mob: Mob): void {
   if (!mobs.shear(mob, mobContext())) return;
   wearHeld(wearForUse(inventory.selectedItem, creative));
   hud.refresh();
+}
+
+/**
+ * 手のバケツの中身を入れ替える（搾る・飲む）。**クリエイティブでも入れ替える** ——
+ * 中身そのものがアイテムなので、入れ替えないとミルクが手に入らない（`useBucket()` と同じ）。
+ */
+function swapBucket(item: number, sound: Sfx, message: string): void {
+  inventory.setSelected(item, 1);
+  audio.play(sound);
+  hud.flash(message);
+  hud.refresh();
+  saveDirty = true;
 }
 
 /** 火種で火を点ける。**どのマスに点くかも枠の判定も `placing.ts` / `portals.ts`。** */

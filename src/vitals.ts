@@ -371,6 +371,24 @@ export class Vitals {
     }
   }
 
+  /**
+   * ミルクを飲む。**毒が消えたら true**（呼ぶ側はその戻り値で文言を分けるだけ）。
+   *
+   * **`eat()` も `heal()` も呼ばないこと** —— 本家のミルクは空腹にも満腹度にも
+   * 体力にも効きません（消すのは毒だけ）。だから `items.ts` の `FOODS` にも
+   * 1 行もなく、**満腹でも飲めます**（`canEat` の門に掛からない）。
+   *
+   * **残り回数と「次の 1 回まで」を両方 0 にすること** —— 片方だけ残すと、
+   * 次に毒を受けたときの 1 回目がその端数のぶんだけ早く来ます。
+   */
+  drinkMilk(): boolean {
+    if (this.dead) return false;
+    const cured = this.poisonLeft > 0;
+    this.poisonLeft = 0;
+    this.poisonTick = 0;
+    return cured;
+  }
+
   respawn(): void {
     this.health = MAX_HEALTH;
     this.hunger = MAX_HUNGER;

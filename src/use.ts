@@ -2,7 +2,7 @@
  * 右クリックで**何が起きるか**の振り分け。**判断だけのファイル**で、three も DOM も
  * `World` も持ち物も出てこない（`placing.ts` / `bow.ts` / `endportal.ts` と同じ形）。
  *
- * もとは `main.ts` の `useOrPlace()` にあった `if` の列（いまは 15 通り）。**順番そのものが
+ * もとは `main.ts` の `useOrPlace()` にあった `if` の列（いまは 17 通り）。**順番そのものが
  * 判断です** —— 並べ替えると静かに壊れるものが 3 つあり、どれもブラウザを開いて
  * 現物を狙うまで気付けません:
  *
@@ -28,7 +28,9 @@ import {
   type PlaceAim,
 } from "./blocks";
 import {
+  BUCKET,
   ENDER_EYE,
+  MILK_BUCKET,
   foodOf,
   isBow,
   isBucket,
@@ -58,6 +60,12 @@ export interface UseFacts {
    * （`hasArrow` とまったく同じ約束 —— ここが器を見に行き始めると判断が 2 か所に散ります）。
    */
   readonly shearable: boolean;
+  /**
+   * **いま搾れるモブが手前に居るか。** 「手前か」は `controls.ts` の `mobIsNearer()`、
+   * 「搾れるか」は `mobs.ts` の `canMilk()` で、`shearable` とまったく同じ約束で
+   * 呼ぶ側が 2 つを込みにして渡します（ここが器を見に行き始めると判断が散ります）。
+   */
+  readonly milkable: boolean;
 }
 
 /** 効くマス（狙ったブロックそのもの）。 */
@@ -76,6 +84,10 @@ export type UseAction =
   | { readonly kind: "none" }
   /** 手前のモブを刈る（何が何個出るかは `mobs.ts` の `MobDef.shearing`）。 */
   | { readonly kind: "shear" }
+  /** 手前のモブを搾る（誰から搾れるかは `mobs.ts` の `MobDef.milkable`）。 */
+  | { readonly kind: "milk" }
+  /** ミルクを飲む（何が消えるかは `vitals.ts` の `drinkMilk()`）。 */
+  | { readonly kind: "drink" }
   | { readonly kind: "flash"; readonly message: string }
   | { readonly kind: "craft" }
   | { readonly kind: "furnace"; readonly at: UseSpot }
@@ -111,6 +123,11 @@ export function decideUse(aim: PlaceAim | null, facts: UseFacts): UseAction {
   // **手前に居るときだけ真**（`shearable` に「手前か」が込みで入っている）。
   if (facts.shearable && isShears(held)) return { kind: "shear" };
 
+  // 搾る。**刈るの隣・器より前**（あとにすると、作業台やチェストの前に立った牛だけ
+  // 搾れません —— 羊とまったく同じ壊れ方で、現物を追い込むまで気付けない）。
+  // **空のバケツのときだけ** —— 中身の入ったバケツで搾れると、水がミルクに化けます。
+  if (facts.milkable && held === BUCKET) return { kind: "milk" };
+
   if (aim && aim.id === CRAFTING_TABLE) return { kind: "craft" };
   // かまど。点火中も同じ 1 台なので、大元の ID で見る。
   if (aim && baseBlock(aim.id) === FURNACE) return { kind: "furnace", at: aim.block };
@@ -130,6 +147,12 @@ export function decideUse(aim: PlaceAim | null, facts: UseFacts): UseAction {
   // バケツ。**汲めるか流せるかは `items.ts` の `bucketUse()`**、どのマスに効くかは
   // `placing.ts` の `tryBucket()`。ここは「バケツを使う」とだけ言う。
   if (isBucket(held)) return { kind: "bucket", item: held };
+
+  // ミルクを飲む。**バケツの直後**（器より後ろでないと、ミルクを持っているあいだ
+  // 作業台が開きません）。**`aim` は見ない** —— 空を向いたまま飲めるのが正しい
+  // （食べる・弓・バケツと同じ扱い）。**満腹でも飲めること** ——
+  // `FOODS` に無いので `canEat` の門に掛からず、満腹のままでも毒を消せる。
+  if (held === MILK_BUCKET) return { kind: "drink" };
 
   // **嵌めるほうが先**（上のコメント）。
   if (aim && held === ENDER_EYE && isEndPortalFrame(aim.id)) return { kind: "fitEye", at: aim.block };

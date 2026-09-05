@@ -18,11 +18,13 @@ import {
   ARROW,
   BOW,
   BREAD,
+  BUCKET,
   COOKED_PORK,
   EGG,
   ENDER_EYE,
   ENDER_PEARL,
   FLINT_AND_STEEL,
+  MILK_BUCKET,
   NO_ITEM,
   SHEARS,
   WATER_BUCKET,
@@ -38,9 +40,9 @@ function aimAt(id: number, x = 3, y = 11, z = 5) {
   return { id, block: { x, y, z }, normal: { x: 0, y: 1, z: 0 }, point: { y: y + 1 } };
 }
 
-/** 並の状況（サバイバル・腹は減っている・矢はある・刈れるモブは居ない）。違うところだけ上書きする。 */
+/** 並の状況（サバイバル・腹は減っている・矢はある・刈れる／搾れるモブは居ない）。違うところだけ上書きする。 */
 function facts(held: number, over: Partial<UseFacts> = {}): UseFacts {
-  return { held, creative: false, canEat: true, hasArrow: true, shearable: false, ...over };
+  return { held, creative: false, canEat: true, hasArrow: true, shearable: false, milkable: false, ...over };
 }
 
 /** 表に出すための短い説明（何が起きるか）。 */
@@ -288,6 +290,40 @@ export function run(): void {
       kind(4) === "place" && kind(5) === "eat" && kind(6) === "bucket",
       `${kind(4)} / ${kind(5)} / ${kind(6)}`,
     );
+  }
+
+  // --- ミルク（搾るのは刈るの隣・器より前 / 飲むのはバケツの直後） ---
+  // 「搾れるか」（`mobs.canMilk()`）も「手前か」（`controls.mobIsNearer()`）も
+  // 呼ぶ側が込みにして渡す（`shearable` とまったく同じ約束）。
+  {
+    const rows: [string, UseFacts, ReturnType<typeof aimAt> | null][] = [
+      ["空バケツ + 手前の牛", facts(BUCKET, { milkable: true }), null],
+      ["空バケツだけ（牛が居ない）", facts(BUCKET), aimAt(GRASS)],
+      ["空バケツで作業台（牛が手前）", facts(BUCKET, { milkable: true }), aimAt(CRAFTING_TABLE)],
+      ["水入りバケツ + 手前の牛", facts(WATER_BUCKET, { milkable: true }), null],
+      ["ミルクバケツ（空を向く）", facts(MILK_BUCKET), null],
+      ["ミルクバケツで作業台", facts(MILK_BUCKET), aimAt(CRAFTING_TABLE)],
+      ["ミルクバケツ（満腹）", facts(MILK_BUCKET, { canEat: false }), null],
+      ["ミルクバケツ + 手前の牛", facts(MILK_BUCKET, { milkable: true }), null],
+    ];
+    for (const [name, f, aim] of rows) {
+      console.log(`      ${name.padEnd(28)}  ${describeAction(decideUse(aim, f))}`);
+    }
+    const kind = (i: number): string => decideUse(rows[i][2], rows[i][1]).kind;
+    check("空バケツ + 搾れるモブが手前 → 搾る", kind(0) === "milk", kind(0));
+    // 牛が居なければ今までどおりバケツ（汲む・流す）。
+    check("牛が居なければ今までどおりバケツ", kind(1) === "bucket", kind(1));
+    // **器より先**（あとにすると、作業台の前に立った牛だけ搾れない。羊と同じ壊れ方）。
+    check("搾るのは器より先", kind(2) === "milk", kind(2));
+    // **空のバケツのときだけ** —— 中身入りで搾れると、水がミルクに化ける。
+    check("中身の入ったバケツでは搾らない", kind(3) === "bucket", kind(3));
+    check("ミルクバケツ → 飲む（狙う先は要らない）", kind(4) === "drink", kind(4));
+    // **器より後ろ**（前に出すと、ミルクを持っているあいだ作業台が開かない）。
+    check("ミルクを持っていても作業台は開く", kind(5) === "craft", kind(5));
+    // `FOODS` に無いので `canEat` の門に掛からない（満腹でも毒を消せる）。
+    check("満腹でもミルクは飲める", kind(6) === "drink", kind(6));
+    // 手にミルクを持ったまま牛に寄っても、搾る側は空バケツしか見ない。
+    check("ミルクを持って牛に寄っても飲む", kind(7) === "drink", kind(7));
   }
 
   // --- クワ（耕す。器の次・バケツより前） ---

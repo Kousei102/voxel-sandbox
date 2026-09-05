@@ -666,6 +666,60 @@ export function run(): void {
     `hp ${dying2.health}`,
   );
 
+  // --- ミルクを飲む（毒だけが消える。空腹にも満腹度にも効かない） ---
+  {
+    const cured = new Vitals();
+    cured.hunger = 10;
+    cured.saturation = 0;
+    cured.eat(rotten);
+    // 毒が 1 回ぶん入ったところで飲む（残り回数だけでなく端数も消えること）。
+    advance(cured, POISON_INTERVAL + 0.1);
+    const before = {
+      health: cured.health,
+      hunger: cured.hunger,
+      saturation: cured.saturation,
+      poisoned: cured.poisoned,
+    };
+    const worked = cured.drinkMilk();
+    const after = {
+      health: cured.health,
+      hunger: cured.hunger,
+      saturation: cured.saturation,
+      poisoned: cured.poisoned,
+    };
+    console.log(
+      `      飲む前 hp ${before.health} 空腹 ${before.hunger} 満腹度 ${before.saturation} 毒 ${before.poisoned}` +
+        ` → 飲んだ後 hp ${after.health} 空腹 ${after.hunger} 満腹度 ${after.saturation} 毒 ${after.poisoned}` +
+        `（戻り値 ${worked}）`,
+    );
+    check("毒のあいだに飲むと毒が消える", worked && before.poisoned && !after.poisoned);
+    // **`eat()` も `heal()` も呼ばないこと** —— 本家のミルクは腹にも体力にも効かない。
+    check(
+      "空腹も満腹度も体力も動かない",
+      after.hunger === before.hunger &&
+        after.saturation === before.saturation &&
+        after.health === before.health,
+      `空腹 ${before.hunger}→${after.hunger} / 満腹度 ${before.saturation}→${after.saturation} / hp ${before.health}→${after.health}`,
+    );
+    // 消したあとは、待っても 2 回目が入らない（端数が残っていると 1 回だけ入る）。
+    advance(cured, POISON_SECONDS + 1);
+    check("消したあとは毒が入らない", cured.health === after.health, `hp ${cured.health}`);
+
+    // 毒でないときは何も起きない（戻り値が偽なので、`main.ts` の文言も分かれる）。
+    const healthy = new Vitals();
+    healthy.hunger = 10;
+    healthy.saturation = 3;
+    const empty = healthy.drinkMilk();
+    console.log(
+      `      毒でないとき: 戻り値 ${empty} / hp ${healthy.health} 空腹 ${healthy.hunger} 満腹度 ${healthy.saturation}`,
+    );
+    check(
+      "毒でないときは戻り値が偽（腹も体力も動かない）",
+      !empty && healthy.hunger === 10 && healthy.saturation === 3 && healthy.health === MAX_HEALTH,
+      `${empty} / 空腹 ${healthy.hunger} / 満腹度 ${healthy.saturation} / hp ${healthy.health}`,
+    );
+  }
+
   // --- 走れなくなる ---
   const legs = new Vitals();
   legs.hunger = SPRINT_HUNGER + 1;

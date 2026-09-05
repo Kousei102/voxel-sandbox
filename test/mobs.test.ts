@@ -175,6 +175,9 @@ export function run(): void {
     // 5〜10 分待つまで確かめられない。
     "laying",
     "layTimer",
+    // **搾れるかどうかもここに足すこと。** ミルクは見た目に出ない（手の中で入れ替わる
+    // だけ）が、「誰から搾れるか」が描画側に生えると、牛を捕まえるまで確かめられない。
+    "milkable",
   ].filter((name) => renderSource.includes(name));
   check("mobrender.ts に判断が漏れていない", decisions.length === 0, decisions.join(" "));
 
@@ -1866,6 +1869,30 @@ export function run(): void {
     check("刈ると羊毛が 1〜3 個（本家のまま）", rule?.item === WOOL && rule?.min === 1 && rule?.max === 3);
     // **0 にしないこと** —— 連打で羊毛が無限に出る。
     check("戻るまでの間がある", (rule?.regrow ?? 0) > 0, `${rule?.regrow} 秒`);
+  }
+
+  // --- 誰が搾れるか（ミルク。表 1 本で、`kind === "cow"` と書かない） ---
+  {
+    const pack = new Mobs();
+    const rows = MOB_KINDS.map((kind) => {
+      const mob = pack.spawn(kind, 0.5, 11, 2.5, 0, seeded(149));
+      return [MOBS[kind].name, MOBS[kind].milkable, pack.canMilk(mob)] as const;
+    });
+    console.log(`      搾れる: ${rows.map(([n, , can]) => `${n} ${can ? "○" : "×"}`).join(" / ")}`);
+    const milkable = MOB_KINDS.filter((k) => MOBS[k].milkable);
+    check(
+      `搾れるのは牛だけ（${MOB_KINDS.length} 種類ぶん）`,
+      milkable.length === 1 && milkable[0] === "cow",
+      milkable.join(" "),
+    );
+    // 表を読み違えていないか（`canMilk()` が別の列を見ていたら、ここで割れる）。
+    check("表と canMilk() が一致する", rows.every(([, def, can]) => def === can));
+    // **刈るとは別の列。** 牛は刈れず、羊は搾れない（1 つの列で兼ねると必ずどちらかが化ける）。
+    check(
+      "刈れるかと搾れるかは別（牛は刈れず・羊は搾れない）",
+      MOBS.cow.shearing === null && !MOBS.sheep.milkable,
+      `牛の shearing ${MOBS.cow.shearing} / 羊の milkable ${MOBS.sheep.milkable}`,
+    );
   }
 
   /** 刈る試験場。羊 1 体と、落とし物・音の控え。 */

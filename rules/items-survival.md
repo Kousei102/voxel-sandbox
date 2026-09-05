@@ -29,7 +29,13 @@ paths:
   `CREATIVE_ITEMS`）にだけ出てこないブロック**ができます。置けるし掘れるし
   レシピも通るので、**型でも `npm run typecheck` でも止まりません**
   （2026-09-04・鉄／金／ダイヤのブロックの周。`test/blocks.test.ts` の
-  「共有帯のアイテムは…24 個」と `MAX_ITEM_ID` の突き合わせが唯一の足場です）。
+  「共有帯のアイテムは…25 個」と `MAX_ITEM_ID` の突き合わせが唯一の足場です）。
+- **`MAX_ITEM_ID` を新しいアイテムへ移すと、それまで指していたブロックの import が
+  余ります。** `MAX_ITEM_ID = DIAMOND_BLOCK` を `= MILK_BUCKET` に直した瞬間、
+  **`items.ts` の `DIAMOND_BLOCK` が「使われていない」で `npm run typecheck` が落ちました**
+  （2026-09-05・ミルクバケツの周）。ブロック側のアイテムは
+  `for (const block of BLOCKS)` が作るので、**あの import は `MAX_ITEM_ID` の 1 か所
+  でしか使われていません** —— 移したら import も一緒に消すこと（型で止まるので安全な罠です）。
 - **何が落ちるかを決めるのは `items.ts`。** 山を全部（0〜2 山）返すのが
   **`rollDrops(blockId, roll): readonly DropStack[]`** で、**呼ぶのは `breaking.ts` の
   1 か所**（掘って壊す `tryBreak()` と、支えを失って壊れる `autoBreak()` が同じ

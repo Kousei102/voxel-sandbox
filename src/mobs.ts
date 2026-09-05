@@ -350,6 +350,18 @@ export interface MobDef {
   /** 刈って取れるものか。**刈れないモブは `null`。** */
   readonly shearing: ShearRule | null;
   /**
+   * 空のバケツで搾れるか（ミルク）。**搾れないモブは false。**
+   *
+   * **`kind === "cow"` と書かないこと**（`shearing` / `ranged` / `orbit` と同じ作法）——
+   * 搾れるモブが増えるたびに、搾る側の分岐が増えます。
+   *
+   * **刈る（`ShearRule`）と違って、時計も回数も持ちません** —— 本家の牛は何度でも
+   * 搾れるので `regrow` に当たるものが要らず、**位置ごとの状態も ID も増えません。**
+   * **何で搾るか（空のバケツか）はここでは見ません** —— それは `use.ts` の
+   * `decideUse()` の仕事で、ここが答えるのは「相手の側の都合」だけです。
+   */
+  readonly milkable: boolean;
+  /**
    * ひとりでに産み落とすものか。**産まないモブは `null`。**
    *
    * **`MobDef.drop` とは別の話**です（あちらは倒したときに何が出るか）。
@@ -408,6 +420,7 @@ const PIG: MobDef = {
   regen: 0,
   drop: { item: RAW_PORK, count: 1, chance: 1 },
   shearing: null,
+  milkable: false,
   laying: null,
   voice: 1.4,
   groups: [
@@ -468,6 +481,7 @@ const SHEEP: MobDef = {
   // 戻るまでの 60 秒はこちらで決めた暫定（`TUNING.md`）。
   // **刈った羊を倒しても羊毛は出ません**（`dropFor()`）。
   shearing: { item: WOOL, min: 1, max: 3, regrow: 60 },
+  milkable: false,
   laying: null,
   voice: 1.25,
   groups: [
@@ -544,6 +558,7 @@ const CHICKEN: MobDef = {
   // **`mobs.ts` の色の定数 `CHICKEN_FEATHER` とは別物**（あちらは見た目の白）。
   drop: { item: RAW_CHICKEN, count: 1, chance: 1, extra: { item: FEATHER, count: 1, chance: 1 } },
   shearing: null,
+  milkable: false,
   // **卵を産む唯一のモブ。** 倒さずに取れるという点は羊の羊毛と同じで、違うのは
   // プレイヤーの操作ではなく時計が起こすところだけ（`LayRule` の説明）。
   // 間隔は本家のまま（6000〜12000 ティック = 300〜600 秒）ですが、**モブは
@@ -640,6 +655,11 @@ const COW: MobDef = {
   // 羽根とまったく同じ。`items.ts` の `LEATHER`）。**革の使い道はまだありません。**
   drop: { item: RAW_BEEF, count: 1, chance: 1, extra: { item: LEATHER, count: 1, chance: 1 } },
   shearing: null,
+  // **搾れる唯一のモブ。** 倒さずに取れるという点は羊の羊毛・鶏の卵と同じで、
+  // 違うのは**何度でも取れる**ところ（本家の牛に待ち時間はないので、`ShearRule` の
+  // `regrow` に当たるものを持ちません）。**手に入るのはミルクバケツ 1 個だけ**なので、
+  // 落とし物にも `LayRule` にも 1 行も要りません（入れ替えるのは `main.ts`）。
+  milkable: true,
   laying: null,
   // いちばん低い声（鶏 1.8 / 豚 1.4 / 羊 1.25 の下）。体の大きさの順に並ぶ。
   voice: 0.9,
@@ -726,6 +746,7 @@ const ZOMBIE: MobDef = {
   regen: 0,
   drop: { item: ROTTEN_FLESH, count: 1, chance: 0.6 },
   shearing: null,
+  milkable: false,
   laying: null,
   voice: 0.7,
   groups: [
@@ -809,6 +830,7 @@ const SPIDER: MobDef = {
   // **1 個固定**（本家の 0〜2 個ではない。羽根・革と同じ線引き）。`extra` は持たない。
   drop: { item: STRING, count: 1, chance: 1 },
   shearing: null,
+  milkable: false,
   laying: null,
   // ゾンビ（0.7）より高い。小さくて速いものの声（`TUNING.md`）。
   voice: 1.5,
@@ -915,6 +937,7 @@ const BLAZE: MobDef = {
   regen: 0,
   drop: { item: BLAZE_ROD, count: 1, chance: 0.5 },
   shearing: null,
+  milkable: false,
   laying: null,
   voice: 1.15,
   groups: [
@@ -992,6 +1015,7 @@ const ENDERMAN: MobDef = {
   regen: 0,
   drop: { item: ENDER_PEARL, count: 1, chance: 0.5 },
   shearing: null,
+  milkable: false,
   laying: null,
   // 本家の湧きの重み。ゾンビ (100) の 1/10 なので、夜に出会うのはたまに。
   spawnWeight: 10,
@@ -1104,6 +1128,7 @@ const DRAGON: MobDef = {
   // 体力バーとクリア画面（2-13b）の仕事で、地面に湧く物ではない。
   drop: { item: NO_ITEM, count: 0, chance: 0 },
   shearing: null,
+  milkable: false,
   laying: null,
   voice: 0.5,
   groups: [
@@ -2658,6 +2683,17 @@ export class Mobs {
    */
   canShear(mob: Mob): boolean {
     return MOBS[mob.kind].shearing !== null && mob.woolTimer <= 0;
+  }
+
+  /**
+   * いま搾れるか（ミルク）。**`canShear()` と違って時計を見ません** ——
+   * 本家の牛は何度でも搾れるので、`woolTimer` に当たる待ち時間を持ちません。
+   *
+   * **何を持っているかは見ません**（それは `use.ts` の `decideUse()` が空のバケツか
+   * どうかで決める）。ここが答えるのは「相手の側の都合」だけです。
+   */
+  canMilk(mob: Mob): boolean {
+    return MOBS[mob.kind].milkable;
   }
 
   /**

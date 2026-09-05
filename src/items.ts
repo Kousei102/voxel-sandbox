@@ -3,7 +3,6 @@ import {
   BLOCKS,
   COAL_ORE,
   COBBLE,
-  DIAMOND_BLOCK,
   DIAMOND_ORE,
   DIRT,
   END_CRYSTAL,
@@ -341,6 +340,22 @@ export const STRING = 133;
 export const SNOWBALL = 134;
 
 /**
+ * ミルクバケツ。**空のバケツ（84）を持って牛を右クリックすると手の中で入れ替わり**、
+ * **右クリックで飲むと毒が消えて空のバケツへ戻ります**（本家と同じで、何度でも搾れます）。
+ *
+ * **`FILLED_BUCKETS` に足さないこと。** 足すと `isBucket()` が真になって
+ * **ミルクを地面に流せる**ようになります —— ミルクは液体ブロックではありません
+ * （水・溶岩と違って、置ける先が 1 マスもない）。
+ *
+ * **`FOODS` にも足さないこと。** 足すと `canEat`（満腹なら食べない）の門に掛かって、
+ * **満腹のときに毒を消せなくなります。** 本家のミルクも空腹と満腹度を 1 も動かしません。
+ *
+ * **置けず・道具でもなく・食べ物でもありません**（`block: AIR` / `tool: null`）。
+ * **積めるのは 1 個まで**（バケツ 84・水入り 85・溶岩入り 86 と同じ）。
+ */
+export const MILK_BUCKET = 138;
+
+/**
  * 一覧を作るときに数え上げる上限（`allItemIds()`）。**アイテムの番号だけでなく、
  * ブロックが自動で作るアイテム（上の for）の番号も含みます。**
  *
@@ -349,7 +364,7 @@ export const SNOWBALL = 134;
  * （`craftscreen.ts` の `CREATIVE_ITEMS`）にだけ出てこないブロック**ができます
  * （置けるし掘れるので、型でも `typecheck` でも止まりません）。
  */
-export const MAX_ITEM_ID = DIAMOND_BLOCK;
+export const MAX_ITEM_ID = MILK_BUCKET;
 
 export const MAX_STACK = 64;
 
@@ -537,6 +552,12 @@ item({ id: STRING, name: "糸", block: AIR, stack: MAX_STACK, color: 0xb8bcc8, t
 // 白っぽいものが 4 つ並ぶので、青みだけで見分ける。**`PROJECTILE_KINDS` の
 // `"snowball"` も同じ値**にすること（`test/projectiles.test.ts` が突き合わせる）。
 item({ id: SNOWBALL, name: "雪玉", block: AIR, stack: 16, color: 0xbcd8ef, tool: null });
+
+// ミルクバケツ。**`block: AIR` / `tool: null`**（置けず・道具でもなく・**食べ物でもない**）。
+// **積めるのは 1 個まで**（バケツ 84・水入り 85・溶岩入り 86 と同じ）。
+// **色は冷たい白** —— 白っぽいものが 5 つ（羽根 0xe8e4dc・卵 0xf7f0e0・糸 0xb8bcc8・
+// 雪玉 0xbcd8ef）並ぶので、卵の暖かい白から離し、雪玉の青みまでは寄せない。
+item({ id: MILK_BUCKET, name: "ミルクバケツ", block: AIR, stack: 1, color: 0xeaf2f8, tool: null });
 
 const EMPTY: ItemDef = ITEMS[NO_ITEM];
 

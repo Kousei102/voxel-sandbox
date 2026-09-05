@@ -79,6 +79,7 @@ import {
   LAVA_BUCKET,
   LEATHER,
   MAX_ITEM_ID,
+  MILK_BUCKET,
   NO_ITEM,
   RAW_BEEF,
   RAW_CHICKEN,
@@ -179,8 +180,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つの 24 個（137 まで）",
-    sharedItems.length === 24 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツの 25 個（138 まで）",
+    sharedItems.length === 25 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -188,15 +189,15 @@ export function run(): void {
       sharedItems[18] === LEATHER && sharedItems[19] === STRING &&
       sharedItems[20] === SNOWBALL && sharedItems[21] === IRON_BLOCK &&
       sharedItems[22] === GOLD_BLOCK && sharedItems[23] === DIAMOND_BLOCK &&
-      MAX_ITEM_ID === DIAMOND_BLOCK,
+      sharedItems[24] === MILK_BUCKET && MAX_ITEM_ID === MILK_BUCKET,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 118（鉱物の立方体 3 個で 121 から減った）",
-    sharedFree === 118,
+    "111..255 の空きは 117（ミルクバケツ 1 個で 118 から減った）",
+    sharedFree === 117,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
