@@ -39,6 +39,7 @@ import {
   BREAD,
   COOKED_CHICKEN,
   COOKED_PORK,
+  MUSHROOM_STEW,
   RAW_CHICKEN,
   ROTTEN_FLESH,
   WHEAT,
@@ -690,6 +691,30 @@ export function run(): void {
     roastBird.hunger > loaf.hunger && roastBird.hunger < cooked.hunger &&
       roastBird.saturation > loaf.saturation && roastBird.saturation < cooked.saturation,
     `パン ${loaf.hunger}/${loaf.saturation} < 焼き鳥 ${roastBird.hunger}/${roastBird.saturation}` +
+      ` < 焼き豚 ${cooked.hunger}/${cooked.saturation}`,
+  );
+
+  // --- キノコシチュー（**焼き鳥と同点の 6 / 7.2**。材料 3 つに見合うかは `TUNING.md`） ---
+  const stew = foodOf(MUSHROOM_STEW);
+  if (!stew) throw new Error("キノコシチューが食べ物の表に無い");
+  const cook = new Vitals();
+  cook.hunger = 8;
+  cook.saturation = 0;
+  console.log(
+    `      キノコシチューを食べる前: 空腹 ${cook.hunger} / 満腹度 ${cook.saturation}` +
+      `（空腹 +${stew.hunger} / 満腹度 +${stew.saturation} / 毒 ${stew.poison}）`,
+  );
+  cook.eat(stew);
+  console.log(`      食べた後: 空腹 ${cook.hunger} / 満腹度 ${cook.saturation}`);
+  check("キノコシチューは空腹 +6", stew.hunger === 6 && cook.hunger === 14, `空腹 ${cook.hunger}`);
+  check("キノコシチューは満腹度 +7.2", stew.saturation === 7.2 && cook.saturation === 7.2, `満腹度 ${cook.saturation}`);
+  check("キノコシチューに毒はない", !stew.poison);
+  // **焼き鳥と同点**（焼き豚・ステーキ 8 / 12.8 には届かない）。
+  check(
+    "キノコシチューは焼き鳥と同点で、焼き豚には届かない",
+    stew.hunger === roastBird.hunger && stew.saturation === roastBird.saturation &&
+      stew.hunger < cooked.hunger,
+    `シチュー ${stew.hunger}/${stew.saturation} = 焼き鳥 ${roastBird.hunger}/${roastBird.saturation}` +
       ` < 焼き豚 ${cooked.hunger}/${cooked.saturation}`,
   );
 

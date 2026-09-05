@@ -32,7 +32,7 @@ import { DropRenderer } from "./droprender";
 import { Furnaces, litVoxel } from "./furnaces";
 import { Inventory, bulkDiscard } from "./inventory";
 import { InventoryScreen } from "./inventoryui";
-import { ARROW, BUCKET, MILK_BUCKET, NO_ITEM, foodOf, itemName } from "./items";
+import { ARROW, BUCKET, MILK_BUCKET, NO_ITEM, emptyAfterEating, foodOf, itemName } from "./items";
 import { debugMob, nextShot } from "./debugspawn";
 import { debugText } from "./debugtext";
 import { Mining } from "./mining";
@@ -1329,6 +1329,9 @@ function updateEating(dt: number): void {
 
   vitals.eat(food);
   inventory.consumeSelected(1);
+  // 器つきの食べ物は空の器が手の中に戻る。**何が戻るかは `items.ts` の `EMPTIES`**。
+  const empty = emptyAfterEating(held);
+  if (empty !== NO_ITEM) inventory.setSelected(empty, 1);
   hud.flash(`${itemName(held)} を食べました`);
   hud.refresh();
   saveDirty = true;

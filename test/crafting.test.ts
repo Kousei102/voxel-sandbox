@@ -1,5 +1,6 @@
 import {
   BED,
+  BROWN_MUSHROOM,
   COBBLE,
   CRAFTING_TABLE,
   DIAMOND_BLOCK,
@@ -8,6 +9,7 @@ import {
   PLANK,
   PLANK_SLAB,
   PLANK_STAIRS,
+  RED_MUSHROOM,
   SAND,
   SNOW,
   STONE,
@@ -24,6 +26,7 @@ import {
   BLAZE_POWDER,
   BLAZE_ROD,
   BOW,
+  BOWL,
   BREAD,
   BUCKET,
   COAL,
@@ -40,6 +43,7 @@ import {
   GOLD_INGOT,
   IRON_HOE,
   IRON_SWORD,
+  MUSHROOM_STEW,
   NO_ITEM,
   SHEARS,
   SNOWBALL,
@@ -403,6 +407,44 @@ export function run(): void {
     board[0].count === 2 && isEmpty(board[1]) && isEmpty(board[3]),
     `左上 ${board[0].count} 個`,
   );
+
+  describe("ボウルとキノコシチュー");
+
+  // **ボウルは板 3 個の V 字**（バケツと同じ形・材料違い）。**3 幅なので作業台が要る。**
+  const M = { P: PLANK, B: BOWL, R: RED_MUSHROOM, N: BROWN_MUSHROOM };
+  const bowl = findRecipe(grid(3, ["P.P", ".P."], M), 3);
+  console.log(
+    `      板 3 個の V 字 → ${bowl?.name ?? "無し"} x${bowl?.count ?? 0}` +
+      `（2x2: ${findRecipe(grid(2, ["P.", ".P"], M), 2)?.name ?? "無し"} / ` +
+      `上下逆: ${findRecipe(grid(3, [".P.", "P.P"], M), 3)?.name ?? "無し"}）`,
+  );
+  check("板 3 個の V 字 → ボウル 4 個", bowl?.out === BOWL && bowl.count === 4, `${bowl?.name ?? "無し"} x${bowl?.count ?? 0}`);
+  // **2x2 では作れない**（3 幅なので作業台の前へ戻る一手間が残る）。
+  const bowlIn2 = findRecipe(grid(2, ["P.", ".P"], M), 2);
+  check("2x2 ではボウルは作れない（作業台が要る）", bowlIn2?.out !== BOWL, bowlIn2?.name ?? "無し");
+  // **上下を逆にすると出来ないこと**（バケツと同じ。左右反転だけが通る）。
+  const bowlUpsideDown = findRecipe(grid(3, [".P.", "P.P"], M), 3);
+  check("上下を逆にするとボウルにならない", bowlUpsideDown?.out !== BOWL, bowlUpsideDown?.name ?? "無し");
+
+  // **シチューは形なし 3 つ**なので、2x2（手持ち）で作れる ——
+  // キノコを見つけた場所で作れるのが本家と同じ手触り。
+  const stew = findRecipe(grid(2, ["BR", "N."], M), 2);
+  const stewShuffled = findRecipe(grid(2, ["NB", ".R"], M), 2);
+  console.log(
+    `      ボウル + 赤 + 茶 → ${stew?.name ?? "無し"} x${stew?.count ?? 0}` +
+      `（並べ替え: ${stewShuffled?.name ?? "無し"} / ` +
+      `赤 2 個: ${findRecipe(grid(2, ["BR", "R."], M), 2)?.name ?? "無し"}）`,
+  );
+  check(
+    "ボウル + 赤キノコ + 茶キノコ → キノコシチュー 1 個",
+    stew?.out === MUSHROOM_STEW && stew.count === 1,
+    `${stew?.name ?? "無し"} x${stew?.count ?? 0}`,
+  );
+  check("形なしなので並べ替えても揃う", stewShuffled?.out === MUSHROOM_STEW, stewShuffled?.name ?? "無し");
+  // **キノコ 1 種類を 2 個では揃わない** —— 形なしは個数だけでなく種類も見ている。
+  // ここが通ると、片方のキノコだけでシチューが無限に作れる。
+  const stewOneKind = findRecipe(grid(2, ["BR", "R."], M), 2);
+  check("赤キノコ 2 個（茶なし）ではシチューにならない", stewOneKind === null, stewOneKind?.name ?? "無し");
 
   describe("鉱物をしまう／戻す（鉄・金・ダイヤ）");
 

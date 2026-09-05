@@ -1,7 +1,6 @@
 import {
   AIR,
   BLOCKS,
-  BROWN_MUSHROOM,
   COAL_ORE,
   COBBLE,
   DIAMOND_ORE,
@@ -357,6 +356,27 @@ export const SNOWBALL = 134;
 export const MILK_BUCKET = 138;
 
 /**
+ * ボウル。**板 3 個の V 字**（バケツと同じ形・材料違い）で **4 個**作れます。
+ *
+ * **キノコシチューの器**で、**食べ切ると空のボウルが手の中に戻ります**
+ * （下の `EMPTIES` / `emptyAfterEating()`）。本家と同じで、器そのものは食べ物でも
+ * 道具でもありません（`FOODS` にも `SMELTING` にも行がありません）。
+ *
+ * **`block:` を持たせないこと**（`AIR` のまま）—— 置けると、空のボウルが地面に増えます。
+ */
+export const BOWL = 141;
+
+/**
+ * キノコシチュー。**ボウル + 赤キノコ + 茶キノコ の形なし**（2x2 で作れます）。
+ * 食べると**空腹 +6 / 満腹度 +7.2**（本家の値。焼き鳥と同点）。
+ *
+ * **積めるのは 1 個だけ**（本家と同じ）。**ここは手触りではなく不変条件です** ——
+ * `main.ts` は食べ終わりに `inventory.setSelected(BOWL, 1)` で器を戻すので、
+ * **2 個以上積めると、1 個食べただけで残りの山ごとボウル 1 個に潰れます。**
+ */
+export const MUSHROOM_STEW = 142;
+
+/**
  * 一覧を作るときに数え上げる上限（`allItemIds()`）。**アイテムの番号だけでなく、
  * ブロックが自動で作るアイテム（上の for）の番号も含みます。**
  *
@@ -365,11 +385,11 @@ export const MILK_BUCKET = 138;
  * （`craftscreen.ts` の `CREATIVE_ITEMS`）にだけ出てこないブロック**ができます
  * （置けるし掘れるので、型でも `typecheck` でも止まりません）。
  *
- * **いまは茶キノコ（ブロック 140）が上限です。** `items.ts` に 1 行も書いていない
- * ブロックが上限を持つのは 2 度目（1 度目はダイヤブロック 137）—— **共有帯では
- * ブロックとアイテムが 1 本の番号列**なので、上限を持つのがどちら側かは決まりません。
+ * **いまはキノコシチュー（アイテム 142）が上限です。** 直前は茶キノコ（ブロック 140）で、
+ * **共有帯ではブロックとアイテムが 1 本の番号列**なので、上限を持つのがどちら側かは
+ * 決まりません（`items.ts` に 1 行も書いていないブロックが上限だったことも 2 度あります）。
  */
-export const MAX_ITEM_ID = BROWN_MUSHROOM;
+export const MAX_ITEM_ID = MUSHROOM_STEW;
 
 export const MAX_STACK = 64;
 
@@ -564,6 +584,14 @@ item({ id: SNOWBALL, name: "雪玉", block: AIR, stack: 16, color: 0xbcd8ef, too
 // 雪玉 0xbcd8ef）並ぶので、卵の暖かい白から離し、雪玉の青みまでは寄せない。
 item({ id: MILK_BUCKET, name: "ミルクバケツ", block: AIR, stack: 1, color: 0xeaf2f8, tool: null });
 
+// ボウルとキノコシチュー。どちらも **`block: AIR` / `tool: null`**（置けず・道具でもない）。
+// **色は暗い木と淡い生成り** —— 赤キノコ 0xc9403a・茶キノコ 0xb5835a と並べて見るので、
+// **この 4 つはどの 2 つも RGB で 60 以上**離してある（実測 83〜237。`test/blocks.test.ts`）。
+item({ id: BOWL, name: "ボウル", block: AIR, stack: MAX_STACK, color: 0x7a4a24, tool: null });
+// **`stack: 1` は手触りではなく不変条件。** 食べ終わりに `inventory.setSelected(BOWL, 1)` で
+// 器を戻すので、2 個以上積めると残りの山ごとボウル 1 個に潰れる（上の `MUSHROOM_STEW`）。
+item({ id: MUSHROOM_STEW, name: "キノコシチュー", block: AIR, stack: 1, color: 0xf0dcb4, tool: null });
+
 const EMPTY: ItemDef = ITEMS[NO_ITEM];
 
 export function itemDef(id: number): ItemDef {
@@ -635,7 +663,27 @@ const FOODS = new Map<number, FoodDef>([
   // **革は食べ物ではないので、ここに行はありません**（羽根と同じ扱い）。
   [RAW_BEEF, { hunger: 3, saturation: 1.8, poison: false }],
   [STEAK, { hunger: 8, saturation: 12.8, poison: false }],
+  // キノコシチュー。本家の値のまま（6 / 7.2 で**焼き鳥と同点**。焼き豚・ステーキには届かない）。
+  // 材料 3 つ（うちキノコ 2 種はまれ）で焼き鳥と同点なのが見合うかは `TUNING.md`。
+  // **キノコそのものは食べ物ではありません**（本家と違って、シチューにしてから食べます）。
+  [MUSHROOM_STEW, { hunger: 6, saturation: 7.2, poison: false }],
 ]);
+
+/**
+ * 食べ切ったあとに手の中へ戻るもの（器）。**戻らないなら `NO_ITEM`。**
+ *
+ * **表 1 本にすること**（`FILLED_BUCKETS` / `THROWN` と同じ作法）——
+ * `main.ts` に `if (held === MUSHROOM_STEW)` と書き始めると、器つきの食べ物が
+ * 増えるたびに配線の側へ分岐が 1 本ずつ生えます（`test/ui.test.ts` が見張り）。
+ *
+ * **`vitals.ts` に置かないこと** —— あちらは持ち物の表を import しません。
+ */
+const EMPTIES = new Map<number, number>([[MUSHROOM_STEW, BOWL]]);
+
+/** そのアイテムを食べ切ったあとに戻る器。戻らないなら `NO_ITEM`。 */
+export function emptyAfterEating(id: number): number {
+  return EMPTIES.get(id) ?? NO_ITEM;
+}
 
 /** そのアイテムを食べたときの値。食べられないなら null。 */
 export function foodOf(id: number): FoodDef | null {

@@ -70,6 +70,7 @@ import { PLAYER_SIZE } from "../src/physics";
 import {
   ARROW,
   BOW,
+  BOWL,
   BREAD,
   BUCKET,
   COOKED_CHICKEN,
@@ -83,6 +84,7 @@ import {
   LEATHER,
   MAX_ITEM_ID,
   MILK_BUCKET,
+  MUSHROOM_STEW,
   NO_ITEM,
   RAW_BEEF,
   RAW_CHICKEN,
@@ -99,6 +101,7 @@ import {
   bucketOf,
   bucketUse,
   dropOf,
+  emptyAfterEating,
   foodOf,
   isBucket,
   isHoe,
@@ -183,8 +186,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種の 27 個（140 まで）",
-    sharedItems.length === 27 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチューの 29 個（142 まで）",
+    sharedItems.length === 29 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -197,15 +200,18 @@ export function run(): void {
       // `variantOf === AIR` のブロックには for が同じ番号のアイテムを作ります）。
       // **`MAX_ITEM_ID` を伸ばすのだけは手作業**なので、そこは別に突き合わせます。
       sharedItems[25] === RED_MUSHROOM && sharedItems[26] === BROWN_MUSHROOM &&
-      MAX_ITEM_ID === BROWN_MUSHROOM,
+      // **141 / 142 は `items.ts` に手で足した 2 個**（ブロックは 1 つも増えていない）。
+      // **上限を伸ばすのは手作業**なので、そこは別に突き合わせる。
+      sharedItems[27] === BOWL && sharedItems[28] === MUSHROOM_STEW &&
+      MAX_ITEM_ID === MUSHROOM_STEW,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 115（キノコ 2 種で 117 から減った）",
-    sharedFree === 115,
+    "111..255 の空きは 113（ボウルとシチューで 115 から減った）",
+    sharedFree === 113,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1040,8 +1046,107 @@ export function run(): void {
   endPortalFrames();
   storedBlocks();
   mushrooms();
+  bowlAndStew();
 
   world.dispose();
+}
+
+/**
+ * ボウル（141）・キノコシチュー（142）。**どちらも置けないアイテム**なので、
+ * ここで見るのは「持ち物としての形」と「一覧で見分けが付くか」の 2 つ。
+ * **食べたときの値は `test/vitals.test.ts`、レシピは `test/crafting.test.ts`。**
+ */
+function bowlAndStew(): void {
+  describe("ボウルとキノコシチュー");
+
+  // **4 点を 1 行に出してから判定する**（雪玉・ミルクバケツと同じ書き方）。
+  // `block` を付ければ置けるボウルになり、`tool:` を付ければ `TOOL_ATTACK` に
+  // 無い種類が入って NaN、`FOODS` の側を取り違えれば器のほうが食べられる。
+  const carried: [string, number, boolean][] = [
+    ["ボウル", BOWL, false],
+    ["キノコシチュー", MUSHROOM_STEW, true],
+  ];
+  for (const [name, id, edible] of carried) {
+    console.log(
+      `      ${name}(${id}): 置くと ${placedBlock(id)}（AIR=${AIR}） / 道具 ${toolOf(id) ? "あり" : "null"} / ` +
+        `食べ物 ${foodOf(id) ? `空腹 +${foodOf(id)?.hunger}` : "null"} / 1 枠 ${itemStackLimit(id)} 個`,
+    );
+    check(
+      `${name}は置けず・道具でもない`,
+      placedBlock(id) === AIR && toolOf(id) === null,
+      `${placedBlock(id)} / ${toolOf(id) ? "道具" : "null"}`,
+    );
+    check(
+      `${name}は${edible ? "食べられる" : "食べ物ではない（器そのものは食べない）"}`,
+      (foodOf(id) !== null) === edible,
+      `${foodOf(id) ? "食べ物" : "null"}`,
+    );
+  }
+  // **シチューが 1 枠 1 個なのは不変条件**（手触りではない）。食べ切ったあとに
+  // `inventory.setSelected(BOWL, 1)` で器を戻すので、2 個以上積めると
+  // **1 個食べただけで残りの山ごとボウル 1 個に潰れる**（`src/items.ts` のコメント）。
+  check(
+    "キノコシチューは 1 枠 1 個（ボウルは 64 個）",
+    itemStackLimit(MUSHROOM_STEW) === 1 && itemStackLimit(BOWL) === 64,
+    `シチュー ${itemStackLimit(MUSHROOM_STEW)} / ボウル ${itemStackLimit(BOWL)}`,
+  );
+  // **食べ切ると戻るものは `items.ts` の表 1 本**（`main.ts` はこれを引くだけ）。
+  console.log(
+    `      emptyAfterEating: シチュー → ${itemName(emptyAfterEating(MUSHROOM_STEW)) || "無し"} / ` +
+      `ボウル → ${itemName(emptyAfterEating(BOWL)) || "無し"} / パン → ${itemName(emptyAfterEating(BREAD)) || "無し"}`,
+  );
+  check(
+    "シチューを食べ切るとボウルが戻る",
+    emptyAfterEating(MUSHROOM_STEW) === BOWL,
+    `${emptyAfterEating(MUSHROOM_STEW)}`,
+  );
+  // **器を持たない食べ物からは何も戻らない。** ここが `NO_ITEM` でないと、
+  // パンを食べただけで手の中に知らないものが湧く。
+  {
+    const wrong = allItemIds().filter((id) => id !== MUSHROOM_STEW && emptyAfterEating(id) !== NO_ITEM);
+    check("器が戻るのはシチューだけ", wrong.length === 0, wrong.map((id) => itemName(id)).join(" "));
+  }
+
+  // **一覧（DOM）は撮れないので、色の隔たりが唯一の足場。** 並んで見える 4 つ
+  // （材料のキノコ 2 種と、器と中身）は**どの 2 つも RGB で 60 以上**。
+  const shades: [string, number][] = [
+    ["赤キノコ", itemColor(RED_MUSHROOM)],
+    ["茶キノコ", itemColor(BROWN_MUSHROOM)],
+    ["ボウル", itemColor(BOWL)],
+    ["キノコシチュー", itemColor(MUSHROOM_STEW)],
+  ];
+  const dist = (a: number, b: number): number =>
+    Math.hypot(((a >> 16) & 255) - ((b >> 16) & 255), ((a >> 8) & 255) - ((b >> 8) & 255), (a & 255) - (b & 255));
+  const pairs: string[] = [];
+  let closest = Infinity;
+  for (let i = 0; i < shades.length; i++) {
+    for (let j = i + 1; j < shades.length; j++) {
+      const d = dist(shades[i][1], shades[j][1]);
+      pairs.push(`${shades[i][0]}↔${shades[j][0]} ${d.toFixed(0)}`);
+      closest = Math.min(closest, d);
+    }
+  }
+  console.log(
+    `      色: ${shades.map(([n, c]) => `${n} 0x${c.toString(16)}`).join(" / ")}  隔たり: ${pairs.join(" / ")}`,
+  );
+  check("材料と出来上がりの 4 つはどの 2 つも見分けられる（RGB で 60 以上）", closest >= 60, `いちばん近い組で ${closest.toFixed(1)}`);
+  // **一覧は 105 種を超えて密なので、全体からは 20 以上で十分**（`HANDOFF.md` の実測）。
+  // ここを 40 に上げると、取れるのは目に痛い原色だけになる。
+  {
+    const near: string[] = [];
+    for (const id of [BOWL, MUSHROOM_STEW]) {
+      let min = Infinity;
+      let who = "";
+      for (const other of allItemIds()) {
+        if (other === id) continue;
+        const d = dist(itemColor(id), itemColor(other));
+        if (d < min) { min = d; who = itemName(other); }
+      }
+      console.log(`      ${itemName(id)} にいちばん近い既存の色は「${who}」で ${min.toFixed(1)}`);
+      if (min < 20) near.push(`${itemName(id)}↔${who} ${min.toFixed(1)}`);
+    }
+    check("既存のどのアイテムの色からも 20 以上離れている", near.length === 0, near.join(" / "));
+  }
 }
 
 /**

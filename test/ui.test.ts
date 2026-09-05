@@ -216,6 +216,9 @@ function mainStaysWiring(): void {
     // undefined になり、**エンドに入ってもドラゴンが 1 体も湧かず、体力バーも
     // クリア画面も出ませんでした**（`DimensionId` は `string` なので型では止まらない）。
     ["ボスに渡す次元", "const dim = dims.current;"],
+    // 食べ切ったあとに何が戻るか（器つきの食べ物）。**`main.ts` が
+    // 「シチューならボウル」と書き始めると、器つきが増えるたびに分岐が 1 本ずつ生える。**
+    ["食べ終わって戻る器", "emptyAfterEating("],
   ];
   const inlined = routed.filter(([, call]) => !source.includes(call));
   check(
@@ -244,6 +247,14 @@ function mainStaysWiring(): void {
   // 掘った経路と支えを失った経路で規則が食い違う（片方だけ直しても気付けない）。
   const chances = [...source.matchAll(/\.chance\b/g)].length;
   check("main.ts が落ちる確率を自分で判定していない", chances === 0, `${chances} 件`);
+
+  // **食べ終わりに何が戻るかを決めるのは `items.ts` の表 1 本**（`EMPTIES`）。
+  // ここにアイテムの名前が出てきたら、器つきの食べ物が増えるたびに
+  // 「持てる側」と「戻す側」の 2 か所を直すことになり、必ず片方を忘れる
+  // （`durability.ts` に `item === BOW` と書かないのとまったく同じ理由）。
+  const vessels = ["BOWL", "MUSHROOM_STEW"].filter((word) => new RegExp(`\\b${word}\\b`).test(source));
+  console.log(`      main.ts に器つきの食べ物の名前 ${vessels.length} 件`);
+  check("main.ts に BOWL も MUSHROOM_STEW も書かれていない", vessels.length === 0, vessels.join(" "));
 
   // 新しい `*render.ts` には、必ず対のガードを同時に足すこと
   // （判断が漏れていないかを見張る側。`test/mobs.test.ts` / `test/drops.test.ts` が手本）。

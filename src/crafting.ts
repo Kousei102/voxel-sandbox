@@ -1,5 +1,6 @@
 import {
   BED,
+  BROWN_MUSHROOM,
   CHEST,
   COBBLE,
   COBBLE_SLAB,
@@ -12,6 +13,7 @@ import {
   PLANK,
   PLANK_SLAB,
   PLANK_STAIRS,
+  RED_MUSHROOM,
   SANDSTONE,
   SANDSTONE_SLAB,
   SANDSTONE_STAIRS,
@@ -30,6 +32,7 @@ import {
   BLAZE_POWDER,
   BLAZE_ROD,
   BOW,
+  BOWL,
   BREAD,
   BUCKET,
   COAL,
@@ -51,6 +54,7 @@ import {
   IRON_PICKAXE,
   IRON_SHOVEL,
   IRON_SWORD,
+  MUSHROOM_STEW,
   NO_ITEM,
   SHEARS,
   SNOWBALL,
@@ -177,6 +181,20 @@ export const RECIPES: readonly Recipe[] = [
   // **掘ると雪玉 4 個が落ちるようになった対の片割れ**で、これが無いと雪が二度と置けない
   // （`items.ts` の `DROPS` の `SNOW` の行）。形は作業台（板 4 枚）と同じだが材料が違う。
   { name: "雪ブロック", out: SNOW, count: 1, shape: ["BB", "BB"], key: { B: SNOWBALL } },
+
+  // ボウルは板 3 個の V 字（Minecraft と同じ）。**3 幅なので作業台が要る。**
+  // 形はバケツ `["I.I", ".I."]` と同じだが材料が違うので、形の重複にはならない（ハーフと同じ）。
+  { name: "ボウル", out: BOWL, count: 4, shape: ["P.P", ".P."], key: { P: PLANK } },
+
+  // キノコシチューはボウル + 赤 + 茶 の形なし（Minecraft と同じ）。2x2 に収まるので、
+  // **キノコを見つけた場所で作れる**（作業台が要るのはボウルのほうだけ）。
+  // **食べ切るとボウルが戻る**のは `items.ts` の `EMPTIES` の 1 行で、ここには書かない。
+  {
+    name: "キノコシチュー",
+    out: MUSHROOM_STEW,
+    count: 1,
+    ingredients: [BOWL, RED_MUSHROOM, BROWN_MUSHROOM],
+  },
 
   // 鉱物をしまう／戻す 3 対（Minecraft と同じ 9 個 ↔ 1 個）。**倉庫の枠を 9 分の 1 に
   // するためだけ**の機能なので、**しまう 9 と戻す 9 を食い違わせないこと** ——
