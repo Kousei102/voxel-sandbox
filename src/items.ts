@@ -1,6 +1,7 @@
 import {
   AIR,
   BLOCKS,
+  BROWN_MUSHROOM,
   COAL_ORE,
   COBBLE,
   DIAMOND_ORE,
@@ -363,8 +364,12 @@ export const MILK_BUCKET = 138;
  * `ITEMS` には入っているのに `allItemIds()` が返さず、**クリエイティブの一覧
  * （`craftscreen.ts` の `CREATIVE_ITEMS`）にだけ出てこないブロック**ができます
  * （置けるし掘れるので、型でも `typecheck` でも止まりません）。
+ *
+ * **いまは茶キノコ（ブロック 140）が上限です。** `items.ts` に 1 行も書いていない
+ * ブロックが上限を持つのは 2 度目（1 度目はダイヤブロック 137）—— **共有帯では
+ * ブロックとアイテムが 1 本の番号列**なので、上限を持つのがどちら側かは決まりません。
  */
-export const MAX_ITEM_ID = MILK_BUCKET;
+export const MAX_ITEM_ID = BROWN_MUSHROOM;
 
 export const MAX_STACK = 64;
 

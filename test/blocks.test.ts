@@ -4,6 +4,7 @@ import {
   AIR,
   BED,
   BLOCKS,
+  BROWN_MUSHROOM,
   CACTUS,
   COBBLE_SLAB,
   DIAMOND_BLOCK,
@@ -26,6 +27,7 @@ import {
   PLANK_SLAB,
   PLANK_SLAB_TOP,
   PLANK_STAIRS,
+  RED_MUSHROOM,
   SANDSTONE_SLAB,
   SHARED_ID_START,
   SNOW,
@@ -181,8 +183,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツの 25 個（138 まで）",
-    sharedItems.length === 25 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種の 27 個（140 まで）",
+    sharedItems.length === 27 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -190,15 +192,20 @@ export function run(): void {
       sharedItems[18] === LEATHER && sharedItems[19] === STRING &&
       sharedItems[20] === SNOWBALL && sharedItems[21] === IRON_BLOCK &&
       sharedItems[22] === GOLD_BLOCK && sharedItems[23] === DIAMOND_BLOCK &&
-      sharedItems[24] === MILK_BUCKET && MAX_ITEM_ID === MILK_BUCKET,
+      sharedItems[24] === MILK_BUCKET &&
+      // **139..140 は `items.ts` に 1 行も書かずに増えた 2 個です**（135..137 と同じで、
+      // `variantOf === AIR` のブロックには for が同じ番号のアイテムを作ります）。
+      // **`MAX_ITEM_ID` を伸ばすのだけは手作業**なので、そこは別に突き合わせます。
+      sharedItems[25] === RED_MUSHROOM && sharedItems[26] === BROWN_MUSHROOM &&
+      MAX_ITEM_ID === BROWN_MUSHROOM,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 117（ミルクバケツ 1 個で 118 から減った）",
-    sharedFree === 117,
+    "111..255 の空きは 115（キノコ 2 種で 117 から減った）",
+    sharedFree === 115,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1032,8 +1039,88 @@ export function run(): void {
 
   endPortalFrames();
   storedBlocks();
+  mushrooms();
 
   world.dispose();
+}
+
+/**
+ * 赤キノコ（139）・茶キノコ（140）。**草むらの定義をそのまま写した生えもの**なので、
+ * ここで見るのは「写し間違えていないか」と「絵で見分けが付くか」の 2 つ。
+ * **どこに生えるか（森・針葉樹林）は `test/worldgen.test.ts`。**
+ */
+function mushrooms(): void {
+  describe("キノコ 2 種（赤・茶）");
+
+  const grown: [string, number][] = [
+    ["赤キノコ", RED_MUSHROOM],
+    ["茶キノコ", BROWN_MUSHROOM],
+  ];
+  for (const [name, block] of grown) {
+    const d = blockDef(block);
+    const dropped = rollDrop(block, 0.5);
+    console.log(
+      `      ${name}(${block}): model ${d.model} / variantOf ${d.variantOf} / 硬さ ${d.hardness} / ` +
+        `色 0x${d.top.toString(16)} / 通り抜け ${!d.solid} / 上書きされる ${isReplaceable(block)} / ` +
+        `掘ると ${itemName(dropped.item)} x${dropped.count} / アイテム名「${itemName(block)}」`,
+    );
+    check(
+      `${name}は cross で、向き違いではない（アイテムが自動で付く）`,
+      d.model === "cross" && d.variantOf === AIR,
+      `${d.model} / variantOf ${d.variantOf}`,
+    );
+    check(
+      `${name}は同じ番号のアイテムとして持てて、置くと自分に戻る`,
+      itemName(block) === name && placedBlock(block) === block,
+      `「${itemName(block)}」→ ${placedBlock(block)}`,
+    );
+    check(
+      `${name}は掘ると自分が 1 個落ちる（DROPS に 1 行も要らない）`,
+      dropped.item === block && dropped.count === 1 && rollDrops(block, 0.5).length === 1,
+      `${itemName(dropped.item)} x${dropped.count}（山 ${rollDrops(block, 0.5).length} 個）`,
+    );
+    // **`replaceable` が無いと、`stampTree()` の `isReplaceable()` が偽になって
+    // 森の木の葉がキノコに弾かれ、葉に穴が空く**（草むらとまったく同じ理由）。
+    check(
+      `${name}は上書きして置ける（木の葉が弾かれない）`,
+      isReplaceable(block) && !d.solid && !d.opaque && d.hardness === 0,
+      `replaceable ${isReplaceable(block)} / solid ${d.solid} / opaque ${d.opaque} / 硬さ ${d.hardness}`,
+    );
+    // 下の床が消えたら一緒に壊れる（草むらと同じ `supportFace: FACE_YN`）。
+    check(
+      `${name}は床が要る（浮いたまま残らない）`,
+      d.supportFace === FACE_YN,
+      `supportFace ${d.supportFace}`,
+    );
+  }
+
+  // **3 つとも `cross` の板 1 枚なので、色が近いと絵で見分けが付かない。**
+  // どの 2 つも RGB の距離で十分離れていること（`npm run shot` で見るときの唯一の足場）。
+  const shades: [string, number][] = [
+    ["草むら", blockDef(TALL_GRASS).top],
+    ["赤キノコ", blockDef(RED_MUSHROOM).top],
+    ["茶キノコ", blockDef(BROWN_MUSHROOM).top],
+  ];
+  const dist = (a: number, b: number): number =>
+    Math.hypot(((a >> 16) & 255) - ((b >> 16) & 255), ((a >> 8) & 255) - ((b >> 8) & 255), (a & 255) - (b & 255));
+  const pairs: string[] = [];
+  let closest = Infinity;
+  for (let i = 0; i < shades.length; i++) {
+    for (let j = i + 1; j < shades.length; j++) {
+      const d = dist(shades[i][1], shades[j][1]);
+      pairs.push(`${shades[i][0]}↔${shades[j][0]} ${d.toFixed(0)}`);
+      if (d < closest) closest = d;
+    }
+  }
+  console.log(
+    `      色: ${shades.map(([n, c]) => `${n} 0x${c.toString(16)}`).join(" / ")}` +
+      `  隔たり: ${pairs.join(" / ")}`,
+  );
+  check(
+    "草むら・赤・茶はどの 2 つも色で見分けられる（RGB で 60 以上）",
+    closest >= 60,
+    `いちばん近い組で ${closest.toFixed(1)}`,
+  );
 }
 
 /**

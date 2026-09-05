@@ -57,6 +57,15 @@ export interface BiomeDef {
    * 雪・砂・岩肌の上には生やさないので、地表が草のバイオームだけが 0 より大きい。
    */
   readonly grass: number;
+  /**
+   * 地表 1 マスごとにキノコ（赤か茶）が生える確率 0..1。
+   *
+   * **草むらより先に引く**（`worldgen.ts`）ので、`grass` とは独立した確率になる。
+   * 木陰の生えものなので**森と針葉樹林だけ 0 より大きい** —— 砂・雪・岩肌の上に
+   * 生えると、見た瞬間におかしいと分かる（`grass` とまったく同じ理由）。
+   * **赤と茶の振り分けはここではなく `worldgen.ts` の 2 本目のハッシュ**（半々）。
+   */
+  readonly mushroom: number;
 }
 
 /**
@@ -69,19 +78,20 @@ const DRY = 0.0;
 const WET = 0.02;
 
 export const BIOMES: readonly BiomeDef[] = [
-  { id: OCEAN, name: "海", surface: SAND, filler: SAND, trees: 0, treeKind: "oak", grass: 0 },
-  { id: BEACH, name: "浜", surface: SAND, filler: SAND, trees: 0, treeKind: "oak", grass: 0 },
+  { id: OCEAN, name: "海", surface: SAND, filler: SAND, trees: 0, treeKind: "oak", grass: 0, mushroom: 0 },
+  { id: BEACH, name: "浜", surface: SAND, filler: SAND, trees: 0, treeKind: "oak", grass: 0, mushroom: 0 },
   // 砂漠だけ木の代わりにサボテンが立つ
-  { id: DESERT, name: "砂漠", surface: SAND, filler: SANDSTONE, trees: 0.35, treeKind: "cactus", grass: 0 },
-  // 平原がいちばん草深い（Minecraft と同じで、森は木の下なので少なめ）
-  { id: PLAINS, name: "平原", surface: GRASS, filler: DIRT, trees: 0.3, treeKind: "oak", grass: 0.3 },
-  { id: FOREST, name: "森", surface: GRASS, filler: DIRT, trees: 0.8, treeKind: "oak", grass: 0.15 },
-  { id: TAIGA, name: "針葉樹林", surface: GRASS, filler: DIRT, trees: 0.65, treeKind: "spruce", grass: 0.1 },
-  { id: SNOWY, name: "雪原", surface: SNOW, filler: DIRT, trees: 0.15, treeKind: "spruce", grass: 0 },
-  { id: ALPINE, name: "高山", surface: SNOW, filler: STONE, trees: 0, treeKind: "spruce", grass: 0 },
+  { id: DESERT, name: "砂漠", surface: SAND, filler: SANDSTONE, trees: 0.35, treeKind: "cactus", grass: 0, mushroom: 0 },
+  // 平原がいちばん草深い（Minecraft と同じで、森は木の下なので少なめ）。
+  // **平原にキノコは生えない** —— 木陰の生えものなので、森と針葉樹林だけにしてある。
+  { id: PLAINS, name: "平原", surface: GRASS, filler: DIRT, trees: 0.3, treeKind: "oak", grass: 0.3, mushroom: 0 },
+  { id: FOREST, name: "森", surface: GRASS, filler: DIRT, trees: 0.8, treeKind: "oak", grass: 0.15, mushroom: 0.015 },
+  { id: TAIGA, name: "針葉樹林", surface: GRASS, filler: DIRT, trees: 0.65, treeKind: "spruce", grass: 0.1, mushroom: 0.01 },
+  { id: SNOWY, name: "雪原", surface: SNOW, filler: DIRT, trees: 0.15, treeKind: "spruce", grass: 0, mushroom: 0 },
+  { id: ALPINE, name: "高山", surface: SNOW, filler: STONE, trees: 0, treeKind: "spruce", grass: 0, mushroom: 0 },
   // 暖かい土地の山。雪をかぶらないので、砂漠から生えた山も砂 → 岩肌になる。
-  { id: ALPINE_ROCK, name: "岩山", surface: STONE, filler: STONE, trees: 0, treeKind: "oak", grass: 0 },
-  { id: SNOWY_BEACH, name: "雪の浜", surface: SNOW, filler: SAND, trees: 0, treeKind: "spruce", grass: 0 },
+  { id: ALPINE_ROCK, name: "岩山", surface: STONE, filler: STONE, trees: 0, treeKind: "oak", grass: 0, mushroom: 0 },
+  { id: SNOWY_BEACH, name: "雪の浜", surface: SNOW, filler: SAND, trees: 0, treeKind: "spruce", grass: 0, mushroom: 0 },
 ];
 
 /** 気候だけで決まるバイオーム。**高さを見ないこと**（循環する）。 */

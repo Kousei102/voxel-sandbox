@@ -326,6 +326,23 @@ export const IRON_BLOCK = 135;
 export const GOLD_BLOCK = 136;
 export const DIAMOND_BLOCK = 137;
 
+/**
+ * 赤キノコ・茶キノコ。**草むら（`TALL_GRASS`）とまったく同じ形**（十字の板 2 枚・
+ * 通り抜けられる・空の光も止めない・硬さ 0）で、違うのは色と**生える場所**だけです
+ * （森と針葉樹林。どれだけ生えるかは `biomes.ts` の `BiomeDef.mushroom`）。
+ *
+ * **`replaceable: true` を必ず付けること。** 付けないと、`worldgen.ts` の `stampTree()` が
+ * `isReplaceable()` を見て葉を置くのをやめるので、**森の木の葉がキノコに弾かれて穴が空きます**
+ * （草むらと同じ理由。小麦の苗が `replaceable` を持たないのとは事情が逆です）。
+ *
+ * **`variantOf` を書かないこと**（既定の `AIR`）。鉱物の立方体（135..137）と同じで、
+ * (a) `items.ts` の for が同じ番号のアイテムを自動で作り（手で `item({...})` を足すと
+ * 二重登録）、(b) `dropOf()` の既定が自分を返すので**掘ると自分が 1 個落ちます**
+ * （`DROPS` に 1 行も要りません）。**`items.ts` の `MAX_ITEM_ID` だけは伸ばすこと。**
+ */
+export const RED_MUSHROOM = 139;
+export const BROWN_MUSHROOM = 140;
+
 /** 上付きハーフ。見た目と当たり判定だけが違うので、大元は下付きのハーフ。 */
 export const STONE_SLAB_TOP = 64;
 export const COBBLE_SLAB_TOP = 65;
@@ -1272,6 +1289,30 @@ export const BLOCKS: readonly BlockDef[] = [
     hardness: 5,
     tool: "pickaxe",
     minTier: TIER_IRON,
+  }),
+
+  // キノコ 2 種（上のコメント）。**草むらの定義をそのまま写したもの**で、色だけが違う。
+  // 3 つとも `cross` の板 1 枚なので、**色が近いと絵で見分けが付かない**
+  // （`test/blocks.test.ts` が草むらを含めた 3 色の隔たりを見張っている）。
+  def(RED_MUSHROOM, "赤キノコ", { top: 0xc9403a }, {
+    opaque: false,
+    solid: false,
+    replaceable: true,
+    hardness: 0,
+    sound: "grass",
+    model: "cross",
+    boxes: CROSS_BOX,
+    supportFace: FACE_YN,
+  }),
+  def(BROWN_MUSHROOM, "茶キノコ", { top: 0xb5835a }, {
+    opaque: false,
+    solid: false,
+    replaceable: true,
+    hardness: 0,
+    sound: "grass",
+    model: "cross",
+    boxes: CROSS_BOX,
+    supportFace: FACE_YN,
   }),
 ];
 

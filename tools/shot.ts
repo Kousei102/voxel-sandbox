@@ -17,7 +17,17 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { PerspectiveCamera, Scene, Vector3 } from "three";
-import { AIR, DIRT, FARMLAND, GRASS, WATER, WHEAT_CROP, WHEAT_CROP_RIPE } from "../src/blocks";
+import {
+  AIR,
+  BROWN_MUSHROOM,
+  DIRT,
+  FARMLAND,
+  GRASS,
+  RED_MUSHROOM,
+  WATER,
+  WHEAT_CROP,
+  WHEAT_CROP_RIPE,
+} from "../src/blocks";
 import { DayNight } from "../src/daynight";
 import { DIMENSIONS, END, NETHER, OVERWORLD, type DimensionId } from "../src/dimensions";
 import { MOB_KINDS, Mobs } from "../src/mobs";
@@ -213,6 +223,58 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
       camera: look(setup, new Vector3(-pad + 2.5, y + 1.7, -pad + 2.5), new Vector3(3, y + 0.5, 3)),
       dayNight: skyOf(OVERWORLD, setup.time),
       note: `畑 ${(half * 2 + 1) ** 2} マス（左 苗 ${WHEAT_CROP} / 右 実り ${WHEAT_CROP_RIPE}）y=${y}`,
+    };
+  },
+
+  /**
+   * キノコ（赤 139 / 茶 140）。**`terrain` と `ground` には写らない** ——
+   * どちらも原点から見るが、この種の原点は平原（`BiomeDef.mushroom` が 0）で、
+   * 森は +x / -z の側にある。**だから地形を書き換えず、生えている所を探して立つ。**
+   *
+   * 見るのは 3 つ: 十字の板に面の欠け・裏返りが無いか / **赤と茶が見分けられるか** /
+   * **草むらと見分けられるか**（3 つとも `cross` の板 1 枚なので、色だけが手掛かり）。
+   */
+  mushrooms(setup) {
+    const { scene, world } = makeWorld(OVERWORLD, 5);
+    // **赤と茶が両方入る所を選ぶこと。** 最初の 1 本のそばに立つと、
+    // 片方の色しか写らずに「見分けられるか」を確かめられない。
+    // **`surfaceY()` は「一番上のブロックの 1 つ上」を返す** ので、そこは必ず空気。
+    // 生えものそのものを見るには 1 つ下げること（1 度そのまま撮って 1 本も見つからなかった）。
+    const topOf = (x: number, z: number): number => world.getVoxel(x, world.surfaceY(x, z) - 1, z);
+    let best: Vector3 | null = null;
+    let most = 0;
+    let bestNote = "";
+    for (let x = -72; x <= 72; x += 2) {
+      for (let z = -72; z <= 72; z += 2) {
+        if (topOf(x, z) !== RED_MUSHROOM && topOf(x, z) !== BROWN_MUSHROOM) continue;
+        let reds = 0;
+        let browns = 0;
+        for (let dx = -6; dx <= 6; dx++) {
+          for (let dz = -6; dz <= 6; dz++) {
+            const id = topOf(x + dx, z + dz);
+            if (id === RED_MUSHROOM) reds++;
+            if (id === BROWN_MUSHROOM) browns++;
+          }
+        }
+        const both = Math.min(reds, browns) * 100 + reds + browns;
+        if (both > most) {
+          most = both;
+          best = new Vector3(x, world.surfaceY(x, z) - 1, z);
+          bestNote = `赤 ${reds} / 茶 ${browns}`;
+        }
+      }
+    }
+    const at = best ?? new Vector3(0, world.surfaceY(0, 0) - 1, 0);
+    // **すぐそばの目の高さから見下ろす。** 遠くから撮ると、板 1 枚が 2〜3 画素になって
+    // 色の違いが読めない（草むらとの見分けが確かめられない）。
+    const eye = new Vector3(at.x + 6.5, at.y + 3.4, at.z + 6.5);
+    return {
+      scene,
+      camera: look(setup, eye, new Vector3(at.x + 0.5, at.y + 0.4, at.z + 0.5)),
+      dayNight: skyOf(OVERWORLD, setup.time),
+      note: best
+        ? `キノコ ${Math.round(at.x)},${Math.round(at.y)},${Math.round(at.z)}（13x13 に ${bestNote}）`
+        : "**1 本も見つからない**（原点のまわりに森が無い種）",
     };
   },
 

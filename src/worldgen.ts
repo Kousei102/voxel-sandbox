@@ -1,6 +1,7 @@
 import {
   AIR,
   BEDROCK,
+  BROWN_MUSHROOM,
   CACTUS,
   COAL_ORE,
   DIAMOND_ORE,
@@ -9,6 +10,7 @@ import {
   IRON_ORE,
   LAVA,
   LEAVES,
+  RED_MUSHROOM,
   SPRUCE_LEAVES,
   SPRUCE_WOOD,
   STONE,
@@ -287,12 +289,24 @@ export class WorldGen {
         const at = lz * CHUNK_SIZE + lx;
         const h = height[at];
         // 内側の 16 段で毎回引かないよう、ここで取り出しておく
-        const { surface, filler, grass } = biomeDef(biome[at]);
-        // 草むらは地表のすぐ上の 1 マスだけ。列ごとに 1 回引けば済む
+        const { surface, filler, grass, mushroom } = biomeDef(biome[at]);
+        // 生えもの（キノコか草むら）は地表のすぐ上の 1 マスだけ。列ごとに 1 回引けば済む。
+        //
+        // **キノコを先に引くこと。** あとに回すと、草むらの生えなかったマス
+        // （森なら 85%）だけがキノコの候補になり、**森の密度が biomes.ts の
+        // `mushroom` の値と食い違う**（0.015 のつもりが 0.01275 になる）。
+        // **塩は他と重ねないこと** —— 草むらの 0x6a55 と重ねると、同じマスに寄る。
+        const sprouted = h > SEA_LEVEL;
         const tuft =
-          grass > 0 && h > SEA_LEVEL && hash2(wx, wz, this.seed ^ 0x6a55) < grass
-            ? TALL_GRASS
-            : AIR;
+          sprouted && mushroom > 0 && hash2(wx, wz, this.seed ^ 0x4d17) < mushroom
+            ? // 赤か茶かは 2 本目のハッシュで半々（1 本目を使い回すと、
+              // 「生えやすいバイオームほど赤が多い」という形で偏る）
+              hash2(wx, wz, this.seed ^ 0x2f8b) < 0.5
+              ? RED_MUSHROOM
+              : BROWN_MUSHROOM
+            : sprouted && grass > 0 && hash2(wx, wz, this.seed ^ 0x6a55) < grass
+              ? TALL_GRASS
+              : AIR;
 
         for (let ly = 0; ly < CHUNK_SIZE; ly++) {
           const wy = baseY + ly;

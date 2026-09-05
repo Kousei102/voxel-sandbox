@@ -1,6 +1,7 @@
 import {
   AIR,
   BEDROCK,
+  BROWN_MUSHROOM,
   CACTUS,
   COAL_ORE,
   DIAMOND_ORE,
@@ -10,6 +11,7 @@ import {
   IRON_ORE,
   LAVA,
   LEAVES,
+  RED_MUSHROOM,
   SAND,
   SANDSTONE,
   SNOW,
@@ -29,7 +31,9 @@ import {
   SNOWY_BEACH,
   BIOMES,
   DESERT,
+  FOREST,
   OCEAN,
+  TAIGA,
   biomeDef,
   biomeName,
   classify,
@@ -272,12 +276,19 @@ export function run(): void {
   let floatingTufts = 0;
   let wrongSurface = 0;
   const tuftBiomes = new Map<number, number>();
+  // キノコも地表のすぐ上の 1 マスに立つので、**同じ走査で場違いを数える**
+  // （森は原点のまわりに少ないので、本数と赤茶の内訳は下のまとまった森で見る）。
+  let strayCaps = 0;
   for (let x = -400; x < 400; x += 7) {
     for (let z = -400; z < 400; z += 7) {
       const h = gen.heightAt(x, z);
-      if (voxel(x, h + 1, z) !== TALL_GRASS) continue;
-      tufts++;
+      const above = voxel(x, h + 1, z);
       const b = gen.biomeAt(x, z);
+      if (above === RED_MUSHROOM || above === BROWN_MUSHROOM) {
+        if (biomeDef(b).mushroom === 0) strayCaps++;
+      }
+      if (above !== TALL_GRASS) continue;
+      tufts++;
       tuftBiomes.set(b, (tuftBiomes.get(b) ?? 0) + 1);
       if (voxel(x, h, z) === AIR) floatingTufts++;
       if (biomeDef(b).grass === 0) wrongSurface++;
@@ -294,6 +305,94 @@ export function run(): void {
     "草むらはバイオームの決めた場所にだけ生える",
     wrongSurface === 0,
     `${wrongSurface} 本`,
+  );
+
+  // --- キノコ ---
+  // 草むらとまったく同じ経路（地表のすぐ上の 1 マス）だが、**生える場所が違う** ——
+  // `BiomeDef.mushroom` が 0 より大きいのは森と針葉樹林だけ。
+  //
+  // **原点のまわりを間引いて舐めても数が足りない。** 上の草むらの走査（±400 を 7 マスおき）
+  // では森が 1 点も当たらず（**853 本が全部「平原」**）、確率も 0.015 と一桁小さい。
+  // だから**まとまった森と針葉樹林を先に探して、そこを 1 マスも飛ばさずに数える**
+  // （下のサボテンが「まとまった砂漠」を探しているのと同じ形）。
+  const patchOf = (want: number): [number, number] | null => {
+    for (let x = -3000; x < 3000; x += 64) {
+      for (let z = -3000; z < 3000; z += 64) {
+        if (gen.biomeAt(x, z) !== want) continue;
+        let solid = true;
+        for (let dx = 0; dx < 64; dx += 16) {
+          for (let dz = 0; dz < 64; dz += 16) {
+            if (gen.biomeAt(x + dx, z + dz) !== want) solid = false;
+          }
+        }
+        if (solid) return [x, z];
+      }
+    }
+    return null;
+  };
+  const patches: [string, number, [number, number] | null][] = [
+    ["森", FOREST, patchOf(FOREST)],
+    ["針葉樹林", TAIGA, patchOf(TAIGA)],
+  ];
+  check(
+    "まとまった森と針葉樹林がある",
+    patches.every(([, , at]) => at !== null),
+    patches.map(([name, , at]) => `${name} ${at ? `(${at[0]}, ${at[1]})` : "見つからない"}`).join(" / "),
+  );
+
+  let caps = 0;
+  let floatingCaps = 0;
+  let strayInPatch = 0;
+  let reds = 0;
+  let browns = 0;
+  const overhead = new Map<number, number>();
+  const perPatch: string[] = [];
+  for (const [name, want, at] of patches) {
+    if (!at) continue;
+    let here = 0;
+    let columns = 0;
+    for (let x = at[0]; x < at[0] + 64; x++) {
+      for (let z = at[1]; z < at[1] + 64; z++) {
+        const b = gen.biomeAt(x, z);
+        if (b === want) columns++;
+        const h = gen.heightAt(x, z);
+        const id = voxel(x, h + 1, z);
+        if (id !== RED_MUSHROOM && id !== BROWN_MUSHROOM) continue;
+        here++;
+        caps++;
+        if (id === RED_MUSHROOM) reds++;
+        else browns++;
+        // **真下がそのバイオームの地表ブロックであること**（草むらの「空気でない」より
+        // 1 段きつい）。**真上は空気とは限らない** —— キノコは木の下に出るので、
+        // 枝葉が 1 マス上に掛かる列がある。それは不具合ではないので、数えて出すだけにする。
+        if (voxel(x, h, z) !== biomeDef(b).surface) floatingCaps++;
+        const up = voxel(x, h + 2, z);
+        if (up !== AIR) overhead.set(up, (overhead.get(up) ?? 0) + 1);
+        if (biomeDef(b).mushroom === 0) strayInPatch++;
+      }
+    }
+    perPatch.push(`${name} ${here} 本 / ${columns} 列（${((here / Math.max(1, columns)) * 100).toFixed(2)}%）`);
+  }
+  console.log(
+    `      64x64 のキノコ: ${perPatch.join(" / ")}  赤 ${reds} / 茶 ${browns}` +
+      `  1 マス上に何かある ${[...overhead].map(([id, c]) => `${blockName(id)} ${c}`).join(" / ") || "0 本"}`,
+  );
+  check(
+    "キノコは森と針葉樹林にだけ生える（場違いなバイオームに 1 本も無い）",
+    caps > 20 && strayInPatch === 0 && strayCaps === 0,
+    `${caps} 本 / 場違い ${strayInPatch + strayCaps} 本（±400 を舐めたぶんで ${strayCaps} 本）`,
+  );
+  check(
+    "キノコの真下は必ずそのバイオームの地表（浮いていない）",
+    floatingCaps === 0,
+    `${floatingCaps} 本`,
+  );
+  // 半々のハッシュが片側に寄っていないこと。**塩を草むらと重ねると偏る**ので、
+  // 「両方 0 でない」ではなく割合で見る（3 割〜7 割）。
+  check(
+    "赤も茶も出る（2 本目のハッシュが片側に寄っていない）",
+    reds > 0 && browns > 0 && reds / caps > 0.3 && reds / caps < 0.7,
+    `赤 ${reds} / 茶 ${browns}（赤 ${((reds / Math.max(1, caps)) * 100).toFixed(0)}%）`,
   );
 
   describe("バイオーム");
