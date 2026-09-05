@@ -1,105 +1,109 @@
-# 仕様: ミルクバケツ（牛を右クリックして搾る・飲むと毒が消える）
+# 仕様: サボテンに触るとダメージ
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-**`AUTODEV-QUEUE.md` の先頭 15b。** 2026-09-05 に数え直して **`milk` は `src/**` にも
-`test/**` にも 0 件**（`grep -rn -i milk src/ test/` が 0 行）。牛（`mobs.ts` の `COW`）も
-バケツ（84）も毒（`vitals.ts` の `POISON_TICKS`）もすでにあるので、**繋ぐだけの周**です。
+**`AUTODEV-QUEUE.md` の先頭 16 番。** 2026-09-05 に数え直して **サボテンのダメージは
+`src/**` にも `test/**` にも 0 件**（`grep -rn -i cactus src/ test/` はブロック定義・地形生成・
+メッシュ化の絵しか出ません）。ブロック `CACTUS`(27) も `DamageCause` の仕組みも
+`VitalsContext` の配線もすでにあるので、**繋ぐだけの周**です。
 
+**ID を 1 個も使いません**（`ROADMAP.md` の予約表を 1 行も触らないこと）。
 **新しい見た目も新しい音も作りません**（`mobmesh.ts` / `mobrender.ts` / `sfx.ts` /
-`audio.ts` は 0 行）。搾る音は既存の `"splash"`、飲む音は既存の `"eat"` を借ります。
+`audio.ts` / `mesher.ts` は 0 行。**`CACTUS_BOX` の形も変えないこと**）。
 
 ## 1. 何を足すか / 完了の判定
 
-**空のバケツを持って手前の牛を右クリックするとミルクバケツになり、それを右クリックで
-飲むと毒が消えて空のバケツに戻る。** 飲んでも空腹と満腹度は 1 も動きません（本家と同じ）。
+**サボテンのマスに体が重なっているあいだ、0.5 秒ごとに 1 ダメージ**（本家と同じ）。
+**死因は「サボテン」。** 溶岩とまったく同じ形で、`vitals.ts` が時計と数値を持ちます。
 
-完了の判定（`npm test` が**全部緑のまま**、次が増えていること）:
+完了の判定（`npm test` が**全部緑のまま**、次が増えていること。いま 3029 件）:
 
-- `test/use.test.ts` —— **牛が手前 + 空バケツ → `milk`**・**牛が居なければ `bucket`**・
-  **ミルクバケツ → `drink`**・**ミルクバケツを持って作業台を狙ったら `craft`**（器が勝つ）
-- `test/mobs.test.ts` —— **`canMilk()` が真になるのは牛だけ**（9 種類を並べて出してから判定）
-- `test/vitals.test.ts` —— **毒のあいだに飲むと `poisoned` が偽になり戻り値が真**・
-  **毒でないときは戻り値が偽**・**空腹と満腹度が飲む前後で同じ**
-- `test/blocks.test.ts` —— 共有帯のアイテムが **24 → 25 個**・`MAX_ITEM_ID` が
-  **`MILK_BUCKET`**・**111..255 の空きが 118 → 117**（**数え直しであって、ゆるめる
-  ことではありません**。あの 3 件はもともと「数を出してから数で押さえる」形です）
+- `test/blocks.test.ts` —— **`isSpiky()` が真のブロックを並べて出してから「サボテンだけ」**
+- `test/physics.test.ts` —— **サボテンに押し付けると `player.touchingSpikes` が真**・
+  **隣のマスに立っているだけでは偽**・**2 マス離れれば偽**（**位置を出してから判定**）
+- `test/vitals.test.ts` —— **触れた最初のフレームで 1 入る**・**1 秒で 2 回以上入る**・
+  **死因が「サボテン」**・**離れれば止まる**・**クリエイティブでは受けない**
 
 ## 2. 触るファイル / 触らないファイル
 
 | ファイル | 何を書くか |
 | --- | --- |
-| `src/items.ts` | `MILK_BUCKET = 138` の定数と `item({...})` 1 行・`MAX_ITEM_ID` を伸ばす |
-| `src/mobs.ts` | `MobDef` に `milkable: boolean` を 1 つ・9 定義に 1 行ずつ・`canMilk(mob)` |
-| `src/use.ts` | `UseFacts.milkable` と `UseAction` の `milk` / `drink`・`decideUse()` の 2 分岐 |
-| `src/vitals.ts` | `drinkMilk(): boolean`（毒を消し、消したかを返す） |
-| `src/main.ts` | **配線だけ。15 行以内**（`case "milk"` / `case "drink"` と `milkable` の 1 行） |
+| `src/blocks.ts` | `BlockDef.spiky` と既定 `false`・表 `SPIKY` と `isSpiky(id)`・`CACTUS` の定義に `spiky: true` の 1 行 |
+| `src/physics.ts` | `bodyTouches(world, position, size, match): boolean`（**体の箱と重なるマスを走査するだけ**の幾何。判断を書かない） |
+| `src/player.ts` | `touchingSpikes` を毎フレーム立てる（**`moveBody()` のあと**。事実を持つだけ） |
+| `src/vitals.ts` | `SPIKE_INTERVAL` / `SPIKE_DAMAGE`・`DamageCause` に `"サボテン"`・`VitalsContext.touchingSpikes`・`updateSpikes()` |
+| `src/main.ts` | **配線だけ。1 行**（`touchingSpikes: player.touchingSpikes,`） |
 
-**触らないこと**: `mobmesh.ts` / `mobrender.ts` / `sfx.ts` / `audio.ts` / `crafting.ts` /
-`smelting.ts` / `placing.ts` / `items.ts` の `FILLED_BUCKETS` と `FOODS` / `blocks.ts`。
+**触らないこと**: `CACTUS_BOX` と `CACTUS` の形・色・硬さ / `mesher.ts` / `worldgen.ts` /
+`mobs.ts`（**モブはサボテンで傷つきません**）/ `drops.ts`（**落ちたアイテムも燃えも消えません**）/
+`use.ts` / `items.ts` / `crafting.ts` / `ROADMAP.md` の予約表。
 
 **先に読むこと**（`rules/*.md` は自動では読まれません）:
-`rules/use.md`・`rules/vitals.md`・`rules/mobs.md`・`rules/items-survival.md`・`rules/testing.md`。
-スキルは **`add-block`**（アイテムを 1 個足す手順）。**`unverifiable-pair` は要りません**
-（新しく確かめられないものを 1 つも足さないため）。
+`rules/vitals.md`・`rules/blocks-shapes.md`・`rules/mobs.md`・`rules/testing.md`。
+**スキルは 1 つも要りません**（`add-block` は ID を取る周のもの。ここは 0 個です）。
 
 ## 3. 使う ID
 
-**138 を 1 個だけ**（`ROADMAP.md` の予約表「138..255 予備 118 個」の先頭）。
-**ミルクバケツはアイテムだけ**（`block: AIR`。置けるミルクは本家にありません）。
-**`stack: 1`**（バケツ 84・水入り 85・溶岩入り 86 と同じ）。**それ以外の番号を取らないこと。**
+**0 個。** ブロックもアイテムも 1 つも足しません（**111..255 の空きは 117 のまま**）。
+`npm test` の「111..255 の空き」と「1..63 の空き」が**この周で 1 も動かないこと**が判定です。
 
 ## 4. 判断をどのファイルに置くか
 
-- **「誰から搾れるか」は `mobs.ts`。** `MobDef` に `milkable` を 1 つ足し、**`kind === "cow"`
-  と書かないこと**（`shearing` / `ranged` / `orbit` と同じ作法。`rules/mobs.md`）。
-  **時計も回数も持たせないこと** —— 本家の牛は何度でも搾れるので、`ShearRule` のような
-  `regrow` は要りません（**位置ごとの状態も ID も増えません**）。
-- **「手前に居るか」を `use.ts` に持ち込まないこと。** `shearable` / `hasArrow` と
-  まったく同じ約束で、**`main.ts` が `mobIsNearer()` と `mobs.canMilk()` を込みにして
-  `milkable` を渡します**（`use.ts` が器を見に行き始めると判断が 2 か所に散ります）。
-- **「毒が消えるか」は `vitals.ts`。** `drinkMilk()` が `poisonLeft` / `poisonTick` を 0 にし、
-  **消したかどうかを返します**（`main.ts` は戻り値で文言を出すだけ。数値は持たせない）。
-  **`heal()` も `eat()` も呼ばないこと** —— 本家のミルクは空腹に効きません。
-- **`decideUse()` の並び順（`rules/use.md` の「並び順そのものが判断」）**:
-  1. **`milk` は `shear` の隣・器より前。** あとにすると、作業台やチェストの前に立った
-     牛だけ搾れません（羊とまったく同じ壊れ方で、現物を追い込むまで気付けません）
-  2. **`drink` は `bucket` の直後。** 器より後ろでないと、ミルクを持っているあいだ
-     作業台が開きません（`rules/use.md` の並びの 2 番目）。**`aim` は見ないこと**
-     （空を向いたまま飲めるのが正しい。食べる・弓・バケツと同じ）
+- **「どのブロックが刺さるか」は `blocks.ts` の表。** `BlockDef.spiky` を 1 つ足し、
+  **`id === CACTUS` と書かないこと**（`liquid` / `hot` / `falls` とまったく同じ作法。
+  `rules/blocks-shapes.md` の「表 1 本に聞く」）。**どれだけ痛いかは持たせないこと** ——
+  数値は `vitals.ts` のものです（`hot` が焼ける量を持たないのと同じ）。
+- **「触っているか」は `player.ts`。** `inLava` と同じで**事実を渡すだけ**。
+  ダメージの条件も間隔も書かないこと。**`vitals.ts` を import しないこと。**
+- **走査そのものは `physics.ts`。** `bodyTouches()` は**述語を受け取る幾何**で、
+  サボテンの名前を 1 つも知りません（`blockOverlapsBody()` の隣に置く）。
+- **「どれだけ痛いか」は `vitals.ts`。** **溶岩の `updateFire()` と同じ形**にすること:
+  1. **時計は間隔ぶん進めた状態で待つ**（`this.spikeTimer = SPIKE_INTERVAL`）——
+     でないと**浅いサボテンをかすめて無傷で通れます**（溶岩のコメントと同じ罠）
+  2. **`damage()` に `cooldown` を渡さないこと**（既定の 0 のまま。`rules/vitals.md` の
+     「無敵時間は呼ぶ側が選ぶ」。渡すとモブの窓と食い合って**黙って半分になります**）
+  3. **`respawn()` と、`update()` のクリエイティブ／死亡の枝でも時計を戻すこと**
+     （溶岩の `lavaTimer` が並んでいる 2 か所。忘れると**モードを戻した瞬間に 1 発入ります**）
+  4. **`POISON_FLOOR` のような下限を作らないこと** —— **サボテンでは死にます**（本家と同じ）
 
 ## 5. 書くテスト
 
-**値を出してから判定すること**（`rules/testing.md`）。`test/use.test.ts` は
-**返った `kind` を並べて `console.log` してから**判定している既存の形に合わせること。
+**値を出してから判定すること**（`rules/testing.md`）。既存の形に合わせること ——
+`test/vitals.test.ts` は `ctx({...})` と `advance()`、`test/physics.test.ts` は `Arena` です。
 
-- `test/use.test.ts` に上の 4 件（**作業台を狙った牛**も 1 件入れること —— 1 の並びが
-  効いている証拠になります）
-- `test/mobs.test.ts` に 1 件（**9 種類ぶんの `kind: canMilk` を出してから**「牛だけ真」）
-- `test/vitals.test.ts` に 3 件（**飲む前後の `health` / `hunger` / `saturation` /
-  `poisoned` を出してから**判定）
-- `test/blocks.test.ts` の 3 件は**数え直す**（1 の完了判定のとおり）
+- `test/blocks.test.ts` に 1 件（**`isSpiky()` が真の ID と名前を並べて `console.log`** してから
+  「サボテンだけ」。`hot` / `falls` の既存の件と同じ書き方）
+- `test/physics.test.ts` に 3 件（**押し付けたあとの `player.position.x` と
+  `touchingSpikes` を出してから**判定。`Arena` にサボテンを 1 本立てて歩かせること。
+  **「隣に立っただけでは偽」を必ず入れること** —— これが無いと、常に真を返す実装で通ります）
+- `test/vitals.test.ts` に 5 件（**`ctx({ touchingSpikes: true })` の前後の `health` と
+  `cause` を出してから**判定。**回数をぴったりで見ないこと** —— 0.5 秒を 1/60 で刻むので
+  境目の 1 回が誤差でどちらにも転びます。溶岩の件のコメントと同じ）
+- `ctx()` の既定に `touchingSpikes: false` を 1 行足すこと（既存の件が全部これを通ります）
 
 ## 6. このタスク固有の禁じ手
 
-- **`FILLED_BUCKETS` に行を足さないこと。** 足すと `isBucket(MILK_BUCKET)` が真になり、
-  **ミルクを地面に「流せる」**ようになります（ミルクは液体ブロックではありません）
-- **`FOODS` に行を足さないこと。** 足すと `canEat` の門（「お腹は空いていません」）に
-  掛かって、**満腹のときに毒を消せなくなります**
-- **`ShearRule` を書き換えないこと**・**既存のドロップ表と落とし物を 1 行も変えないこと**
-- **既存の ID を振り直さないこと**・**`SaveData.version` は 1 のまま**
-- **`test/ui.test.ts` の `routed` に当たる語を動かさないこと**（`decideUse(` / `tryBucket(` /
-  `mobIsNearer(`。動かす行の語は先に `grep -rn '<語>' test/` で当たること。`rules/testing.md`）
-- **`main.ts` を 1450 行より大きくしないこと**（いま 1428 行。15 行以内に収める）
+- **`CACTUS_BOX` を変えないこと。** 上面を 15/16 に削ると本家どおり「上に立つと痛い」に
+  なりますが、**`test/mesher.test.ts` の体積（0.875 x 1 x 0.875）と積んだサボテンの継ぎ目に
+  出ます**。**上に立っても痛くないのはこの周の意図した線**で、`TUNING.md` に 1 行残すこと
+- **`damage()` の既定の `cooldown` を変えないこと**・**`MOB_HURT_COOLDOWN` を渡さないこと**
+- **`mobs.ts` に 1 行も書かないこと**（モブがサボテンで死ぬのは別の周。湧きと餌の話になります）
+- **`player.ts` に間隔も量も書かないこと**・**`main.ts` に条件を書かないこと**（1 行だけ）
+- **既存の ID を振り直さないこと**・**`SaveData.version` は 1 のまま**（**セーブは 1 バイトも
+  増えません** —— 時計は `Vitals` の中だけで、位置ごとの状態も持ちません）
+- **`test/ui.test.ts` の `routed` に当たる語を動かさないこと**（`updateVitals(` は見張られて
+  います。動かす行の語は先に `grep -rn '<語>' test/` で当たること。`rules/testing.md`）
+- **`main.ts` を 1450 行より大きくしないこと**（いま 1443 行。**1 行だけ**で 1444）
 
 ## 7. 終了条件
 
 `npm run typecheck` 緑 / `npm test` **全部緑**（増えた件も含む）/ `npm run build` 緑 /
-**コミット 1 つ** / `AUTODEV-QUEUE.md` の 15b の行を消す / この仕様書を `状態: 済` に /
-**`ROADMAP.md` の予約表に 138 を「実装済み」で 1 行**（予備を 118 → 117 個に直す）/
-**`docs/autodev-log.md` に 1 節** / **`HANDOFF.md` を丸ごと書き直す** / **`master` へ push**。
+**コミット 1 つ** / `AUTODEV-QUEUE.md` の 16 番の行を消す / この仕様書を `状態: 済` に /
+**`ROADMAP.md` は 1 行も触らない**（ID 0 個）/ **`docs/autodev-log.md` に 1 節** /
+**`HANDOFF.md` を丸ごと書き直す** / **`master` へ push**。
 
-**C-3（撮る）**: 見た目に出るのは**クリエイティブ一覧に枠が 1 つ増えること**だけなので、
-`npm run build` → `node tools/browsershot.mjs` の 5 枚で足ります（**新しい形は 0 個**）。
-**撮ったら `Read` で開いて見ること。** `TUNING.md` には**飲んでも空腹が戻らないこと**を 1 行。
+**C-3（撮る）**: 見た目に出るものは**何もありません**（形も色も音も 0 行）。
+`npm run shot -- terrain` を 1 枚だけ撮って**サボテンの絵が前の周と変わっていないこと**を
+`Read` で確かめれば足ります。**`TUNING.md` に 1 節**（0.5 秒ごとに 1・**上に立っても
+痛くない**・**モブと落ちたアイテムには効かない**の 3 行）。
