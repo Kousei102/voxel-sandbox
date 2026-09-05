@@ -1,118 +1,119 @@
-# 仕様: サトウキビ（ブロック 143）と砂糖（アイテム 144）
+# 仕様: サトウキビが積める（18b）
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-**`AUTODEV-QUEUE.md` の先頭 18 を 2 件に割った前半（18a）。** 後半 **18b（積める・上へ伸びる）は
-キューへ戻しました** —— あちらだけが `main.ts` の配線と育ちの表を要ります。数え直して
-**サトウキビも砂糖も `src/**` `test/**` に 0 件**。**`main.ts` はいま 1448 行**
-（上限 1500・止まる目安 1450）で、**この周は 1 行も書きません**（下の 2.）。
+**`AUTODEV-QUEUE.md` の 18b を 2 件に割った前半。** 後半 **18c（時間で上へ伸びる）はキューへ
+戻しました** —— あちらだけが位置ごとの状態（`crops.ts` の形）と **`main.ts` の配線 6 行**を要ります。
+**`main.ts` はいま 1447 行**（止まる目安 1450）で、**この周は 1 行も書きません**。**新しい ID は
+0 個**、**セーブは 1 バイトも増えません**。
 
 ## 1. 何を足すか / 完了の判定
 
-**浜に生えるサトウキビ（ブロック 143。掘ると自分が 1 個落ちる）と、それ 1 個で作れる砂糖（144）。この周のサトウキビは 1 マスぶんで、積めも伸びもしません**（18b。理由は下の 4.）。
+**サトウキビの上にサトウキビを置けるようにし、生成でも 1〜3 段で立つようにする**（いまは十字が
+支えになれないので `canPlaceAt()` が必ず断り、生成も高さ 1 固定）。完了の判定
+（`npm test` が**全部緑のまま**、次が増えていること。いま 3090 件）:
 
-完了の判定（`npm test` が**全部緑のまま**、次が増えていること。いま 3079 件）:
-
-- `test/blocks.test.ts` —— **def の中身を 1 行に出してから**「十字・通り抜けられる・上書きされる・
-  支えは真下・硬さ 0・`variantOf` 無し」。**掘ると自分が 1 個**（`DROPS` は空のまま）。**砂糖は
-  置けず・道具でも食べ物でもない**。色は**2 つとも既存 107 種のどれからも 20 以上**
-- `test/crafting.test.ts` —— **盤面と出来上がりを出してから**「サトウキビ 1 個 → 砂糖 1 個」
-  「**形なしなので 2x2 でも作れる**」
-- `test/worldgen.test.ts` —— **本数と割合を出してから**「浜に生える」「**浜の外に 1 本も無い**」
-  「**浮いていない**（真下が砂）」「**割合が `BiomeDef.cane` の 0.7〜1.3 倍**」
-- **数え直し**（ゆるめるのではない。`AUTODEV.md` の C-2）: **111..255 の空き 113 → 111** /
-  **`MAX_ITEM_ID` 142 → 144** / **アイテム 107 → 109 種** / **レシピ 53 → 54 本** /
-  **非立方体 71 → 72**（**立方体 39・食べ物 9 種は動きません**）
+- `test/blocks.test.ts` —— **`supportsBlock()` の真理値表を出してから**「サトウキビの上の
+  サトウキビは置ける」「サトウキビの上の松明は置けない」「石の上のサトウキビは置ける」
+  「空気の上は置けない」。**本物の `World` で 3 段積み、いちばん下を壊すと上 2 段が
+  `onAutoBreak` で落ちる**（手本は同じファイルの小麦の節）
+- `test/placing.test.ts` —— **狙ったマスと立ったマスを出してから**「上面を狙うと 1 つ上に立つ」
+  「横面を狙うと隣のマスに立つ（積まれない）」「支えの無い空中は `blocked`」
+- `test/worldgen.test.ts` —— **段数の分布を出してから**「1・2・3 段がどれも 2 割以上」「4 段以上が
+  0 本」「**どの段の真下も砂かサトウキビ**（葉に負けて浮いていない）」。**既存の密度の判定
+  （`BiomeDef.cane` の 0.7〜1.3 倍）は 1 文字も動かさないこと**
+- **数え直し**: **空き 111・`MAX_ITEM_ID` 144・アイテム 109 種・立方体 39 / 非立方体 72 が動かない**
 
 ## 2. 触るファイル / 触らないファイル
 
 | ファイル | 何を書くか |
 | --- | --- |
-| `src/blocks.ts` | `SUGAR_CANE = 143` と `def()` 1 つ / **`CANE_BOX`**（下の 4.） |
-| `src/items.ts` | `SUGAR = 144` と `item()` 1 行 / `MAX_ITEM_ID` を伸ばす |
-| `src/crafting.ts` | `RECIPES` に 1 行（砂糖） |
-| `src/biomes.ts` | `BiomeDef` に `cane` を足し、**10 バイオーム全部に値を書く**（浜だけ 0 より大きい） |
-| `src/worldgen.ts` | 生えものの連鎖に 1 段（下の 4.） |
-| `test/blocks.test.ts` `test/crafting.test.ts` `test/worldgen.test.ts` | 上の件 + 数え直し |
-| `ROADMAP.md` `TUNING.md` | 予約表に 143 / 144（**実装済み**）と「次は 145」/ 密度 1 行 |
+| `src/blocks.ts` | `BlockDef.stacksOnSelf` / `stacksOnSelf()` / **`supportsBlock()`** / `CANE_HEIGHT_MAX = 3` / サトウキビの def から **`replaceable: true` を外す**（下の 4.） |
+| `src/world.ts` | `canPlaceAt()` と `breakUnsupported()` の 2 か所を `supportsBlock()` に付け替える（**片方だけ直さないこと**） |
+| `src/worldgen.ts` | 生えものの書き込みを「サトウキビだけ 1〜3 段」に（下の 4.） |
+| `test/arena.ts` | `canPlaceAt()` の**写しも同じ式に**（写しはここ 1 か所だけ） |
+| `test/blocks.test.ts` `test/placing.test.ts` `test/worldgen.test.ts` | 上の件 + 数え直し |
+| `ROADMAP.md` `TUNING.md` | 143 の行を「積める・1〜3 段」に直す / 段数と `replaceable` を外した理由 |
 
-**触らないこと**: **`src/main.ts`（1 行も。この周は配線が要りません）** / `src/placing.ts`（**0 行**
-—— 支えは `supportFace` と `canPlaceAt` が既に見ます）/ `items.ts` の `DROPS`（**既定が自分を
-返します**）/ `FOODS` / `src/smelting.ts` / `src/crops.ts` / `src/inventory.ts` / `PALETTE`。
+**触らないこと**: **`src/main.ts`（1 行も）** / **`canSupport()` の中身**（松明とベッドの足場です。
+`rules/blocks-shapes.md`）/ `src/placing.ts`（**0 行** —— `placeSpot()` も `tryPlace()` もそのまま通ります）/
+`src/biomes.ts`（`cane` 0.12 は据え置き）/ `crops.ts` / `items.ts` / `crafting.ts` / `DROPS` / `SaveData`。
 
-**先に読むこと**（`rules/*.md` は自動では読まれません）:
-`rules/blocks-shapes.md`・`rules/items-survival.md`・`rules/worldgen.md`・`rules/testing.md`。
-**スキルは `add-block`**（ID の取り方とクリエイティブ一覧までの道筋）。
+**先に読むこと**（`rules/*.md` は自動では読まれません）: `rules/blocks-shapes.md`（**十字は支えに
+なれない・`replaceable` は形とは別の判断**）・`rules/worldgen.md`・`rules/meshing-render.md`・
+`rules/lighting.md`（`world.ts` に当たります）・`rules/testing.md`。**スキルは 3 つとも当たりません**
+（ID もアイテムも器も増えないので `add-block` も `add-stateful-block` も `unverifiable-pair` も要りません）。
 
 ## 3. 使う ID
 
-**143 = サトウキビ（ブロック）/ 144 = 砂糖（アイテム）** の 2 個（`ROADMAP.md` の予約表
-「143..255 予備 113 個」の先頭 2 つ）。**143 にアイテムを手で足さないこと** —— `variantOf` を
-書かなければ `items.ts` の for が自動で作ります（二重登録。`blocks.ts` の 139 のコメント）。
-**`MAX_ITEM_ID = SUGAR` に伸ばすこと** —— 伸ばさないと `allItemIds()` が 142 までしか数えず、
-**一覧にだけ出てこないアイテム**ができます。判定は **「111..255 の空き」が 113 → 111**。
+**0 個。** ブロックもアイテムも増えません（**次の空きは 145 のまま**。`ROADMAP.md` の予約表）。
+**段の違いを ID で表さないこと**（3 段なら 3 番号。**同じ ID を積むだけです**）。
 
 ## 4. 判断をどのファイルに置くか
 
-- **形は `blocks.ts`。小麦の苗（`WHEAT_CROP`）の def を写して、違うのは 4 つだけ**:
-  色 `top: 0x9ad14f` / **`variantOf` を書かない**（アイテムが要る）/ **`replaceable: true`**
-  （**付けないと `stampTree()` が葉を置くのをやめ、浜へ張り出した森の葉に穴が空きます**。
-  キノコと同じ理由）/ **箱は `CANE_BOX = [[0.1, 0, 0.1, 0.9, 1, 0.9]]`**（`CROSS_BOX` は
-  上端 0.8 で、**18b で積むと継ぎ目が空きます**）。`supportFace: FACE_YN`・`solid: false`・
-  `opaque: false`・`hardness: 0`・`sound: "grass"` は苗と同じ。
-- **積めないのはこの周の割り切りです。** `canSupport()` は `def.solid` と「面がマスいっぱい」の
-  両方を見るので、**十字の箱はどう書いても支えになれません**（`solid: true` にしても
-  `box[0] = 0.1 > 0` で落ちます）。**「サトウキビの上にサトウキビ」は別の決まりが要るので
-  18b へ回しました。この周で `canSupport()` にも `canPlaceAt()` にも手を入れないこと。**
-- **生える場所は `biomes.ts` の `BiomeDef.cane`**（地表 1 マスごとの確率）。**浜（`BEACH`）だけ
-  0.12 で、あとの 9 バイオームは 0**（雪の浜は地表が雪、砂漠は水が無い）。
-  **`worldgen.ts` に確率を書かないこと**（`rules/worldgen.md`）。
-- **`worldgen.ts` は連鎖に 1 段足すだけ**（`sprouted && cane > 0 && hash2(...) < cane ? SUGAR_CANE : 既存`）。
-  **サトウキビをいちばん先に引くこと**（キノコと同じ理由。あとに回すと確率が食い違います）。
-  **塩は新しい値にすること** —— `0x4d17`（キノコ）・`0x2f8b`（赤茶）・`0x6a55`（草むら）と
-  重ねると同じマスに寄ります。**書き込みの形（`wy === h + 1`）は変えないこと。**
-- **水際かどうかは見ません。** 浜の地表は必ず y41 で**水面は y40（1 つ下）**なので、本家どおり
-  「真下のマスの横が水」を要求すると**生成した場所そのものが置けない場所**になります
-  （実測: 浜 2.81%・生えるのは高さ 41 の 444 列だけ）。見送りは `docs/autodev-log.md` に 1 行。
-- **色**: **サトウキビ `0x9ad14f`**（いちばん近いのは小麦の種で **42.4**）/
-  **砂糖 `0xffffff`**（いちばん近いのは雪で **22.3**。白は混んでいるので、
-  **`0xfdfdfd` まで暗くすると 19.0 で落ちます**）。**変えるなら測ってから。**
-- **レシピは `crafting.ts` に 1 行**: `{ name: "砂糖", out: SUGAR, count: 1, ingredients: [SUGAR_CANE] }`
-  （本家と同じ 1 対 1・形なし）。**`TUNING.md` に密度 0.12 を 1 行**（暫定）。
+- **支えの表は `blocks.ts` に 1 本。** `canSupport()` は触らず、**その外側**に足すこと:
+
+  ```ts
+  export function supportsBlock(supporter: number, face: number, id: number): boolean {
+    if (supporter === id && stacksOnSelf(id)) return true;   // 自分の上には自分を置ける
+    return canSupport(supporter, face);
+  }
+  ```
+
+  `stacksOnSelf` は `BlockDef` の省略可のフラグで、**true にするのは `SUGAR_CANE` だけ**。
+  `world.ts` の**置く側（`canPlaceAt`）と壊す側（`breakUnsupported`）が同じ式を見ること** ——
+  片方だけにすると、積めるのに下を壊しても落ちない形で静かに壊れます。
+- **`replaceable: true` を外すこと**（18a で付けたもの。**これが積める鍵です**）。
+  `placeSpot()` は狙ったブロックが `replaceable` なら**そのマス自身**を返すので、付いたままだと
+  上面を狙っても 1 本目に重なり、`setVoxel` が「同じ値」で false を返して**永久に積めません**。
+  外すと `placeSpot()` が法線の側（＝真上）を返し、**`placing.ts` に 1 行も書かずに積めます**。
+  - 18a が付けた理由（浜へ張り出した森の葉が欠ける）は**実測で 0 件** —— `±400` の浜 2000 列 x
+    種 3 つで、**サトウキビの立つマスに葉が来た列はありません**。**外すほうが得です**: 葉より
+    強くなるので、積んだ列を葉に抜かれて上が浮きません（種 1234 で h+3 が葉の列が 1 本）
+  - **`test/blocks.test.ts` の「上書きされる」は反転させること**（ゆるめるのではなく**逆を主張する**
+    判定に書き換える。苗（`WHEAT_CROP`）と同じ側になります）
+- **生成の段数は `worldgen.ts`。** いまの `wy === h + 1 ? tuft : AIR` を、**サトウキビのときだけ**
+  `h + 1 <= wy && wy <= h + tall` に広げること（**キノコと草むらは 1 マスのまま**）。
+  `tall` は **`1 + floor(hash2(wx, wz, seed ^ 0x51c3) * CANE_HEIGHT_MAX)`**。
+  **塩は新しい値にすること** —— 既存の 4 本（`0x7c39` / `0x4d17` / `0x2f8b` / `0x6a55`）と
+  重ねると段数が密度と相関します。**引く順（サトウキビが先）と `sprouted` の条件は変えないこと。**
+- **段数の上限 `CANE_HEIGHT_MAX = 3` は `blocks.ts`**（def の隣。18c も同じ値を見るので
+  `worldgen.ts` に数値を書かない）。**`TUNING.md` に 1 行**。**手で積む高さに上限は要りません。**
 
 ## 5. 書くテスト
 
 **値を出してから判定すること**（`rules/testing.md`）。
 
-- `test/blocks.test.ts` に 4 件（キノコ 139・140 の件が手本）: def の写し間違い /
-  **掘ると自分が 1 個**（`rollDrop` を通す）/ 砂糖は置けず・道具でも食べ物でもない /
-  **色は `allItemIds()` を舐めて 2 つとも 20 以上**（実測を出してから）
-- `test/crafting.test.ts` に 1 件（**盤面と出来上がりを出してから** 1 個 → 1 個）
-- `test/worldgen.test.ts` に 1 件。**キノコの `patchOf()`（まとまった 64x64）は使えません**
-  —— 浜は幅数マスの帯なので 1 つも見つかりません。代わりに **`±400` を 1 マスおきに
-  `biomeAt` で舐めて「浜 かつ 高さ > `SEA_LEVEL`」の列を集め**（列のキャッシュに乗るので安い）、
-  **`voxel()` はその列だけ・最大 2000 列**。本数・割合・場違い・浮きを 1 行に出すこと
+- `test/blocks.test.ts` の「サトウキビと砂糖」の節に 2 件足し、既存の 1 件を反転: **真理値表**
+  （`supportsBlock` の 4 通りを 1 行に）/ **本物の `World` で 3 段積んで下を壊す**
+  （`new World(new Scene(), new WorldGen(...))` + `onAutoBreak` で数える。手本は小麦の節）
+- `test/placing.test.ts` に 3 件。`Arena` に砂とサトウキビを置き、**`tryPlace()` の戻り（`kind` と
+  立ったマス）を出してから**判定すること
+- `test/worldgen.test.ts` の既存のサトウキビの節に 2 件足す。**列は今までどおり `biomeAt` で ±400 を
+  舐めて最大 2000 列**（`patchOf()` は浜では見つかりません）。段数は `voxel(x, h + k, z)` を上へ
+  舐めて数え、**分布と最大段を 1 行に出すこと**
 
 ## 6. このタスク固有の禁じ手
 
-- **`src/main.ts` に 1 行も書かないこと**（配線が要るのは 18b です）
-- **`canSupport()` / `canPlaceAt()` / `placing.ts` に手を入れないこと**（上の 4.）
-- **143 に `item({...})` を手で足さないこと**・**`variantOf` を書かないこと**
-- **`DROPS` / `SMELTING` / 燃料 / `FOODS` に 1 行も足さないこと**（砂糖は食べ物ではありません）
-- **既存の ID を振り直さないこと**・**`SaveData.version` は 1 のまま**
-  （**セーブは 1 バイトも増えません** —— 位置ごとの状態を持ちません）
-- **既存の判定をゆるめて緑にしないこと** —— 上の数え直しは**数え直し**です
+- **`src/main.ts` に 1 行も書かないこと**（配線が要るのは 18c です）
+- **`canSupport()` をゆるめないこと**（松明とベッドの足場です。`supportsBlock()` は**外側**に足す）
+- **`placing.ts` / `placeSpot()` / `placedVariant()` に手を入れないこと**（`replaceable` を外せば通ります）
+- **段を ID で表さないこと**・**新しい ID を取らないこと**・**`variantOf` を書かないこと**
+- **`biomes.ts` の `cane`（0.12）を動かさないこと**（密度は別の話。動かすと既存の判定が動きます）。
+  **`SaveData.version` は 1 のまま**・**既存の ID を振り直さないこと**
+- **既存の判定をゆるめて緑にしないこと** —— 反転してよいのは上の 4. で名指しした 1 件だけです
 
 ## 7. 終了条件
 
 `npm run typecheck` 緑 / `npm test` **全部緑** / `npm run build` 緑 / **コミット 1 つ** /
-`AUTODEV-QUEUE.md` の 18a の行を消す / この仕様書を `状態: 済` に /
-**`ROADMAP.md` の予約表に 143・144 を「実装済み」で書く** / **`docs/autodev-log.md` に 1 節**
-（**水際を見送った理由も 1 行**）/ **`TUNING.md` に 1 行** / **`HANDOFF.md` を丸ごと書き直す** /
-**`master` へ push**。
+`AUTODEV-QUEUE.md` の 18b の行を消す / この仕様書を `状態: 済` に / **`ROADMAP.md` の 143 の行を直す**
+（「1 マスぶんで積めも伸びもしません」は嘘になります）/ **`docs/autodev-log.md` に 1 節**
+（**`replaceable` を外した実測も 1 行**）/ **`TUNING.md` に段数の行** /
+**`HANDOFF.md` を丸ごと書き直す** / **`master` へ push**。
 
-**C-3（撮る）**: **地形に新しい形が出る周です。** `npm run build` → `node tools/browsershot.mjs`
-と **`npm run shot -- terrain`** を撮り、**`Read` で開いて「浜にサトウキビが立っている」
-「面が欠けても裏返ってもいない」「上端が立方体と同じ高さ」**を見ること。
-**一覧の色（DOM）は写らない**ので、`HANDOFF.md` に 2 行残すこと。
+**C-3（撮る）**: **地形の見た目が変わる周です。** `npm run build` →
+`(npx --no-install http-server dist -p 8080 --silent &)` → `node tools/browsershot.mjs` と
+**`npm run shot -- beach terrain`**（`beach` は 18a で足した場面）を撮り、**`Read` で開いて「1〜3 段で
+立っている」「段の継ぎ目が空いていない」「面が欠けても裏返ってもいない」**を見ること。
+**手触り（背丈と密度の釣り合い）は人の目**なので `HANDOFF.md` に 2〜3 行残すこと。
