@@ -343,6 +343,26 @@ export const DIAMOND_BLOCK = 137;
 export const RED_MUSHROOM = 139;
 export const BROWN_MUSHROOM = 140;
 
+/**
+ * サトウキビ。**キノコとまったく同じ形の生えもの**（十字の板 2 枚・通り抜けられる・
+ * 硬さ 0・`replaceable: true`・`supportFace: FACE_YN`）で、違うのは色と**生える場所**
+ * （浜だけ。どれだけ生えるかは `biomes.ts` の `BiomeDef.cane`）と**箱の上端**だけです。
+ *
+ * **箱は `CANE_BOX`（上端 1）** —— `CROSS_BOX` は上端 0.8 なので、上へ積むと継ぎ目が空きます。
+ *
+ * **いまは 1 マスぶんで、積めも伸びもしません。** `canSupport()` は `def.solid` と
+ * 「面がマスいっぱい」の両方を見るので、**十字の箱はどう書いても支えになれません**
+ * （`rules/blocks-shapes.md`）。「サトウキビの上にサトウキビ」には `canSupport()` の外に
+ * 別の決まりが要るので、そこは 18b へ回してあります。**`canSupport()` の側を
+ * ゆるめて通さないこと** —— あれは壁掛けの松明とベッドの足場です。
+ *
+ * **`variantOf` を書かないこと**（既定の `AIR`）。キノコ（139 / 140）と同じで、
+ * (a) `items.ts` の for が同じ番号のアイテムを自動で作り（手で `item({...})` を足すと
+ * 二重登録）、(b) `dropOf()` の既定が自分を返すので**掘ると自分が 1 個落ちます**
+ * （`DROPS` に 1 行も要りません）。**`items.ts` の `MAX_ITEM_ID` だけは伸ばすこと。**
+ */
+export const SUGAR_CANE = 143;
+
 /** 上付きハーフ。見た目と当たり判定だけが違うので、大元は下付きのハーフ。 */
 export const STONE_SLAB_TOP = 64;
 export const COBBLE_SLAB_TOP = 65;
@@ -459,6 +479,12 @@ export const CACTUS_BOX: BoxList = [[0.0625, 0, 0.0625, 0.9375, 1, 0.9375]];
  * 見た目の大きさもここで決まる（狙う判定・選択枠と同じ形になる）。
  */
 export const CROSS_BOX: BoxList = [[0.1, 0, 0.1, 0.9, 0.8, 0.9]];
+/**
+ * サトウキビ。**`CROSS_BOX` と横幅は同じで、上端だけがマスいっぱい（0.8 → 1）。**
+ * 草むらや苗と違って**上へ積み上がるもの**なので、上端を 0.8 のままにすると
+ * 2 本目を載せたときに**継ぎ目が 0.2 マス空きます**（積めるようにするのは 18b）。
+ */
+export const CANE_BOX: BoxList = [[0.1, 0, 0.1, 0.9, 1, 0.9]];
 /**
  * ベッドの高さ。本家と同じ 9/16。**`PLAYER_SIZE.step`（0.6）より低いこと** ——
  * 超えると歩いて乗れなくなり、寝床の縁で跳ばされる。
@@ -1312,6 +1338,19 @@ export const BLOCKS: readonly BlockDef[] = [
     sound: "grass",
     model: "cross",
     boxes: CROSS_BOX,
+    supportFace: FACE_YN,
+  }),
+
+  // サトウキビ（上のコメント）。**キノコの定義をそのまま写したもの**で、違うのは
+  // 色と **箱（`CANE_BOX`。上端が 0.8 ではなく 1）** の 2 つだけ。
+  def(SUGAR_CANE, "サトウキビ", { top: 0x9ad14f }, {
+    opaque: false,
+    solid: false,
+    replaceable: true,
+    hardness: 0,
+    sound: "grass",
+    model: "cross",
+    boxes: CANE_BOX,
     supportFace: FACE_YN,
   }),
 ];

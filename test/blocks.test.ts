@@ -35,6 +35,7 @@ import {
   STONE_SLAB,
   STONE_SLAB_TOP,
   STONE_STAIRS,
+  SUGAR_CANE,
   TALL_GRASS,
   TIER_IRON,
   TIER_STONE,
@@ -93,6 +94,7 @@ import {
   STEAK,
   STICK,
   STRING,
+  SUGAR,
   WATER_BUCKET,
   WHEAT,
   WHEAT_SEEDS,
@@ -186,8 +188,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチューの 29 個（142 まで）",
-    sharedItems.length === 29 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖の 31 個（144 まで）",
+    sharedItems.length === 31 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -203,15 +205,19 @@ export function run(): void {
       // **141 / 142 は `items.ts` に手で足した 2 個**（ブロックは 1 つも増えていない）。
       // **上限を伸ばすのは手作業**なので、そこは別に突き合わせる。
       sharedItems[27] === BOWL && sharedItems[28] === MUSHROOM_STEW &&
-      MAX_ITEM_ID === MUSHROOM_STEW,
+      // **143 は `items.ts` に 1 行も書かずに増えたブロック**（サトウキビ。139..140 と
+      // 同じで `variantOf === AIR`）で、**144 は手で足したアイテム**（砂糖）。
+      // **上限を伸ばすのは手作業**なので、そこは別に突き合わせる。
+      sharedItems[29] === SUGAR_CANE && sharedItems[30] === SUGAR &&
+      MAX_ITEM_ID === SUGAR,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 113（ボウルとシチューで 115 から減った）",
-    sharedFree === 113,
+    "111..255 の空きは 111（サトウキビと砂糖で 113 から減った）",
+    sharedFree === 111,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1047,8 +1053,98 @@ export function run(): void {
   storedBlocks();
   mushrooms();
   bowlAndStew();
+  sugarCane();
 
   world.dispose();
+}
+
+/**
+ * サトウキビ（ブロック 143）と砂糖（アイテム 144）。**サトウキビはキノコの定義を
+ * 写した生えもの**なので、ここで見るのは「写し間違えていないか」「掘ると自分が
+ * 落ちるか」「砂糖が持ち物として正しいか」「一覧の色で見分けが付くか」の 4 つ。
+ * **どこに生えるか（浜）は `test/worldgen.test.ts`、レシピは `test/crafting.test.ts`。**
+ */
+function sugarCane(): void {
+  describe("サトウキビと砂糖");
+
+  const d = blockDef(SUGAR_CANE);
+  const dropped = rollDrop(SUGAR_CANE, 0.5);
+  console.log(
+    `      サトウキビ(${SUGAR_CANE}): model ${d.model} / variantOf ${d.variantOf} / 硬さ ${d.hardness} / ` +
+      `色 0x${d.top.toString(16)} / 通り抜け ${!d.solid} / 上書きされる ${isReplaceable(SUGAR_CANE)} / ` +
+      `支え ${d.supportFace} / 箱 ${JSON.stringify(d.boxes)} / ` +
+      `掘ると ${itemName(dropped.item)} x${dropped.count} / アイテム名「${itemName(SUGAR_CANE)}」`,
+  );
+  // **キノコと同じ 6 点。** `variantOf` を書くとアイテムが作られず（一覧にも
+  // 持ち物にも出ない）、`replaceable` を落とすと浜へ張り出した森の葉に穴が空く。
+  check(
+    "サトウキビは十字・通り抜けられる・上書きされる・硬さ 0・向き違いではない",
+    d.model === "cross" && !d.solid && !d.opaque && isReplaceable(SUGAR_CANE) &&
+      d.hardness === 0 && d.variantOf === AIR,
+    `model ${d.model} / solid ${d.solid} / opaque ${d.opaque} / replaceable ${isReplaceable(SUGAR_CANE)} / ` +
+      `硬さ ${d.hardness} / variantOf ${d.variantOf}`,
+  );
+  check(
+    "サトウキビの支えは真下（浮いたまま残らない）",
+    d.supportFace === FACE_YN,
+    `supportFace ${d.supportFace}`,
+  );
+  // **箱の上端は 1（`CROSS_BOX` の 0.8 ではない）。** 積めるようにする 18b で、
+  // 上端 0.8 のままだと 2 本目との継ぎ目が 0.2 マス空く。
+  const box = d.boxes[0];
+  check(
+    "サトウキビの箱は上端がマスいっぱい（CANE_BOX。CROSS_BOX の 0.8 ではない）",
+    d.boxes.length === 1 && box[4] === 1 && box[1] === 0 && box[0] === 0.1 && box[3] === 0.9,
+    `${JSON.stringify(d.boxes)}（草むらは ${JSON.stringify(blockDef(TALL_GRASS).boxes)}）`,
+  );
+  check(
+    "サトウキビは掘ると自分が 1 個落ちる（DROPS に 1 行も要らない）",
+    dropped.item === SUGAR_CANE && dropped.count === 1 && rollDrops(SUGAR_CANE, 0.5).length === 1 &&
+      itemName(SUGAR_CANE) === "サトウキビ" && placedBlock(SUGAR_CANE) === SUGAR_CANE,
+    `${itemName(dropped.item)} x${dropped.count}（山 ${rollDrops(SUGAR_CANE, 0.5).length} 個）`,
+  );
+
+  // **砂糖は置けず・道具でもなく・食べ物でもない**（革・羽根・糸と同じ 3 点）。
+  // `block` を付ければ置ける砂糖になり、`tool:` を付ければ `TOOL_ATTACK` に無い
+  // 種類が入って NaN、`FOODS` に足せば食べられる砂糖になる（どれも型では止まらない）。
+  console.log(
+    `      砂糖(${SUGAR}) 「${itemName(SUGAR)}」 置ける ${placedBlock(SUGAR) !== AIR}` +
+      ` / 道具 ${toolOf(SUGAR) !== null} / 食べ物 ${foodOf(SUGAR) !== null}` +
+      ` / 1 枠 ${itemStackLimit(SUGAR)} 個`,
+  );
+  check(
+    "砂糖は置けず・道具でもなく・食べ物でもない",
+    placedBlock(SUGAR) === AIR && toolOf(SUGAR) === null && foodOf(SUGAR) === null,
+    `block ${placedBlock(SUGAR)} / tool ${toolOf(SUGAR)} / food ${foodOf(SUGAR)}`,
+  );
+
+  // **一覧に並ぶ色は、既存の 107 種のどれとも見分けが付くこと。**
+  // 白っぽいものが混んでいるので砂糖のほうが際どい（雪から 22.3）。
+  const dist = (a: number, b: number): number =>
+    Math.hypot(((a >> 16) & 255) - ((b >> 16) & 255), ((a >> 8) & 255) - ((b >> 8) & 255), (a & 255) - (b & 255));
+  const added = [SUGAR_CANE, SUGAR];
+  const nearest: string[] = [];
+  let worst = Infinity;
+  for (const id of added) {
+    let best = Infinity;
+    let who = "";
+    for (const other of allItemIds()) {
+      if (other === id || added.includes(other)) continue;
+      const gap = dist(itemColor(id), itemColor(other));
+      if (gap < best) {
+        best = gap;
+        who = itemName(other);
+      }
+    }
+    nearest.push(`${itemName(id)} 0x${itemColor(id).toString(16)} ↔ ${who} ${best.toFixed(1)}`);
+    if (best < worst) worst = best;
+  }
+  console.log(`      色のいちばん近い相手: ${nearest.join(" / ")}`);
+  check(
+    "サトウキビも砂糖も、既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）",
+    worst >= 20,
+    `いちばん近い組で ${worst.toFixed(1)}`,
+  );
 }
 
 /**

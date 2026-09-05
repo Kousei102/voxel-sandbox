@@ -15,6 +15,7 @@ import {
   STONE,
   STONE_SLAB,
   STONE_STAIRS,
+  SUGAR_CANE,
   TORCH,
   WOOD,
   WOOL,
@@ -52,6 +53,7 @@ import {
   STONE_HOE,
   STONE_SWORD,
   STRING,
+  SUGAR,
   WHEAT,
   WOOD_HOE,
   WOOD_PICKAXE,
@@ -445,6 +447,29 @@ export function run(): void {
   // ここが通ると、片方のキノコだけでシチューが無限に作れる。
   const stewOneKind = findRecipe(grid(2, ["BR", "R."], M), 2);
   check("赤キノコ 2 個（茶なし）ではシチューにならない", stewOneKind === null, stewOneKind?.name ?? "無し");
+
+  describe("砂糖");
+
+  // **砂糖はサトウキビ 1 個の形なし**（本家と同じ 1 対 1）。**1 個なので 2x2 に
+  // 収まり、浜で採ったその場で作れる**（作業台が要らない）。
+  const C = { C: SUGAR_CANE };
+  const sugar2x2 = findRecipe(grid(2, ["C.", ".."], C), 2);
+  const sugar3x3 = findRecipe(grid(3, ["...", ".C.", "..."], C), 3);
+  console.log(
+    `      サトウキビ 1 個 → 2x2 で ${sugar2x2?.name ?? "無し"} x${sugar2x2?.count ?? 0}` +
+      ` / 3x3 の真ん中で ${sugar3x3?.name ?? "無し"} x${sugar3x3?.count ?? 0}`,
+  );
+  check(
+    "サトウキビ 1 個 → 砂糖 1 個",
+    sugar2x2?.out === SUGAR && sugar2x2.count === 1,
+    `${sugar2x2?.name ?? "無し"} x${sugar2x2?.count ?? 0}`,
+  );
+  // **形なしなので、どの枠に置いても・どちらの盤面でも同じものが出る。**
+  check(
+    "形なしなので 2x2 でも 3x3 の真ん中でも作れる（作業台が要らない）",
+    sugar3x3?.out === SUGAR && sugar3x3.count === 1,
+    `3x3 の真ん中: ${sugar3x3?.name ?? "無し"} x${sugar3x3?.count ?? 0}`,
+  );
 
   describe("鉱物をしまう／戻す（鉄・金・ダイヤ）");
 

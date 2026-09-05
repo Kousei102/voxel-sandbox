@@ -24,6 +24,7 @@ import {
   FARMLAND,
   GRASS,
   RED_MUSHROOM,
+  SUGAR_CANE,
   WATER,
   WHEAT_CROP,
   WHEAT_CROP_RIPE,
@@ -275,6 +276,45 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
       note: best
         ? `キノコ ${Math.round(at.x)},${Math.round(at.y)},${Math.round(at.z)}（13x13 に ${bestNote}）`
         : "**1 本も見つからない**（原点のまわりに森が無い種）",
+    };
+  },
+
+  /**
+   * 浜のサトウキビ。**`terrain` も `water` も浜を近くから写さない**ので、
+   * 「砂の上に立っているか」「上端が立方体とそろっているか」はここでしか見られない。
+   *
+   * **原点のまわりに浜が無い種があるので、探す範囲を広げてある**（キノコの ±72 では
+   * 1 本も見つからなかった）。**広げたぶん `makeWorld` の半径も上げること** ——
+   * `world.getVoxel()` は**生成済みのチャンクしか読まない**ので、外は `AIR` が返る。
+   */
+  beach(setup) {
+    const { scene, world } = makeWorld(OVERWORLD, 12);
+    // **`surfaceY()` は「一番上のブロックの 1 つ上」**なので、生えものは 1 つ下げて見る。
+    const topOf = (x: number, z: number): number => world.getVoxel(x, world.surfaceY(x, z) - 1, z);
+    let best: Vector3 | null = null;
+    let most = 0;
+    for (let x = -180; x <= 180; x += 2) {
+      for (let z = -180; z <= 180; z += 2) {
+        if (topOf(x, z) !== SUGAR_CANE) continue;
+        let near = 0;
+        for (let dx = -8; dx <= 8; dx += 2)
+          for (let dz = -8; dz <= 8; dz += 2) if (topOf(x + dx, z + dz) === SUGAR_CANE) near++;
+        if (near > most) {
+          most = near;
+          best = new Vector3(x, world.surfaceY(x, z) - 1, z);
+        }
+      }
+    }
+    const at = best ?? new Vector3(0, world.surfaceY(0, 0) - 1, 0);
+    // **斜め上から見下ろす。** 目の高さで真横から撮ると、浜が細い帯なので
+    // 画のほとんどが海と空になり、本数も散らばりも読めない。
+    return {
+      scene,
+      camera: look(setup, new Vector3(at.x - 17, at.y + 11, at.z - 17), new Vector3(at.x + 0.5, at.y - 1, at.z + 0.5)),
+      dayNight: skyOf(OVERWORLD, setup.time),
+      note: best
+        ? `サトウキビ ${Math.round(at.x)},${Math.round(at.y)},${Math.round(at.z)}（17x17 に ${most} 本）`
+        : "**1 本も見つからない**（原点のまわりに浜が無い種）",
     };
   },
 

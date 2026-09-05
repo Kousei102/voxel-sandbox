@@ -18,6 +18,7 @@ import {
   SPRUCE_LEAVES,
   SPRUCE_WOOD,
   STONE,
+  SUGAR_CANE,
   TALL_GRASS,
   WATER,
   WOOD,
@@ -393,6 +394,71 @@ export function run(): void {
     "赤も茶も出る（2 本目のハッシュが片側に寄っていない）",
     reds > 0 && browns > 0 && reds / caps > 0.3 && reds / caps < 0.7,
     `赤 ${reds} / 茶 ${browns}（赤 ${((reds / Math.max(1, caps)) * 100).toFixed(0)}%）`,
+  );
+
+  // --- サトウキビ ---
+  // 草むら・キノコとまったく同じ経路（地表のすぐ上の 1 マス）だが、**生えるのは浜だけ**。
+  //
+  // **上のキノコの `patchOf()`（まとまった 64x64）は使えない** —— 浜は幅が数マスの帯
+  // なので 1 つも見つからず、そこで止まる（`rules/worldgen.md`）。代わりに
+  // **`biomeAt` で ±400 を 1 マスおきに舐めて候補の列を集め、`voxel()` を呼ぶのは
+  // その列だけ**にする（`biomeAt` と `heightAt` は列のキャッシュに乗るので安く、
+  // 点数がそのまま実行時間になるのは `voxel()` の側だけ）。
+  //
+  // **生えるのは「浜 かつ 高さ > SEA_LEVEL」の列だけ。** 浜は `height <= SEA_LEVEL + 1`
+  // なので、実際に立てるのは**高さ 41 ちょうど**の列に限られる。
+  const beachColumns: [number, number][] = [];
+  let beachSeen = 0;
+  for (let x = -400; x < 400; x++) {
+    for (let z = -400; z < 400; z++) {
+      if (gen.biomeAt(x, z) !== BEACH) continue;
+      beachSeen++;
+      if (gen.heightAt(x, z) > SEA_LEVEL) beachColumns.push([x, z]);
+    }
+  }
+  // **`voxel()` は 1 点につきチャンクを 1 個生成する**ので、数える列は 2000 で打ち切る。
+  const canePlots = beachColumns.slice(0, 2000);
+  let canes = 0;
+  let floatingCanes = 0;
+  let strayCanes = 0;
+  for (let x = -400; x < 400; x += 7) {
+    for (let z = -400; z < 400; z += 7) {
+      const h = gen.heightAt(x, z);
+      if (voxel(x, h + 1, z) !== SUGAR_CANE) continue;
+      if (biomeDef(gen.biomeAt(x, z)).cane === 0) strayCanes++;
+    }
+  }
+  for (const [x, z] of canePlots) {
+    const h = gen.heightAt(x, z);
+    if (voxel(x, h + 1, z) !== SUGAR_CANE) continue;
+    canes++;
+    // 浜の地表は砂。**真下が砂であること**（浮いていない）。
+    if (voxel(x, h, z) !== biomeDef(BEACH).surface) floatingCanes++;
+  }
+  const caneRate = canes / Math.max(1, canePlots.length);
+  const caneWant = biomeDef(BEACH).cane;
+  console.log(
+    `      浜の列 ${beachSeen} / 800x800（${((beachSeen / (800 * 800)) * 100).toFixed(2)}%）` +
+      `  そのうち生える高さ ${beachColumns.length} 列 → 数えたのは ${canePlots.length} 列` +
+      `  サトウキビ ${canes} 本（${(caneRate * 100).toFixed(2)}% / 表は ${(caneWant * 100).toFixed(0)}%）` +
+      `  浜の外 ${strayCanes} 本`,
+  );
+  check(
+    "サトウキビは浜にだけ生える（浜の外に 1 本も無い）",
+    canes > 20 && strayCanes === 0,
+    `${canes} 本 / 場違い ${strayCanes} 本`,
+  );
+  check(
+    "サトウキビの真下は必ず砂（浮いていない）",
+    floatingCanes === 0,
+    `${floatingCanes} 本`,
+  );
+  // **確率どおりに生えているか。** 生えものの連鎖でサトウキビを後ろに回すと、
+  // 前のものが生えなかったマスだけが候補になって密度がここで落ちる。
+  check(
+    "サトウキビの密度が BiomeDef.cane の 0.7〜1.3 倍に収まる",
+    caneRate > caneWant * 0.7 && caneRate < caneWant * 1.3,
+    `${(caneRate * 100).toFixed(2)}% / 表は ${(caneWant * 100).toFixed(0)}%（${(caneRate / caneWant).toFixed(2)} 倍）`,
   );
 
   describe("バイオーム");

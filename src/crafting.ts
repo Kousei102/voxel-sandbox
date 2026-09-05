@@ -22,6 +22,7 @@ import {
   STONE,
   STONE_SLAB,
   STONE_STAIRS,
+  SUGAR_CANE,
   TORCH,
   WOOD,
   WOOL,
@@ -65,6 +66,7 @@ import {
   STONE_SHOVEL,
   STONE_SWORD,
   STRING,
+  SUGAR,
   WHEAT,
   WOOD_AXE,
   WOOD_HOE,
@@ -195,6 +197,10 @@ export const RECIPES: readonly Recipe[] = [
     count: 1,
     ingredients: [BOWL, RED_MUSHROOM, BROWN_MUSHROOM],
   },
+
+  // 砂糖はサトウキビ 1 個の形なし（Minecraft と同じ 1 対 1）。**1 個なので 2x2 に
+  // 収まり、浜で採ったその場で作れる**（作業台が要らない）。
+  { name: "砂糖", out: SUGAR, count: 1, ingredients: [SUGAR_CANE] },
 
   // 鉱物をしまう／戻す 3 対（Minecraft と同じ 9 個 ↔ 1 個）。**倉庫の枠を 9 分の 1 に
   // するためだけ**の機能なので、**しまう 9 と戻す 9 を食い違わせないこと** ——

@@ -377,6 +377,16 @@ export const BOWL = 141;
 export const MUSHROOM_STEW = 142;
 
 /**
+ * 砂糖。**サトウキビ 1 個から 1 個**（本家と同じ 1 対 1・形なし。`crafting.ts`）。
+ *
+ * **置けず・道具でもなく・食べ物でもありません**（`block:` は `AIR`、`FOODS` にも
+ * `SMELTING` にも行がありません）。本家でもそのままでは食べられず、使い道は
+ * 別のレシピの材料だけです —— **ケーキも金のリンゴも醸造も別件**なので、
+ * この周の使い道は「集められる」までです。
+ */
+export const SUGAR = 144;
+
+/**
  * 一覧を作るときに数え上げる上限（`allItemIds()`）。**アイテムの番号だけでなく、
  * ブロックが自動で作るアイテム（上の for）の番号も含みます。**
  *
@@ -385,11 +395,11 @@ export const MUSHROOM_STEW = 142;
  * （`craftscreen.ts` の `CREATIVE_ITEMS`）にだけ出てこないブロック**ができます
  * （置けるし掘れるので、型でも `typecheck` でも止まりません）。
  *
- * **いまはキノコシチュー（アイテム 142）が上限です。** 直前は茶キノコ（ブロック 140）で、
+ * **いまは砂糖（アイテム 144）が上限です。** 直前はキノコシチュー（アイテム 142）で、
  * **共有帯ではブロックとアイテムが 1 本の番号列**なので、上限を持つのがどちら側かは
  * 決まりません（`items.ts` に 1 行も書いていないブロックが上限だったことも 2 度あります）。
  */
-export const MAX_ITEM_ID = MUSHROOM_STEW;
+export const MAX_ITEM_ID = SUGAR;
 
 export const MAX_STACK = 64;
 
@@ -591,6 +601,12 @@ item({ id: BOWL, name: "ボウル", block: AIR, stack: MAX_STACK, color: 0x7a4a2
 // **`stack: 1` は手触りではなく不変条件。** 食べ終わりに `inventory.setSelected(BOWL, 1)` で
 // 器を戻すので、2 個以上積めると残りの山ごとボウル 1 個に潰れる（上の `MUSHROOM_STEW`）。
 item({ id: MUSHROOM_STEW, name: "キノコシチュー", block: AIR, stack: 1, color: 0xf0dcb4, tool: null });
+
+// 砂糖。**`block: AIR` / `tool: null`**（置けず・道具でもない。`FOODS` にも行が無い）。
+// **色は真っ白** —— 白っぽいものが混んでいるので、いちばん近い雪（0xfffafa）からの
+// 隔たりが 22.3 しかない。**`0xfdfdfd` まで暗くすると 19.0 で判定に落ちる**ので、
+// 変えるなら `test/blocks.test.ts` の隔たりを測ってから。
+item({ id: SUGAR, name: "砂糖", block: AIR, stack: MAX_STACK, color: 0xffffff, tool: null });
 
 const EMPTY: ItemDef = ITEMS[NO_ITEM];
 

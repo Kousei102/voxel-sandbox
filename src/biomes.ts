@@ -66,6 +66,18 @@ export interface BiomeDef {
    * **赤と茶の振り分けはここではなく `worldgen.ts` の 2 本目のハッシュ**（半々）。
    */
   readonly mushroom: number;
+  /**
+   * 地表 1 マスごとにサトウキビが生える確率 0..1。
+   *
+   * **キノコよりさらに先に引く**（`worldgen.ts`）ので、`mushroom` とも `grass` とも
+   * 独立した確率になる。**水辺の生えものなので浜（`BEACH`）だけ 0 より大きい** ——
+   * 雪の浜は地表が雪、砂漠は水が無い。
+   *
+   * **「真下のマスの横が水」という本家どおりの水際の判定を `worldgen.ts` に
+   * 書かないこと。** 浜の地表は必ず y41 で水面は y40（1 つ下）なので、
+   * **生成した場所そのものが「置けない場所」になる**（`rules/worldgen.md`）。
+   */
+  readonly cane: number;
 }
 
 /**
@@ -78,20 +90,21 @@ const DRY = 0.0;
 const WET = 0.02;
 
 export const BIOMES: readonly BiomeDef[] = [
-  { id: OCEAN, name: "海", surface: SAND, filler: SAND, trees: 0, treeKind: "oak", grass: 0, mushroom: 0 },
-  { id: BEACH, name: "浜", surface: SAND, filler: SAND, trees: 0, treeKind: "oak", grass: 0, mushroom: 0 },
+  { id: OCEAN, name: "海", surface: SAND, filler: SAND, trees: 0, treeKind: "oak", grass: 0, mushroom: 0, cane: 0 },
+  // **サトウキビが生えるのは浜だけ**（`cane`）。雪の浜は地表が雪、砂漠には水が無い。
+  { id: BEACH, name: "浜", surface: SAND, filler: SAND, trees: 0, treeKind: "oak", grass: 0, mushroom: 0, cane: 0.12 },
   // 砂漠だけ木の代わりにサボテンが立つ
-  { id: DESERT, name: "砂漠", surface: SAND, filler: SANDSTONE, trees: 0.35, treeKind: "cactus", grass: 0, mushroom: 0 },
+  { id: DESERT, name: "砂漠", surface: SAND, filler: SANDSTONE, trees: 0.35, treeKind: "cactus", grass: 0, mushroom: 0, cane: 0 },
   // 平原がいちばん草深い（Minecraft と同じで、森は木の下なので少なめ）。
   // **平原にキノコは生えない** —— 木陰の生えものなので、森と針葉樹林だけにしてある。
-  { id: PLAINS, name: "平原", surface: GRASS, filler: DIRT, trees: 0.3, treeKind: "oak", grass: 0.3, mushroom: 0 },
-  { id: FOREST, name: "森", surface: GRASS, filler: DIRT, trees: 0.8, treeKind: "oak", grass: 0.15, mushroom: 0.015 },
-  { id: TAIGA, name: "針葉樹林", surface: GRASS, filler: DIRT, trees: 0.65, treeKind: "spruce", grass: 0.1, mushroom: 0.01 },
-  { id: SNOWY, name: "雪原", surface: SNOW, filler: DIRT, trees: 0.15, treeKind: "spruce", grass: 0, mushroom: 0 },
-  { id: ALPINE, name: "高山", surface: SNOW, filler: STONE, trees: 0, treeKind: "spruce", grass: 0, mushroom: 0 },
+  { id: PLAINS, name: "平原", surface: GRASS, filler: DIRT, trees: 0.3, treeKind: "oak", grass: 0.3, mushroom: 0, cane: 0 },
+  { id: FOREST, name: "森", surface: GRASS, filler: DIRT, trees: 0.8, treeKind: "oak", grass: 0.15, mushroom: 0.015, cane: 0 },
+  { id: TAIGA, name: "針葉樹林", surface: GRASS, filler: DIRT, trees: 0.65, treeKind: "spruce", grass: 0.1, mushroom: 0.01, cane: 0 },
+  { id: SNOWY, name: "雪原", surface: SNOW, filler: DIRT, trees: 0.15, treeKind: "spruce", grass: 0, mushroom: 0, cane: 0 },
+  { id: ALPINE, name: "高山", surface: SNOW, filler: STONE, trees: 0, treeKind: "spruce", grass: 0, mushroom: 0, cane: 0 },
   // 暖かい土地の山。雪をかぶらないので、砂漠から生えた山も砂 → 岩肌になる。
-  { id: ALPINE_ROCK, name: "岩山", surface: STONE, filler: STONE, trees: 0, treeKind: "oak", grass: 0, mushroom: 0 },
-  { id: SNOWY_BEACH, name: "雪の浜", surface: SNOW, filler: SAND, trees: 0, treeKind: "spruce", grass: 0, mushroom: 0 },
+  { id: ALPINE_ROCK, name: "岩山", surface: STONE, filler: STONE, trees: 0, treeKind: "oak", grass: 0, mushroom: 0, cane: 0 },
+  { id: SNOWY_BEACH, name: "雪の浜", surface: SNOW, filler: SAND, trees: 0, treeKind: "spruce", grass: 0, mushroom: 0, cane: 0 },
 ];
 
 /** 気候だけで決まるバイオーム。**高さを見ないこと**（循環する）。 */

@@ -14,6 +14,7 @@ import {
   SPRUCE_LEAVES,
   SPRUCE_WOOD,
   STONE,
+  SUGAR_CANE,
   TALL_GRASS,
   WATER,
   WOOD,
@@ -289,24 +290,34 @@ export class WorldGen {
         const at = lz * CHUNK_SIZE + lx;
         const h = height[at];
         // 内側の 16 段で毎回引かないよう、ここで取り出しておく
-        const { surface, filler, grass, mushroom } = biomeDef(biome[at]);
-        // 生えもの（キノコか草むら）は地表のすぐ上の 1 マスだけ。列ごとに 1 回引けば済む。
+        const { surface, filler, grass, mushroom, cane } = biomeDef(biome[at]);
+        // 生えもの（サトウキビかキノコか草むら）は地表のすぐ上の 1 マスだけ。
+        // 列ごとに 1 回引けば済む。
         //
-        // **キノコを先に引くこと。** あとに回すと、草むらの生えなかったマス
-        // （森なら 85%）だけがキノコの候補になり、**森の密度が biomes.ts の
-        // `mushroom` の値と食い違う**（0.015 のつもりが 0.01275 になる）。
+        // **表どおりの確率になるのは、いちばん先に引いたものだけ。** あとのものは
+        // 前のものが生えなかったマスだけを候補にするので、**biomes.ts に書いた値と
+        // 実際の密度が食い違う**（キノコを草むらの後ろに置いた頃、森は 0.015 の
+        // つもりが 0.01275 だった）。**同じバイオームで 2 つ以上を 0 より大きく
+        // したときだけ効く**ので、いまは（浜のサトウキビ・森のキノコ・草原の草むらで
+        // 重なりが無いので）どれも表どおりだが、**バイオームに値を足すときは
+        // この順を見ること。**
         // **塩は他と重ねないこと** —— 草むらの 0x6a55 と重ねると、同じマスに寄る。
         const sprouted = h > SEA_LEVEL;
         const tuft =
-          sprouted && mushroom > 0 && hash2(wx, wz, this.seed ^ 0x4d17) < mushroom
-            ? // 赤か茶かは 2 本目のハッシュで半々（1 本目を使い回すと、
-              // 「生えやすいバイオームほど赤が多い」という形で偏る）
-              hash2(wx, wz, this.seed ^ 0x2f8b) < 0.5
-              ? RED_MUSHROOM
-              : BROWN_MUSHROOM
-            : sprouted && grass > 0 && hash2(wx, wz, this.seed ^ 0x6a55) < grass
-              ? TALL_GRASS
-              : AIR;
+          // **サトウキビが先。** 水際は見ない（浜の地表は必ず y41 で水面は y40 なので、
+          // 「真下のマスの横が水」を求めると生成した場所そのものが置けない場所になる。
+          // `rules/worldgen.md`）。
+          sprouted && cane > 0 && hash2(wx, wz, this.seed ^ 0x7c39) < cane
+            ? SUGAR_CANE
+            : sprouted && mushroom > 0 && hash2(wx, wz, this.seed ^ 0x4d17) < mushroom
+              ? // 赤か茶かは 2 本目のハッシュで半々（1 本目を使い回すと、
+                // 「生えやすいバイオームほど赤が多い」という形で偏る）
+                hash2(wx, wz, this.seed ^ 0x2f8b) < 0.5
+                ? RED_MUSHROOM
+                : BROWN_MUSHROOM
+              : sprouted && grass > 0 && hash2(wx, wz, this.seed ^ 0x6a55) < grass
+                ? TALL_GRASS
+                : AIR;
 
         for (let ly = 0; ly < CHUNK_SIZE; ly++) {
           const wy = baseY + ly;
