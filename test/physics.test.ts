@@ -11,8 +11,9 @@
  */
 
 import { PerspectiveCamera } from "three";
-import { AIR, BEDROCK, STONE, STONE_SLAB, STONE_STAIRS, WATER } from "../src/blocks";
+import { AIR, BEDROCK, CACTUS, STONE, STONE_SLAB, STONE_STAIRS, WATER } from "../src/blocks";
 import { WORLD_HEIGHT } from "../src/constants";
+import { PLAYER_SIZE } from "../src/physics";
 import { Player } from "../src/player";
 import type { World } from "../src/world";
 import { check, describe } from "./harness";
@@ -288,4 +289,70 @@ export function run(): void {
   for (let i = 0; i < 120; i++) swimmer.update(1 / 60, pooled);
   check("水に入ると inWater が立つ", swimmer.inWater, `y=${swimmer.position.y.toFixed(2)}`);
   check("水中では落下が緩む", swimmer.velocity.y > -9, `vy=${swimmer.velocity.y.toFixed(2)}`);
+
+  describe("サボテンに触っているか（player.touchingSpikes）");
+
+  // 床 y=10（上面 11）に、サボテンを 1 本だけ (3,11,0) に立てる。
+  // サボテンの箱は 1/16 細い（手前の面が x=3.0625）ので、押し戻された体は
+  // **マス x=3 の中へ 0.0615 だけ入る** —— それが「押し付けられている」の中身。
+  const desert = new Arena();
+  desert.fill(-4, 8, 10, 10, -4, 4, STONE);
+  desert.fill(3, 3, 11, 11, 0, 0, CACTUS);
+  const sand = desert as unknown as World;
+
+  const pricked = new Player(new PerspectiveCamera());
+  pricked.position.set(0.5, 11, 0.5);
+  pricked.yaw = -Math.PI / 2; // 前 = +X
+  for (let i = 0; i < 30; i++) pricked.update(1 / 60, sand);
+  // **まず「まだ届いていない」ことを出す** —— 常に真を返す実装をここで落とす
+  check(
+    "歩き出す前（x≈0.5）は刺さっていない",
+    !pricked.touchingSpikes,
+    `x=${pricked.position.x.toFixed(3)} touchingSpikes=${pricked.touchingSpikes}`,
+  );
+
+  pricked.setKey("KeyW", true);
+  for (let i = 0; i < 120; i++) pricked.update(1 / 60, sand);
+  const edge = pricked.position.x + PLAYER_SIZE.half;
+  console.log(
+    `      サボテンに押し付けた: x=${pricked.position.x.toFixed(4)}` +
+      ` 体の右端=${edge.toFixed(4)}（マスの境目 3.0 / 箱の手前 3.0625）` +
+      ` → マスへ ${(edge - 3).toFixed(4)} めり込む`,
+  );
+  check(
+    "サボテンに押し付けると touchingSpikes が真",
+    pricked.touchingSpikes && edge > 3,
+    `x=${pricked.position.x.toFixed(4)} 右端=${edge.toFixed(4)}`,
+  );
+
+  // 隣のマス（x=2 のまん中）に立っているだけでは偽。**これが無いと、
+  // 常に真を返す実装でも上の 1 件が通ってしまう。**
+  const beside = new Player(new PerspectiveCamera());
+  beside.position.set(2.5, 11, 0.5);
+  for (let i = 0; i < 30; i++) beside.update(1 / 60, sand);
+  check(
+    "隣のマスに立っているだけでは偽",
+    !beside.touchingSpikes,
+    `x=${beside.position.x.toFixed(3)} 右端=${(beside.position.x + PLAYER_SIZE.half).toFixed(3)}（境目 3.0）`,
+  );
+
+  const away = new Player(new PerspectiveCamera());
+  away.position.set(1.5, 11, 0.5);
+  for (let i = 0; i < 30; i++) away.update(1 / 60, sand);
+  check(
+    "2 マス離れれば偽",
+    !away.touchingSpikes,
+    `x=${away.position.x.toFixed(3)} 右端=${(away.position.x + PLAYER_SIZE.half).toFixed(3)}`,
+  );
+
+  // **上に立っても偽**（本家とは違う。`CACTUS_BOX` の上面を削らないと決めた線で、
+  // `TUNING.md` に残してある）。箱の上面 12 に立つので、体はマス y=11 と重ならない。
+  const perched = new Player(new PerspectiveCamera());
+  perched.position.set(3.5, 14, 0.5);
+  for (let i = 0; i < 120; i++) perched.update(1 / 60, sand);
+  check(
+    "サボテンの上に立っても偽（意図した線）",
+    perched.onGround && perched.position.y >= 12 && !perched.touchingSpikes,
+    `y=${perched.position.y.toFixed(3)} onGround=${perched.onGround} touchingSpikes=${perched.touchingSpikes}`,
+  );
 }

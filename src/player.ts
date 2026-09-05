@@ -1,6 +1,6 @@
 import { Euler, Vector3, type PerspectiveCamera } from "three";
-import { AIR, WATER, isHotLiquid, isLiquid } from "./blocks";
-import { PLAYER_SIZE, blockOverlapsBody, moveBody } from "./physics";
+import { AIR, WATER, isHotLiquid, isLiquid, isSpiky } from "./blocks";
+import { PLAYER_SIZE, blockOverlapsBody, bodyTouches, moveBody } from "./physics";
 import type { World } from "./world";
 
 const EYE = 1.62;
@@ -38,6 +38,12 @@ export class Player {
   canSprint = true;
   /** いま走っているか（消耗と足音の判断材料として外へ渡す）。 */
   sprinting = false;
+  /**
+   * 体が刺さるブロック（サボテン）のマスと重なっている。**`inLava` と同じで事実だけ** ——
+   * どれだけ痛いかも、どれくらいの間隔で入るかも `vitals.ts` のもの。
+   * **ここに数値を書かないこと・`vitals.ts` を import しないこと。**
+   */
+  touchingSpikes = false;
 
   private readonly keys = new Set<string>();
   private readonly euler = new Euler(0, 0, 0, "YXZ");
@@ -114,6 +120,9 @@ export class Player {
 
     // 段差を登れるかは、横に動かす前の状態で決まる（`moveBody` のコメント参照）
     moveBody(world, this, PLAYER_SIZE, dt, this.onGround && !this.flying);
+    // **押し戻したあとで見ること** —— 動かす前の位置で見ると、まだめり込んでいない
+    // フレームで真になったり、離れたフレームで真のまま残ったりする
+    this.touchingSpikes = bodyTouches(world, this.position, PLAYER_SIZE, isSpiky);
     this.syncCamera();
   }
 

@@ -1283,6 +1283,7 @@ function updateVitals(dt: number, moved: number): void {
       onGround: player.onGround,
       inLiquid: player.inLiquid,
       inLava: player.inLava,
+      touchingSpikes: player.touchingSpikes,
       headInWater: underwater,
       flying: player.flying,
       invulnerable: creative,

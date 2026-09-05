@@ -2697,6 +2697,7 @@ export function run(): void {
         onGround: true,
         inLiquid: false,
         inLava: false,
+        touchingSpikes: false,
         headInWater: false,
         flying: false,
         invulnerable,

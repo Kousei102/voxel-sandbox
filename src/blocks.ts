@@ -517,6 +517,14 @@ export interface BlockDef {
    * `gravity.ts`**（`breaking.ts` / `placing.ts` が書き込んだあとに 1 行呼ぶ）。
    */
   readonly falls: boolean;
+  /**
+   * 触れているあいだ刺さるブロック（サボテン）。**`id === CACTUS` と書かないこと** ——
+   * `liquid` / `hot` / `falls` と同じく表 1 本（`isSpiky()`）に聞く。
+   * **どれだけ痛いかは持たない**（数値は `vitals.ts` のもの。`hot` が焼ける量を
+   * 持たないのと同じ）。**どのマスに効くかは `player.ts`**（体の箱と重なるマスを
+   * `physics.ts` の `bodyTouches()` で走査する）。
+   */
+  readonly spiky: boolean;
   /** 頭が浸かったときのフォグ。液体だけが持つ。 */
   readonly fog: LiquidFog | null;
   /** 足音・破壊・設置の音の材質。既定は "stone"。 */
@@ -624,6 +632,7 @@ function def(
     liquid: opts.liquid ?? false,
     hot: opts.hot ?? false,
     falls: opts.falls ?? false,
+    spiky: opts.spiky ?? false,
     fog: opts.fog ?? null,
     emission: opts.emission ?? 0,
     sound: opts.sound ?? "stone",
@@ -965,6 +974,9 @@ export const BLOCKS: readonly BlockDef[] = [
     model: "boxes",
     boxes: CACTUS_BOX,
     supportFace: FACE_YN,
+    // 触れているあいだ刺さる。**上に立つぶんは痛くない**（箱の上面を削ると
+    // 積んだサボテンの継ぎ目に出るので、そこは本家と違えてある。`TUNING.md`）
+    spiky: true,
   }),
 
   // 草むら。通り抜けられて、上にブロックを置けば消える（Minecraft と同じ）。
@@ -1334,6 +1346,8 @@ const LIQUID = new Uint8Array(ID_LIMIT);
 const HOT = new Uint8Array(ID_LIMIT);
 /** 1 = 支えを失うと下まで落ちる（砂・砂利）。どのマスに効くかは `gravity.ts`。 */
 const FALLS = new Uint8Array(ID_LIMIT);
+/** 1 = 触れていると刺さる（サボテン）。どのマスに効くかは `player.ts`。 */
+const SPIKY = new Uint8Array(ID_LIMIT);
 const VARIANT_OF = new Uint8Array(ID_LIMIT);
 /** ID から定義を引く表。ID が飛び飛びなので、BLOCKS の並びとは別に持つ。 */
 const BY_ID: BlockDef[] = [];
@@ -1349,6 +1363,7 @@ for (const block of BLOCKS) {
   LIQUID[block.id] = block.liquid ? 1 : 0;
   HOT[block.id] = block.hot ? 1 : 0;
   FALLS[block.id] = block.falls ? 1 : 0;
+  SPIKY[block.id] = block.spiky ? 1 : 0;
   VARIANT_OF[block.id] = block.variantOf;
 }
 // 定義の無い ID を引くと undefined が伝播して原因が遠くに出るので、ここで落とす
@@ -1509,6 +1524,16 @@ export function tilled(id: number): number {
  */
 export function fallsDown(id: number): boolean {
   return FALLS[id] === 1;
+}
+
+/**
+ * 触れているあいだ刺さるか（サボテン）。**`id === CACTUS` と書かないこと** ——
+ * `isLiquid()` / `isHotLiquid()` / `fallsDown()` と同じ表 1 本に聞く。座標は知らない。
+ * **どのマスに効くか**（体の箱と重なるマス）は `player.ts` が
+ * `physics.ts` の `bodyTouches()` で走査する。**どれだけ痛いかは `vitals.ts`。**
+ */
+export function isSpiky(id: number): boolean {
+  return SPIKY[id] === 1;
 }
 
 /** 頭がそのブロックの中にあるときのフォグ。液体でなければ null。 */

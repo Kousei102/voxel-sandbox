@@ -103,7 +103,16 @@ export const BURN_SECONDS = 15;
 export const BURN_INTERVAL = 1;
 export const BURN_DAMAGE = 1;
 
-export type DamageCause = "落下" | "溺れ" | "奈落" | "モンスター" | "空腹" | "毒" | "溶岩" | "炎上";
+/**
+ * サボテンに触れているあいだのダメージ間隔 (秒) と 1 回ぶんの量。
+ * **Minecraft と同じ**（0.5 秒ごとに 1 = 秒 2）。**`POISON_FLOOR` のような下限は無い**
+ * ので、押し付けられたまま放っておけば**死ぬ**（本家と同じ）。
+ */
+export const SPIKE_INTERVAL = 0.5;
+export const SPIKE_DAMAGE = 1;
+
+export type DamageCause =
+  | "落下" | "溺れ" | "奈落" | "モンスター" | "空腹" | "毒" | "溶岩" | "炎上" | "サボテン";
 
 /**
  * 死亡画面に出す 1 行。**落とした山の数も出すこと** —— 死んだ場所が遠いと
@@ -219,6 +228,12 @@ export interface VitalsContext {
   /** 体が溶岩に浸かっている（ダメージを受け、出てからも燃える）。 */
   inLava: boolean;
   /**
+   * 体が刺さるブロック（サボテン）のマスと重なっている。**`inLava` と同じで事実だけ**
+   * を受け取り、どれだけ痛いかはここ（`vitals.ts`）が決める。
+   * **上に立っているぶんは重ならない**ので偽（`physics.ts` の `bodyTouches()`）。
+   */
+  touchingSpikes: boolean;
+  /**
    * 頭まで水中（息が減る）。**液体すべてに広げないこと** ——
    * 溶岩で溺れ始める（`CLAUDE.md` の液体の項）。
    */
@@ -273,6 +288,12 @@ export class Vitals {
   /** 燃えている残り (秒)。溶岩に浸かるたび `BURN_SECONDS` に戻る。 */
   private burnLeft = 0;
   private burnTick = 0;
+  /**
+   * サボテンの次の 1 回まで。**離れているあいだは間隔ぶん進めた状態で待つ**
+   * （溶岩の `lavaTimer` と同じ。待ってから入る形にすると、**浅いサボテンを
+   * かすめて無傷で通れる**）。
+   */
+  private spikeTimer = SPIKE_INTERVAL;
 
   get hearts(): number {
     return this.health / 2;
@@ -412,6 +433,7 @@ export class Vitals {
     this.lavaTimer = LAVA_INTERVAL;
     this.burnLeft = 0;
     this.burnTick = 0;
+    this.spikeTimer = SPIKE_INTERVAL;
   }
 
   update(dt: number, ctx: VitalsContext): void {
@@ -436,6 +458,7 @@ export class Vitals {
       this.lavaTimer = LAVA_INTERVAL;
       this.burnLeft = 0;
       this.burnTick = 0;
+      this.spikeTimer = SPIKE_INTERVAL;
       return;
     }
 
@@ -443,6 +466,7 @@ export class Vitals {
     this.updateAir(dt, ctx);
     this.updateVoid(dt, ctx);
     this.updateFire(dt, ctx);
+    this.updateSpikes(dt, ctx);
     this.updateHunger(dt, ctx);
     this.updatePoison(dt);
     this.updateRegen(dt);
@@ -534,6 +558,28 @@ export class Vitals {
       this.damage(BURN_DAMAGE, "炎上");
     }
     this.burnLeft = Math.max(0, this.burnLeft - dt);
+  }
+
+  /**
+   * サボテン。**溶岩の `updateFire()` とまったく同じ形**にしてある。
+   *
+   * - **`damage()` に `cooldown` を渡さないこと**（既定の 0 のまま）。渡すと
+   *   モブの無敵窓（`MOB_HURT_COOLDOWN`）と食い合って、入る量が黙って半分になる
+   * - **下限（`POISON_FLOOR` のようなもの）は作らない** —— サボテンでは死ぬ
+   * - 炎上のような「離れたあとも続く」ぶんは無い。**離れれば止まる**
+   */
+  private updateSpikes(dt: number, ctx: VitalsContext): void {
+    if (!ctx.touchingSpikes) {
+      // 次に触れた瞬間に 1 回入るよう、間隔ぶん進めた状態で待つ
+      // （待ってから入る形にすると、浅いサボテンをかすめて無傷で通れる）
+      this.spikeTimer = SPIKE_INTERVAL;
+      return;
+    }
+    this.spikeTimer += dt;
+    while (this.spikeTimer >= SPIKE_INTERVAL && !this.dead) {
+      this.spikeTimer -= SPIKE_INTERVAL;
+      this.damage(SPIKE_DAMAGE, "サボテン");
+    }
   }
 
   /**

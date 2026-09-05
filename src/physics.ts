@@ -218,6 +218,40 @@ export function blockOverlapsBody(
 }
 
 /**
+ * 体の箱と重なる**マス**に、`match` を満たすブロックがあるか。
+ *
+ * **これは幾何だけで、何を探しているかは知らない**（述語は呼ぶ側が渡す）。
+ * `collides()` と違って**ブロックの当たり箱ではなくマスそのもの**を見る ——
+ * サボテンの箱は 1/16 細く、押し戻された体は `contactMin - half - EPS` で
+ * **マスの中へ 0.0615 だけ入る**ので、これでちょうど「押し付けられている」だけが真になる。
+ *
+ * `collides()` と同じ EPS のぶん内側で見るので、**面がぴったり接しているだけ**
+ * （隣のマスに立っている・サボテンの上に立っている）は偽。
+ */
+export function bodyTouches(
+  world: World,
+  position: Vector3,
+  size: BodySize,
+  match: (id: number) => boolean,
+): boolean {
+  const px0 = position.x - size.half + EPS;
+  const px1 = position.x + size.half - EPS;
+  const py0 = position.y + EPS;
+  const py1 = position.y + size.height - EPS;
+  const pz0 = position.z - size.half + EPS;
+  const pz1 = position.z + size.half - EPS;
+
+  for (let by = Math.floor(py0); by <= Math.floor(py1); by++) {
+    for (let bz = Math.floor(pz0); bz <= Math.floor(pz1); bz++) {
+      for (let bx = Math.floor(px0); bx <= Math.floor(px1); bx++) {
+        if (match(world.getVoxel(bx, by, bz))) return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * 足元 `maxDrop` ブロック以内にある足場の上面。無ければ `-Infinity`。
  * **崖から落ちないモブ**に使う（「豚が全部穴に落ちた」は実際に起きる）。
  */

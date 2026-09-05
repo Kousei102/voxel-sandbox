@@ -56,6 +56,7 @@ import {
   isHotLiquid,
   isLiquid,
   isReplaceable,
+  isSpiky,
   liquidFog,
   placeSpot,
   placedVariant,
@@ -798,6 +799,16 @@ export function run(): void {
   check("焼ける液体は溶岩だけ", hot.length === 1 && isHotLiquid(LAVA), hot.join(" / "));
   check("水では焼けない", !isHotLiquid(WATER) && !isHotLiquid(STONE));
   check("焼けるものは必ず液体", BLOCKS.every((b) => !b.hot || b.liquid));
+
+  // 刺さるブロック。**`id === CACTUS` を散らさないための表 1 本**（`hot` と同じ作法）。
+  // どのマスに効くかは `player.ts`、どれだけ痛いかは `vitals.ts` のもの。
+  const spiky = BLOCKS.filter((b) => b.spiky);
+  console.log(`      刺さるブロック: ${spiky.map((b) => `${b.name}(${b.id})`).join(" / ") || "無し"}`);
+  check("刺さるのはサボテンだけ", spiky.length === 1 && isSpiky(CACTUS), spiky.map((b) => b.name).join(" / "));
+  check("石も草も刺さらない", !isSpiky(STONE) && !isSpiky(TALL_GRASS) && !isSpiky(AIR));
+  // 刺さるものは通り抜けられない（`solid: false` にすると、体が中心まで入って
+  // 「隣に立っただけでは偽」が意味を失う）
+  check("刺さるものは必ず solid", spiky.every((b) => b.solid), spiky.map((b) => `${b.name}:${b.solid}`).join(" "));
 
   // 液体はバケツが無いと持てない（バケツはまだ無い）。**溶岩を足したとき、
   // 水だけを弾いていたせいで「溶岩」というアイテムが黙って 1 個増えていた。**

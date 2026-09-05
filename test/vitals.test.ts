@@ -24,6 +24,8 @@ import {
   REGEN_DELAY,
   REGEN_HUNGER,
   REGEN_INTERVAL,
+  SPIKE_DAMAGE,
+  SPIKE_INTERVAL,
   SPRINT_HUNGER,
   START_SATURATION,
   STARVE_FLOOR,
@@ -59,6 +61,7 @@ function ctx(over: Partial<VitalsContext> = {}): VitalsContext {
     onGround: true,
     inLiquid: false,
     inLava: false,
+    touchingSpikes: false,
     headInWater: false,
     flying: false,
     invulnerable: false,
@@ -427,6 +430,63 @@ export function run(): void {
   // **戻したときに燃え残りを持ち越さないこと**（切り替えた瞬間に減り始める）
   advance(ghost, 3);
   check("クリエイティブを抜けても燃え残らない", ghost.health === MAX_HEALTH, `hp ${ghost.health}`);
+
+  describe("サボテン");
+
+  // 溶岩とまったく同じ形。**触れた瞬間に 1 回**入って、そのあと SPIKE_INTERVAL ごと。
+  // 待ってから入る形にすると、浅いサボテンをかすめて無傷で通れる。
+  const scratched = new Vitals();
+  scratched.update(STEP, ctx({ touchingSpikes: true }));
+  console.log(
+    `      サボテンに触れた 1 フレーム目: hp ${MAX_HEALTH} → ${scratched.health}` +
+      `（間隔 ${SPIKE_INTERVAL} 秒・1 回 ${SPIKE_DAMAGE}）死因 ${scratched.cause}`,
+  );
+  check(
+    "サボテンに触れた最初のフレームで 1 回入る",
+    scratched.health === MAX_HEALTH - SPIKE_DAMAGE,
+    `hp ${scratched.health}（-${SPIKE_DAMAGE}）`,
+  );
+  check("死因は「サボテン」", scratched.cause === "サボテン", `${scratched.cause}`);
+
+  const pressed = new Vitals();
+  advance(pressed, 1, { touchingSpikes: true });
+  const spikeHits = (MAX_HEALTH - pressed.health) / SPIKE_DAMAGE;
+  console.log(`      サボテンに 1 秒: ${MAX_HEALTH - pressed.health} 減る（${spikeHits} 回）`);
+  // **回数をぴったりで見ないこと**（溶岩の件と同じ。0.5 秒を 1/60 で刻むので
+  // ちょうど境目の 1 回が浮動小数の誤差でどちらにも転ぶ）
+  check("サボテンは 1 秒に 2 回以上入る", spikeHits >= 2, `${spikeHits} 回`);
+
+  // 離れれば止まる。**炎上のような「出たあとも続く」ぶんは無い。**
+  const stepped = new Vitals();
+  advance(stepped, 1, { touchingSpikes: true });
+  const afterSpike = stepped.health;
+  advance(stepped, 3);
+  check(
+    "離れれば止まる（燃え残らない）",
+    stepped.health >= afterSpike,
+    `hp ${afterSpike} → ${stepped.health}（自然回復で増える側に動く）`,
+  );
+
+  // **下限を作っていない** —— 毒（`POISON_FLOOR`）と違って、サボテンでは死ぬ（本家と同じ）
+  const impaled = new Vitals();
+  let spikeLife = 0;
+  while (!impaled.dead && spikeLife < 30) {
+    impaled.update(STEP, ctx({ touchingSpikes: true }));
+    spikeLife += STEP;
+  }
+  console.log(`      サボテンに押し付けられ続けて死ぬまで: ${spikeLife.toFixed(2)} 秒`);
+  check(
+    "サボテンに押し付けられ続ければ死ぬ",
+    impaled.dead && impaled.cause === "サボテン",
+    `${spikeLife.toFixed(2)} 秒 / 死因 ${impaled.cause}`,
+  );
+
+  const shielded = new Vitals();
+  advance(shielded, 3, { touchingSpikes: true, invulnerable: true });
+  check("クリエイティブでは刺さらない", shielded.health === MAX_HEALTH, `hp ${shielded.health}`);
+  // **戻したときに時計を持ち越さないこと**（切り替えた瞬間に 1 発入る）
+  advance(shielded, 3);
+  check("クリエイティブを抜けても刺さり残らない", shielded.health === MAX_HEALTH, `hp ${shielded.health}`);
 
   describe("空腹");
 
