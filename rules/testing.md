@@ -62,6 +62,17 @@ three の描画以外（`Scene`・`BufferGeometry`・`Vector3`）は Node でそ
   **その語は呼ぶ関数の定義の中にもあります。** 定義を残したままマウスの配線だけ外したら、
   **弓を離しても何も起きないのにテストは全部緑**でした。
   **`updateDrawing(dt)` / `loose();` のような「呼び出しの形」も `routed` に並べること。**
+- **その `routed` は、判断を次に出すときの「動かしてはいけない語」の一覧でもあります。**
+  `main.ts` から何かを別ファイルへ出す周は、**動かす行に出てくる語を先に
+  `grep -rn '<語>' test/` で当たること。1 件でも当たったら、その行は動かさずに置く**か、
+  **語が `main.ts` に残る形へ引数を組み直すこと。** 2026-09-05 に `panels.ts` を出した周で
+  踏みました: `pointerlockchange` の `!screen.isOpen && !vitals.dead && !hud.victoryOpen` を
+  そのまま `menuVisibleWhenUnlocked({screenOpen, dead, victoryOpen})` へ畳んだら、
+  **`!hud.victoryOpen` を見張っていた `routed` が落ちました**（あれは
+  **ドラゴンを倒した人だけが踏む場所**の見張りなので、畳むと外しても誰も気付けません）。
+  直したのは**受ける側の名前**で（`{screenClosed, alive, victoryClosed}`）、`!` は
+  呼ぶ側に残しました。**`test/ui.test.ts` の判定をゆるめて通さないこと** —— 引数名を
+  「閉じている側」で受けると、守りを外したときに `routed` と `tsc` の両方が落ちます。
 - **文書の行数の上限（`test/docs.test.ts`）は `wc -l` より 1 多く数えます。**
   数え方が `split("\n").length` なので、末尾の改行のぶんが 1 行として乗ります。
   **`AUTODEV-SPEC.md` を 120 行ちょうど（`wc -l`）で書くと 121 と数えられて赤くなります**

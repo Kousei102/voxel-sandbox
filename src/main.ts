@@ -38,6 +38,7 @@ import { debugText } from "./debugtext";
 import { Mining } from "./mining";
 import { MobRenderer } from "./mobrender";
 import { Mobs, type Mob, type MobContext } from "./mobs";
+import { Panels, menuVisibleWhenUnlocked } from "./panels";
 import { Player } from "./player";
 import { tryBucket, tryIgnite, tryPlace, tryPlant, tryTill } from "./placing";
 import {
@@ -687,7 +688,10 @@ document.addEventListener("pointerlockchange", () => {
   // ここから先はタイトル画面ではない（見回しを二度と始めない）。
   if (playing) everPlayed = true;
   // インベントリ・死亡画面・クリア画面でロックが外れたときは、メインメニューを出さない
-  hud.setPlaying(playing, !playing && !screen.isOpen && !vitals.dead && !hud.victoryOpen);
+  const menuVisible = menuVisibleWhenUnlocked({
+    screenClosed: !screen.isOpen, alive: !vitals.dead, victoryClosed: !hud.victoryOpen,
+  });
+  hud.setPlaying(playing, !playing && menuVisible);
   if (!playing) {
     player.clearKeys();
     stopHands();
@@ -708,56 +712,17 @@ function stopHands(): void {
   drawing.stop();
 }
 
-/**
- * 画面を 1 つ開く。**開ける前に手を止めるのは 4 つとも同じ**なので、ここに集める
- * （写すと、画面を足したときに掘りかけ・食べかけが残る形で 1 つだけ抜ける）。
- */
-function openPanel(show: () => void): void {
-  if (screen.isOpen) return;
-  stopHands();
-  show();
-  hud.setPlaying(false, false);
-  document.exitPointerLock();
-}
-
-/** インベントリ（または作業台）を開く。ポインタロックは外れる。 */
-function openInventory(size: 2 | 3): void {
-  openPanel(() => screen.show(size));
-}
-
-/**
- * クリエイティブの一覧を開く（`E`）。**器が要らない**のが他の 3 つとの違いで、
- * 並ぶものも押したときの規則も `craftscreen.ts` が持っている。
- * **作業台はクリエイティブでも今までどおり 3x3 のクラフト画面**（`openInventory(3)`）。
- */
-function openCreativeInventory(): void {
-  openPanel(() => screen.showCreative());
-}
-
-/**
- * かまどを開く。中身は `furnaces.ts` が位置ごとに持っていて、画面はそれを借りるだけ。
- * **閉じても中身は返さない**（ワールドに置いてあるもの。`craftscreen.ts` の `close()`）。
- */
-function openFurnace(x: number, y: number, z: number): void {
-  openPanel(() => screen.showFurnace(furnaces.at(x, y, z)));
-}
-
-/**
- * チェストを開く。かまどと同じで、中身は `chests.ts` が位置ごとに持っていて、
- * 画面はそれを借りるだけ。**閉じても中身は返さない**（ワールドの持ち物）。
- *
- * **隣り合っているかを見るのは `chests.open()`**（ここに隣接の判断を書かないこと）。
- */
-function openChest(x: number, y: number, z: number): void {
-  openPanel(() => screen.showChest(chests.open(world, x, y, z)));
-}
-
-function closeInventory(): void {
-  if (!screen.isOpen) return;
-  screen.hide();
-  hud.refresh();
-  requestLock();
-}
+// 画面の開け閉め（手を止める → 出す → メニューを隠す → ロックを外す）は
+// **判断なので `panels.ts`**。ここは DOM の受け口を渡すだけで、器の中身
+// （`furnaces.at()` / `chests.open()`）を引くのも今までどおり呼ぶ側の仕事。
+const panels = new Panels({
+  screen,
+  stopHands,
+  setPlaying: (playing, menuVisible) => hud.setPlaying(playing, menuVisible),
+  refresh: () => hud.refresh(),
+  lock: requestLock,
+  unlock: () => document.exitPointerLock(),
+});
 
 document.addEventListener("mousemove", (event) => {
   if (playing) player.look(event.movementX, event.movementY);
@@ -859,9 +824,9 @@ function useOrPlace(m: { mob: Mob } | null): void {
   switch (act.kind) {
     case "flash": hud.flash(act.message); return;
     case "shear": if (m) shearMob(m.mob); return;
-    case "craft": openInventory(3); return;
-    case "furnace": openFurnace(act.at.x, act.at.y, act.at.z); return;
-    case "chest": openChest(act.at.x, act.at.y, act.at.z); return;
+    case "craft": panels.openInventory(3); return;
+    case "furnace": panels.openFurnace(furnaces.at(act.at.x, act.at.y, act.at.z)); return;
+    case "chest": panels.openChest(chests.open(world, act.at.x, act.at.y, act.at.z)); return;
     case "bed": sleepOrSetSpawn(act.at.x, act.at.y, act.at.z, act.id); return;
     case "till": tillAt(act.at.x, act.at.y, act.at.z); return;
     case "plant": plantAt(act.at.x, act.at.y, act.at.z); return;
@@ -1073,7 +1038,7 @@ window.addEventListener("keydown", (event) => {
   if (act.prevent) event.preventDefault();
   switch (act.kind) {
     case "close":
-      closeInventory();
+      panels.close();
       return;
     case "discardHeld":
       screen.discardHeld(bulkDiscard(event));
@@ -1086,10 +1051,10 @@ window.addEventListener("keydown", (event) => {
       hud.refresh();
       return;
     case "openInventory":
-      openInventory(2);
+      panels.openInventory(2);
       return;
     case "openCreative":
-      openCreativeInventory();
+      panels.openCreative();
       return;
     case "discardSelected":
       discardSelected(bulkDiscard(event));
@@ -1226,9 +1191,9 @@ function frame(now: number): void {
     const defeated = mobs.bossDefeated(dim);
     mobs.ensureBoss(dim, world, syncExitPortal(world, defeated));
     hud.setBoss(bossBarState(mobs.activeBoss(dim)));
-    // **倒した瞬間だけ。** 開けるときに手を止めるのは `openPanel()` に集めてある。
+    // **倒した瞬間だけ。** 開けるときに手を止めるのは `panels.open()` に集めてある。
     if (victory.update(defeated)) {
-      openPanel(() => hud.showVictory(victoryMessage(mobs.bossName(dim))));
+      panels.open(() => hud.showVictory(victoryMessage(mobs.bossName(dim))));
     }
   }
   if (playing) mobs.update(dt, world, mobContext());

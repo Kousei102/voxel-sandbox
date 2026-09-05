@@ -1169,3 +1169,66 @@ for が作ります。**
 
 `rules/items-survival.md` に **「111 以降にブロックを足したら `MAX_ITEM_ID` も伸ばすこと」**
 を 1 件足しました（上の 1 行の話。**一覧にだけ出てこないブロックができ、型では止まりません**）。
+
+---
+
+## AUTODEV 29（C の周・2026-09-05）: 画面の開け閉めを `src/panels.ts` へ出した（15a）
+
+### 取ったもの
+
+`AUTODEV-QUEUE.md` の先頭 **15a**。本家の機能ではなく、**`main.ts` の行数を空けるための周**
+（`AUTODEV.md` の「止まって人を呼ぶ条件」2 番 = 1450 行を越えたままだった）。
+
+**`main.ts` 1463 → 1429 行**（`test/ui.test.ts` の数え方）。`src/panels.ts`（新規・判断だけ）と
+`test/panels.test.ts`（新規・8 件）を足し、`test/run.ts` に 1 行。**ID は 0 個**
+（`ROADMAP.md` の予約表は次の空き 138 のまま。`TUNING.md` も触っていません）。
+
+出したのは `openPanel` / `openInventory` / `openCreativeInventory` / `openFurnace` /
+`openChest` / `closeInventory` の 6 つと、`pointerlockchange` の menu を出す条件。
+**`stopHands()` は `main.ts` に残しました**（`breaking` が向こうの状態なので、仕様書どおり）。
+
+### 見送ったもの
+
+- **`main.ts` をもう 1 段割ること** —— 見送り。`test/ui.test.ts` の見張り 40 件が呼び出しを
+  `main.ts` に釘付けにしているので、これ以上は**判定の意味を変えないと減りません**
+  （`HANDOFF.md` の「人がやること」。無人の周では触らない）。
+
+### 差し戻し（0 回）— ただし仕様書の穴を 1 つ踏みました
+
+**仕様書の §4 のとおりに `menuVisibleWhenUnlocked({screenOpen, dead, victoryOpen})` を書いて
+`main.ts` の 690 行を差し替えたら、`test/ui.test.ts` の「main.ts は出した判断を呼び直して
+いる」が落ちました**（`NG — クリア画面の裏にメニューを出さない`）。あの一覧は
+**`!hud.victoryOpen` という文字列を `main.ts` に対して**見張っています。
+
+**仕様書の §6 は「動かす語が `test/` に 1 件でも当たったら、その関数は動かさずに置いていく」
+と書いていて、書いた人は 7 関数だけを当たり、690 行の条件式は当たっていませんでした。**
+
+`test/ui.test.ts` は 1 行も触らずに済ませるため、**引数を「閉じている／生きている」の側で
+受ける形**（`{screenClosed, alive, victoryClosed}`）に変え、**`!` は `main.ts` に残しました**。
+守り（クリア画面の裏にメニューを出さない）を誰かが外せば、**`test/ui.test.ts` が落ち、
+さらに `tsc` も「プロパティが無い」で落ちます** —— 見張りは前より強くなっています。
+
+**`furnaces.at()` / `chests.open()` を呼ぶ位置**は `screen.isOpen` の門の**前**へ動きました
+（`panels.openFurnace(state)` が引いた結果を受け取る形なので）。**観測できる違いはありません**:
+`useOrPlace()` は `playing` のときしか通らず、画面が開いていれば `exitPointerLock()` 済みで、
+かつ空のかまど・チェストはセーブから省かれます（`isIdle` / `isChestEmpty`）。
+
+### 撮って見たこと（C-3）
+
+**本物のブラウザで 5 枚**（`docs/browser-shots/`。`node tools/browsershot.mjs`）。
+
+- **`menu.png`**: タイトル画面が今までどおり出ています（起動で例外が出ると真っ黒になる）。
+  **console のエラー・例外は 0 件**（SwiftShader の warning だけ）。
+- **`inventory.png`**: **`E` でインベントリが開きました。** 貼り替えた
+  `panels.openInventory(2)` の経路が本物のブラウザで通ったということです。
+  枠・日本語の説明文・`→` まで前の周と同じ。
+- **`hud.png` / `game.png` / `debug.png`**: 地形・ホットバー・体力とも変わりなし。
+- **分かったこと: ヘッドレスでもポインタロックは効きます**（`ポインタロック: 効いた`）。
+  `HANDOFF.md` が「ヘッドレスではインベントリを開いた絵は撮れない」と書いていたのは
+  **誤りでした** —— `docs/browser-shots/README.md` の 19 行目のほうが正しい。
+
+### 決まりごと（`rules/`）
+
+`rules/dom-ui.md` に **「画面の開け閉め（`panels.ts`）」** の節を足し、`paths` に
+`src/panels.ts` と `test/panels.test.ts` の 2 行を足しました（`openPanel()` を指していた
+既存の 1 行も `panels.open()` へ）。**本数が増えないので `rules/README.md` は触っていません。**

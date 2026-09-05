@@ -12,6 +12,8 @@ paths:
   - "src/view.ts"
   - "src/boss.ts"
   - "test/boss.test.ts"
+  - "src/panels.ts"
+  - "test/panels.test.ts"
 ---
 
 ## 画面（DOM）
@@ -68,10 +70,25 @@ paths:
 - **見張りに戻し方（`reset()`）を足さないこと。** 次元を移る・ワールドを作り直すと
   `mobs.clear()` が走って `bossDefeated()` が false へ戻るので、見張りも同じ経路で戻ります。
   別に持つと、呼び忘れた場所だけが**二度とクリア画面を出さない**形を作れます。
-- 開けるときは `openPanel()` を通します（掘りかけ・食べかけ・引きかけを止めるのが
+- 開けるときは `panels.open()` を通します（掘りかけ・食べかけ・引きかけを止めるのが
   インベントリと同じ 1 か所にまとまります）。**メインメニューを出さない条件
   （`pointerlockchange`）に `hud.victoryOpen` を足すこと** —— 足さないと、
   クリア画面の上にメニューが重なって読めません（死亡画面の `vitals.dead` と同じ役目）。
+
+## 画面の開け閉め（`panels.ts`）
+
+**開ける手順そのものが判断です。** `main.ts` に置いてあった頃は、**手を止める → 出す →
+メニューを隠す → ロックを外す**の 4 手が揃っているかを**ブラウザを開くまで確かめられません
+でした**。`panels.ts` は `PanelHost`（`stopHands` / `setPlaying` / `refresh` / `lock` /
+`unlock`）を受け取るだけなので、`test/panels.test.ts` が偽物を渡して呼ぶ順を見ます。
+
+- **`panels.ts` に `document` / `HTMLElement` / `Mesh` / `World` を持ち込まないこと。**
+  DOM の受け口は全部 `main.ts` 側に残します（`test/panels.test.ts` の見張り）。
+- **器の中身を引くのは呼ぶ側です。** `furnaces.at()` / `chests.open(world, …)` は
+  `main.ts` に残し、`panels.openFurnace(state)` へ**引いた結果を渡します** ——
+  `panels.ts` が `world` を持った瞬間、開け閉めを確かめるのに世界を作る羽目になります。
+- 画面を足すときも `panels.open(show)` を通すこと。**クリア画面（`hud.showVictory()`）は
+  `screen` の外**なので、`main.ts` が `panels.open()` へ直に注文を渡しています。
 
 ## F3 とデバッグの鍵（`debugtext.ts` / `debugspawn.ts`）
 
