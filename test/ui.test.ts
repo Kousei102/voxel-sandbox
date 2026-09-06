@@ -142,6 +142,10 @@ function mainStaysWiring(): void {
     // `main.ts` に `GROW_SECONDS` も 180 も無いことを見ている）。
     ["苗が育つ", "crops.update("],
     ["植えたら覚える", "crops.plant("],
+    // 置いたサトウキビを覚えるところ（18c）。**`main.ts` が「何が伸びるか」を
+    // 見分け始めると、`crops.ts` と 2 か所に分かれる**（`placeHeld()` は全部の
+    // ブロックで呼ばれるので、弾くのは `notePlaced()` の仕事）。
+    ["置いたものを覚える", "crops.notePlaced("],
     ["食べ進み", "eating.advance("],
     ["まとめ捨ての判定", "bulkDiscard("],
     // リスポーンで**どの次元へ戻るか**。`main.ts` が自分で決め始めると、

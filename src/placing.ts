@@ -55,11 +55,15 @@ export interface PlaceBody {
  * 置いた結果。**「置けなかった」を 2 つに分けてある** ——
  * 黙って何もしない（`none`）のと、理由を出す（`blocked`）のとでは、
  * 手ごたえがまるで違う（松明が付かないのは、理由が出ないと分からない）。
+ *
+ * **`at` は書き込んだマス**（狙ったマスではない）。呼ぶ側は「どこに置いたか」を
+ * 知らないので、置いたものを覚える器（`crops.ts` の `notePlaced()`）へ渡せません。
+ * **`main.ts` に座標を計算させないため**の 1 つ目のフィールドです。
  */
 export type PlaceOutcome =
   | { readonly kind: "none" }
   | { readonly kind: "blocked"; readonly message: string }
-  | { readonly kind: "placed"; readonly id: number };
+  | { readonly kind: "placed"; readonly id: number; readonly at: UseSpot };
 
 const NOTHING: PlaceOutcome = { kind: "none" };
 
@@ -112,7 +116,7 @@ export function tryPlace(
     settleColumn(world, x, y, z);
   }
 
-  return { kind: "placed", id };
+  return { kind: "placed", id, at: { x, y, z } };
 }
 
 /**
@@ -123,9 +127,14 @@ export function tryPlace(
  * `portals.ts` の `ignite()`。**ここが持つのは「どのマスか」だけ。**
  */
 export function tryIgnite(world: PlaceWorld, aim: PlaceAim): PlaceOutcome {
-  const lit = ignite(world, aim.block.x + aim.normal.x, aim.block.y + aim.normal.y, aim.block.z + aim.normal.z);
+  const at: UseSpot = {
+    x: aim.block.x + aim.normal.x,
+    y: aim.block.y + aim.normal.y,
+    z: aim.block.z + aim.normal.z,
+  };
+  const lit = ignite(world, at.x, at.y, at.z);
   if (lit <= 0) return { kind: "blocked", message: "黒曜石の枠がありません" };
-  return { kind: "placed", id: portalBlock("x") };
+  return { kind: "placed", id: portalBlock("x"), at };
 }
 
 /**
@@ -146,7 +155,7 @@ export function tryTill(world: PlaceWorld, at: UseSpot): PlaceOutcome {
   }
 
   if (!world.setVoxel(x, y, z, result)) return NOTHING;
-  return { kind: "placed", id: result };
+  return { kind: "placed", id: result, at };
 }
 
 /**
@@ -171,7 +180,8 @@ export function tryPlant(world: PlaceWorld, at: UseSpot): PlaceOutcome {
   }
 
   if (!world.setVoxel(x, y + 1, z, WHEAT_CROP)) return NOTHING;
-  return { kind: "placed", id: WHEAT_CROP };
+  // **苗が立ったのは狙った耕地の 1 つ上**（`at` は書き込んだマス）。
+  return { kind: "placed", id: WHEAT_CROP, at: { x, y: y + 1, z } };
 }
 
 /**

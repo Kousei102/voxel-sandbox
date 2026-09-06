@@ -6,9 +6,19 @@
  * 「テストだけが古い値で緑」になる（＝判定をゆるめたのと同じ）。
  */
 
-import { AIR, DIRT, FARMLAND, WHEAT_CROP, WHEAT_CROP_RIPE } from "../src/blocks";
+import {
+  AIR,
+  CANE_HEIGHT_MAX,
+  DIRT,
+  FARMLAND,
+  SAND,
+  STONE,
+  SUGAR_CANE,
+  WHEAT_CROP,
+  WHEAT_CROP_RIPE,
+} from "../src/blocks";
 import { CHUNK_SIZE } from "../src/constants";
-import { Crops, GROW_SECONDS, cropKey, type CropWorld } from "../src/crops";
+import { CANE_GROW_SECONDS, Crops, GROW_SECONDS, cropKey, type CropWorld } from "../src/crops";
 import { sourceOf } from "./arena";
 import { check, describe } from "./harness";
 
@@ -49,6 +59,13 @@ class Field implements CropWorld {
   hasColumn(cx: number, cz: number): boolean {
     return !this.unloaded.has(`${cx},${cz}`);
   }
+}
+
+/** その列に何段のサトウキビが立っているか。**段の違いは ID ではなく積み方**（18b）。 */
+function caneHeight(field: Field, x: number, y: number, z: number): number {
+  let n = 0;
+  while (field.getVoxel(x, y + n, z) === SUGAR_CANE) n++;
+  return n;
 }
 
 /** 耕地 1 マスとその上の苗。**下の耕地が無いと育たない**ので、そこも一緒に置く。 */
@@ -218,6 +235,181 @@ export function run(): void {
     crops.plant(0, 40, 0);
     check("同じマスに植え直すと 0 から数え直す", crops.peek(0, 40, 0) === 0, `${crops.peek(0, 40, 0)}`);
     check("本数は増えない", crops.count === 1, `${crops.count} 本`);
+  }
+
+  // --- 伸びるサトウキビ（18c） -----------------------------------------------
+
+  console.log(`      CANE_GROW_SECONDS ${CANE_GROW_SECONDS} 秒 / CANE_HEIGHT_MAX ${CANE_HEIGHT_MAX} 段`);
+
+  {
+    // **段数の移りを先に 1 行出してから判定する**（`rules/testing.md`）。
+    const field = new Field();
+    const crops = new Crops();
+    field.set(0, 39, 0, SAND);
+    field.set(0, 40, 0, SUGAR_CANE);
+    crops.notePlaced({ x: 0, y: 40, z: 0 }, SUGAR_CANE, field);
+
+    const heights = [caneHeight(field, 0, 40, 0)];
+    for (let i = 0; i < 4; i++) {
+      crops.update(CANE_GROW_SECONDS, field);
+      heights.push(caneHeight(field, 0, 40, 0));
+    }
+    console.log(`      段数の移り（${CANE_GROW_SECONDS} 秒ごと）: ${heights.join(" → ")}`);
+    check("秒数ごとに 1 段ずつ伸びる", heights[1] === 2 && heights[2] === 3, heights.join(" → "));
+    check(
+      `${CANE_HEIGHT_MAX} 段で止まる`,
+      heights[3] === CANE_HEIGHT_MAX && heights[4] === CANE_HEIGHT_MAX,
+      heights.join(" → "),
+    );
+    // **伸びきっても忘れないこと** —— 忘れると、刈ったあと二度と伸びない。
+    check("伸びきっても印は残る", crops.count === 1, `${crops.count} 本`);
+  }
+
+  {
+    // **刈ったらまた伸びてくる**（砂糖の畑が成り立つ）。
+    const field = new Field();
+    const crops = new Crops();
+    field.set(0, 39, 0, SAND);
+    for (let dy = 0; dy < CANE_HEIGHT_MAX; dy++) field.set(0, 40 + dy, 0, SUGAR_CANE);
+    crops.notePlaced({ x: 0, y: 40, z: 0 }, SUGAR_CANE, field);
+    crops.update(CANE_GROW_SECONDS, field); // 伸びきっているので何も起きない
+
+    field.set(0, 41, 0, AIR); // 上 2 つを刈る
+    field.set(0, 42, 0, AIR);
+    const after = [caneHeight(field, 0, 40, 0)];
+    crops.update(CANE_GROW_SECONDS, field);
+    after.push(caneHeight(field, 0, 40, 0));
+    crops.update(CANE_GROW_SECONDS, field);
+    after.push(caneHeight(field, 0, 40, 0));
+    console.log(`      刈ったあとの段数: ${after.join(" → ")}`);
+    check("刈ったら 0 秒から伸び直す", after[1] === 2 && after[2] === CANE_HEIGHT_MAX, after.join(" → "));
+  }
+
+  {
+    // **覚えるのは列のいちばん下。** 上を覚えると、刈った瞬間に印が消えて二度と伸びない。
+    const field = new Field();
+    const crops = new Crops();
+    field.set(0, 39, 0, SAND);
+    field.set(0, 40, 0, SUGAR_CANE);
+    field.set(0, 41, 0, SUGAR_CANE);
+    crops.notePlaced({ x: 0, y: 41, z: 0 }, SUGAR_CANE, field); // 上を置いたと伝える
+    console.log(
+      `      上（y=41）を置いたとき: 覚えている ${crops.count} 本 / ` +
+        `下 ${crops.peek(0, 40, 0)} / 上 ${crops.peek(0, 41, 0)}`,
+    );
+    check("覚えるのは列のいちばん下", crops.peek(0, 40, 0) === 0, `${crops.peek(0, 40, 0)}`);
+    check("上のマスは覚えない", crops.peek(0, 41, 0) === null, `${crops.peek(0, 41, 0)}`);
+
+    crops.notePlaced({ x: 0, y: 40, z: 0 }, SUGAR_CANE, field);
+    check("同じ列に 2 本置いてもキーは 1 つ", crops.count === 1, `${crops.count} 本`);
+  }
+
+  {
+    // `placeHeld()` は**全部のブロックで呼ばれる**ので、ここで弾けていないと
+    // 石を置くたびに表が膨らむ。
+    const field = new Field();
+    const crops = new Crops();
+    field.set(0, 40, 0, STONE);
+    crops.notePlaced({ x: 0, y: 40, z: 0 }, STONE, field);
+    crops.notePlaced(undefined, SUGAR_CANE, field); // `at` の無い呼びは素通し
+    console.log(`      サトウキビ以外を置いたあと: 覚えている ${crops.count} 本`);
+    check("サトウキビ以外は 1 つも覚えない", crops.count === 0, `${crops.count} 本`);
+  }
+
+  {
+    // **塞がっていたら書かない。秒数は持ち越す**（どけたらすぐ伸びる）。
+    const field = new Field();
+    const crops = new Crops();
+    field.set(0, 39, 0, SAND);
+    field.set(0, 40, 0, SUGAR_CANE);
+    field.set(0, 41, 0, STONE);
+    crops.notePlaced({ x: 0, y: 40, z: 0 }, SUGAR_CANE, field);
+
+    const changed = crops.update(CANE_GROW_SECONDS, field);
+    console.log(
+      `      上が石のとき: 段数 ${caneHeight(field, 0, 40, 0)} / 育ち ${crops.peek(0, 40, 0)} 秒 / ` +
+        `書き込み ${field.writes} 回 / 合図 ${changed}`,
+    );
+    check("塞がっていたら伸びない", caneHeight(field, 0, 40, 0) === 1, `${caneHeight(field, 0, 40, 0)} 段`);
+    check("塞がっていても忘れない", crops.count === 1, `${crops.count} 本`);
+    check("秒数は持ち越す", (crops.peek(0, 40, 0) ?? 0) >= CANE_GROW_SECONDS, `${crops.peek(0, 40, 0)}`);
+    check("石を書き換えようとしない", field.writes === 0 && changed === false, `${field.writes} 回`);
+
+    field.set(0, 41, 0, AIR); // どけたら、持ち越したぶんですぐ伸びる
+    check("どけたら次のフレームで伸びる", crops.update(0, field) === true && caneHeight(field, 0, 40, 0) === 2);
+  }
+
+  {
+    // 小麦の節と同じ罠。`getVoxel` は未読み込みで AIR を返すので、
+    // 列の確認を飛ばすと**遠くのサトウキビ畑が丸ごと忘れられる。**
+    const field = new Field();
+    const crops = new Crops();
+    const far = CHUNK_SIZE * 5;
+    field.set(far, 39, 0, SAND);
+    field.set(far, 40, 0, SUGAR_CANE);
+    crops.notePlaced({ x: far, y: 40, z: 0 }, SUGAR_CANE, field);
+    field.unloaded.add(`${5},${0}`);
+
+    const changed = crops.update(CANE_GROW_SECONDS * 2, field);
+    console.log(
+      `      未読み込みの列（x=${far}）: 覚えている ${crops.count} 本 / ` +
+        `育ち ${crops.peek(far, 40, 0)} 秒 / 書き込み ${field.writes} 回`,
+    );
+    check("未読み込みの列では忘れない", crops.count === 1 && changed === false, `${crops.count} 本`);
+    check("未読み込みの列には書き込まない", field.writes === 0, `${field.writes} 回`);
+  }
+
+  {
+    // 掘られた（`AIR` になった）ら忘れる。**それ以外**の枝がそのまま効く。
+    const field = new Field();
+    const crops = new Crops();
+    field.set(0, 39, 0, SAND);
+    field.set(0, 40, 0, SUGAR_CANE);
+    crops.notePlaced({ x: 0, y: 40, z: 0 }, SUGAR_CANE, field);
+    field.set(0, 40, 0, AIR);
+
+    const changed = crops.update(1, field);
+    console.log(`      掘られたあと: 覚えている ${crops.count} 本 / 合図 ${changed}`);
+    check("掘られたら忘れる", crops.count === 0, `${crops.count} 本`);
+    check("忘れたときは合図を出す", changed === true);
+  }
+
+  {
+    // **毎フレーム true を返さないこと** —— 伸びきったサトウキビが 1 本あるだけで
+    // `saveDirty` が立ちっぱなしになり、自動保存が回り続ける。
+    const field = new Field();
+    const crops = new Crops();
+    field.set(0, 39, 0, SAND);
+    for (let dy = 0; dy < CANE_HEIGHT_MAX; dy++) field.set(0, 40 + dy, 0, SUGAR_CANE);
+    crops.notePlaced({ x: 0, y: 40, z: 0 }, SUGAR_CANE, field);
+
+    const first = crops.update(CANE_GROW_SECONDS, field);
+    const second = crops.update(CANE_GROW_SECONDS, field);
+    console.log(`      伸びきったあとの合図: ${first} / ${second} / 書き込み ${field.writes} 回`);
+    check("伸びきっている間は合図を出さない", first === false && second === false, `${first} / ${second}`);
+    check("伸びきっている間は書き込まない", field.writes === 0, `${field.writes} 回`);
+  }
+
+  {
+    // **同じ表に混ざっても互いを壊さない**（道は `getVoxel` で分かれる）。
+    const field = new Field();
+    const crops = new Crops();
+    planted(field); // 小麦（0,40,0）
+    crops.plant(0, 40, 0);
+    field.set(5, 39, 5, SAND);
+    field.set(5, 40, 5, SUGAR_CANE);
+    crops.notePlaced({ x: 5, y: 40, z: 5 }, SUGAR_CANE, field);
+    check("2 本とも覚えている", crops.count === 2, `${crops.count} 本`);
+
+    crops.update(Math.max(GROW_SECONDS, CANE_GROW_SECONDS), field);
+    console.log(
+      `      混ぜたあと: 小麦 ${field.getVoxel(0, 40, 0)}（実り ${WHEAT_CROP_RIPE}）/ ` +
+        `サトウキビ ${caneHeight(field, 5, 40, 5)} 段 / 覚えている ${crops.count} 本`,
+    );
+    check("小麦は実る", field.getVoxel(0, 40, 0) === WHEAT_CROP_RIPE, `${field.getVoxel(0, 40, 0)}`);
+    check("サトウキビは 1 段伸びる", caneHeight(field, 5, 40, 5) === 2, `${caneHeight(field, 5, 40, 5)} 段`);
+    // 小麦は実って忘れ、サトウキビは残る。
+    check("実った小麦だけが消える", crops.peek(5, 40, 5) === 0 && crops.count === 1, `${crops.count} 本`);
   }
 
   // --- セーブ ---------------------------------------------------------------

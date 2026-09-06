@@ -942,6 +942,7 @@ function placeHeld(aim: PlaceAim, base: number): void {
   if (placed.kind === "blocked") return hud.flash(placed.message);
   if (placed.kind !== "placed") return;
   audio.play("place", blockSound(placed.id));
+  crops.notePlaced(placed.at, placed.id, world); // 置いたものを覚える（何が伸びるかは crops.ts）
   if (!creative) inventory.consumeSelected(1);
   hud.refresh();
   saveDirty = true;
