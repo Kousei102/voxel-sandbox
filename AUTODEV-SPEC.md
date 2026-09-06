@@ -1,119 +1,103 @@
-# 仕様: サトウキビが時間で上へ伸びる（18c）
+# 仕様: はしご（置ける・壊れる・作れる）（19a）
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-**`AUTODEV-QUEUE.md` の 18b を割った後半**（18b「積める」は 2026-09-05 に実装済み）。
-**⚠ 前の周の「`main.ts` の配線 6 行」はこの周にコードで数え直して覆りました。** 6 行は
-**新しい器のファイルを作る**ときの値で、**既にある `Crops` に乗せれば 5 本はもう繋がって
-います**（`main.ts:1229` が `crops.update(dt, world)` を呼び、`307` / `553` / `595` がセーブと
-後始末を通す）。**足りないのは「置いたものを覚える」1 本だけ**で、**`main.ts` は +1 行**
-（1447 → **1448**。止まる目安 1450 の内側）。**新しい ID は 0 個**、**`SaveData` の形も変わりません**
-（`crops` は今までどおり `Record<string, number>`・省略可・`version` 1）。
+**`AUTODEV-QUEUE.md` の 19 を、この周に 2 件へ割った前半**（後半 19b「登れる」は
+キューへ書き戻しました）。**割った理由は 120 行に収まらなかったこと**（`AUTODEV.md` の B）。
+
+**この周に `main.ts` をコードで数え直しました。** 置く・壊す・落ちるは**壁掛けの松明
+（`WALL_TORCH_*`）とまったく同じ形**で、`tryPlace()` が `placedVariant()` と
+`supportFace()` を通し、壁を壊せば `World.breakUnsupported()` が落とします ——
+**`main.ts` は 0 行**（1448 行のまま）。**登る側（19b）が 1 行だけ要ります。**
 
 ## 1. 何を足すか / 完了の判定
 
-**プレイヤーが置いたサトウキビが、時間で 1 マスずつ上へ伸びる**（`CANE_HEIGHT_MAX = 3` まで）。
-**上を刈るとまた伸びてきます**（砂糖の畑が成り立つ）。判定（`npm test` が**全部緑のまま**、
-次が増えていること。**いま 3100 件**）:
+**壁に付くはしごブロックを 4 向きぶん足し、棒から作れるようにする。**
+**まだ登れません**（掴まる物理は 19b）。**通り抜けられます**（`solid: false`）。
 
-- `test/crops.test.ts` に「伸びるサトウキビ」の節が **9 件**（下の 5.）/
-  `test/ui.test.ts` の `routed` に `crops.notePlaced(` が増えて緑
-- **数え直し**: **111..255 の空き 111・`MAX_ITEM_ID` 144・アイテム 109 種・
-  立方体 39 / 非立方体 72・1..63 の空き 9 が 1 つも動かない**
-- **`main.ts` は 1448 行以内**（`npm test` の「main.ts N 行」）
+`npm test` に**「はしご」の一群が約 10 件増えて全部緑**（いま 3123 件）。とくに:
+`ladderVariant()` が 4 向きを返し天井と床は `AIR` / 壁の 4 面それぞれに置くと
+その向きの ID が入る / 床（上面）を狙うと `blocked` / 壁を壊すと `onAutoBreak` が
+1 回 / 棒 7 本で 3 個 / 掘ると 145 が 1 個。
 
 ## 2. 触るファイル / 触らないファイル
 
-| ファイル | 何を書くか |
-| --- | --- |
-| `src/crops.ts` | `CANE_GROW_SECONDS` / `notePlaced()` / `update()` を 3 つに分ける（下の 4.） |
-| `src/placing.ts` | `PlaceOutcome` の `placed` に **`at: UseSpot`** を足し、**4 つの `return` を埋める**（`tryPlace` / `tryIgnite` / `tryTill` / `tryPlant`） |
-| `src/main.ts` | **`placeHeld()` に 1 行だけ**: `crops.notePlaced(placed.at, placed.id, world);` |
-| `test/crops.test.ts` `test/ui.test.ts` | 下の 5. |
-| `rules/stateful-blocks.md` | 「育つ苗」の節を広げる（**`crops.ts` は苗だけの器ではなくなった**） |
-| `TUNING.md` `ROADMAP.md` `docs/autodev-log.md` | 秒数 1 行 / 143 の行に「伸びる」/ 1 節 |
+**触る**: `src/blocks.ts` / `src/crafting.ts` / `src/placing.ts`（**メッセージの 1 行だけ**）/
+`test/blocks.test.ts` `test/placing.test.ts` `test/crafting.test.ts` / `ROADMAP.md`。
 
-**触らないこと**: **`src/blocks.ts`（0 行 —— `SUGAR_CANE`・`CANE_HEIGHT_MAX`・`stacksOnSelf`・
-`supportsBlock()` はそのまま使う）** / `world.ts` / `worldgen.ts` / `items.ts` / `crafting.ts` /
-`biomes.ts` / `storage.ts`（**`SaveData` の形**）/ `DROPS` / `furnaces.ts` / `chests.ts`。
-**`main.ts` に 1 行より多く書かないこと。**
+**触らない**: **`src/main.ts`（0 行）** / `src/items.ts`（アイテムもドロップも自動。下の 3）/
+`src/player.ts` `src/vitals.ts` `src/physics.ts`（**登る側は 19b**。この周で先取りしないこと）/
+`src/mesher.ts` `src/*render.ts` `src/ui.ts` `src/inventoryui.ts` `src/world.ts` / `test/arena.ts`。
 
-**先に読むこと**（自動では読まれません）: **`rules/stateful-blocks.md`（要）**・`rules/blocks-shapes.md`・
-`rules/testing.md`・`rules/items-survival.md`・`rules/use.md`。**スキルは 3 つとも当たりません。**
+**先に読むこと**（自動では読み込まれません）: `grep -l '"src/blocks.ts"' rules/*.md` →
+`rules/beds.md` `rules/blocks-shapes.md` `rules/items-survival.md`。
+`src/placing.ts` → `rules/blocks-shapes.md`。**`test/**` を触るので `rules/testing.md` も。**
 
-## 3. 使う ID
+## 3. 使う ID —— `ROADMAP.md` の予約表の 145 から 4 個
 
-**0 個。** ブロックもアイテムも増えません（**次の空きは 145 のまま**。`ROADMAP.md` の予約表）。
-**段の違いを ID で表さないこと**（`rules/stateful-blocks.md`。**同じ `SUGAR_CANE` を積むだけ**）。
+| ID | 名前 | `supportFace` | `variantOf` |
+| --- | --- | --- | --- |
+| **145** | `LADDER`「はしご」**大元。アイテム 145 もこれ** | `FACE_XP` | 無し |
+| 146 | `LADDER_XN` | `FACE_XN` | `LADDER` |
+| 147 | `LADDER_ZP` | `FACE_ZP` | `LADDER` |
+| 148 | `LADDER_ZN` | `FACE_ZN` | `LADDER` |
 
-## 4. 判断をどのファイルに置くか
+**146..148 は `variantOf` を持つのでアイテムが作られず**、掘ると `baseBlock()` = 145 が
+落ちます（`items.ts` に 0 行。`rules/blocks-shapes.md` の「`variantOf` は…」）。
+**145 は `variantOf` を持たない**ので、自分自身に向けたときの落とし穴（`DROPS` の 1 行）は
+掛かりません。**これ以外の番号を取らないこと。**
 
-**全部 `crops.ts`。** `main.ts` は「置いた」を伝えるだけで、**何が伸びるかも何秒かも知りません。**
+共通の性質: `opaque: false` / `solid: false` / `hardness: 0.4` / `tool: "axe"` /
+`sound: "wood"` / `model: "boxes"`。色は `{ top: 0xc9a063, side: 0xa8823f, bottom: 0x8a6a3f }`。
+箱は**壁に貼り付く厚さ 3/16 の板**（`[minX,minY,minZ,maxX,maxY,maxZ]`）:
+XP `[0.8125,0,0,1,1,1]` / XN `[0,0,0,0.1875,1,1]` / ZP `[0,0,0.8125,1,1,1]` /
+ZN `[0,0,0,1,1,0.1875]`。**`replaceable` も `stacksOnSelf` も付けないこと**
+（前者は狙ったマス自身に置かれる、後者は壁の無い所へ積み上がる）。
 
-- **`CANE_GROW_SECONDS = 180`**（`GROW_SECONDS` の隣）。本家は 1 マスにつき乱数ティック
-  16 回 ≒ 18 分で、**小麦（本家 ≒ 20 分 → ここ 180 秒）と同じ縮尺**です。**`main.ts` に
-  数値を書かないこと**（既存の見張り `!/\b180\b/` がそのまま効きます）。
-- **`notePlaced(at, id, world)`** —— **`id !== SUGAR_CANE` なら何もしない**（`placeHeld()` は
-  全部のブロックで呼ばれます）。覚えるのは **`at` ではなく、その列のいちばん下のサトウキビ**:
-  `getVoxel(x, y-1, z) === SUGAR_CANE` の間 `y` を下げてから `map.set(cropKey(x,y,z), 0)`。
-  **下を覚えるのが鍵です** —— 上を覚えると刈った瞬間に印が消えて二度と伸びません。
-  同じ列に 2 本置いても**キーが 1 つに畳まれます**。`at` が無い呼びは素通りさせること。
-- **`update()` は列が読み込まれているか（`hasColumn`）を今までどおり先に見て**、そのあと
-  **素の `getVoxel(x,y,z)` で 3 つに分ける**こと（`baseBlock()` を使わないのは
-  `rules/stateful-blocks.md` のとおり）: `WHEAT_CROP` → **いまの苗の道をそのまま** /
-  `SUGAR_CANE` → 下の道 / それ以外 → **忘れる**。
-- **サトウキビの道**（上から順に）: **① 上へ舐めて段数を数える**（`SUGAR_CANE` の間 `top` を
-  上げる）**② `height >= CANE_HEIGHT_MAX` なら育てない。忘れもしないこと** —— **秒数を 0 に
-  戻して次のフレームへ**（刈られたら 0 秒から伸び直す）。**`changed` を立てないこと**（毎フレーム
-  `saveDirty` が立ちます。既に 0 なら書かない）**③** 秒数を足し、`CANE_GROW_SECONDS` に
-  満たなければ持ち越す。**`getVoxel(x, top+1, z) !== AIR` なら書かない**（塞がっている。
-  **秒数は持ち越すこと**）**④** `setVoxel(x, top+1, z, SUGAR_CANE)` が**成功したときだけ**
-  秒数を 0 に戻して `changed = true`（`syncLit()` と同じ作法。失敗は持ち越す）
-- **`Math.random()` を入れない**（既存の見張り）。**`World` を丸ごと受け取らない** —— 入口は
-  今までの `CropWorld` の 3 つで足ります。
-- **自然に生えたサトウキビは伸びません**（誰も置いていないので印が無い）。**生成はもう 1〜3 段で
-  ばらけている**ので穴にならず、**上に 1 本置けば列ごと覚えます。** 本家との差なので
-  `HANDOFF.md` に 1 行。
+## 4. 判断をどこに置くか
 
-## 5. 書くテスト
+**新しく「確かめられないもの」は 0 個です** —— `unverifiable-pair` は要りません。
+描画は `model: "boxes"` の既存の道（`buildProps()`）に乗るだけで `*render.ts` は 0 行。
 
-**値を出してから判定すること**（`rules/testing.md`）。手本は同じファイルの小麦の節で、
-**偽物のワールド（`CropWorld`）で足ります**（`World` を作らないこと）。`test/crops.test.ts` に
-「伸びるサトウキビ」の節を作り、**先に `CANE_GROW_SECONDS` と `CANE_HEIGHT_MAX` を
-1 行出す**こと（**秒数は import する**。写さない）。9 件:
+- **どの向きになるか**は `blocks.ts`: `TORCH_BY_SUPPORT` を**真似た別の表**
+  `LADDER_BY_SUPPORT`（添字は面番号。`FACE_YP` と `FACE_YN` は `AIR`）と
+  `ladderVariant(face)`。`placedVariant()` へ
+  `if (base === LADDER) return ladderVariant(ctx.support);` を松明の行の次に 1 行。
+  **`TORCH_BY_SUPPORT` と `torchVariant()` は書き換えないこと。**
+- **置けない理由の文**も `blocks.ts` に `supportHint(base)` を 1 つ。**表から引くこと**:
+  `placedVariant(base, { support: FACE_YN, hitY: 0, facing: FACE_XP }) === AIR ? "壁" : "床か壁"`。
+  `placing.ts` は `tryPlace()` のメッセージ 1 行を
+  `${blockName(base)} は${supportHint(base)}にしか付けられません` へ差し替えるだけ。
+  **松明は「床か壁」のまま**（はしごは床を狙っても置けないので、共通の文のままだと嘘になります）。
+- **レシピ**は `crafting.ts` に 1 行:
+  `{ name: "はしご", out: LADDER, count: 3, shape: ["S.S", "SSS", "S.S"], key: { S: STICK } }`
+  （本家と同じ棒 7 本で 3 個）。
 
-1. **段数の移りを 1 行に出してから**「秒数ごとに 1 段」「3 段で止まる」（4 回まわして 1→2→3→3）
-2. **刈ったら伸び直す**（3 段の上 2 つを `AIR` に → また 2 回で 3 段）
-3. **覚えるのは列の下**（2 段の**上**を `notePlaced` → `peek` が下のマスを返す。**2 本置いても
-   キーは 1 つ**。`count` を出すこと）
-4. **サトウキビ以外を置いても 1 つも覚えない**（石で `count` 0）
-5. **塞がっていたら伸びない・忘れない**（上に石。秒数が残っていることを出す）
-6. **列が未読み込みなら忘れない**（`hasColumn` が false。小麦の節と同じ形）
-7. **掘られたら忘れる**（`AIR` にして `count` 0）
-8. **`changed` は伸びた／忘れたときだけ true**（3 段で止まっている間に 2 回まわして両方 false）
-9. **小麦とサトウキビが同じ表に混ざっても互いを壊さない**（1 つずつ入れて両方進める）
+## 5. 書くテスト（**値を出してから判定する**。`rules/testing.md`）
 
-`test/ui.test.ts` の `routed` に **`["置いたものを覚える", "crops.notePlaced("]`** を足すこと
-（**一覧はゆるめず、増やすだけ**）。
+1. `test/blocks.test.ts` — `ladderVariant()` の 6 面ぶんを**並べて出してから**、
+   4 向きが取れて `FACE_YP` / `FACE_YN` が `AIR` であること / 146..148 の `variantOf` が
+   145 であること / **アイテム一覧に「はしご」が 1 個だけ**（数を出す）/
+   `dropOf()` が 4 つとも 145 を 1 個。
+2. `test/placing.test.ts` — 本物の `World` で壁の 4 面を狙い、**入った ID を出してから**
+   向きが合っていること / 上面を狙うと `blocked` で**文に「壁にしか」が入る**（文を出す）/
+   **松明の文が「床か壁」のまま**であること / **壁を壊すと `onAutoBreak` が 1 回**出ること。
+3. `test/crafting.test.ts` — 棒 7 本の形を並べ、**出力を出してから** 145 が 3 個。
 
 ## 6. このタスク固有の禁じ手
 
-- **`main.ts` に 2 行以上書かないこと**（1448 行を超えたら止めて人を呼ぶ）。**`SaveData` の形を
-  変えない**・**`version` は 1 のまま**・**新しい ID を取らない**・**段を ID で表さない**・
-  **`blocks.ts` を 1 行も触らない**
-- **`world.update()` の中で育てないこと**（`test/world.test.ts` の p99）。
-  **`crops.ts` に `Math.random()` / `Mesh` / `AudioContext` / `document` を入れないこと**
-- **小麦の道（`WHEAT_CROP` の枝）を 1 行も変えないこと**（既存の 9 件が通ったままであること）
-- **既存の判定をゆるめて緑にしないこと**（この周に反転してよい判定は 1 件もありません）
+- **145..148 以外の番号を取らない。既存の ID を 1 つも振り直さない**
+- **`main.ts` を 1 行も触らない**（登る側の 1 行は 19b のもの。先取りしないこと）
+- **`canSupport()` をゆるめない・`placeSpot()` の規則を変えない・`stacksOnSelf` を付けない**
+- **`TORCH_BY_SUPPORT` / `torchVariant()` / 松明のメッセージを書き換えない**
+- **登る物理を先取りしないこと**（`climbable` の旗も `player.ts` も 19b で足します）
+- **既存のテストの判定をゆるめない**（とくに `test/world.test.ts` の p99）
 
 ## 7. 終了条件
 
-`npm run typecheck` 緑 / `npm test` **全部緑**（3100 件から増えている）/ `npm run build` 緑 /
-**コミット 1 つ** / `AUTODEV-QUEUE.md` の 18c の行を消す / この仕様書を `状態: 済` に /
-**`ROADMAP.md` の 143 の行に「伸びる」** / **`TUNING.md` に `CANE_GROW_SECONDS` の 1 行** /
-**`docs/autodev-log.md` に 1 節**（**配線が 6 行でなく 1 行で済んだ理由も 1 行**）/
-**`rules/stateful-blocks.md` を広げた** / **`HANDOFF.md` を書き直す** / **`master` へ push**。
-
-**C-3（撮る）**: **絵が変わるのは「時間が経ったあと」だけ**（置いた瞬間は 18b と同じ）。`npm run
-shot -- beach terrain` で**面の欠け・裏返り 0 件**を見れば足ります。**手触りは `HANDOFF.md` に 2〜3 行。**
+`npm run typecheck` 緑 / **`npm test` すべて緑**（音の一群が赤ければまず 1 回走らせ直す）/
+`npm run build` 緑（`src/**` を触るため）/ **コミット 1 つ** /
+**C-3 で撮って `Read` で見る**（見た目に出ます。`npm run shot` と `tools/browsershot.mjs`）/
+`ROADMAP.md` の予約表に 145..148 を「実装済み」/ `AUTODEV-QUEUE.md` の 19a の行を消す。
+**手触りの数値は 1 つも置かないので `TUNING.md` は触りません**（登る速さは 19b）。
