@@ -10,6 +10,7 @@ import {
   FURNACE,
   GOLD_BLOCK,
   IRON_BLOCK,
+  LADDER,
   PLANK,
   PLANK_SLAB,
   PLANK_STAIRS,
@@ -201,6 +202,10 @@ export const RECIPES: readonly Recipe[] = [
   // 砂糖はサトウキビ 1 個の形なし（Minecraft と同じ 1 対 1）。**1 個なので 2x2 に
   // 収まり、浜で採ったその場で作れる**（作業台が要らない）。
   { name: "砂糖", out: SUGAR, count: 1, ingredients: [SUGAR_CANE] },
+
+  // はしごは棒 7 本で 3 個（Minecraft と同じ形・同じ個数）。3x3 なので作業台が要る。
+  // 形はかまど・チェストの輪と似ているが**真ん中の列が縦に通っている**ので別物。
+  { name: "はしご", out: LADDER, count: 3, shape: ["S.S", "SSS", "S.S"], key: { S: STICK } },
 
   // 鉱物をしまう／戻す 3 対（Minecraft と同じ 9 個 ↔ 1 個）。**倉庫の枠を 9 分の 1 に
   // するためだけ**の機能なので、**しまう 9 と戻す 9 を食い違わせないこと** ——

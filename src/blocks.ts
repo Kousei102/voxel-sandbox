@@ -378,6 +378,25 @@ export const SUGAR_CANE = 143;
  */
 export const CANE_HEIGHT_MAX = 3;
 
+/**
+ * はしご。**壁掛けの松明（`WALL_TORCH_*`）とまったく同じ形**で、違うのは
+ * 見た目（`model: "boxes"` の薄い板）と、**床にも天井にも付かない**ところだけです。
+ *
+ * `LADDER` が大元で、**アイテム 145 もこれ**（`variantOf` を書かないので、
+ * ブロック → アイテムの for が同じ番号のアイテムを作ります）。146..148 は
+ * `variantOf: LADDER` を持つので**アイテムが作られず**、掘ると `baseBlock()` = 145 が
+ * 落ちます（`items.ts` に 0 行）。**`MAX_ITEM_ID` だけは伸ばすこと。**
+ *
+ * **まだ登れません**（掴まる物理は 19b）。`solid: false` なので通り抜けます。
+ *
+ * **`replaceable` も `stacksOnSelf` も付けないこと** —— 前者は狙ったマス自身に
+ * 置かれてしまい、後者は壁の無い所へ積み上がります。
+ */
+export const LADDER = 145;
+export const LADDER_XN = 146;
+export const LADDER_ZP = 147;
+export const LADDER_ZN = 148;
+
 /** 上付きハーフ。見た目と当たり判定だけが違うので、大元は下付きのハーフ。 */
 export const STONE_SLAB_TOP = 64;
 export const COBBLE_SLAB_TOP = 65;
@@ -500,6 +519,19 @@ export const CROSS_BOX: BoxList = [[0.1, 0, 0.1, 0.9, 0.8, 0.9]];
  * 2 本目を載せたときに**継ぎ目が 0.2 マス空きます**（積めるようにするのは 18b）。
  */
 export const CANE_BOX: BoxList = [[0.1, 0, 0.1, 0.9, 1, 0.9]];
+/**
+ * はしご。**壁に貼り付く厚さ 3/16 の板**（本家と同じ厚み）で、向きごとに 4 つ。
+ * 添字ではなく名前で持つのは、`LADDER_BY_SUPPORT` が**支えの面**で引くのに対して
+ * こちらは**そのブロックの形**だから（同じ 4 向きでも意味が別）。
+ *
+ * `[minX,minY,minZ,maxX,maxY,maxZ]` で、**支えのある側に貼り付く** ——
+ * `supportFace: FACE_XP`（+X 側に壁）なら板も +X 側の端に寄る。
+ */
+const LADDER_THICKNESS = 0.1875;
+export const LADDER_BOX_XP: BoxList = [[1 - LADDER_THICKNESS, 0, 0, 1, 1, 1]];
+export const LADDER_BOX_XN: BoxList = [[0, 0, 0, LADDER_THICKNESS, 1, 1]];
+export const LADDER_BOX_ZP: BoxList = [[0, 0, 1 - LADDER_THICKNESS, 1, 1, 1]];
+export const LADDER_BOX_ZN: BoxList = [[0, 0, 0, 1, 1, LADDER_THICKNESS]];
 /**
  * ベッドの高さ。本家と同じ 9/16。**`PLAYER_SIZE.step`（0.6）より低いこと** ——
  * 超えると歩いて乗れなくなり、寝床の縁で跳ばされる。
@@ -674,6 +706,23 @@ const TORCH_OPTS = {
   emission: TORCH_LIGHT,
   model: "torch" as const,
   sound: "wood" as const,
+};
+
+/**
+ * はしごの 4 向きで共通の見た目と性質。違うのは `boxes` と `supportFace` と
+ * `variantOf` だけ（松明の `TORCH_COLORS` / `TORCH_OPTS` と同じ持ち方）。
+ *
+ * **`blocksSky` を書かないこと** —— 既定は `opaque`（false）なので、
+ * はしごを掛けた縦穴の底が昼のまま暗くならずに済む。
+ */
+const LADDER_COLORS = { top: 0xc9a063, side: 0xa8823f, bottom: 0x8a6a3f };
+const LADDER_OPTS = {
+  opaque: false,
+  solid: false,
+  hardness: 0.4,
+  tool: "axe" as const,
+  sound: "wood" as const,
+  model: "boxes" as const,
 };
 
 function def(
@@ -1383,6 +1432,33 @@ export const BLOCKS: readonly BlockDef[] = [
     supportFace: FACE_YN,
     stacksOnSelf: true,
   }),
+
+  // はしご（上のコメント）。**壁掛けの松明と同じ形**で、違うのは見た目
+  // （`model: "boxes"` の薄い板）と、**床にも天井にも付かない**ところだけ。
+  // 大元（145）も向き違い（146..148）も**同じ性質**で、違うのは箱と supportFace。
+  def(LADDER, "はしご", LADDER_COLORS, {
+    ...LADDER_OPTS,
+    boxes: LADDER_BOX_XP,
+    supportFace: FACE_XP,
+  }),
+  def(LADDER_XN, "はしご", LADDER_COLORS, {
+    ...LADDER_OPTS,
+    boxes: LADDER_BOX_XN,
+    supportFace: FACE_XN,
+    variantOf: LADDER,
+  }),
+  def(LADDER_ZP, "はしご", LADDER_COLORS, {
+    ...LADDER_OPTS,
+    boxes: LADDER_BOX_ZP,
+    supportFace: FACE_ZP,
+    variantOf: LADDER,
+  }),
+  def(LADDER_ZN, "はしご", LADDER_COLORS, {
+    ...LADDER_OPTS,
+    boxes: LADDER_BOX_ZN,
+    supportFace: FACE_ZN,
+    variantOf: LADDER,
+  }),
 ];
 
 
@@ -1549,6 +1625,23 @@ const TORCH_BY_SUPPORT: readonly number[] = [
   WALL_TORCH_ZN,
 ];
 
+/**
+ * 「支えのある向き」からはしごのブロックを選ぶ表。**壁の 4 面だけ** ——
+ * 床（真下に支え）にも天井（真上に支え）にも付かない（Minecraft と同じ）。
+ *
+ * **`TORCH_BY_SUPPORT` を写して書き換えたものではなく、別の表**です
+ * （松明は床に立つのではしごとは 1 マス違う。片方を並べ替えたときに
+ * もう片方が黙って壊れないよう、共有しないこと）。添字は面番号。
+ */
+const LADDER_BY_SUPPORT: readonly number[] = [
+  LADDER,
+  LADDER_XN,
+  AIR, // 天井から吊り下げられない
+  AIR, // 床には立たない（松明との唯一の違い）
+  LADDER_ZP,
+  LADDER_ZN,
+];
+
 export function isOpaque(id: number): boolean {
   return OPAQUE[id] === 1;
 }
@@ -1677,6 +1770,26 @@ export function supportFace(id: number): number {
  */
 export function torchVariant(face: number): number {
   return TORCH_BY_SUPPORT[face] ?? AIR;
+}
+
+/**
+ * はしごを「支えが face の向きにある」場所へ置くときのブロック。置けないなら AIR。
+ * `torchVariant()` と同じ形だが、**表は別**（上のコメント）。
+ */
+export function ladderVariant(face: number): number {
+  return LADDER_BY_SUPPORT[face] ?? AIR;
+}
+
+/**
+ * 「どこになら付けられるか」の言い分け。**表から引くこと** ——
+ * `base === LADDER` と書くと、置き方を増やしたときに文だけが嘘になります。
+ *
+ * 見るのは**真下を支えにしたときに置けるか**の 1 点だけ。床に置けないもの
+ * （はしご）は「壁」、置けるもの（松明）は今までどおり「床か壁」。
+ */
+export function supportHint(base: number): string {
+  const onFloor = placedVariant(base, { support: FACE_YN, hitY: 0, facing: FACE_XP });
+  return onFloor === AIR ? "壁" : "床か壁";
 }
 
 /** 別置き版なら大元のブロック、そうでなければ自分自身。 */
@@ -1819,6 +1932,7 @@ export function placeSpot(aim: PlaceAim, facing: number): PlaceSpot {
  */
 export function placedVariant(base: number, ctx: PlaceContext): number {
   if (base === TORCH) return torchVariant(ctx.support);
+  if (base === LADDER) return ladderVariant(ctx.support);
   // ベッドは置く人が向いている先が枕になるので、**クリックしたマスは必ず足側**。
   // 上下の反転は無いので `placedUpper()` は通さない。
   if (base === BED) {

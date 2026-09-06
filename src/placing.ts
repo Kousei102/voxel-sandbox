@@ -30,6 +30,7 @@ import {
   placeSpot,
   placedVariant,
   supportFace,
+  supportHint,
   tilled,
   type PlaceAim,
 } from "./blocks";
@@ -94,7 +95,9 @@ export function tryPlace(
 
   if (supportFace(base) !== NO_SUPPORT) {
     if (id === AIR || isLiquid(target) || !world.canPlaceAt(x, y, z, id)) {
-      return { kind: "blocked", message: `${blockName(base)} は床か壁にしか付けられません` };
+      // **どこになら付くかは `blocks.ts` の `supportHint()`** —— はしごは床を狙っても
+      // 置けないので、「床か壁」の共通の文のままだと嘘になる。
+      return { kind: "blocked", message: `${blockName(base)} は${supportHint(base)}にしか付けられません` };
     }
   }
 

@@ -23,7 +23,12 @@ import {
   DIRT,
   FARMLAND,
   GRASS,
+  LADDER,
+  LADDER_XN,
+  LADDER_ZN,
+  LADDER_ZP,
   RED_MUSHROOM,
+  STONE,
   SUGAR_CANE,
   WATER,
   WHEAT_CROP,
@@ -315,6 +320,57 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
       note: best
         ? `サトウキビ ${Math.round(at.x)},${Math.round(at.y)},${Math.round(at.z)}（17x17 に ${most} 本）`
         : "**1 本も見つからない**（原点のまわりに浜が無い種）",
+    };
+  },
+
+  /**
+   * はしご。**自然には 1 マスも生えない**（置くものなので）ので、`crops` と同じで
+   * **ここへ直に置く**しかない。見るのは 3 つ:
+   * 板が壁に貼り付いているか / **裏返っていないか**（壁の中に埋まって見えない）/
+   * 4 向きとも同じ厚さで出ているか。
+   */
+  ladders(setup) {
+    const { scene, world } = makeWorld(OVERWORLD, 3);
+    const pad = 6;
+    // **平らな台を作る**（`crops` と同じ理由。地形なりだと柱が斜面に埋まる）。
+    let y = 0;
+    for (let dz = -pad; dz <= pad; dz++) {
+      for (let dx = -pad; dx <= pad; dx++) y = Math.max(y, world.surfaceY(dx, dz));
+    }
+    for (let dz = -pad; dz <= pad; dz++) {
+      for (let dx = -pad; dx <= pad; dx++) {
+        for (let h = y; h < y + 8; h++) world.setVoxel(dx, h, dz, AIR);
+        for (let h = y - 4; h < y; h++) world.setVoxel(dx, h, dz, DIRT);
+        world.setVoxel(dx, y - 1, dz, GRASS);
+      }
+    }
+    // **真ん中に石の柱を 4 段。その 4 面に 1 本ずつ掛ける。** 1 面だけだと
+    // 「向きが 1 つ合っている」しか分からず、表を並べ替えたときに気付けない。
+    for (let h = y; h < y + 4; h++) world.setVoxel(0, h, 0, STONE);
+    for (let h = y; h < y + 4; h++) {
+      world.setVoxel(1, h, 0, LADDER_XN); // 柱の +X 側の面 → 支えは -X
+      world.setVoxel(-1, h, 0, LADDER); // 柱の -X 側の面 → 支えは +X
+      world.setVoxel(0, h, 1, LADDER_ZN);
+      world.setVoxel(0, h, -1, LADDER_ZP);
+    }
+    // **石の柱をもう 1 本、1 面だけに掛けて並べること。** 4 面に掛けた柱だけだと
+    // 木の柱に見えて、**板が立方体より細いのか**（＝厚さ 3/16 で石に貼り付いて
+    // いるのか）が絵から読めない。こちらは石の面が残るので厚さが比べられる。
+    for (let h = y; h < y + 4; h++) {
+      world.setVoxel(4, h, 0, STONE);
+      world.setVoxel(4, h, 1, LADDER_ZN); // 柱の +Z 側の面 → 支えは -Z
+    }
+    // **書き換えたらメッシュ化をもう一度流すこと**（`crops` と同じ。忘れると
+    // 編集前の地形がそのまま写る）。
+    world.primeAround(0.5, 0.5, 3);
+    const at = new Vector3(0, y, 0);
+    return {
+      scene,
+      // **すぐそばの斜めから。** 遠いと板 1 枚が数画素になって、厚さも継ぎ目も読めない
+      // （キノコの節と同じ罠。1 度 6.5 マス離れて撮って何も分からなかった）。
+      camera: look(setup, new Vector3(at.x + 5.5, at.y + 3.6, at.z + 6.5), new Vector3(at.x + 2, at.y + 1.6, at.z + 0.5)),
+      dayNight: skyOf(OVERWORLD, setup.time),
+      note: `柱 0,${y},0 の 4 面に 1 本ずつ（145 / 146 / 147 / 148）+ 裸の石の柱 4,${y},0`,
     };
   },
 

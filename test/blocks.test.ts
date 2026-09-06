@@ -21,6 +21,10 @@ import {
   GOLD_BLOCK,
   GRASS,
   IRON_BLOCK,
+  LADDER,
+  LADDER_XN,
+  LADDER_ZN,
+  LADDER_ZP,
   LAVA,
   LOW_BAND_MAX,
   MAX_BLOCK_ID,
@@ -58,6 +62,7 @@ import {
   isEndPortalFrame,
   isProp,
   isHotLiquid,
+  ladderVariant,
   isLiquid,
   isReplaceable,
   isSpiky,
@@ -68,6 +73,7 @@ import {
   stacksOnSelf,
   supportsBlock,
   tilled,
+  torchVariant,
 } from "../src/blocks";
 import { MAX_LIGHT } from "../src/constants";
 import { PLAYER_SIZE } from "../src/physics";
@@ -191,8 +197,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖の 31 個（144 まで）",
-    sharedItems.length === 31 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしごの 32 個（145 まで）",
+    sharedItems.length === 32 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -212,15 +218,20 @@ export function run(): void {
       // 同じで `variantOf === AIR`）で、**144 は手で足したアイテム**（砂糖）。
       // **上限を伸ばすのは手作業**なので、そこは別に突き合わせる。
       sharedItems[29] === SUGAR_CANE && sharedItems[30] === SUGAR &&
-      MAX_ITEM_ID === SUGAR,
+      // **145 は `items.ts` に 1 行も書かずに増えたブロック**（はしごの大元。
+      // 143 と同じで `variantOf` が `AIR`）。**146..148 は `variantOf: LADDER` なので
+      // アイテムを持ちません** —— だからブロックが 4 個増えてもアイテムは 1 個だけ。
+      // **上限を伸ばすのは手作業**なので、そこは別に突き合わせる。
+      sharedItems[31] === LADDER &&
+      MAX_ITEM_ID === LADDER,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 111（サトウキビと砂糖で 113 から減った）",
-    sharedFree === 111,
+    "111..255 の空きは 107（はしご 4 向きで 111 から減った）",
+    sharedFree === 107,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1057,8 +1068,133 @@ export function run(): void {
   mushrooms();
   bowlAndStew();
   sugarCane(world, ground);
+  ladders();
 
   world.dispose();
+}
+
+/**
+ * はしご（145..148）。**壁掛けの松明を写した形**なので、ここで見るのは
+ * 「写し間違えていないか」「アイテムが 1 個だけか」「掘ると大元が落ちるか」の 3 つ。
+ * **置く経路と支えを失う経路は `test/placing.test.ts`、レシピは
+ * `test/crafting.test.ts`**（あちらは本物の `World` を通します）。
+ *
+ * **まだ登れません**（掴まる物理は 19b）。ここでは `solid: false` だけを見ます。
+ */
+function ladders(): void {
+  describe("はしご");
+
+  // **6 面ぶんを並べて出してから判定する。** 表を並べ替えたときに、どの面が
+  // どこへ行ったかが出力だけで分かる。
+  const faces: [string, number][] = [
+    ["+X", FACE_XP],
+    ["-X", FACE_XN],
+    ["+Y（天井）", FACE_YP],
+    ["-Y（床）", FACE_YN],
+    ["+Z", FACE_ZP],
+    ["-Z", FACE_ZN],
+  ];
+  console.log(
+    `      ladderVariant(): ${faces.map(([n, f]) => `${n}→${ladderVariant(f)}`).join(" / ")}`,
+  );
+  check(
+    "壁の 4 面それぞれに別の向きが返る",
+    ladderVariant(FACE_XP) === LADDER && ladderVariant(FACE_XN) === LADDER_XN &&
+      ladderVariant(FACE_ZP) === LADDER_ZP && ladderVariant(FACE_ZN) === LADDER_ZN,
+    faces.map(([n, f]) => `${n}:${ladderVariant(f)}`).join(" "),
+  );
+  // **床と天井は AIR。** 松明との唯一の違いがここなので、1 件として持つ。
+  check(
+    "床にも天井にも付かない（松明との違い）",
+    ladderVariant(FACE_YP) === AIR && ladderVariant(FACE_YN) === AIR &&
+      torchVariant(FACE_YN) === TORCH,
+    `天井 ${ladderVariant(FACE_YP)} / 床 ${ladderVariant(FACE_YN)} / 松明の床 ${torchVariant(FACE_YN)}`,
+  );
+
+  // 向き違いは大元に寄る（アイテムもドロップも名前も増えない）。
+  const variants: [string, number, number][] = [
+    ["-X", LADDER_XN, FACE_XN],
+    ["+Z", LADDER_ZP, FACE_ZP],
+    ["-Z", LADDER_ZN, FACE_ZN],
+  ];
+  console.log(
+    `      向き違い: ${variants.map(([n, id]) => `${n}=${id} variantOf ${blockDef(id).variantOf}`).join(" / ")}` +
+      `  大元 ${LADDER} variantOf ${blockDef(LADDER).variantOf}`,
+  );
+  check(
+    "146..148 の variantOf は 145（大元は AIR のまま）",
+    variants.every(([, id]) => blockDef(id).variantOf === LADDER) &&
+      blockDef(LADDER).variantOf === AIR,
+    variants.map(([, id]) => blockDef(id).variantOf).join(" "),
+  );
+
+  // **アイテムは 1 個だけ。** 向き違いにアイテムが付くと、一覧に「はしご」が 4 個並ぶ。
+  const named = allItemIds().filter((id) => itemName(id) === blockName(LADDER));
+  console.log(`      アイテム一覧の「${blockName(LADDER)}」: ${named.length} 個 [${named.join(" ")}]`);
+  check(
+    "アイテム一覧に「はしご」は 1 個だけ（145）",
+    named.length === 1 && named[0] === LADDER,
+    named.join(" "),
+  );
+
+  // 掘ると 4 つとも大元が 1 個（`DROPS` に 1 行も書いていないので、既定の
+  // `baseBlock()` がそのまま出る）。
+  const drops = [LADDER, LADDER_XN, LADDER_ZP, LADDER_ZN].map((id) => rollDrop(id, 0.5));
+  console.log(`      掘ると: ${drops.map((d) => `${d.item} x${d.count}`).join(" / ")}`);
+  check(
+    "4 向きとも掘ると 145 が 1 個",
+    drops.every((d) => d.item === LADDER && d.count === 1),
+    drops.map((d) => `${d.item} x${d.count}`).join(" "),
+  );
+
+  // 形と性質。**厚さ 3/16 の板が支えの側に貼り付く**こと（裏返っていると、
+  // 壁の中に埋まったはしごになる）。
+  const boxes: [string, number, number, number][] = [
+    // [名前, id, 見る軸の添字(0=x,2=z), 支えのある側が +か]
+    ["+X", LADDER, 0, 1],
+    ["-X", LADDER_XN, 0, 0],
+    ["+Z", LADDER_ZP, 2, 1],
+    ["-Z", LADDER_ZN, 2, 0],
+  ];
+  console.log(
+    `      箱: ${boxes.map(([n, id]) => `${n}=[${blockDef(id).boxes[0].join(",")}]`).join(" / ")}`,
+  );
+  check(
+    "板は支えのある側に厚さ 3/16 で貼り付く",
+    boxes.every(([, id, axis, positive]) => {
+      const box = blockDef(id).boxes[0];
+      const min = box[axis];
+      const max = box[axis + 3];
+      return positive ? min === 0.8125 && max === 1 : min === 0 && max === 0.1875;
+    }),
+    boxes.map(([n, id]) => `${n}:${blockDef(id).boxes[0].join(",")}`).join(" "),
+  );
+  // **通り抜けられる**（`solid: false`）。登る物理は 19b なので、ここでは
+  // 「素通りする板」であることだけを押さえる。
+  const defs = [LADDER, LADDER_XN, LADDER_ZP, LADDER_ZN].map((id) => blockDef(id));
+  console.log(
+    `      性質: solid ${defs.map((d) => d.solid).join("/")} / opaque ${defs.map((d) => d.opaque).join("/")} / ` +
+      `硬さ ${defs.map((d) => d.hardness).join("/")} / 音 ${defs[0].sound} / 道具 ${defs[0].tool}`,
+  );
+  check(
+    "4 向きとも通り抜けられて・不透明でなく・斧で 0.4",
+    defs.every((d) => !d.solid && !d.opaque && d.hardness === 0.4 && d.tool === "axe" &&
+      d.sound === "wood" && d.model === "boxes"),
+    defs.map((d) => `${d.id}:${d.solid}/${d.opaque}/${d.hardness}`).join(" "),
+  );
+  // **`replaceable` も `stacksOnSelf` も付いていないこと**（前者は狙ったマス自身に
+  // 置かれ、後者は壁の無い所へ積み上がる）。
+  check(
+    "replaceable も stacksOnSelf も付いていない",
+    defs.every((d) => !d.replaceable && !stacksOnSelf(d.id)),
+    defs.map((d) => `${d.id}:${d.replaceable}/${stacksOnSelf(d.id)}`).join(" "),
+  );
+  // はしご自身は支えになれない（薄い板なので `canSupport()` を通らない）。
+  check(
+    "はしごの上には松明を置けない",
+    !canSupport(LADDER, FACE_YP) && !supportsBlock(LADDER, FACE_YP, TORCH),
+    `canSupport ${canSupport(LADDER, FACE_YP)}`,
+  );
 }
 
 /**

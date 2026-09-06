@@ -6,6 +6,7 @@ import {
   DIAMOND_BLOCK,
   GOLD_BLOCK,
   IRON_BLOCK,
+  LADDER,
   PLANK,
   PLANK_SLAB,
   PLANK_STAIRS,
@@ -470,6 +471,28 @@ export function run(): void {
     sugar3x3?.out === SUGAR && sugar3x3.count === 1,
     `3x3 の真ん中: ${sugar3x3?.name ?? "無し"} x${sugar3x3?.count ?? 0}`,
   );
+
+  describe("はしご");
+
+  // **棒 7 本で 3 個**（本家と同じ形・同じ個数）。3x3 なので作業台が要る。
+  // **出力を出してから判定する** —— 個数を間違えても形が合っていれば緑になるので、
+  // 名前と個数の両方を出しておく。
+  const ladderRows = ["S.S", "SSS", "S.S"];
+  const ladder = findRecipe(grid(3, ladderRows, P), 3);
+  console.log(
+    `      棒 7 本（${ladderRows.join(" / ")}）→ ${ladder?.name ?? "無し"} x${ladder?.count ?? 0}`,
+  );
+  check(
+    "棒 7 本 → はしご 3 個",
+    ladder?.out === LADDER && ladder.count === 3,
+    `${ladder?.name ?? "無し"} x${ladder?.count ?? 0}`,
+  );
+  // **真ん中の列が抜けると別物**（かまど・チェストの輪と同じ形になってしまう）。
+  const ring = findRecipe(grid(3, ["S.S", "S.S", "S.S"], P), 3);
+  check("真ん中の横棒が無ければ作れない", ring === null, ring?.name ?? "無し");
+  // 2x2 では作れない（3 幅なので作業台が要る）。
+  const ladderIn2 = findRecipe(grid(2, ["S.", "SS"], P), 2);
+  check("2x2 でははしごは作れない（作業台が要る）", ladderIn2 === null, ladderIn2?.name ?? "無し");
 
   describe("鉱物をしまう／戻す（鉄・金・ダイヤ）");
 

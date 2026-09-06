@@ -9,6 +9,7 @@ import {
   GLASS,
   GRASS,
   GRAVEL,
+  LADDER,
   LEAVES,
   LOW_BAND_MAX,
   NETHER_PORTAL,
@@ -395,11 +396,13 @@ export const SUGAR = 144;
  * （`craftscreen.ts` の `CREATIVE_ITEMS`）にだけ出てこないブロック**ができます
  * （置けるし掘れるので、型でも `typecheck` でも止まりません）。
  *
- * **いまは砂糖（アイテム 144）が上限です。** 直前はキノコシチュー（アイテム 142）で、
+ * **いまははしご（ブロック 145）が上限です** —— `items.ts` には 1 行も書いていない
+ * ブロックで、`variantOf` を持たないので上の for がアイテムを作ります（146..148 は
+ * `variantOf: LADDER` なので作られません）。直前は砂糖（アイテム 144）でした。
  * **共有帯ではブロックとアイテムが 1 本の番号列**なので、上限を持つのがどちら側かは
- * 決まりません（`items.ts` に 1 行も書いていないブロックが上限だったことも 2 度あります）。
+ * 決まりません（`items.ts` に 1 行も書いていないブロックが上限だったのは 3 度目です）。
  */
-export const MAX_ITEM_ID = SUGAR;
+export const MAX_ITEM_ID = LADDER;
 
 export const MAX_STACK = 64;
 

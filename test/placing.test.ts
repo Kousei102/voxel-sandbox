@@ -1,9 +1,14 @@
+import { Scene } from "three";
 import {
   AIR,
   BED,
   DIRT,
   FARMLAND,
   GRASS,
+  LADDER,
+  LADDER_XN,
+  LADDER_ZN,
+  LADDER_ZP,
   LAVA,
   OBSIDIAN,
   SAND,
@@ -19,6 +24,8 @@ import {
 } from "../src/blocks";
 import { tryBucket, tryPlace, tryPlant, tryTill } from "../src/placing";
 import { BUCKET, LAVA_BUCKET, WATER_BUCKET } from "../src/items";
+import { World } from "../src/world";
+import { WorldGen } from "../src/worldgen";
 import { Slab, sourceOf } from "./arena";
 import { check, describe } from "./harness";
 
@@ -219,6 +226,114 @@ export function run(): void {
         slab.getVoxel(1, 12, 0) === AIR,
       `${out.kind} / 置いた先 ${slab.getVoxel(1, 12, 0)}`,
     );
+  }
+
+  // --- はしごを壁に掛ける（19a） ---
+  // **`placing.ts` は「置けない理由の文」1 行しか変えていない。** 向きを決めるのは
+  // `blocks.ts` の `ladderVariant()` で、支えを失って落ちるのは `World` の
+  // `breakUnsupported()`（**偽の試験場は持たないので、そこだけ本物を通す**）。
+
+  /** 壁 1 枚（x=1 の面。y=11 の高さに 1 マス）。狙うのは壁の側面。 */
+  function wall(): Slab {
+    const slab = new Slab();
+    slab.fill(-8, 8, 1, 10, -8, 8, GRASS);
+    slab.fill(1, 1, 11, 12, 0, 0, STONE);
+    slab.fill(-1, -1, 11, 12, 0, 0, STONE);
+    slab.fill(0, 0, 11, 12, 1, 1, STONE);
+    slab.fill(0, 0, 11, 12, -1, -1, STONE);
+    return slab;
+  }
+
+  {
+    // 壁の 4 面それぞれに向けて置く。**入った ID を出してから**向きを判定する。
+    // 法線は「狙った壁から見て、はしごが立つ側」。-X の壁（x=-1）の +X 面を
+    // 叩けば、はしごは x=0 に立って支えは -X 側にある。
+    const cases: [string, number, [number, number, number], number][] = [
+      ["+X の壁（x=1）", 1, [-1, 0, 0], LADDER],
+      ["-X の壁（x=-1）", -1, [1, 0, 0], LADDER_XN],
+    ];
+    for (const [name, wx, normal, want] of cases) {
+      const slab = wall();
+      const out = tryPlace(slab, nobody, aimAt(wx, 11, 0, STONE, normal), 0, LADDER);
+      const got = slab.getVoxel(0, 11, 0);
+      console.log(`      ${name}: ${out.kind}  入った ID ${got}（期待 ${want}）`);
+      check(`${name}にはしごが付く`, out.kind === "placed" && got === want, `${out.kind} / ${got}`);
+    }
+    const zCases: [string, number, [number, number, number], number][] = [
+      ["+Z の壁（z=1）", 1, [0, 0, -1], LADDER_ZP],
+      ["-Z の壁（z=-1）", -1, [0, 0, 1], LADDER_ZN],
+    ];
+    for (const [name, wz, normal, want] of zCases) {
+      const slab = wall();
+      const out = tryPlace(slab, nobody, aimAt(0, 11, wz, STONE, normal), 0, LADDER);
+      const got = slab.getVoxel(0, 11, 0);
+      console.log(`      ${name}: ${out.kind}  入った ID ${got}（期待 ${want}）`);
+      check(`${name}にはしごが付く`, out.kind === "placed" && got === want, `${out.kind} / ${got}`);
+    }
+  }
+
+  {
+    // 床（上面）を狙うと置けない。**理由の文が「壁にしか」であること** ——
+    // 共通の「床か壁」のままだと、床を狙って断られた人には嘘になる。
+    const slab = field();
+    const out = tryPlace(slab, nobody, aimAt(0, 10, 0, GRASS), 0, LADDER);
+    console.log(`      床を狙う: ${out.kind}  ${out.kind === "blocked" ? out.message : ""}`);
+    check(
+      "床を狙うと blocked（文に「壁にしか」が入る）",
+      out.kind === "blocked" && out.message.includes("壁にしか") &&
+        out.message.includes(blockName(LADDER)) && slab.getVoxel(0, 11, 0) === AIR,
+      out.kind === "blocked" ? out.message : out.kind,
+    );
+
+    // **松明の文は「床か壁」のまま。** 表から引いているので、はしごを足しても動かない。
+    const empty = new Slab();
+    const torch = tryPlace(empty, nobody, aimAt(0, 10, 0, AIR), 0, TORCH);
+    console.log(`      松明の文: ${torch.kind === "blocked" ? torch.message : torch.kind}`);
+    check(
+      "松明の文は「床か壁」のまま",
+      torch.kind === "blocked" && torch.message.includes("床か壁にしか"),
+      torch.kind === "blocked" ? torch.message : torch.kind,
+    );
+  }
+
+  {
+    // **壁を壊すとはしごも落ちる**（`onAutoBreak` が 1 回）。偽の試験場は
+    // `breakUnsupported()` を持たないので、ここだけ本物の `World` を通す。
+    const world = new World(new Scene(), new WorldGen(20260906));
+    const ground = 60;
+    const x = 3;
+    const z = 3;
+    for (let y = ground; y < ground + 4; y++) {
+      world.setVoxel(x, y, z, AIR);
+      world.setVoxel(x + 1, y, z, AIR);
+    }
+    world.setVoxel(x + 1, ground, z, STONE); // 壁
+    const placed = tryPlace(
+      world,
+      nobody,
+      aimAt(x + 1, ground, z, STONE, [-1, 0, 0]),
+      0,
+      LADDER,
+    );
+    console.log(
+      `      本物の World: ${placed.kind}  はしご ${world.getVoxel(x, ground, z)} / 壁 ${world.getVoxel(x + 1, ground, z)}`,
+    );
+    check(
+      "本物の World でも壁に付く",
+      placed.kind === "placed" && world.getVoxel(x, ground, z) === LADDER,
+      `${placed.kind} / ${world.getVoxel(x, ground, z)}`,
+    );
+
+    let broke = 0;
+    world.onAutoBreak = (_x, _y, _z, id) => { if (id === LADDER) broke++; };
+    world.setVoxel(x + 1, ground, z, AIR); // 壁を壊す
+    check(
+      "壁を壊すとはしごも落ちる（合図が 1 回）",
+      broke === 1 && world.getVoxel(x, ground, z) === AIR,
+      `合図 ${broke} 回 / 残り ${world.getVoxel(x, ground, z)}`,
+    );
+    world.onAutoBreak = undefined;
+    world.dispose();
   }
 
   describe("バケツで汲む／流す（tryBucket）");
