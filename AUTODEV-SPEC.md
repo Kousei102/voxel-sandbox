@@ -1,115 +1,114 @@
-# 仕様: はしごを登れる（19b）
+# 仕様: リンゴ（キューの 20）
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-**`AUTODEV-QUEUE.md` の 19 を 2 件へ割った後半**（前半 19a「置ける・壊れる・作れる」は
-2026-09-06 に実装済み。145..148）。**この周に `climbable` の旗も登る物理もコードから
-数え直しました** —— `grep -rn "climbable\|onLadder\|isClimbable" src/ test/` は **0 件**で、
-19a は予告どおり 1 行も先取りしていません。**まっさらな状態から足します。**
+**`AUTODEV-QUEUE.md` の先頭の 1 件。** この周にコードから数え直しました ——
+`grep -rn "APPLE\|apple" src/ test/` は **0 件**で、まだ 1 行もありません。
+
+**キューの「`DROPS` は 1 ブロック 1 行しか持てない」は半分だけ正しい**（2026-09-06 に確認）。
+`Drop.extra` はもうあり、実った小麦が「小麦 1 + 種 1」の 2 山を出しています。**足りないのは
+`extra` の確率**で、`items.ts` の 736..743 行のコメントが理由をそのまま書いています ——
+**流れてくる乱数が `roll` の 1 本だけなので、`extra` に確率を付けると 1 山目の当たり外れと
+必ず相関する**（棒が出た葉からだけリンゴが出る形）。**同じコメントが「乱数をもう 1 本流す話が
+先で、`BreakOrder` と `autoBreak()` の引数に及ぶ」と指しています。この周でそれをやります。**
 
 ## 1. 何を足すか / 完了の判定
 
-**はしごに体が重なっているあいだ、重力の代わりに上下する。** 上は `Space`、
-押していなければゆっくり滑り降りる。**滑ったぶんで落下ダメージを受けない。**
+**オークの葉を壊すと 0.5% でリンゴが 1 個落ちる。棒（10%）とは別々に当たる。** 食べると
+空腹 +4 / 満腹度 +2.4。**針葉樹の葉からは落ちません**（本家と同じ）。
 
-`npm test` に**「はしご」の一群が約 10 件増えて全部緑**（いま 3143 件）。とくに:
-`isClimbable()` が 145..148 の 4 つだけ真 / はしごのマスに入って `Space` で y が増える /
-離すと自由落下よりずっと遅く降りる / **隣のマスに立っているだけでは `onLadder` が偽** /
-`onLadder` を立てたまま高い所から降りても `lastFall` が 0 のままダメージ 0。
+`npm test` に**「リンゴ」の一群が約 12 件増えて全部緑**（いま 3155 件）。とくに:
+`rollDrops(LEAVES, 0.05, 0.001)` が**棒とリンゴの 2 山** / `rollDrops(LEAVES, 0.5, 0.001)` が
+**リンゴだけ 1 山**（1 山目を外してもリンゴは出る = 相関していない証拠）/
+`rollDrops(LEAVES, 0.05, 0.9)` が**棒だけ** / `rollDrops(SPRUCE_LEAVES, 0.05, 0.001)` が
+**棒だけ**（針葉樹にリンゴは無い）/ **実った小麦は `extraRoll` を 0.99 にしても種が 1 個**
+（`chance` 省略 = 必ず落ちる、が変わっていない）。
 
 ## 2. 触るファイル / 触らないファイル
 
-**触る**: `src/blocks.ts` / `src/player.ts` / `src/vitals.ts` /
-**`src/main.ts`（`updateVitals()` の引数 1 行だけ。下の 4）** /
-`test/blocks.test.ts` `test/physics.test.ts` `test/vitals.test.ts` / `TUNING.md`。
+**触る**: `src/items.ts`（`APPLE` の定義・`FOODS` の 1 行・`ExtraDrop` の型・`DROPS` の
+葉 2 行・`rollDrops()` の引数）/ `src/breaking.ts`（`BreakOrder.extraRoll` と
+`autoBreak()` の 8 番目の引数・`harvest()` の素通し）/ `src/main.ts`（**下記のとおり 2 か所、
+行数 ±0**）/ `test/blocks.test.ts` / `test/breaking.test.ts` / `ROADMAP.md` / `TUNING.md`。
 
-**触らない**: **`src/physics.ts`（0 行。`bodyTouches()` はサボテンのものをそのまま使う。
-`moveBody()` の式を 1 行も変えないこと —— `test/physics.test.ts` が軌跡を数値で
-固定しています）** / `src/placing.ts` `src/crafting.ts` `src/items.ts`（19a で済み）/
-`src/mobs.ts` `src/mobrender.ts`（**モブは登りません**）/ `src/mesher.ts` `src/ui.ts`
-`src/world.ts` / `ROADMAP.md`（**ID を 1 つも取りません**）/ `test/arena.ts`。
+**`src/main.ts` は「乱数をもう 1 個作って渡す」だけで、判断を 1 行も書かないこと。**
+いま **1449 行で止まる目安 1450 に届いています。1 行も増やさないこと** ——
+どちらも既にある行の中に足せます（改行しないこと）:
 
-**先に読むこと**（自動では読み込まれません。**当たったものは全部読むこと** ——
-19a で 3 本のうち 1 本しか読まずに穴を作りました）:
-`grep -l '"src/player.ts"' rules/*.md` → **`rules/blocks-shapes.md` `rules/mobs.md`
-`rules/vitals.md`**（`rules/README.md` は一覧なので数に入れません）。
-`src/vitals.ts` `src/main.ts` → `rules/vitals.md`。`src/blocks.ts` →
-`rules/beds.md` `rules/blocks-shapes.md` `rules/items-survival.md`。
-**`test/**` を触るので `rules/testing.md` も**（`paths` が glob なので上では出ません）。
+- 1030 行目 `{ x, y, z, id: blockId, tool, creative, roll: Math.random() },`
+  → `roll` の後ろに `, extraRoll: Math.random()` を**同じ行に**足す
+- 320 行目 `autoBreak(world, x, y, z, id, creative, Math.random())`
+  → 末尾に `, Math.random()` を**同じ行に**足す
 
-## 3. 使う ID —— **0 個**
+**触らない**: `blocks.ts`（リンゴはアイテムだけでブロックを 1 つも増やしません）/
+`crafting.ts` / `smelting.ts`（レシピも精錬も 0 本）/ `worldgen.ts` / `drops.ts` /
+`droprender.ts` / `ui.ts` / `inventoryui.ts` / `storage.ts`（**`SaveData` は version 1 のまま、
+1 バイトも増えません**）。
 
-**新しいブロックもアイテムも足しません。** 145..148 は 19a が取ってあります。
-**`ROADMAP.md` の予約表を 1 行も触らないこと**（次の空きは 149 のまま）。
-**既存の ID を 1 つも振り直さないこと。** `SaveData` の形も変えません（version 1・
-はしごに掛かっているかは毎フレーム見るだけで、覚えません）。
+## 3. 使う ID
+
+**149 = リンゴ（アイテムのみ）。** `ROADMAP.md` の予約表の「149..255 予備」の先頭で、
+**148 まで使用済み**（`ROADMAP.md` の 180..181 行）。**`MAX_ITEM_ID` を 145 → 149 へ伸ばすこと**
+（146..148 ははしごの向き違いで空いたままです）。**これ以外の番号を取らないこと。**
+
+`item({ id: APPLE, name: "リンゴ", block: AIR, stack: MAX_STACK, color: 0xe0342c, tool: null })`
+の形（砂糖の行と同じ）。**置けず・道具でもありません。**
 
 ## 4. 判断をどこに置くか
 
-**新しく「確かめられないもの」は 0 個です** —— `unverifiable-pair` は要りません。
-描画も音も 0 行で、足すのは全部「値で確かめられる側」です。
+**新しく「確かめられないもの」は 1 つも足しません**（GLSL も WebAudio も DOM も three も 0 行）。
+`unverifiable-pair` スキルは要りません。`add-block` スキルの**アイテムだけの節**が使えます。
 
-- **どのブロックが登れるか**は `blocks.ts`: `BlockDef` に `climbable` を 1 つ足し、
-  `def()` の既定を `false`、`CLIMBABLE = new Uint8Array(ID_LIMIT)` の表と
-  `isClimbable(id)` を **`SPIKY` / `isSpiky()` とまったく同じ形**で作ること
-  （表の作り方は `blocks.ts:1536` と `1554`、関数は `1741`）。
-  **`id === LADDER` と書かないこと**（`rules/blocks-shapes.md` の「表 1 本に聞く」）。
-  旗は **`LADDER_OPTS` に `climbable: true` の 1 行**だけ —— 4 向きが一度に付きます。
-  **他のどのブロックにも付けないこと**（ツタも足場もまだありません）。
-- **どのマスに効くか**は `player.ts`: `touchingSpikes` と**同じ 1 行**を
-  `moveBody()` のあとに置く（`player.ts:125` の隣）:
-  `this.onLadder = bodyTouches(world, this.position, PLAYER_SIZE, isClimbable);`
-  **押し戻したあとで見ること**（動かす前に見ると 1 フレームずれます。既存のコメント参照）。
-  `onLadder` は `touchingSpikes` と同じ public な旗で、**そこに数値を書かないこと。**
-- **どう動くか**は `player.ts` の `updateWalk()`: **液体の分岐（`if (this.inLiquid)`）を
-  先に見て、そのあとに `else if (this.onLadder)`** を足す（**水がはしごに勝ちます**。
-  順を逆にすると水中で泳げなくなります）。中身は 2 行:
-  `Space` を押していれば `this.velocity.y = LADDER_CLIMB_SPEED`、
-  押していなければ `this.velocity.y = -LADDER_SLIDE_SPEED`。
-  **重力を足さないこと**（足すと滑り落ちる速さが毎フレーム増えます）。
-  **横（x/z）の式は 1 行も変えないこと** —— 歩いてはしごから離れられなくなります。
-  **速さの数値は `player.ts` に置くこと**（`WALK_SPEED` / `SWIM_SPEED` の隣）。
-  暫定値は本家のまま **`LADDER_CLIMB_SPEED = 2.35` / `LADDER_SLIDE_SPEED = 3.0`（m/s）**。
-- **落ちたぶんを打ち消すか**は `vitals.ts`: `VitalsContext` に `onLadder: boolean` を足し、
-  `updateFall()`（`vitals.ts:476`）の 2 か所だけを直す ——
-  `grounded` に `|| ctx.onLadder` を足し、ダメージの条件に `&& !ctx.onLadder` を足す。
-  **`lastFall` の式も `peakY` の持ち方も変えないこと**（`inLiquid` とまったく同じ扱いです）。
-- **`main.ts` は事実を 1 行渡すだけ**（`main.ts:1282` の `vitals.update(dt, {` の中へ
-  `onLadder: player.onLadder,`）。**これで 1449 行**（上限 1500・止まる目安 1450）。
-  **2 行以上足したら、その時点で止めて `HANDOFF.md` に書くこと。**
+- **確率と個数は `items.ts` の `DROPS` の表**だけ。`breaking.ts` は `.chance` を見ないこと
+  （`test/ui.test.ts` の「`main.ts` が落ちる確率を自分で判定していない」と同じ形の見張りが
+  `test/breaking.test.ts` の 72 行目にあります）
+- 型はこう足すこと。**`DropStack` に `chance` を足さないこと** —— `rollDrops()` の**返り値の型**
+  なので、返る山が意味の無い `chance` を持つことになります:
+  ```ts
+  export interface ExtraDrop extends DropStack { readonly chance?: number }
+  // Drop.extra?: DropStack → Drop.extra?: ExtraDrop（省略 = 必ず落ちる、は変えない）
+  ```
+- `rollDrops(blockId, roll, extraRoll)` の 3 番目は**必須**にすること。省略できると
+  `main.ts` が渡し忘れてもコンパイルが通り、**リンゴが永久に出ないのに緑**になります。
+  **`rollDrop()`（単数）は引数も中身も変えないこと** —— 既存の 20 件近いテストの根拠です
 
-## 5. 書くテスト（**値を出してから判定する**。`rules/testing.md`）
+## 5. 書くテスト
 
-1. `test/blocks.test.ts` — **登れるブロックの ID を全部並べて出してから**、
-   `[145,146,147,148]` の 4 つだけであること（数も出す）/ 石・サボテン・松明・水が偽。
-2. `test/physics.test.ts` —（`describe("はしごに掴まる（player.onLadder）")`）
-   本物の `Arena` に石の壁を立て、その手前のマスへ `LADDER` を縦に数マス置く。
-   **入る前の位置と `onLadder` を出してから**、歩いて入ると真 / **隣のマスに
-   立っているだけでは偽**（無いと「常に真」の実装が通ります）/ `Space` を押した
-   60 フレームで **y が増える**（前後の y と 1 秒あたりの速さを出す）/ 離した
-   60 フレームで **降りるが自由落下よりずっと遅い**（`velocity.y` を出し、
-   はしごの無い所で同じだけ落ちた対照と比べる）。
-3. `test/vitals.test.ts` — `ctx({ onLadder: true })` で 20 マス滑り降りてから着地しても
-   **`lastFall` が 0・体力が満タンのまま**（値を出す）/ **`onLadder: false` の対照では
-   ちゃんとダメージが入る**（無いと「いつも 0」の実装が通ります）。
+**値を出力してから判定する形**（`rules/testing.md`）。`console.log` で実際の山を出すこと。
+
+- `test/blocks.test.ts`: 上の「完了の判定」の 5 件 + `foodOf(APPLE)` が 4 / 2.4 / 毒なし +
+  `placedBlock(APPLE) === AIR && toolOf(APPLE) === null`（革・羽根の行と同じ形）+
+  食べ物が **9 種 → 10 種**（`allFoodIds().length`）+ `MAX_ITEM_ID` が 149
+- `test/breaking.test.ts`: `tryBreak()` と `autoBreak()` が **`extraRoll` を素通しする**
+  （葉を `roll: 0.5, extraRoll: 0.001` で壊すとリンゴが 1 個落ちる。クリエイティブでは 0 個）
+- **2 本の乱数が独立している**ことを 1 件で言い切ること: 4 通り（当たり/外れ × 当たり/外れ）の
+  山の数を出して `1,2,0,1` になる。**1 本の乱数では作れない表**なので、これが退行の見張りです
 
 ## 6. このタスク固有の禁じ手
 
-- **`src/physics.ts` を 1 行も触らない**（`moveBody()` の式・評価順・`bodyTouches()`）
-- **`main.ts` は 1 行だけ**（判断を書かない。`player.onLadder` を渡すだけ）
-- **はしごを `solid` にしない・`supportFace` と `variantOf` を触らない**（19a のもの）
-- **`climbable` を他のブロックに付けない・モブに登らせない**
-- **液体の分岐より前にはしごを見ない**（水中で泳げなくなります）
-- **`Space` 以外の新しいキーを足さない**（`controls.ts` と `test/controls.test.ts` の話になります）
-- **既存のテストの判定をゆるめない**（とくに `test/physics.test.ts` の軌跡と
-  `test/world.test.ts` の p99、`test/vitals.test.ts` の落下）
+- **実った小麦のドロップを変えないこと**（小麦 1 + 種 1 のまま。`extra` に `chance` を書かない）
+- **`extra` に個数の範囲を足さないこと**（本家の「種 0〜3」は乱数がまた 1 本要ります）
+- **針葉樹の葉（`SPRUCE_LEAVES`）からリンゴを出さないこと**（本家はオークとダークオークだけ）
+- **葉の棒 10% を触らないこと**。`otherwise` を足さないこと（葉は外れると何も落ちません）
+- **リンゴにレシピを足さないこと**（金のリンゴはキューの 22 番。この周では作りません）
+- **苗木の話を持ち込まないこと**（葉のコメントの「苗木がまだ無いので」は残す）
+- **`main.ts` の行数を増やさないこと**（上の 2 か所を同じ行に足す）
+- **`SaveData.version` は 1 のまま。既存の ID を振り直さないこと**
 
 ## 7. 終了条件
 
-`npm run typecheck` 緑 / **`npm test` すべて緑**（音の一群が赤ければまず 1 回走らせ直す）/
-`npm run build` 緑（`src/**` を触るため）/ **コミット 1 つ** /
-**C-3 は `npm run shot -- ladders` で 1 枚だけ**（見た目は 19a から変わりませんが、
-はしごの箱を壊していないことの確認。**撮ったら `Read` で見ること**）/
-**`TUNING.md` に 1 行**（2.35 と 3.0 の出どころと、上げ下げすると何が変わるか）/
-`AUTODEV-QUEUE.md` の 19b の行を消す / `HANDOFF.md` を丸ごと書き直す。
+`npm run typecheck` と `npm test` が緑 / `npm run build` が通る（`src/**` を触るので）/
+**コミット 1 つ**で `master` へ push / `AUTODEV-QUEUE.md` の 20 の行を消す /
+この仕様書の `状態:` を `済` にする / **`ROADMAP.md` の予約表に 149 = リンゴを「実装済み」で
+足し、178..181 行の「次に取るのは」を 150 に直す** / **`TUNING.md` に 1 行**
+（「葉からリンゴ 0.5%。本家の値を暫定で入れた。200 枚壊して 1 個が待てるか」）/
+`docs/autodev-log.md` に 1 節 / `HANDOFF.md` を丸ごと書き直す。
+
+**見た目に出るのは一覧に並ぶリンゴの色だけ**なので、`npm run shot` は要りません
+（`AUTODEV.md` の C-3 は three の描画に出るものの話です）。**色 `0xe0342c` が
+既にある赤（`0xc9403a` / `0xc8564f`）と見分けられるかは人に見てもらうこと** ——
+`HANDOFF.md` の「ブラウザで見てほしいところ」に 1 行残すこと。
+
+**先に引いて読む `rules/`**: `rules/items-survival.md`（`items.ts` / `breaking.ts` /
+`main.ts`）・`rules/drops.md`（`main.ts`）・`rules/vitals.md`（食べ物）・`rules/testing.md`。
