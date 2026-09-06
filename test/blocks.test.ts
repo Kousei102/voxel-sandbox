@@ -60,6 +60,7 @@ import {
   frameFacing,
   frameHasEye,
   isEndPortalFrame,
+  isClimbable,
   isProp,
   isHotLiquid,
   ladderVariant,
@@ -842,6 +843,37 @@ export function run(): void {
   // 刺さるものは通り抜けられない（`solid: false` にすると、体が中心まで入って
   // 「隣に立っただけでは偽」が意味を失う）
   check("刺さるものは必ず solid", spiky.every((b) => b.solid), spiky.map((b) => `${b.name}:${b.solid}`).join(" "));
+
+  // 登れるブロック。**`id === LADDER` を散らさないための表 1 本**（`spiky` と同じ作法）。
+  // どのマスに効くかは `player.ts`、落ちたぶんを打ち消すかは `vitals.ts` のもの。
+  const climbable = BLOCKS.filter((b) => b.climbable);
+  const climbableIds = climbable.map((b) => b.id).sort((a, b) => a - b);
+  console.log(
+    `      登れるブロック ${climbable.length} 個: ` +
+      `${climbable.map((b) => `${b.name}(${b.id})`).join(" / ") || "無し"}`,
+  );
+  check(
+    "登れるのははしごの 4 向きだけ（145..148）",
+    climbableIds.length === 4 && climbableIds.join(",") === [LADDER, LADDER_XN, LADDER_ZP, LADDER_ZN].sort((a, b) => a - b).join(","),
+    `id=[${climbableIds.join(",")}]`,
+  );
+  check(
+    "4 向きとも isClimbable() が真",
+    [LADDER, LADDER_XN, LADDER_ZP, LADDER_ZN].every((id) => isClimbable(id)),
+    [LADDER, LADDER_XN, LADDER_ZP, LADDER_ZN].map((id) => `${id}:${isClimbable(id)}`).join(" "),
+  );
+  check(
+    "石・サボテン・松明・水は登れない",
+    !isClimbable(STONE) && !isClimbable(CACTUS) && !isClimbable(TORCH) && !isClimbable(WATER) && !isClimbable(AIR),
+    `石=${isClimbable(STONE)} サボテン=${isClimbable(CACTUS)} 松明=${isClimbable(TORCH)} 水=${isClimbable(WATER)}`,
+  );
+  // 登れるものは通り抜けられること（solid にすると、はしごの前に立てなくなって
+  // 「体が重なる」が一度も成り立たない）
+  check(
+    "登れるものは solid でない",
+    climbable.every((b) => !b.solid),
+    climbable.map((b) => `${b.name}:${b.solid}`).join(" "),
+  );
 
   // 液体はバケツが無いと持てない（バケツはまだ無い）。**溶岩を足したとき、
   // 水だけを弾いていたせいで「溶岩」というアイテムが黙って 1 個増えていた。**

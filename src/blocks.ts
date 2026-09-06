@@ -615,6 +615,14 @@ export interface BlockDef {
    * `physics.ts` の `bodyTouches()` で走査する）。
    */
   readonly spiky: boolean;
+  /**
+   * 体が重なっているあいだ登れるブロック（はしご）。**`id === LADDER` と書かないこと** ——
+   * `liquid` / `hot` / `falls` / `spiky` と同じく表 1 本（`isClimbable()`）に聞く。
+   * ツタや足場を足すときも、ここに旗を 1 つ足すだけで済む形にしてある。
+   * **どれだけ速いかは持たない**（`LADDER_CLIMB_SPEED` は `player.ts` のもの）。
+   * **どのマスに効くかは `player.ts`**（体の箱と重なるマスを `bodyTouches()` で走査する）。
+   */
+  readonly climbable: boolean;
   /** 頭が浸かったときのフォグ。液体だけが持つ。 */
   readonly fog: LiquidFog | null;
   /** 足音・破壊・設置の音の材質。既定は "stone"。 */
@@ -723,6 +731,9 @@ const LADDER_OPTS = {
   tool: "axe" as const,
   sound: "wood" as const,
   model: "boxes" as const,
+  // 4 向きが一度にこれを持つ（向き違いも `LADDER_OPTS` を撒いているため）。
+  // **他のブロックに付けないこと** —— ツタも足場もまだ無い。
+  climbable: true,
 };
 
 function def(
@@ -752,6 +763,7 @@ function def(
     hot: opts.hot ?? false,
     falls: opts.falls ?? false,
     spiky: opts.spiky ?? false,
+    climbable: opts.climbable ?? false,
     fog: opts.fog ?? null,
     emission: opts.emission ?? 0,
     sound: opts.sound ?? "stone",
@@ -1534,6 +1546,8 @@ const HOT = new Uint8Array(ID_LIMIT);
 const FALLS = new Uint8Array(ID_LIMIT);
 /** 1 = 触れていると刺さる（サボテン）。どのマスに効くかは `player.ts`。 */
 const SPIKY = new Uint8Array(ID_LIMIT);
+/** 1 = 重なっているあいだ登れる（はしご）。どのマスに効くかは `player.ts`。 */
+const CLIMBABLE = new Uint8Array(ID_LIMIT);
 /** 1 = 自分の上に自分を積める（サトウキビ）。引くのは `supportsBlock()` だけ。 */
 const STACKS_ON_SELF = new Uint8Array(ID_LIMIT);
 const VARIANT_OF = new Uint8Array(ID_LIMIT);
@@ -1552,6 +1566,7 @@ for (const block of BLOCKS) {
   HOT[block.id] = block.hot ? 1 : 0;
   FALLS[block.id] = block.falls ? 1 : 0;
   SPIKY[block.id] = block.spiky ? 1 : 0;
+  CLIMBABLE[block.id] = block.climbable ? 1 : 0;
   STACKS_ON_SELF[block.id] = block.stacksOnSelf ? 1 : 0;
   VARIANT_OF[block.id] = block.variantOf;
 }
@@ -1740,6 +1755,16 @@ export function fallsDown(id: number): boolean {
  */
 export function isSpiky(id: number): boolean {
   return SPIKY[id] === 1;
+}
+
+/**
+ * 体が重なっているあいだ登れるか（はしご）。**`id === LADDER` と書かないこと** ——
+ * `isLiquid()` / `isHotLiquid()` / `fallsDown()` / `isSpiky()` と同じ表 1 本に聞く。
+ * 座標は知らない。**どのマスに効くか**（体の箱と重なるマス）は `player.ts` が
+ * `physics.ts` の `bodyTouches()` で走査する。**どれだけ速いかも `player.ts`。**
+ */
+export function isClimbable(id: number): boolean {
+  return CLIMBABLE[id] === 1;
 }
 
 /** 頭がそのブロックの中にあるときのフォグ。液体でなければ null。 */

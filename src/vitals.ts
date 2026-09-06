@@ -234,6 +234,12 @@ export interface VitalsContext {
    */
   touchingSpikes: boolean;
   /**
+   * はしごに掴まっている。**`inLiquid` とまったく同じ扱い**で、落ちたぶんを打ち消す
+   * （滑り降りただけで着地に痛い思いをしない）。**事実だけ**を受け取り、
+   * 登る速さも滑る速さも `player.ts` のもの。
+   */
+  onLadder: boolean;
+  /**
    * 頭まで水中（息が減る）。**液体すべてに広げないこと** ——
    * 溶岩で溺れ始める（`CLAUDE.md` の液体の項）。
    */
@@ -474,12 +480,12 @@ export class Vitals {
 
   /** 空中に居るあいだの最高到達点を覚えておき、着地したときの落差でダメージを出す。 */
   private updateFall(ctx: VitalsContext): void {
-    const grounded = ctx.onGround || ctx.flying || ctx.inLiquid;
+    const grounded = ctx.onGround || ctx.flying || ctx.inLiquid || ctx.onLadder;
     if (grounded) {
       if (this.airborne) {
         this.lastFall = Math.max(0, this.peakY - ctx.y);
-        // 水に落ちた場合と飛行に切り替えた場合はダメージ無し
-        if (ctx.onGround && !ctx.inLiquid && !ctx.flying) {
+        // 水に落ちた場合・飛行に切り替えた場合・はしごに掴まっている場合はダメージ無し
+        if (ctx.onGround && !ctx.inLiquid && !ctx.flying && !ctx.onLadder) {
           this.damage(fallDamage(this.lastFall), "落下");
         }
         this.airborne = false;

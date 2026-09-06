@@ -1,5 +1,5 @@
 import { Euler, Vector3, type PerspectiveCamera } from "three";
-import { AIR, WATER, isHotLiquid, isLiquid, isSpiky } from "./blocks";
+import { AIR, WATER, isClimbable, isHotLiquid, isLiquid, isSpiky } from "./blocks";
 import { PLAYER_SIZE, blockOverlapsBody, bodyTouches, moveBody } from "./physics";
 import type { World } from "./world";
 
@@ -14,6 +14,16 @@ const GRAVITY = 30;
 const JUMP_SPEED = 9.2;
 const TERMINAL = 55;
 const SWIM_SPEED = 4.5;
+/**
+ * はしごを登る速さ (m/s)。`Space` を押しているあいだだけ。Minecraft の値のまま。
+ * 手触りの理由は `TUNING.md`。
+ */
+const LADDER_CLIMB_SPEED = 2.35;
+/**
+ * はしごを滑り降りる速さ (m/s)。**何も押していないとき**の一定速度で、
+ * 重力を足さない（足すと毎フレーム速くなって「掴まっている」感じが消える）。
+ */
+const LADDER_SLIDE_SPEED = 3.0;
 
 const scratch = new Vector3();
 
@@ -44,6 +54,12 @@ export class Player {
    * **ここに数値を書かないこと・`vitals.ts` を import しないこと。**
    */
   touchingSpikes = false;
+  /**
+   * 体が登れるブロック（はしご）のマスと重なっている。**`touchingSpikes` と同じで事実だけ** ——
+   * 落ちたぶんを打ち消すかどうかは `vitals.ts` のもの。
+   * **ここに数値を書かないこと・`vitals.ts` を import しないこと。**
+   */
+  onLadder = false;
 
   private readonly keys = new Set<string>();
   private readonly euler = new Euler(0, 0, 0, "YXZ");
@@ -123,6 +139,7 @@ export class Player {
     // **押し戻したあとで見ること** —— 動かす前の位置で見ると、まだめり込んでいない
     // フレームで真になったり、離れたフレームで真のまま残ったりする
     this.touchingSpikes = bodyTouches(world, this.position, PLAYER_SIZE, isSpiky);
+    this.onLadder = bodyTouches(world, this.position, PLAYER_SIZE, isClimbable);
     this.syncCamera();
   }
 
@@ -155,6 +172,10 @@ export class Player {
       this.velocity.y -= GRAVITY * 0.22 * dt;
       if (this.keys.has("Space")) this.velocity.y = SWIM_SPEED;
       this.velocity.y = Math.max(-8, Math.min(SWIM_SPEED, this.velocity.y));
+    } else if (this.onLadder) {
+      // **水がはしごに勝つ**（この分岐を液体より前に置かないこと —— 水中で泳げなくなる）。
+      // 重力も終端速度も足さない: 上下どちらも一定の速さで、掴まっている感じを出す。
+      this.velocity.y = this.keys.has("Space") ? LADDER_CLIMB_SPEED : -LADDER_SLIDE_SPEED;
     } else {
       this.velocity.y -= GRAVITY * dt;
       if (this.velocity.y < -TERMINAL) this.velocity.y = -TERMINAL;

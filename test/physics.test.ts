@@ -11,7 +11,7 @@
  */
 
 import { PerspectiveCamera } from "three";
-import { AIR, BEDROCK, CACTUS, STONE, STONE_SLAB, STONE_STAIRS, WATER } from "../src/blocks";
+import { AIR, BEDROCK, CACTUS, LADDER, STONE, STONE_SLAB, STONE_STAIRS, WATER } from "../src/blocks";
 import { WORLD_HEIGHT } from "../src/constants";
 import { PLAYER_SIZE } from "../src/physics";
 import { Player } from "../src/player";
@@ -354,5 +354,98 @@ export function run(): void {
     "サボテンの上に立っても偽（意図した線）",
     perched.onGround && perched.position.y >= 12 && !perched.touchingSpikes,
     `y=${perched.position.y.toFixed(3)} onGround=${perched.onGround} touchingSpikes=${perched.touchingSpikes}`,
+  );
+
+  describe("はしごに掴まる（player.onLadder）");
+
+  // 床 y=10（上面 11）に、x=4 の石壁を立て、その手前のマス x=3 に
+  // はしご（`LADDER` = +X 側の壁に掛かる向き）を縦に並べる。
+  // はしごは `solid: false` なので押し戻しはせず、**マスが重なるかどうか**だけで決まる。
+  const shaft = new Arena();
+  shaft.fill(-4, 8, 10, 10, -4, 4, STONE);
+  shaft.fill(4, 4, 11, 24, -4, 4, STONE);
+  shaft.fill(3, 3, 11, 24, 0, 0, LADDER);
+  const wall = shaft as unknown as World;
+
+  const rungs = new Player(new PerspectiveCamera());
+  rungs.position.set(0.5, 11, 0.5);
+  rungs.yaw = -Math.PI / 2; // 前 = +X
+  for (let i = 0; i < 30; i++) rungs.update(1 / 60, wall);
+  // **まず「まだ届いていない」ことを出す** —— 常に真を返す実装をここで落とす
+  check(
+    "歩き出す前（x≈0.5）は掴まっていない",
+    !rungs.onLadder,
+    `x=${rungs.position.x.toFixed(3)} onLadder=${rungs.onLadder}`,
+  );
+
+  rungs.setKey("KeyW", true);
+  for (let i = 0; i < 120; i++) rungs.update(1 / 60, wall);
+  console.log(
+    `      壁に押し付けた: x=${rungs.position.x.toFixed(4)}` +
+      `（体の左端=${(rungs.position.x - PLAYER_SIZE.half).toFixed(4)} → マス ${Math.floor(rungs.position.x - PLAYER_SIZE.half)}）` +
+      ` y=${rungs.position.y.toFixed(3)} onLadder=${rungs.onLadder}`,
+  );
+  check(
+    "はしごのマスへ歩いて入ると onLadder が真",
+    rungs.onLadder && rungs.position.x > 3,
+    `x=${rungs.position.x.toFixed(4)} onLadder=${rungs.onLadder}`,
+  );
+
+  // 隣のマス（x=2 のまん中）に立っているだけでは偽。**これが無いと、
+  // 常に真を返す実装でも上の 1 件が通ってしまう。**
+  const nextTo = new Player(new PerspectiveCamera());
+  nextTo.position.set(2.5, 11, 0.5);
+  for (let i = 0; i < 30; i++) nextTo.update(1 / 60, wall);
+  check(
+    "隣のマスに立っているだけでは偽",
+    !nextTo.onLadder,
+    `x=${nextTo.position.x.toFixed(3)} 右端=${(nextTo.position.x + PLAYER_SIZE.half).toFixed(3)}（境目 3.0）`,
+  );
+
+  // Space を押した 60 フレーム（1 秒）で登る。壁に押し付けたまま測るので KeyW は押したまま。
+  const beforeClimb = rungs.position.y;
+  rungs.setKey("Space", true);
+  for (let i = 0; i < 60; i++) rungs.update(1 / 60, wall);
+  const climbed = rungs.position.y - beforeClimb;
+  console.log(
+    `      Space 1 秒: y ${beforeClimb.toFixed(3)} → ${rungs.position.y.toFixed(3)}` +
+      ` （${climbed.toFixed(3)} m/s。既定 2.35）`,
+  );
+  check(
+    "Space を押していると 2.35 m/s ほどで登る",
+    climbed > 2.2 && climbed < 2.45 && rungs.onLadder,
+    `${climbed.toFixed(3)} m/s onLadder=${rungs.onLadder}`,
+  );
+
+  // 離すと降りるが、自由落下よりずっと遅い。**対照（はしごの無い所で同じだけ落ちる）**
+  // と比べる —— 無いと「重力のまま落ちている」実装が通る。
+  //
+  // **先に登り切っておくこと** —— 床（11）から 1 秒登っただけの y=13.35 で離すと、
+  // 0.78 秒で床に着いてしまい、「1 秒で 3.0 m」ではなく「2.35 m で vy=0」を測る
+  // （最初に書いたときそれで落ちた）。3 秒足して y≈20 から測る。
+  for (let i = 0; i < 180; i++) rungs.update(1 / 60, wall);
+  const beforeSlide = rungs.position.y;
+  rungs.setKey("Space", false);
+  for (let i = 0; i < 60; i++) rungs.update(1 / 60, wall);
+  const slid = beforeSlide - rungs.position.y;
+  const slideVy = rungs.velocity.y;
+
+  const dropped = new Player(new PerspectiveCamera());
+  dropped.position.set(0.5, 60, 0.5); // はしごも壁も無い所。1 秒では床（11）に届かない
+  for (let i = 0; i < 60; i++) dropped.update(1 / 60, wall);
+  const fell = 60 - dropped.position.y;
+  console.log(
+    `      Space を離して 1 秒: ${slid.toFixed(3)} m（vy=${slideVy.toFixed(2)}）` +
+      ` / 対照の自由落下: ${fell.toFixed(3)} m（vy=${dropped.velocity.y.toFixed(2)}）`,
+  );
+  check(
+    "離すと 3.0 m/s ほどで滑り降りる",
+    slid > 2.8 && slid < 3.1 && Math.abs(slideVy + 3.0) < 0.01,
+    `${slid.toFixed(3)} m vy=${slideVy.toFixed(2)}`,
+  );
+  check(
+    "自由落下よりずっと遅い（対照と比べる）",
+    fell > slid * 3 && dropped.velocity.y < slideVy * 5,
+    `はしご ${slid.toFixed(3)} m / 自由落下 ${fell.toFixed(3)} m`,
   );
 }

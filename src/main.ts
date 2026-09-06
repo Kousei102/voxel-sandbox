@@ -1285,6 +1285,7 @@ function updateVitals(dt: number, moved: number): void {
       inLiquid: player.inLiquid,
       inLava: player.inLava,
       touchingSpikes: player.touchingSpikes,
+      onLadder: player.onLadder,
       headInWater: underwater,
       flying: player.flying,
       invulnerable: creative,
