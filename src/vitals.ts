@@ -144,6 +144,10 @@ export interface FoodValue {
   readonly hunger: number;
   readonly saturation: number;
   readonly poison: boolean;
+  /** 食べたときにその場で戻る体力（省略すると 0）。上限は `heal()` が持つ。 */
+  readonly heal?: number;
+  /** 満腹でも食べられるか（省略すると今までどおり満腹なら食べない）。 */
+  readonly alwaysEdible?: boolean;
 }
 
 /** 食べ進めた 1 フレームの結果。 */
@@ -320,6 +324,20 @@ export class Vitals {
     return !this.dead && this.hunger < MAX_HUNGER;
   }
 
+  /**
+   * **その食べ物を食べられるか。** 満腹でも食べられるもの（金のリンゴ）はここで通す。
+   *
+   * **`canEat` の getter は緩めないこと** —— あちらは「腹に余地があるか」の
+   * ままにしておかないと、**全部の食べ物が満腹でも食べられます。**
+   * **判断はこの 1 か所** —— `use.ts` にも `main.ts` にも `alwaysEdible` を読む行を
+   * 書かないこと（`UseFacts.canEat` は呼ぶ側が渡す事実です）。
+   */
+  canEatFood(food: FoodValue | null): boolean {
+    if (this.dead) return false;
+    if (food?.alwaysEdible) return true;
+    return this.canEat;
+  }
+
   /** 毒が回っているか（表示とテスト用）。 */
   get poisoned(): boolean {
     return this.poisonLeft > 0;
@@ -396,6 +414,9 @@ export class Vitals {
       this.poisonLeft = POISON_TICKS;
       this.poisonTick = 0;
     }
+    // **体力が戻る食べ物（金のリンゴ）はここで戻す。** 上限は `heal()` が
+    // `MAX_HEALTH` で頭打ちにするので、**ここに上限を書かないこと。**
+    if (food.heal) this.heal(food.heal);
   }
 
   /**

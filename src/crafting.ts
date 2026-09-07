@@ -31,6 +31,7 @@ import {
 } from "./blocks";
 import { isEmpty, type Slot } from "./inventory";
 import {
+  APPLE,
   ARROW,
   BLAZE_POWDER,
   BLAZE_ROD,
@@ -51,6 +52,7 @@ import {
   FEATHER,
   FLINT,
   FLINT_AND_STEEL,
+  GOLDEN_APPLE,
   GOLD_INGOT,
   IRON_AXE,
   IRON_HOE,
@@ -223,6 +225,18 @@ export const RECIPES: readonly Recipe[] = [
   // はしごは棒 7 本で 3 個（Minecraft と同じ形・同じ個数）。3x3 なので作業台が要る。
   // 形はかまど・チェストの輪と似ているが**真ん中の列が縦に通っている**ので別物。
   { name: "はしご", out: LADDER, count: 3, shape: ["S.S", "SSS", "S.S"], key: { S: STICK } },
+
+  // 金のリンゴは金インゴット 8 個でリンゴ 1 個を囲む（Minecraft と同じ形・同じ個数）。
+  // **3x3 なので作業台が要る。** 金ブロック（`["GGG","GGG","GGG"]`）と材料が重なるが
+  // **真ん中がリンゴ**なので形の重複にはならない（`test/crafting.test.ts` が見張り）。
+  // **食べたときに何が起きるかはここに書かない** —— `items.ts` の `FOODS` の 1 行。
+  {
+    name: "金のリンゴ",
+    out: GOLDEN_APPLE,
+    count: 1,
+    shape: ["GGG", "GAG", "GGG"],
+    key: { G: GOLD_INGOT, A: APPLE },
+  },
 
   // 鉱物をしまう／戻す 3 対（Minecraft と同じ 9 個 ↔ 1 個）。**倉庫の枠を 9 分の 1 に
   // するためだけ**の機能なので、**しまう 9 と戻す 9 を食い違わせないこと** ——

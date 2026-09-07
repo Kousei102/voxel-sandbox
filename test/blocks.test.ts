@@ -95,6 +95,7 @@ import {
   DIAMOND_HOE,
   EGG,
   FEATHER,
+  GOLDEN_APPLE,
   GOLD_INGOT,
   IRON_INGOT,
   LAVA_BUCKET,
@@ -206,8 +207,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚の 36 個（152 まで）",
-    sharedItems.length === 36 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴの 37 個（153 まで）",
+    sharedItems.length === 37 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -241,15 +242,18 @@ export function run(): void {
       // 4 度目**なので、`MAX_ITEM_ID` の突き合わせをここで一緒に見る。
       sharedItems[33] === PAPER && sharedItems[34] === BOOK &&
       sharedItems[35] === BOOKSHELF &&
-      MAX_ITEM_ID === BOOKSHELF,
+      // **153 は `items.ts` に手で足したアイテム**（金のリンゴ）。**ブロックは 1 つも
+      // 増えていない**ので、上限がアイテム側に戻った（本棚で 4 度目だったブロック側から）。
+      sharedItems[36] === GOLDEN_APPLE &&
+      MAX_ITEM_ID === GOLDEN_APPLE,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 103（紙 150・本 151・本棚 152 で 3 個減った）",
-    sharedFree === 103,
+    "111..255 の空きは 102（金のリンゴ 153 で 1 個減った）",
+    sharedFree === 102,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1120,8 +1124,102 @@ export function run(): void {
   ladders();
   apples();
   paperBookBookshelf();
+  goldenApples();
 
   world.dispose();
+}
+
+/**
+ * 金のリンゴ（アイテム 153）。**ブロックは 1 つも増えていません** ——
+ * 見るのはリンゴ（149）と同じ持ち物としての 3 点と色、それに
+ * **この表で唯一の 2 つ（`heal` と `alwaysEdible`）が付いているか**です。
+ *
+ * **食べたときに体力がどう動くかは `test/vitals.test.ts`**（あちらが `Vitals` を回します）。
+ * ここで見るのは**表の値そのもの**だけ。
+ */
+function goldenApples(): void {
+  describe("金のリンゴ");
+
+  const food = foodOf(GOLDEN_APPLE);
+  console.log(
+    `      金のリンゴ(${GOLDEN_APPLE}) 「${itemName(GOLDEN_APPLE)}」 置ける ${placedBlock(GOLDEN_APPLE) !== AIR}` +
+      ` / 道具 ${toolOf(GOLDEN_APPLE) !== null} / 1 枠 ${itemStackLimit(GOLDEN_APPLE)} 個` +
+      ` / 食べ物 空腹 +${food?.hunger} 満腹度 +${food?.saturation} 毒 ${food?.poison}` +
+      ` 回復 ${food?.heal} 満腹でも ${food?.alwaysEdible}`,
+  );
+  check(
+    "金のリンゴは置けず・道具でもない",
+    placedBlock(GOLDEN_APPLE) === AIR && toolOf(GOLDEN_APPLE) === null,
+    `block ${placedBlock(GOLDEN_APPLE)} / tool ${toolOf(GOLDEN_APPLE)}`,
+  );
+  // **器が戻る食べ物ではない**ので 1 枠 64 個（シチューの `stack: 1` と混ぜないこと）。
+  check(
+    "1 枠 64 個まで積める（器が戻る食べ物ではない）",
+    itemStackLimit(GOLDEN_APPLE) === 64 && emptyAfterEating(GOLDEN_APPLE) === NO_ITEM,
+    `${itemStackLimit(GOLDEN_APPLE)} 個 / 戻る器 ${emptyAfterEating(GOLDEN_APPLE)}`,
+  );
+  // 本家の値（4 / 9.6）。**満腹度は焼き豚 12.8 に届かない**ので、腹を満たす目的では
+  // 今までどおり焼き豚がいちばん強い（強さの並びは動いていない）。
+  check(
+    "食べると空腹 +4 / 満腹度 +9.6 で毒なし",
+    food !== null && food.hunger === 4 && food.saturation === 9.6 && !food.poison,
+    food === null ? "食べ物ではない" : `${food.hunger} / ${food.saturation} / 毒 ${food.poison}`,
+  );
+  // **この 2 つが付いているのは金のリンゴだけ** —— 他の 10 行に付くと、
+  // 満腹の門が消える（`alwaysEdible`）か、食べるだけで体力が戻る（`heal`）。
+  check(
+    "体力が 4 戻り、満腹でも食べられる",
+    food !== null && food.heal === 4 && food.alwaysEdible === true,
+    food === null ? "食べ物ではない" : `回復 ${food.heal} / 満腹でも ${food.alwaysEdible}`,
+  );
+  const special = allFoodIds().filter((id) => {
+    const f = foodOf(id);
+    return f !== null && (f.heal !== undefined || f.alwaysEdible !== undefined);
+  });
+  console.log(`      heal / alwaysEdible を持つ食べ物: ${special.map((id) => itemName(id)).join(" / ")}`);
+  check(
+    "heal と alwaysEdible を持つのは金のリンゴだけ（既存の 10 行は書き換えていない）",
+    special.length === 1 && special[0] === GOLDEN_APPLE,
+    special.map((id) => `${id} ${itemName(id)}`).join(" / ") || "0 個",
+  );
+  // **上限がアイテム側へ戻った**（本棚 152 → 金のリンゴ 153）。伸ばし忘れると
+  // クリエイティブの一覧にだけ出てこない（`rules/items-survival.md`）。
+  check(
+    "MAX_ITEM_ID が金のリンゴまで伸びている",
+    MAX_ITEM_ID === GOLDEN_APPLE && allItemIds().includes(GOLDEN_APPLE),
+    `MAX_ITEM_ID ${MAX_ITEM_ID} / 一覧に ${allItemIds().includes(GOLDEN_APPLE)}`,
+  );
+
+  // **一覧に並ぶ色は、既存のどれとも見分けが付くこと。** 金色は思ったより混んでいる
+  // （金インゴット 0xf2d15c・ブレイズパウダー 0xe8a33d・ブレイズロッド）ので、
+  // いちばん近い相手を出してから判定する。
+  const dist = (a: number, b: number): number =>
+    Math.hypot(((a >> 16) & 255) - ((b >> 16) & 255), ((a >> 8) & 255) - ((b >> 8) & 255), (a & 255) - (b & 255));
+  let best = Infinity;
+  let who = "";
+  for (const other of allItemIds()) {
+    if (other === GOLDEN_APPLE) continue;
+    const gap = dist(itemColor(GOLDEN_APPLE), itemColor(other));
+    if (gap < best) {
+      best = gap;
+      who = itemName(other);
+    }
+  }
+  console.log(
+    `      色のいちばん近い相手: 金のリンゴ 0x${itemColor(GOLDEN_APPLE).toString(16)} ↔ ${who} ${best.toFixed(1)}`,
+  );
+  check(
+    "金のリンゴは既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）",
+    best >= 20,
+    `いちばん近い ${who} と ${best.toFixed(1)}`,
+  );
+  // **ブロックは 1 つも増えていない** —— `blocks.ts` に `def()` を足すと立方体が増え、
+  // 153 番のブロックができる（`blockDef()` は知らない番号で AIR を返す）。
+  check(
+    "153 番のブロックは無い（ブロックを 1 つも増やしていない）",
+    !BLOCKS.some((b) => b.id === GOLDEN_APPLE) && blockDef(GOLDEN_APPLE).id === AIR,
+    `blockDef(${GOLDEN_APPLE}) = ${blockDef(GOLDEN_APPLE).name}`,
+  );
 }
 
 /**
@@ -1158,10 +1256,10 @@ function paperBookBookshelf(): void {
     trio.every(([, id]) => toolOf(id) === null),
     trio.map(([name, id]) => `${name} ${toolOf(id) === null ? "-" : String(toolOf(id)?.kind)}`).join(" / "),
   );
-  // **食べ物でもない** —— 種類が 10 のままであることも一緒に見る（`FOODS` に足すと増える）。
+  // **食べ物でもない** —— 種類が 11 のままであることも一緒に見る（`FOODS` に足すと増える）。
   check(
-    "3 つとも食べ物ではなく、食べられるものは 10 種のまま",
-    trio.every(([, id]) => foodOf(id) === null) && allFoodIds().length === 10,
+    "3 つとも食べ物ではなく、食べられるものは 11 種のまま",
+    trio.every(([, id]) => foodOf(id) === null) && allFoodIds().length === 11,
     `${trio.map(([name, id]) => `${name} ${foodOf(id) === null ? "-" : "食べ物"}`).join(" / ")} / ${allFoodIds().length} 種`,
   );
   check(
@@ -1358,8 +1456,8 @@ function apples(): void {
   // **食べ物の数も見張ること** —— `FOODS` に 1 行足したことが数で出る唯一の足場。
   console.log(`      食べられるもの ${allFoodIds().length} 種`);
   check(
-    "食べられるものが 9 種から 10 種になった",
-    allFoodIds().length === 10,
+    "食べられるものが 10 種から 11 種になった",
+    allFoodIds().length === 11,
     `${allFoodIds().length} 種`,
   );
 

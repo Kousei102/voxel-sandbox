@@ -44,6 +44,13 @@ paths:
   （2026-09-05・ミルクバケツの周）。ブロック側のアイテムは
   `for (const block of BLOCKS)` が作るので、**あの import は `MAX_ITEM_ID` の 1 か所
   でしか使われていません** —— 移したら import も一緒に消すこと（型で止まるので安全な罠です）。
+- **`MAX_ITEM_ID` を新しい番号へ移すと、突き合わせているテストが `tsc` で落ちます**
+  （TS2367。2026-09-07・金のリンゴ）。`test/blocks.test.ts` は共有帯の一覧と一緒に
+  **`MAX_ITEM_ID === BOOKSHELF` のような形で上限を突き合わせている**ので、上限を
+  `GOLDEN_APPLE` に移すと **「'153' と '152' は重ならない」**で `npm run typecheck` が
+  落ちます（ID が数値リテラル型なので。`rules/testing.md` の `=== A && !== B` と同じ罠）。
+  **判定をゆるめて直さないこと** —— 直すのは**比べる相手のほうを新しい番号にする**ことで、
+  **型で止まるので安全な罠**です（伸ばし忘れのほうは型では止まりません）。
 - **何が落ちるかを決めるのは `items.ts`。** 山を全部（0〜2 山）返すのが
   **`rollDrops(blockId, roll, extraRoll): readonly DropStack[]`** で、**呼ぶのは
   `breaking.ts` の 1 か所**（掘って壊す `tryBreak()` と、支えを失って壊れる

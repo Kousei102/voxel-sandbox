@@ -25,6 +25,7 @@ import {
 import { RECIPES, consumeGrid, findRecipe } from "../src/crafting";
 import { isEmpty, type Slot } from "../src/inventory";
 import {
+  APPLE,
   ARROW,
   BLAZE_POWDER,
   BLAZE_ROD,
@@ -44,6 +45,7 @@ import {
   FEATHER,
   FLINT,
   FLINT_AND_STEEL,
+  GOLDEN_APPLE,
   GOLD_INGOT,
   IRON_HOE,
   IRON_SWORD,
@@ -613,6 +615,33 @@ export function run(): void {
     "本棚を材料に戻すレシピは無い（雪玉 4 個の対とは別の話）",
     backToPlanks === null,
     backToPlanks?.name ?? "無し",
+  );
+
+  describe("金のリンゴ");
+
+  // **金インゴット 8 個でリンゴ 1 個を囲む**（本家と同じ形・同じ個数）。3x3 なので
+  // 作業台が要る。**金ブロック（`GGG/GGG/GGG`）と材料が重なる**ので、真ん中を
+  // リンゴにしたときだけ金のリンゴになることを、両方の結果を出してから見る。
+  const GK = { G: GOLD_INGOT, A: APPLE };
+  const goldenRows = ["GGG", "GAG", "GGG"];
+  const golden = findRecipe(grid(3, goldenRows, GK), 3);
+  const goldenIn2 = findRecipe(grid(2, ["GG", "GA"], GK), 2);
+  const allGold = findRecipe(grid(3, ["GGG", "GGG", "GGG"], GK), 3);
+  console.log(
+    `      金インゴット 8 + リンゴ 1（${goldenRows.join(" / ")}）→ ${golden?.name ?? "無し"} x${golden?.count ?? 0}` +
+      `（2x2: ${goldenIn2?.name ?? "無し"} / 真ん中も金: ${allGold?.name ?? "無し"}）`,
+  );
+  check(
+    "金インゴット 8 + リンゴ 1 → 金のリンゴ 1 個",
+    golden?.out === GOLDEN_APPLE && golden.count === 1,
+    `${golden?.name ?? "無し"} x${golden?.count ?? 0}`,
+  );
+  check("2x2 では金のリンゴは作れない（3x3 なので作業台が要る）", goldenIn2 === null, goldenIn2?.name ?? "無し");
+  // **真ん中まで金だと今までどおり金ブロック** —— レシピの形が食い違っていないこと。
+  check(
+    "真ん中も金インゴットなら今までどおり金ブロック",
+    allGold?.out === GOLD_BLOCK,
+    allGold?.name ?? "無し",
   );
 
   describe("クラフト");

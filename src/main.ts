@@ -821,7 +821,7 @@ function useOrPlace(m: { mob: Mob } | null): void {
   // 「刈れるか」「搾れるか」は `mobs.ts`、「手前か」は `controls.ts`。込みにするのは呼ぶ側の仕事。
   const shearable = m !== null && mobs.canShear(m.mob);
   const milkable = m !== null && mobs.canMilk(m.mob);
-  const act = decideUse(hit, { held, creative, canEat: vitals.canEat, hasArrow, shearable, milkable });
+  const act = decideUse(hit, { held, creative, canEat: vitals.canEatFood(foodOf(held)), hasArrow, shearable, milkable });
   switch (act.kind) {
     case "flash": hud.flash(act.message); return;
     case "shear": if (m) shearMob(m.mob); return;
@@ -1325,7 +1325,7 @@ function updateVitals(dt: number, moved: number): void {
 function updateEating(dt: number): void {
   const held = inventory.selectedItem;
   const food = foodOf(held);
-  const step = eating.advance(dt, { playing, held, canEat: vitals.canEat, isFood: food !== null });
+  const step = eating.advance(dt, { playing, held, canEat: vitals.canEatFood(food), isFood: food !== null });
   if (step === "chew") audio.play("eat");
   if (step !== "done" || !food) return;
 

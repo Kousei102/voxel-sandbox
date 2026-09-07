@@ -50,7 +50,11 @@ export interface UseFacts {
   /** 手に持っているアイテム。 */
   readonly held: number;
   readonly creative: boolean;
-  /** 食べられるか（`vitals.ts` が決める）。 */
+  /**
+   * **手に持っているものを食べられるか**（`vitals.ts` の `canEatFood()` が決める）。
+   * 満腹かどうかだけではありません —— **満腹でも食べられるもの（金のリンゴ）**が
+   * あるので、**ここで `alwaysEdible` を読まないこと**（判断が 2 か所に散ります）。
+   */
   readonly canEat: boolean;
   /** **放てる矢があるか。** クリエイティブぶんは呼ぶ側で込みにする（`bow.ts` と同じ約束）。 */
   readonly hasArrow: boolean;
@@ -175,7 +179,8 @@ export function decideUse(aim: PlaceAim | null, facts: UseFacts): UseAction {
   }
 
   // 食べ物。**何がどれだけ戻るかは `items.ts`、食べられるかは `vitals.ts`**。
-  // ここは「押しっぱなしが始まった」ことだけを言う。
+  // ここは「押しっぱなしが始まった」ことだけを言う。**満腹でも食べられるもの
+  // （金のリンゴ）も、この `facts.canEat` に込みで来る**ので分岐は増えない。
   if (foodOf(held)) {
     if (creative) return NOTHING;
     if (!facts.canEat) return { kind: "flash", message: "お腹は空いていません" };

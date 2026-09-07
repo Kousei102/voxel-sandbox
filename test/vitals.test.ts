@@ -39,6 +39,7 @@ import {
   BREAD,
   COOKED_CHICKEN,
   COOKED_PORK,
+  GOLDEN_APPLE,
   MUSHROOM_STEW,
   RAW_CHICKEN,
   ROTTEN_FLESH,
@@ -825,6 +826,82 @@ export function run(): void {
       !empty && healthy.hunger === 10 && healthy.saturation === 3 && healthy.health === MAX_HEALTH,
       `${empty} / 空腹 ${healthy.hunger} / 満腹度 ${healthy.saturation} / hp ${healthy.health}`,
     );
+  }
+
+  // --- 金のリンゴ（**体力が戻る唯一の食べ物**・**満腹でも食べられる唯一の食べ物**） ---
+  {
+    const golden = foodOf(GOLDEN_APPLE);
+    if (!golden) throw new Error("金のリンゴが食べ物の表に無い");
+    // まず体力が戻ること。**上限は `heal()` が持つ**ので、`eat()` に上限は書かない。
+    const hurt = new Vitals();
+    hurt.hunger = 10;
+    hurt.saturation = 0;
+    hurt.damage(MAX_HEALTH - 10, "モンスター");
+    const before = hurt.health;
+    hurt.eat(golden);
+    console.log(
+      `      金のリンゴを食べる前: hp ${before} 空腹 10 → 食べた後: hp ${hurt.health}` +
+        ` 空腹 ${hurt.hunger} 満腹度 ${hurt.saturation}（表は 空腹 +${golden.hunger}` +
+        ` / 満腹度 +${golden.saturation} / 回復 ${golden.heal} / 満腹でも ${golden.alwaysEdible}）`,
+    );
+    check("金のリンゴを食べると体力が 10 → 14", before === 10 && hurt.health === 14, `hp ${before} → ${hurt.health}`);
+    check("空腹も今までどおり戻る（4 / 9.6）", hurt.hunger === 14 && hurt.saturation === 9.6, `空腹 ${hurt.hunger} / 満腹度 ${hurt.saturation}`);
+
+    // **上限を超えない** —— 18 から食べても 20 で止まる（`heal()` が頭打ちにする）。
+    const nearFull = new Vitals();
+    nearFull.hunger = 10;
+    nearFull.damage(2, "モンスター");
+    const beforeNear = nearFull.health;
+    nearFull.eat(golden);
+    console.log(`      hp 18 から食べる: ${beforeNear} → ${nearFull.health}（上限 ${MAX_HEALTH}）`);
+    check(
+      "18 から食べても 20 で止まる",
+      beforeNear === 18 && nearFull.health === MAX_HEALTH,
+      `hp ${beforeNear} → ${nearFull.health}`,
+    );
+
+    // **`heal` の無い食べ物では体力が 1 も動かない** —— 既存の 10 行を書き換えていない証拠。
+    const plain = new Vitals();
+    plain.hunger = 10;
+    plain.damage(MAX_HEALTH - 10, "モンスター");
+    const beforePlain = plain.health;
+    plain.eat(cooked);
+    console.log(`      焼き豚（heal なし）: hp ${beforePlain} → ${plain.health}`);
+    check(
+      "焼き豚では体力が 1 も動かない",
+      beforePlain === 10 && plain.health === 10 && cooked.heal === undefined,
+      `hp ${beforePlain} → ${plain.health} / heal ${cooked.heal}`,
+    );
+
+    // --- `canEatFood()` の 4 通り（**満腹の門は `canEat` のまま**） ---
+    const stuffedBelly = new Vitals();
+    const dying3 = new Vitals();
+    dying3.damage(MAX_HEALTH, "モンスター");
+    console.log(
+      `      canEatFood: 満腹 + 焼き豚 ${stuffedBelly.canEatFood(cooked)} / 満腹 + 金のリンゴ ` +
+        `${stuffedBelly.canEatFood(golden)} / 満腹 + null ${stuffedBelly.canEatFood(null)}` +
+        `（canEat ${stuffedBelly.canEat}） / 死んでいる ${dying3.canEatFood(golden)}`,
+    );
+    check(
+      "満腹では普通の食べ物は食べられない（門は今までどおり）",
+      stuffedBelly.hunger === MAX_HUNGER && !stuffedBelly.canEatFood(cooked),
+      `空腹 ${stuffedBelly.hunger} / ${stuffedBelly.canEatFood(cooked)}`,
+    );
+    check("満腹でも金のリンゴは食べられる", stuffedBelly.canEatFood(golden));
+    check(
+      "null を渡すと canEat と同じ（食べ物でないものは今までどおり）",
+      stuffedBelly.canEatFood(null) === stuffedBelly.canEat,
+      `${stuffedBelly.canEatFood(null)} / canEat ${stuffedBelly.canEat}`,
+    );
+    check(
+      "死んでいたらどちらも食べられない",
+      dying3.dead && !dying3.canEatFood(golden) && !dying3.canEatFood(cooked),
+      `死 ${dying3.dead} / 金 ${dying3.canEatFood(golden)} / 焼き豚 ${dying3.canEatFood(cooked)}`,
+    );
+    // 腹が減っていれば普通の食べ物も今までどおり通る（門を閉め過ぎていないこと）。
+    const hungry2 = new Vitals();
+    hungry2.hunger = MAX_HUNGER - 1;
+    check("腹が減っていれば普通の食べ物も通る", hungry2.canEatFood(cooked), `空腹 ${hungry2.hunger}`);
   }
 
   // --- 走れなくなる ---

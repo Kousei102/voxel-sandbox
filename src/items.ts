@@ -419,6 +419,21 @@ export const PAPER = 150;
 export const BOOK = 151;
 
 /**
+ * 金のリンゴ。**金インゴット 8 + リンゴ 1 の 3x3**（本家と同じ形。作業台が要る）。
+ *
+ * **置けず・道具でもありません**（`block:` は `AIR`）。**食べ物としては特別な 2 つ**を
+ * 持っていて、そこが `FOODS` の他の 10 行と違います（下の `FoodDef`）:
+ *
+ * - **`heal: 4`** —— 食べるとその場で体力が 4 戻る（本家の「再生 II が 5 秒」を
+ *   即時ぶんに均してあります。**持続する効果の器がこのプロジェクトに無い**ため。`TUNING.md`）
+ * - **`alwaysEdible: true`** —— **満腹でも食べられる**（本家と同じ。体力を戻すのが
+ *   目的なので、腹が満ちていると食べられないのでは使い道が消えます）
+ *
+ * **エンチャントの金のリンゴ（本家のもう 1 種）は持ち込んでいません。**
+ */
+export const GOLDEN_APPLE = 153;
+
+/**
  * 一覧を作るときに数え上げる上限（`allItemIds()`）。**アイテムの番号だけでなく、
  * ブロックが自動で作るアイテム（上の for）の番号も含みます。**
  *
@@ -427,13 +442,13 @@ export const BOOK = 151;
  * （`craftscreen.ts` の `CREATIVE_ITEMS`）にだけ出てこないブロック**ができます
  * （置けるし掘れるので、型でも `typecheck` でも止まりません）。
  *
- * **いまは本棚（ブロック 152）が上限です。** 直前はリンゴ（アイテム 149）で、
- * 150 = 紙・151 = 本もアイテム側です。
+ * **いまは金のリンゴ（アイテム 153）が上限です。** 直前は本棚（ブロック 152）で、
+ * その前がリンゴ（149）・紙（150）・本（151）。
  * **共有帯ではブロックとアイテムが 1 本の番号列**なので、上限を持つのがどちら側かは
  * 決まりません（`items.ts` に 1 行も書いていないブロックが上限だったのは 4 度目です）。
  * **本棚のアイテムは上の for が作るので、`item({...})` を手で足さないこと。**
  */
-export const MAX_ITEM_ID = BOOKSHELF;
+export const MAX_ITEM_ID = GOLDEN_APPLE;
 
 export const MAX_STACK = 64;
 
@@ -657,6 +672,13 @@ item({ id: APPLE, name: "リンゴ", block: AIR, stack: MAX_STACK, color: 0xe034
 item({ id: PAPER, name: "紙", block: AIR, stack: MAX_STACK, color: 0xd4e0ec, tool: null });
 item({ id: BOOK, name: "本", block: AIR, stack: MAX_STACK, color: 0x9c5064, tool: null });
 
+// 金のリンゴ。**`block: AIR` / `tool: null`**（置けず・道具でもない）。**食べ物なので
+// `FOODS` に 1 行あります**（そこだけが他と違って `heal` と `alwaysEdible` を持ちます）。
+// **色は金寄りの橙** —— 金インゴット 0xf2d15c そのものだと隔たり 0 で使えず、
+// 金色は思ったより混んでいる（ブレイズパウダー 0xe8a33d・ブレイズロッド）ので、
+// いちばん近い相手からの隔たりを `test/blocks.test.ts` が測っている（実測 56.4）。
+item({ id: GOLDEN_APPLE, name: "金のリンゴ", block: AIR, stack: MAX_STACK, color: 0xf0a800, tool: null });
+
 const EMPTY: ItemDef = ITEMS[NO_ITEM];
 
 export function itemDef(id: number): ItemDef {
@@ -700,6 +722,16 @@ export interface FoodDef {
   readonly saturation: number;
   /** 食べると毒。 */
   readonly poison: boolean;
+  /**
+   * 食べたときにその場で戻る体力（省略すると 0）。**上限は書かないこと** ——
+   * 頭打ちにするのは `Vitals.heal()` の側です。いまは金のリンゴの 1 行だけ。
+   */
+  readonly heal?: number;
+  /**
+   * 満腹でも食べられるか（省略すると「満腹なら食べない」の今までどおり）。
+   * **体力を戻すためのものだけに付けること** —— 全部に付けると空腹の門が消えます。
+   */
+  readonly alwaysEdible?: boolean;
 }
 
 /**
@@ -736,6 +768,12 @@ const FOODS = new Map<number, FoodDef>([
   // 「畑を作るより弱いが、木を切っていればたまに手に入る」立場。
   // **かまどでは焼けません**（`SMELTING` に行がない。本家の焼きリンゴも別件）。
   [APPLE, { hunger: 4, saturation: 2.4, poison: false }],
+  // 金のリンゴ。**空腹と満腹度は本家の値（4 / 9.6）**で、**この表で `heal` と
+  // `alwaysEdible` を持つ唯一の行**です。回復はその場で 4 だけ（本家の「再生 II が
+  // 5 秒」は、持続する効果の器が無いので即時ぶんに均してあります。`TUNING.md`）。
+  // **満腹度 9.6 は焼き豚 12.8 に届かない**ので、腹を満たす目的では今までどおり
+  // 焼き豚がいちばん強いままです（強さの並びは動いていません）。
+  [GOLDEN_APPLE, { hunger: 4, saturation: 9.6, poison: false, heal: 4, alwaysEdible: true }],
 ]);
 
 /**
