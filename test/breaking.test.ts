@@ -7,6 +7,7 @@ import {
   FURNACE,
   FURNACE_LIT,
   GRAVEL,
+  LEAVES,
   STONE,
   TORCH,
   WHEAT_CROP,
@@ -14,7 +15,7 @@ import {
   bedPartner,
 } from "../src/blocks";
 import { autoBreak, tryBreak, type BreakContainers } from "../src/breaking";
-import { FLINT, NO_ITEM, WHEAT, WHEAT_SEEDS, WOOD_PICKAXE, itemName } from "../src/items";
+import { APPLE, FLINT, NO_ITEM, STICK, WHEAT, WHEAT_SEEDS, WOOD_PICKAXE, itemName } from "../src/items";
 import { Slab, sourceOf } from "./arena";
 import { check, describe } from "./harness";
 
@@ -43,9 +44,25 @@ function containers(
   return { furnaces: container(furnaceHeld), chests: container(chestHeld) };
 }
 
-/** 掘る注文（並はサバイバル・木のツルハシ・抽選は真ん中）。 */
+/**
+ * 掘る注文（並はサバイバル・木のツルハシ・抽選は真ん中）。
+ *
+ * **2 山目の抽選（`extraRoll`）の既定は 0.9 = 外れ**にしてある —— 葉のリンゴ（0.5%）が
+ * 混ざると、既存の「1 山」の判定が壊れる周とそうでない周が乱数次第になる。
+ * **`extra.chance` を持たない 2 山目（実った小麦の種）は 0.9 でも必ず落ちます。**
+ */
 function order(id: number, over: Partial<Parameters<typeof tryBreak>[2]> = {}) {
-  return { x: 0, y: 11, z: 0, id, tool: WOOD_PICKAXE, creative: false, roll: 0.5, ...over };
+  return {
+    x: 0,
+    y: 11,
+    z: 0,
+    id,
+    tool: WOOD_PICKAXE,
+    creative: false,
+    roll: 0.5,
+    extraRoll: 0.9,
+    ...over,
+  };
 }
 
 export function run(): void {
@@ -189,10 +206,10 @@ export function run(): void {
   {
     const world = new Slab();
     // **道具を見ない。** 松明は支えが消えて落ちたので、適正も何もない。
-    const dropped = autoBreak(world, 2, 12, 3, TORCH, false, 0.5);
+    const dropped = autoBreak(world, 2, 12, 3, TORCH, false, 0.5, 0.9);
     check("支えを失った松明は落ちる", dropped.length === 1 && dropped[0].item === TORCH, describeDrops(dropped));
     check("落とす場所はそのマスの中心", dropped[0].x === 2.5 && dropped[0].z === 3.5);
-    check("クリエイティブでは落ちない", autoBreak(world, 2, 12, 3, TORCH, true, 0.5).length === 0);
+    check("クリエイティブでは落ちない", autoBreak(world, 2, 12, 3, TORCH, true, 0.5, 0.9).length === 0);
   }
   {
     // **ベッドの相方はクリエイティブでも消す**（床を掘られた半分だけが消えると、
@@ -200,7 +217,7 @@ export function run(): void {
     const partner = bedPartner(BED);
     const world = new Slab();
     if (partner) world.setVoxel(partner.dx, 11, partner.dz, partner.id);
-    autoBreak(world, 0, 11, 0, BED, true, 0.5);
+    autoBreak(world, 0, 11, 0, BED, true, 0.5, 0.9);
     check(
       "支えを失ったベッドも相方を連れていく（クリエイティブでも）",
       partner !== null && world.getVoxel(partner.dx, 11, partner.dz) === AIR,
@@ -222,13 +239,13 @@ export function run(): void {
     // **耕地を掘ると苗も一緒に壊れて種になる**（`supportFace: FACE_YN` の経路）。
     // ここが `autoBreak()` を通らないと、**苗だけが宙に浮いたまま残る。**
     const world = new Slab();
-    const dropped = autoBreak(world, 0, 11, 0, WHEAT_CROP, false, 0.5);
+    const dropped = autoBreak(world, 0, 11, 0, WHEAT_CROP, false, 0.5, 0.9);
     check(
       "支えを失った苗も種になって落ちる",
       dropped.length === 1 && dropped[0].item === WHEAT_SEEDS,
       describeDrops(dropped),
     );
-    check("クリエイティブでは落ちない", autoBreak(world, 0, 11, 0, WHEAT_CROP, true, 0.5).length === 0);
+    check("クリエイティブでは落ちない", autoBreak(world, 0, 11, 0, WHEAT_CROP, true, 0.5, 0.9).length === 0);
   }
 
   // --- 実った小麦（**1 回の採掘で 2 山**。`variantOf` は苗なので `DROPS` の 1 行が根拠） ---
@@ -261,7 +278,7 @@ export function run(): void {
     // **耕地を掘ると実った小麦も一緒に壊れて 2 山になる**（`autoBreak()` の経路）。
     // 掘る経路だけ直すと、床を抜いたときだけ種が落ちない、という形で静かにずれる。
     const world = new Slab();
-    const dropped = autoBreak(world, 0, 11, 0, WHEAT_CROP_RIPE, false, 0.5);
+    const dropped = autoBreak(world, 0, 11, 0, WHEAT_CROP_RIPE, false, 0.5, 0.9);
     check(
       "耕地を掘っても小麦と種の 2 山（掘った経路と同じ）",
       dropped.length === 2 && dropped[0].item === WHEAT && dropped[1].item === WHEAT_SEEDS,
@@ -269,7 +286,7 @@ export function run(): void {
     );
     check(
       "クリエイティブでは落ちない",
-      autoBreak(world, 0, 11, 0, WHEAT_CROP_RIPE, true, 0.5).length === 0,
+      autoBreak(world, 0, 11, 0, WHEAT_CROP_RIPE, true, 0.5, 0.9).length === 0,
     );
   }
 
@@ -278,11 +295,50 @@ export function run(): void {
     const world = new Slab();
     world.setVoxel(0, 11, 0, GRAVEL);
     const mined = tryBreak(world, containers(), order(GRAVEL, { tool: NO_ITEM, roll: 0.05 })).drops;
-    const fell = autoBreak(world, 0, 11, 0, GRAVEL, false, 0.05);
+    const fell = autoBreak(world, 0, 11, 0, GRAVEL, false, 0.05, 0.9);
     check(
       "掘った経路と支えを失った経路で落ちるものが同じ",
       mined[0]?.item === fell[0]?.item && mined[0]?.count === fell[0]?.count,
       `${describeDrops(mined)} / ${describeDrops(fell)}`,
+    );
+  }
+
+  // --- 2 山目の抽選（`extraRoll`）を素通しするか -----------------------------
+  // **葉のリンゴがここを通る。** `roll` だけを渡していると（`extraRoll` を
+  // 使い回す・落とす）、**リンゴが永久に出ないのに他の判定は全部緑**になる。
+  {
+    const world = new Slab();
+    world.setVoxel(0, 11, 0, LEAVES);
+    // **棒は外し、リンゴだけ当てる目**（1 山目の当たり外れと無関係なことも一緒に見る）。
+    const out = tryBreak(world, containers(), order(LEAVES, { tool: NO_ITEM, roll: 0.5, extraRoll: 0.001 }));
+    console.log(`      葉を掘って出た山（棒外し・リンゴ当たり）: ${describeDrops(out.drops)}`);
+    check(
+      "掘る経路が extraRoll を素通しする（葉からリンゴが 1 個）",
+      out.drops.length === 1 && out.drops[0]?.item === APPLE && out.drops[0]?.count === 1,
+      describeDrops(out.drops),
+    );
+    check("リンゴも同じマスの中心から出る", out.drops[0]?.x === 0.5 && out.drops[0]?.z === 0.5);
+  }
+  {
+    const world = new Slab();
+    world.setVoxel(0, 11, 0, LEAVES);
+    const out = tryBreak(world, containers(), order(LEAVES, { tool: NO_ITEM, roll: 0.5, extraRoll: 0.001, creative: true }));
+    check("クリエイティブではリンゴも落ちない", out.drops.length === 0, describeDrops(out.drops));
+  }
+  {
+    // **支えを失って落ちた葉も同じ規則**（片方だけ直すと、木を切ったときと
+    // 幹を抜いたときでリンゴの出方が食い違う）。
+    const world = new Slab();
+    const dropped = autoBreak(world, 0, 11, 0, LEAVES, false, 0.05, 0.001);
+    check(
+      "支えを失った葉も棒 + リンゴの 2 山（掘った経路と同じ）",
+      dropped.length === 2 && dropped[0].item === STICK && dropped[1].item === APPLE,
+      describeDrops(dropped),
+    );
+    check(
+      "支えを失った葉もリンゴを外せば棒だけ",
+      autoBreak(world, 0, 11, 0, LEAVES, false, 0.05, 0.9).length === 1,
+      describeDrops(autoBreak(world, 0, 11, 0, LEAVES, false, 0.05, 0.9)),
     );
   }
 

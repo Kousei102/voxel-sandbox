@@ -161,7 +161,7 @@ export function run(): void {
       const world = new Slab();
       world.setVoxel(0, 11, 0, id);
       return tryBreak(world, { furnaces: empty, chests: empty }, {
-        x: 0, y: 11, z: 0, id, tool, creative, roll: 0.5,
+        x: 0, y: 11, z: 0, id, tool, creative, roll: 0.5, extraRoll: 0.9,
       }).wear;
     };
     console.log(

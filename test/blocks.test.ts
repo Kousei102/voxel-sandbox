@@ -25,6 +25,7 @@ import {
   LADDER_XN,
   LADDER_ZN,
   LADDER_ZP,
+  LEAVES,
   LAVA,
   LOW_BAND_MAX,
   MAX_BLOCK_ID,
@@ -36,6 +37,7 @@ import {
   SANDSTONE_SLAB,
   SHARED_ID_START,
   SNOW,
+  SPRUCE_LEAVES,
   STONE,
   STONE_SLAB,
   STONE_SLAB_TOP,
@@ -79,6 +81,7 @@ import {
 import { MAX_LIGHT } from "../src/constants";
 import { PLAYER_SIZE } from "../src/physics";
 import {
+  APPLE,
   ARROW,
   BOW,
   BOWL,
@@ -109,6 +112,7 @@ import {
   WHEAT,
   WHEAT_SEEDS,
   WOOD_HOE,
+  allFoodIds,
   allItemIds,
   bucketOf,
   bucketUse,
@@ -198,8 +202,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしごの 32 個（145 まで）",
-    sharedItems.length === 32 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴの 33 個（149 まで）",
+    sharedItems.length === 33 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -224,15 +228,18 @@ export function run(): void {
       // アイテムを持ちません** —— だからブロックが 4 個増えてもアイテムは 1 個だけ。
       // **上限を伸ばすのは手作業**なので、そこは別に突き合わせる。
       sharedItems[31] === LADDER &&
-      MAX_ITEM_ID === LADDER,
+      // **149 は `items.ts` に手で足したアイテム**（リンゴ）。**146..148 は飛ばしたまま**
+      // （はしごの向き違いが取っている番号で、振り直せないので詰めません）。
+      sharedItems[32] === APPLE &&
+      MAX_ITEM_ID === APPLE,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 107（はしご 4 向きで 111 から減った）",
-    sharedFree === 107,
+    "111..255 の空きは 106（リンゴ 149 で 1 個減った）",
+    sharedFree === 106,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1003,8 +1010,8 @@ export function run(): void {
   // 戻すレシピが「増やす仕掛け」になる（掘るたびに 4 個 + 1 ブロック）。
   check(
     "雪を掘っても雪ブロックは落ちない（戻すのはクラフト）",
-    rollDrop(SNOW, 0.5).item !== SNOW && rollDrops(SNOW, 0.5).length === 1,
-    `${rollDrops(SNOW, 0.5).map((s) => `${itemName(s.item)} x${s.count}`).join(" + ")}`,
+    rollDrop(SNOW, 0.5).item !== SNOW && rollDrops(SNOW, 0.5, 0.9).length === 1,
+    `${rollDrops(SNOW, 0.5, 0.9).map((s) => `${itemName(s.item)} x${s.count}`).join(" + ")}`,
   );
   // 雪玉は置けず・道具でもなく・食べ物でもない（羽根・革・糸と同じ扱い）。
   console.log(
@@ -1101,8 +1108,126 @@ export function run(): void {
   bowlAndStew();
   sugarCane(world, ground);
   ladders();
+  apples();
 
   world.dispose();
+}
+
+/**
+ * リンゴ（アイテム 149）。**ブロックは 1 つも増えていません** ——
+ * オークの葉の 2 山目として落ちるだけです。
+ *
+ * **ここで守りたいのは「棒とリンゴが別々に当たる」の 1 点**です。乱数が 1 本に
+ * 戻ると（`extraRoll` を落とす・`roll` を使い回す）、棒が出た葉からだけリンゴが出る
+ * 形になり、**下の 4 通りの表が `1,2,0,1` でなくなります。**
+ */
+function apples(): void {
+  describe("リンゴ");
+
+  // --- 何が落ちるか（値を出してから判定する） ---
+  const cases: [string, number, number, number][] = [
+    ["オークの葉・棒当たり + リンゴ当たり", LEAVES, 0.05, 0.001],
+    ["オークの葉・棒外し + リンゴ当たり", LEAVES, 0.5, 0.001],
+    ["オークの葉・棒当たり + リンゴ外し", LEAVES, 0.05, 0.9],
+    ["オークの葉・両方外し", LEAVES, 0.5, 0.9],
+    ["針葉樹の葉・棒当たり + リンゴ当たりの目", SPRUCE_LEAVES, 0.05, 0.001],
+  ];
+  for (const [label, id, roll, extraRoll] of cases) {
+    const stacks = rollDrops(id, roll, extraRoll);
+    console.log(
+      `      ${label}: ${stacks.map((s) => `${itemName(s.item)} x${s.count}`).join(" + ") || "なし"}`,
+    );
+  }
+
+  const both = rollDrops(LEAVES, 0.05, 0.001);
+  check(
+    "棒もリンゴも当たると 2 山（棒 1 + リンゴ 1）",
+    both.length === 2 && both[0]?.item === STICK && both[0]?.count === 1 &&
+      both[1]?.item === APPLE && both[1]?.count === 1,
+    both.map((s) => `${itemName(s.item)} x${s.count}`).join(" + "),
+  );
+  // **1 山目を外してもリンゴは出る** —— これが「相関していない」の一番強い証拠。
+  const appleOnly = rollDrops(LEAVES, 0.5, 0.001);
+  check(
+    "棒を外してもリンゴは落ちる（1 山目の当たり外れと無関係）",
+    appleOnly.length === 1 && appleOnly[0]?.item === APPLE,
+    appleOnly.map((s) => `${itemName(s.item)} x${s.count}`).join(" + ") || "なし",
+  );
+  const stickOnly = rollDrops(LEAVES, 0.05, 0.9);
+  check(
+    "リンゴを外すと棒だけ（葉の 10% は今までどおり）",
+    stickOnly.length === 1 && stickOnly[0]?.item === STICK,
+    stickOnly.map((s) => `${itemName(s.item)} x${s.count}`).join(" + ") || "なし",
+  );
+  const spruce = rollDrops(SPRUCE_LEAVES, 0.05, 0.001);
+  check(
+    "針葉樹の葉からはリンゴが出ない（本家はオークとダークオークだけ）",
+    spruce.length === 1 && spruce[0]?.item === STICK,
+    spruce.map((s) => `${itemName(s.item)} x${s.count}`).join(" + ") || "なし",
+  );
+
+  // --- **2 本の乱数が独立している**（1 本では作れない表） ---
+  // 乱数を 1 本に戻すと、棒を外した目（0.5）ではリンゴも必ず外れるので
+  // **3 つ目が 0 山、4 つ目も 0 山**になり、この表は `1,2,0,0` に潰れます。
+  const table = [
+    rollDrops(LEAVES, 0.05, 0.9).length,
+    rollDrops(LEAVES, 0.05, 0.001).length,
+    rollDrops(LEAVES, 0.5, 0.9).length,
+    rollDrops(LEAVES, 0.5, 0.001).length,
+  ];
+  console.log(`      4 通りの山の数（棒当/棒外 × リンゴ外/当）: ${table.join(",")}`);
+  check(
+    "2 本の乱数は独立している（4 通りの山の数が 1,2,0,1）",
+    table.join(",") === "1,2,0,1",
+    table.join(","),
+  );
+
+  // --- アイテムとしての形（革・羽根・糸と同じ 3 点 + 食べ物） ---
+  const food = foodOf(APPLE);
+  console.log(
+    `      リンゴ(${APPLE}) 「${itemName(APPLE)}」 置ける ${placedBlock(APPLE) !== AIR}` +
+      ` / 道具 ${toolOf(APPLE) !== null} / 1 枠 ${itemStackLimit(APPLE)} 個` +
+      ` / 食べ物 空腹 +${food?.hunger} 満腹度 +${food?.saturation} 毒 ${food?.poison}`,
+  );
+  check(
+    "リンゴは置けず・道具でもない",
+    placedBlock(APPLE) === AIR && toolOf(APPLE) === null,
+    `block ${placedBlock(APPLE)} / tool ${toolOf(APPLE)}`,
+  );
+  // 本家の値（4 / 2.4）。**パン 5 / 6 には届かない**ので、畑を作る理由は消えていない。
+  check(
+    "食べると空腹 +4 / 満腹度 +2.4 で毒なし",
+    food !== null && food.hunger === 4 && food.saturation === 2.4 && !food.poison,
+    food === null ? "食べ物ではない" : `${food.hunger} / ${food.saturation} / 毒 ${food.poison}`,
+  );
+  // **食べ物の数も見張ること** —— `FOODS` に 1 行足したことが数で出る唯一の足場。
+  console.log(`      食べられるもの ${allFoodIds().length} 種`);
+  check(
+    "食べられるものが 9 種から 10 種になった",
+    allFoodIds().length === 10,
+    `${allFoodIds().length} 種`,
+  );
+
+  // **一覧に並ぶ色は、既存のどれとも見分けが付くこと。** 赤が既に 2 つある
+  // （赤キノコ 0xc9403a・生牛肉 0xc8564f）ので、いちばん近い相手を出してから判定する。
+  const dist = (a: number, b: number): number =>
+    Math.hypot(((a >> 16) & 255) - ((b >> 16) & 255), ((a >> 8) & 255) - ((b >> 8) & 255), (a & 255) - (b & 255));
+  let best = Infinity;
+  let who = "";
+  for (const other of allItemIds()) {
+    if (other === APPLE) continue;
+    const gap = dist(itemColor(APPLE), itemColor(other));
+    if (gap < best) {
+      best = gap;
+      who = itemName(other);
+    }
+  }
+  console.log(`      色のいちばん近い相手: リンゴ 0x${itemColor(APPLE).toString(16)} ↔ ${who} ${best.toFixed(1)}`);
+  check(
+    "リンゴは既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）",
+    best >= 20,
+    `いちばん近い ${who} と ${best.toFixed(1)}`,
+  );
 }
 
 /**
@@ -1283,9 +1408,9 @@ function sugarCane(world: World, ground: number): void {
   );
   check(
     "サトウキビは掘ると自分が 1 個落ちる（DROPS に 1 行も要らない）",
-    dropped.item === SUGAR_CANE && dropped.count === 1 && rollDrops(SUGAR_CANE, 0.5).length === 1 &&
+    dropped.item === SUGAR_CANE && dropped.count === 1 && rollDrops(SUGAR_CANE, 0.5, 0.9).length === 1 &&
       itemName(SUGAR_CANE) === "サトウキビ" && placedBlock(SUGAR_CANE) === SUGAR_CANE,
-    `${itemName(dropped.item)} x${dropped.count}（山 ${rollDrops(SUGAR_CANE, 0.5).length} 個）`,
+    `${itemName(dropped.item)} x${dropped.count}（山 ${rollDrops(SUGAR_CANE, 0.5, 0.9).length} 個）`,
   );
 
   // **砂糖は置けず・道具でもなく・食べ物でもない**（革・羽根・糸と同じ 3 点）。
@@ -1530,8 +1655,8 @@ function mushrooms(): void {
     );
     check(
       `${name}は掘ると自分が 1 個落ちる（DROPS に 1 行も要らない）`,
-      dropped.item === block && dropped.count === 1 && rollDrops(block, 0.5).length === 1,
-      `${itemName(dropped.item)} x${dropped.count}（山 ${rollDrops(block, 0.5).length} 個）`,
+      dropped.item === block && dropped.count === 1 && rollDrops(block, 0.5, 0.9).length === 1,
+      `${itemName(dropped.item)} x${dropped.count}（山 ${rollDrops(block, 0.5, 0.9).length} 個）`,
     );
     // **`replaceable` が無いと、`stampTree()` の `isReplaceable()` が偽になって
     // 森の木の葉がキノコに弾かれ、葉に穴が空く**（草むらとまったく同じ理由）。
@@ -1690,7 +1815,7 @@ function ripeWheat(): void {
 
   // --- 種も戻る（2 山）。**これで畑が自転する** ---
   {
-    const stacks = rollDrops(WHEAT_CROP_RIPE, 0.5);
+    const stacks = rollDrops(WHEAT_CROP_RIPE, 0.5, 0.9);
     console.log(
       `      実った小麦の山（${stacks.length} 個）: ` +
         stacks.map((s) => `${itemName(s.item)}(${s.item}) x${s.count}`).join(" / "),
@@ -1707,11 +1832,23 @@ function ripeWheat(): void {
       `${itemName(stacks[1]?.item ?? NO_ITEM)} x${stacks[1]?.count}`,
     );
     // **苗は 1 山のまま。** 実る前に刈っても得しない（得すると、育つのを待つ理由が消える）。
-    const young = rollDrops(WHEAT_CROP, 0.5);
+    const young = rollDrops(WHEAT_CROP, 0.5, 0.9);
     check(
       "苗は 1 山のまま（実る前に刈っても得しない）",
       young.length === 1 && young[0].item === WHEAT_SEEDS && young[0].count === 1,
       young.map((s) => `${itemName(s.item)} x${s.count}`).join(" / "),
+    );
+    // **`chance` を持たない 2 山目は `extraRoll` を外し目にしても必ず落ちる**
+    // （葉のリンゴに確率を足した周に、種まで確率つきになっていないことの足場）。
+    const unlucky = rollDrops(WHEAT_CROP_RIPE, 0.5, 0.99);
+    console.log(
+      `      extraRoll 0.99 の実った小麦: ` +
+        unlucky.map((s) => `${itemName(s.item)} x${s.count}`).join(" / "),
+    );
+    check(
+      "実った小麦の種は extraRoll 0.99 でも落ちる（chance 省略 = 必ず）",
+      unlucky.length === 2 && unlucky[1]?.item === WHEAT_SEEDS && unlucky[1]?.count === 1,
+      unlucky.map((s) => `${itemName(s.item)} x${s.count}`).join(" / "),
     );
   }
 
@@ -1728,13 +1865,24 @@ function ripeWheat(): void {
         // 分かれていると拾う側で 2 枠を食う）。
         if (drop.extra.item === drop.item) sameItem.push(`${blockName(id)}(${id})`);
       }
-      // 当たりの目と外れの目の両方で見る（`chance` と `extra` の組み合わせ）。
+      // 当たりの目と外れの目を**2 本の乱数それぞれで**見る（`chance` と `extra.chance` の
+      // 組み合わせ。片方だけ振ると、2 山目の当たりが 1 度も試されない目が残る）。
       for (const roll of [0, 0.5, 0.999]) {
-        if (rollDrops(id, roll).length > 2) tooMany.push(`${blockName(id)}(${id})@${roll}`);
+        for (const extraRoll of [0, 0.5, 0.999]) {
+          if (rollDrops(id, roll, extraRoll).length > 2) {
+            tooMany.push(`${blockName(id)}(${id})@${roll},${extraRoll}`);
+          }
+        }
       }
     }
     console.log(`      extra を持つブロック: ${withExtra.join(" / ") || "なし"}`);
-    check("extra を持つのは実った小麦だけ", withExtra.length === 1, withExtra.join(" / "));
+    // **数えて直すこと、ゆるめないこと。** 葉（リンゴ 0.5%）が 2 つ目で、
+    // 針葉樹の葉は持たない（本家がオークとダークオークだけなので）。
+    check(
+      "extra を持つのは実った小麦と（オークの）葉の 2 つ",
+      withExtra.length === 2,
+      withExtra.join(" / "),
+    );
     check("extra は 1 山目と別のアイテム", sameItem.length === 0, sameItem.join(" / "));
     check("どのブロックでも山は 2 つまで", tooMany.length === 0, tooMany.join(" / "));
   }
@@ -1866,8 +2014,8 @@ function storedBlocks(): void {
     );
     check(
       `${name}は掘ると自分が 1 個落ちる（DROPS に 1 行も要らない）`,
-      dropped.item === block && dropped.count === 1 && rollDrops(block, 0.5).length === 1,
-      `${itemName(dropped.item)} x${dropped.count}（山 ${rollDrops(block, 0.5).length} 個）`,
+      dropped.item === block && dropped.count === 1 && rollDrops(block, 0.5, 0.9).length === 1,
+      `${itemName(dropped.item)} x${dropped.count}（山 ${rollDrops(block, 0.5, 0.9).length} 個）`,
     );
     check(
       `${name}はツルハシ専用で、階層は ${tier}`,

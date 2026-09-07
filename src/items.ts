@@ -9,7 +9,6 @@ import {
   GLASS,
   GRASS,
   GRAVEL,
-  LADDER,
   LEAVES,
   LOW_BAND_MAX,
   NETHER_PORTAL,
@@ -388,6 +387,20 @@ export const MUSHROOM_STEW = 142;
 export const SUGAR = 144;
 
 /**
+ * リンゴ。**オークの葉を壊すと 0.5% で 1 個**落ちます（下の `DROPS`。針葉樹の葉からは
+ * 落ちません —— 本家がオークとダークオークだけなので）。食べると**空腹 +4 / 満腹度 +2.4**
+ * （本家の値。パン 5 / 6 には届かない）。
+ *
+ * **置けず・道具でもありません**（`block:` は `AIR`）。**レシピもまだありません** ——
+ * 金のリンゴは別件です。
+ *
+ * **葉の棒（10%）とは別々に当たります。** 1 山目の抽選（`roll`）と 2 山目の抽選
+ * （`extraRoll`）が別の乱数なので、「棒が出た葉からだけリンゴが出る」形になりません
+ * （相関していたら `test/blocks.test.ts` の「4 通りの山の数」が落ちます）。
+ */
+export const APPLE = 149;
+
+/**
  * 一覧を作るときに数え上げる上限（`allItemIds()`）。**アイテムの番号だけでなく、
  * ブロックが自動で作るアイテム（上の for）の番号も含みます。**
  *
@@ -396,13 +409,13 @@ export const SUGAR = 144;
  * （`craftscreen.ts` の `CREATIVE_ITEMS`）にだけ出てこないブロック**ができます
  * （置けるし掘れるので、型でも `typecheck` でも止まりません）。
  *
- * **いまははしご（ブロック 145）が上限です** —— `items.ts` には 1 行も書いていない
- * ブロックで、`variantOf` を持たないので上の for がアイテムを作ります（146..148 は
- * `variantOf: LADDER` なので作られません）。直前は砂糖（アイテム 144）でした。
+ * **いまはリンゴ（アイテム 149）が上限です。** 直前ははしご（ブロック 145）で、
+ * 146..148 は `variantOf: LADDER` なのでアイテムを持たず、**空いたまま**です
+ * （番号は振り直せないので詰めません）。
  * **共有帯ではブロックとアイテムが 1 本の番号列**なので、上限を持つのがどちら側かは
- * 決まりません（`items.ts` に 1 行も書いていないブロックが上限だったのは 3 度目です）。
+ * 決まりません（`items.ts` に 1 行も書いていないブロックが上限だったのは 3 度あります）。
  */
-export const MAX_ITEM_ID = LADDER;
+export const MAX_ITEM_ID = APPLE;
 
 export const MAX_STACK = 64;
 
@@ -611,6 +624,12 @@ item({ id: MUSHROOM_STEW, name: "キノコシチュー", block: AIR, stack: 1, c
 // 変えるなら `test/blocks.test.ts` の隔たりを測ってから。
 item({ id: SUGAR, name: "砂糖", block: AIR, stack: MAX_STACK, color: 0xffffff, tool: null });
 
+// リンゴ。**`block: AIR` / `tool: null`**（置けず・道具でもない）。**食べ物なので
+// `FOODS` に 1 行あります**（砂糖との違いはそこだけ）。
+// **色は明るい赤** —— 赤いものが既に 2 つ（赤キノコ 0xc9403a・生牛肉 0xc8564f）あるので、
+// いちばん近い相手からの隔たりを `test/blocks.test.ts` が測っている（実測は赤キノコから 29.5）。
+item({ id: APPLE, name: "リンゴ", block: AIR, stack: MAX_STACK, color: 0xe0342c, tool: null });
+
 const EMPTY: ItemDef = ITEMS[NO_ITEM];
 
 export function itemDef(id: number): ItemDef {
@@ -686,6 +705,10 @@ const FOODS = new Map<number, FoodDef>([
   // 材料 3 つ（うちキノコ 2 種はまれ）で焼き鳥と同点なのが見合うかは `TUNING.md`。
   // **キノコそのものは食べ物ではありません**（本家と違って、シチューにしてから食べます）。
   [MUSHROOM_STEW, { hunger: 6, saturation: 7.2, poison: false }],
+  // リンゴ。本家の値のまま（4 / 2.4）。**パン（5 / 6）より下**で、
+  // 「畑を作るより弱いが、木を切っていればたまに手に入る」立場。
+  // **かまどでは焼けません**（`SMELTING` に行がない。本家の焼きリンゴも別件）。
+  [APPLE, { hunger: 4, saturation: 2.4, poison: false }],
 ]);
 
 /**
@@ -720,6 +743,18 @@ export interface DropStack {
   readonly count: number;
 }
 
+/**
+ * **2 山目 1 山ぶん。** `DropStack` に確率を足したもの（**`DropStack` の側に足さないこと** ——
+ * あちらは `rollDrops()` の**返り値**の型なので、地面に出る山が意味の無い `chance` を
+ * 持つことになります）。
+ *
+ * **`chance` を省略すると必ず落ちます**（実った小麦の種がこれ）。
+ */
+export interface ExtraDrop extends DropStack {
+  /** 2 山目が落ちる確率。省略すると必ず落ちる。抽選は `roll` とは**別の乱数**。 */
+  readonly chance?: number;
+}
+
 export interface Drop {
   readonly item: number;
   readonly count: number;
@@ -733,14 +768,18 @@ export interface Drop {
    */
   readonly otherwise?: number;
   /**
-   * **1 山目とは別に、必ず落ちるもの**（実った小麦の種がこれ）。省略すると 1 山だけ。
+   * **1 山目とは別の山**（実った小麦の種と、葉のリンゴがこれ）。省略すると 1 山だけ。
    *
-   * **確率も個数の範囲も持たせないこと。** 流れてくる乱数は `roll` の 1 本だけなので、
-   * ここに確率を付けると**1 山目の当たり外れと必ず相関します**（砂利の火打石と
-   * 種の個数が連動する形）。本家の「小麦 1 + 種 0〜3」に寄せたくなったら、
-   * **乱数をもう 1 本流す話が先**です（`BreakOrder` と `autoBreak()` の引数に及びます）。
+   * **`chance` を省略すると必ず落ちます**（種がそれ）。付けたぶんは
+   * **`roll` とは別の乱数（`extraRoll`）**で抽選するので、**1 山目の当たり外れとは
+   * 相関しません** —— 棒が出た葉からだけリンゴが出る、にはなりません
+   * （`test/blocks.test.ts` の「4 通りの山の数が 1,2,0,1」が見張り）。
+   *
+   * **個数の範囲（min / max）はまだ持てません。** 本家の「小麦 1 + 種 0〜3」に
+   * 寄せたくなったら、**乱数をもう 1 本流す話が先**です（`extraRoll` を足したときと
+   * 同じで、`BreakOrder` と `autoBreak()` の引数と `main.ts` に及びます）。
    */
-  readonly extra?: DropStack;
+  readonly extra?: ExtraDrop;
 }
 
 /**
@@ -761,8 +800,11 @@ const DROPS = new Map<number, Drop>([
   // そのままでは手に入らなくなる**ので、`crafting.ts` の「雪玉 4 個 → 雪ブロック 1 個」が
   // 必ず対で要る（無いと雪が二度と置けない）。
   [SNOW, { item: SNOWBALL, count: 4, chance: 1 }],
-  // 苗木がまだ無いので、葉からはたまに棒だけ出る
-  [LEAVES, { item: STICK, count: 1, chance: 0.1 }],
+  // 苗木がまだ無いので、葉から出るのは棒（10%）とリンゴ（0.5%）だけ。
+  // **オークの葉にだけリンゴが付きます**（本家はオークとダークオークだけ。針葉樹は無し）。
+  // **棒とリンゴは別々の乱数で当たります** —— `chance` を `extraRoll` が見るので、
+  // 「棒が出た葉からだけリンゴが出る」形になりません。
+  [LEAVES, { item: STICK, count: 1, chance: 0.1, extra: { item: APPLE, count: 1, chance: 0.005 } }],
   [SPRUCE_LEAVES, { item: STICK, count: 1, chance: 0.1 }],
   // 砂利は 10% で火打石、外したら砂利そのもの（Minecraft と同じ）。
   // **`otherwise` が無いと 90% で消えるブロックになる。**
@@ -811,24 +853,34 @@ export function rollDrop(blockId: number, roll: number): { item: number; count: 
 }
 
 /**
- * **地面に出す山を全部**（0〜2 山）。実った小麦だけが 2 山（小麦 + 種）で、
- * 他は今までどおり 0 山か 1 山。
+ * **地面に出す山を全部**（0〜2 山）。2 山あるのは実った小麦（小麦 + 種）と
+ * 当たったオークの葉（棒 + リンゴ）だけで、他は今までどおり 0 山か 1 山。
  *
  * **1 山目は `rollDrop()` に作らせること** —— `chance` と `otherwise` の判断をここへ
  * 写すと、**掘ったときと床を抜かれたときで落ちるものが違う**が戻ってきます
  * （`rules/items-survival.md`）。`rollDrop()` は既存のテストの根拠なので消しません。
  *
- * **`extra` は 1 山目の当たり外れに関係なく必ず入れます。** 別の山なので、
- * 「1 山目を外したら 2 山目も落ちない」ではありません（`chance` と `extra` の
- * 両方を持つブロックはいま 1 つも無いので、この決めはここのコメントが唯一の根拠）。
+ * **2 山目は `roll` ではなく `extraRoll` で抽選します。** 1 本の乱数を使い回すと
+ * 「棒が出た葉からだけリンゴが出る」形になり、**別々の山という前提そのものが崩れます。**
+ * `extra.chance` を省略したぶん（実った小麦の種）は今までどおり必ず落ちます。
+ *
+ * **`extraRoll` は省略できません。** 省略できると `main.ts` が渡し忘れてもコンパイルが
+ * 通り、**リンゴが永久に出ないのにテストは緑**になります。
  */
-export function rollDrops(blockId: number, roll: number): readonly DropStack[] {
+export function rollDrops(
+  blockId: number,
+  roll: number,
+  extraRoll: number,
+): readonly DropStack[] {
   const stacks: DropStack[] = [];
   const first = rollDrop(blockId, roll);
   // 何も出ない目（ガラス・葉の外れ）は山にしない。
   if (first.item !== NO_ITEM && first.count > 0) stacks.push(first);
   const { extra } = dropOf(blockId);
-  if (extra && extra.item !== NO_ITEM && extra.count > 0) stacks.push(extra);
+  if (extra && extra.item !== NO_ITEM && extra.count > 0 && extraRoll < (extra.chance ?? 1)) {
+    // **`chance` は地面に持ち出さない**（返るのは `DropStack` そのもの）。
+    stacks.push({ item: extra.item, count: extra.count });
+  }
   return stacks;
 }
 

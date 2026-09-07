@@ -63,8 +63,13 @@ export interface BreakOrder {
   /** 手に持っているもの（適正かどうかを `canHarvest()` が見る）。 */
   readonly tool: number;
   readonly creative: boolean;
-  /** ドロップの抽選。**乱数は呼ぶ側が作ること。** */
+  /** 1 山目の抽選。**乱数は呼ぶ側が作ること。** */
   readonly roll: number;
+  /**
+   * **2 山目の抽選**（葉のリンゴがこれ）。**`roll` とは別の乱数を渡すこと** ——
+   * 同じ値を使い回すと、棒が出た葉からだけリンゴが出ます（`items.ts` の `rollDrops()`）。
+   */
+  readonly extraRoll: number;
 }
 
 export interface BreakOutcome {
@@ -140,7 +145,7 @@ export function tryBreak(
   // **消耗は落ちる／落ちないに関わらず足す**（掘った労力そのものなので、
   // 適正でない道具で削っても腹は減る）。
   if (!canHarvest(id, order.tool)) return { broken: true, drops, exhaust: true, wear };
-  drops.push(...harvest(id, order.roll, x, y, z, 0.35));
+  drops.push(...harvest(id, order.roll, order.extraRoll, x, y, z, 0.35));
   return { broken: true, drops, exhaust: true, wear };
 }
 
@@ -159,6 +164,7 @@ export function autoBreak(
   id: number,
   creative: boolean,
   roll: number,
+  extraRoll: number,
 ): readonly Burst[] {
   // **ここでは settleColumn() を呼ばない。** 呼ばれる時点で `world.ts` の
   // `breakUnsupported` はまだそのマスを消している途中（ブロックがまだ残っている）
@@ -167,17 +173,26 @@ export function autoBreak(
   // 相方のぶんは落とさない —— 出るベッドは 1 台につき 1 個。
   clearBedPartner(world, x, y, z, id);
   if (creative) return [];
-  return harvest(id, roll, x, y, z, 0.25);
+  return harvest(id, roll, extraRoll, x, y, z, 0.25);
 }
 
 /**
  * **何が何山落ちるかは `items.ts` の `rollDrops()`**（ここは確率の比較を持たない）。
+ * **2 本の乱数も素通しするだけ**で、どちらがどの山の抽選かも知りません。
  *
  * **山が 2 つでも同じ場所に貼るだけ**でよい —— 地面での散らばりは `drops.ts` の
  * `burst()` が乱数で付けるので、ここで並べて置こうとしないこと。
  */
-function harvest(id: number, roll: number, x: number, y: number, z: number, dy: number): Burst[] {
-  return rollDrops(id, roll).map((drop) => ({
+function harvest(
+  id: number,
+  roll: number,
+  extraRoll: number,
+  x: number,
+  y: number,
+  z: number,
+  dy: number,
+): Burst[] {
+  return rollDrops(id, roll, extraRoll).map((drop) => ({
     item: drop.item,
     count: drop.count,
     x: x + 0.5,

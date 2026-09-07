@@ -187,37 +187,46 @@ function gravelDropsFlint(): void {
  */
 function stackCounts(): void {
   // 数を**先に出してから**判定する（`rules/testing.md`）。
-  const cases: [string, number, number][] = [
-    ["石", STONE, 0.5],
-    ["ガラス", GLASS, 0.5],
-    ["葉（外れ）", LEAVES, 0.5],
-    ["砂利（外れ）", GRAVEL, 0.5],
-    ["砂利（当たり）", GRAVEL, 0.05],
-    ["実った小麦", WHEAT_CROP_RIPE, 0.5],
+  // **2 山目の抽選（`extraRoll`）も 1 件ずつ持つこと。** 葉のリンゴ（0.5%）が
+  // 混ざると「外した葉は 0 山」が乱数次第で赤くなる。
+  const cases: [string, number, number, number][] = [
+    ["石", STONE, 0.5, 0.9],
+    ["ガラス", GLASS, 0.5, 0.9],
+    ["葉（両方外れ）", LEAVES, 0.5, 0.9],
+    ["葉（棒だけ当たり）", LEAVES, 0.05, 0.9],
+    ["葉（リンゴだけ当たり）", LEAVES, 0.5, 0.001],
+    ["砂利（外れ）", GRAVEL, 0.5, 0.9],
+    ["砂利（当たり）", GRAVEL, 0.05, 0.9],
+    ["実った小麦", WHEAT_CROP_RIPE, 0.5, 0.9],
   ];
   console.log(
     "      山の数: " +
       cases
-        .map(([label, id, roll]) => {
-          const stacks = rollDrops(id, roll);
+        .map(([label, id, roll, extraRoll]) => {
+          const stacks = rollDrops(id, roll, extraRoll);
           const inside = stacks.map((s) => `${itemName(s.item)} x${s.count}`).join("+") || "なし";
           return `${label} ${stacks.length}（${inside}）`;
         })
         .join(" / "),
   );
-  check("石は 1 山", rollDrops(STONE, 0.5).length === 1, `${rollDrops(STONE, 0.5).length}`);
-  check("ガラスは 0 山", rollDrops(GLASS, 0.5).length === 0, `${rollDrops(GLASS, 0.5).length}`);
-  check("外した葉は 0 山", rollDrops(LEAVES, 0.5).length === 0, `${rollDrops(LEAVES, 0.5).length}`);
+  check("石は 1 山", rollDrops(STONE, 0.5, 0.9).length === 1, `${rollDrops(STONE, 0.5, 0.9).length}`);
+  check("ガラスは 0 山", rollDrops(GLASS, 0.5, 0.9).length === 0, `${rollDrops(GLASS, 0.5, 0.9).length}`);
+  // **両方外した葉だけが 0 山。** リンゴが当たれば、棒を外していても 1 山出る。
+  check(
+    "両方外した葉は 0 山",
+    rollDrops(LEAVES, 0.5, 0.9).length === 0,
+    `${rollDrops(LEAVES, 0.5, 0.9).length}`,
+  );
   // **`otherwise` の砂利は 0 山にならない**（外れても砂利そのものが出る）。
   check(
     "砂利は当たっても外しても 1 山",
-    rollDrops(GRAVEL, 0.5).length === 1 && rollDrops(GRAVEL, 0.05).length === 1,
-    `外れ ${rollDrops(GRAVEL, 0.5).length} / 当たり ${rollDrops(GRAVEL, 0.05).length}`,
+    rollDrops(GRAVEL, 0.5, 0.9).length === 1 && rollDrops(GRAVEL, 0.05, 0.9).length === 1,
+    `外れ ${rollDrops(GRAVEL, 0.5, 0.9).length} / 当たり ${rollDrops(GRAVEL, 0.05, 0.9).length}`,
   );
   check(
-    "実った小麦だけが 2 山（小麦 + 種）",
-    rollDrops(WHEAT_CROP_RIPE, 0.5).length === 2,
-    `${rollDrops(WHEAT_CROP_RIPE, 0.5).length}`,
+    "実った小麦は 2 山（小麦 + 種）",
+    rollDrops(WHEAT_CROP_RIPE, 0.5, 0.9).length === 2,
+    `${rollDrops(WHEAT_CROP_RIPE, 0.5, 0.9).length}`,
   );
   // **`rollDrop()` の戻りは今までどおり 1 山目だけ**（既存の約 25 か所の根拠）。
   check(

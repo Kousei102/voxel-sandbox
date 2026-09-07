@@ -317,7 +317,7 @@ function startWorld(
   // `breaking.ts`**（掘って壊す経路と同じ規則を通すため。判断を `world.ts` にも
   // ここにも持ち込まない）。乱数はこちらで作る。
   world.onAutoBreak = (x, y, z, id) => {
-    for (const out of autoBreak(world, x, y, z, id, creative, Math.random())) {
+    for (const out of autoBreak(world, x, y, z, id, creative, Math.random(), Math.random())) {
       drops.burst(out.item, out.count, out.x, out.y, out.z);
     }
   };
@@ -1027,7 +1027,7 @@ function breakBlock(x: number, y: number, z: number, blockId: number, tool: numb
   const result = tryBreak(
     world,
     { furnaces, chests },
-    { x, y, z, id: blockId, tool, creative, roll: Math.random() },
+    { x, y, z, id: blockId, tool, creative, roll: Math.random(), extraRoll: Math.random() },
   );
   if (!result.broken) return;
   saveDirty = true;

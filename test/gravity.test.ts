@@ -104,6 +104,7 @@ export function run(): void {
       tool: NO_ITEM,
       creative: false,
       roll: 0.5,
+      extraRoll: 0.9,
     });
     const after = { hole: world.getVoxel(0, floorY + 1, 0), above: world.getVoxel(0, floorY + 2, 0) };
     check(
@@ -128,6 +129,7 @@ export function run(): void {
       tool: NO_ITEM,
       creative: false,
       roll: 0.5,
+      extraRoll: 0.9,
     });
 
     const column = [];
@@ -173,6 +175,7 @@ export function run(): void {
       tool: NO_ITEM,
       creative: false,
       roll: 0.5,
+      extraRoll: 0.9,
     });
     check("石は落ちない（掘った下は空のまま）", world.getVoxel(0, floorY + 2, 0) === STONE && world.getVoxel(0, floorY + 1, 0) === AIR);
   }
@@ -191,6 +194,7 @@ export function run(): void {
       tool: NO_ITEM,
       creative: false,
       roll: 0.5,
+      extraRoll: 0.9,
     });
     check(
       "砂の横を掘っても落ちない",
@@ -246,6 +250,7 @@ export function run(): void {
       tool: NO_ITEM,
       creative: false,
       roll: 0.5,
+      extraRoll: 0.9,
     });
     check(
       "砂が下がると、上の松明は支えを失って壊れる",
