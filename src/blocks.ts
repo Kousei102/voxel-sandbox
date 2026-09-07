@@ -397,6 +397,28 @@ export const LADDER_XN = 146;
 export const LADDER_ZP = 147;
 export const LADDER_ZN = 148;
 
+/**
+ * 本棚。**板 6 + 本 3 で 1 個**（`crafting.ts`）。**普通の立方体**で、形も当たり判定も
+ * 石ブロックと同じです（`boxes` も `model` も書きません）。
+ *
+ * **壊すと本が 3 個だけ**落ちます（`items.ts` の `DROPS` の 1 行。本家と同じで
+ * **板 6 個は戻りません**）。だから `variantOf` は既定の `AIR` のまま ——
+ * (a) `items.ts` の for が同じ番号のアイテムを自動で作り（**手で `item({...})` を
+ * 足すと二重登録**）、(b) 落ちるものだけを `DROPS` で上書きします。
+ * **`items.ts` の `MAX_ITEM_ID` は伸ばすこと。**
+ *
+ * **自然生成しません**（`worldgen.ts` にも `biomes.ts` にも 0 行）。作って置くだけの
+ * ブロックなので、**`npm run shot` の既存の場面には 1 枚も写りません** ——
+ * はしごと同じ理由で `tools/shot.ts` に `bookshelf` の場面を持っています。
+ *
+ * **色は上面・下面が木口（`0xd0a878`）、側面が本の背（`0x9c5064`）**です。
+ * 一覧に出るのは `itemColor()` が写す **`top` だけ**なので、側面は隔たりの判定に入りません。
+ *
+ * **エンチャントの話はまだありません**（経験値もエンチャント台も見送り済み）。
+ * いまのところ「置ける立方体と、本 3 個の入れ物」でしかありません。
+ */
+export const BOOKSHELF = 152;
+
 /** 上付きハーフ。見た目と当たり判定だけが違うので、大元は下付きのハーフ。 */
 export const STONE_SLAB_TOP = 64;
 export const COBBLE_SLAB_TOP = 65;
@@ -1470,6 +1492,16 @@ export const BLOCKS: readonly BlockDef[] = [
     boxes: LADDER_BOX_ZN,
     supportFace: FACE_ZN,
     variantOf: LADDER,
+  }),
+
+  // 本棚（上のコメント）。**鉱物の立方体 3 つとまったく同じ形の定義**で、違うのは
+  // 色・硬さ・道具だけ。**`boxes` も `model` も `variantOf` も書かないこと** ——
+  // 既定のまま（`opaque` / `solid` が true・`FULL_BOX`・`model: "cube"`）が普通の立方体。
+  // `minTier` も既定（`TIER_HAND`）なので**素手でも壊せて、本 3 個が落ちる**。
+  def(BOOKSHELF, "本棚", { top: 0xd0a878, side: 0x9c5064, bottom: 0xd0a878 }, {
+    hardness: 1.5,
+    tool: "axe",
+    sound: "wood",
   }),
 ];
 

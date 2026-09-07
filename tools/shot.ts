@@ -19,6 +19,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { PerspectiveCamera, Scene, Vector3 } from "three";
 import {
   AIR,
+  BOOKSHELF,
   BROWN_MUSHROOM,
   DIRT,
   FARMLAND,
@@ -27,6 +28,7 @@ import {
   LADDER_XN,
   LADDER_ZN,
   LADDER_ZP,
+  PLANK,
   RED_MUSHROOM,
   STONE,
   SUGAR_CANE,
@@ -376,6 +378,51 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
       camera: look(setup, new Vector3(at.x + 5.5, at.y + 3.6, at.z + 6.5), new Vector3(at.x + 2, at.y + 1.6, at.z + 0.5)),
       dayNight: skyOf(OVERWORLD, setup.time),
       note: `柱 0,${y},0 の 4 面に 1 本ずつ（145 / 146 / 147 / 148）+ 裸の石の柱 4,${y},0`,
+    };
+  },
+
+  /**
+   * 本棚（152）。**はしごと同じで自然には 1 個も生えない**（作って置くものなので）ので、
+   * `ladders` と同じで**ここへ直に置く**しかない。見るのは 3 つ:
+   * 面が欠けていないか / **上面（木口 0xd0a878）と側面（本の背 0x9c5064）が
+   * 入れ替わっていないか** / **板と見分けが付くか**（0xb18a56 と 55.6 離してある）。
+   */
+  bookshelf(setup) {
+    const { scene, world } = makeWorld(OVERWORLD, 3);
+    const pad = 6;
+    // **平らな台を作る**（`ladders` と同じ理由。地形なりだと壁が斜面に埋まる）。
+    let y = 0;
+    for (let dz = -pad; dz <= pad; dz++) {
+      for (let dx = -pad; dx <= pad; dx++) y = Math.max(y, world.surfaceY(dx, dz));
+    }
+    for (let dz = -pad; dz <= pad; dz++) {
+      for (let dx = -pad; dx <= pad; dx++) {
+        for (let h = y; h < y + 8; h++) world.setVoxel(dx, h, dz, AIR);
+        for (let h = y - 4; h < y; h++) world.setVoxel(dx, h, dz, DIRT);
+        world.setVoxel(dx, y - 1, dz, GRASS);
+      }
+    }
+    // **本棚 3x2 の壁を立て、その左に板 3x2 の壁を並べる。**
+    // 板を隣に置くのは、**「木の茶」どうしで見分けが付くか**が絵からしか読めないため
+    // （数値の隔たりは `test/blocks.test.ts` が測っているが、目で見るのは別）。
+    // **2 段に積むこと** —— 1 段だと上面が地面すれすれで、木口の色がほとんど写らない。
+    for (let dx = 0; dx < 3; dx++) {
+      for (let h = y; h < y + 2; h++) {
+        world.setVoxel(dx, h, 0, BOOKSHELF);
+        world.setVoxel(dx - 4, h, 0, PLANK);
+      }
+    }
+    // **1 個だけ離して置くこと。** 壁にすると側面どうしが接して隠れるので、
+    // **6 面のうち 3 面が同時に見える単体**が「上面と側面が入れ替わっていないか」の足場。
+    world.setVoxel(1, y, 4, BOOKSHELF);
+    // **書き換えたらメッシュ化をもう一度流すこと**（`ladders` と同じ）。
+    world.primeAround(0.5, 0.5, 3);
+    return {
+      scene,
+      // **斜め上から。** 真横だと上面（木口）が 1 画素も写らず、入れ替わりに気付けない。
+      camera: look(setup, new Vector3(3.5, y + 3.4, 7.5), new Vector3(0, y + 0.8, 1.5)),
+      dayNight: skyOf(OVERWORLD, setup.time),
+      note: `本棚の壁 3x2（0..2,${y},0）+ 単体 1,${y},4 / 比べる板の壁 3x2（-4..-2,${y},0）`,
     };
   },
 

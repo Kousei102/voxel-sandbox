@@ -1,5 +1,6 @@
 import {
   BED,
+  BOOKSHELF,
   BROWN_MUSHROOM,
   COBBLE,
   CRAFTING_TABLE,
@@ -27,6 +28,7 @@ import {
   ARROW,
   BLAZE_POWDER,
   BLAZE_ROD,
+  BOOK,
   BOW,
   BOWL,
   BREAD,
@@ -45,8 +47,10 @@ import {
   GOLD_INGOT,
   IRON_HOE,
   IRON_SWORD,
+  LEATHER,
   MUSHROOM_STEW,
   NO_ITEM,
+  PAPER,
   SHEARS,
   SNOWBALL,
   STICK,
@@ -61,6 +65,7 @@ import {
   WOOD_SHOVEL,
   WOOD_SWORD,
   itemStackLimit,
+  rollDrops,
 } from "../src/items";
 import { check, describe } from "./harness";
 
@@ -534,6 +539,81 @@ export function run(): void {
   // 8 個では成立しないこと（3x3 が埋まっていることが条件）。
   const eight = findRecipe(grid(3, ["III", "III", "II."], P), 3);
   check("鉄 8 個ではブロックにならない", eight === null, eight?.name ?? "無し");
+
+  describe("紙・本・本棚");
+
+  // **3 本とも本家と同じ形・同じ個数**。作業台の要否が 3 本で違う（紙・本棚は要る）ので、
+  // **2x2 でも試して出してから判定する**。
+  const K = { C: SUGAR_CANE, A: PAPER, L: LEATHER, P: PLANK, B: BOOK };
+
+  // 紙はサトウキビ 3 個の横一列で **3 枚**。**個数を出すこと** ——
+  // 1 枚にすると本 1 冊にサトウキビ 9 本が要るので、本棚 1 個が 27 本になる。
+  const paper = findRecipe(grid(3, ["CCC"], K), 3);
+  const paperIn2 = findRecipe(grid(2, ["CC"], K), 2);
+  console.log(
+    `      サトウキビ 3 個（横一列）→ ${paper?.name ?? "無し"} x${paper?.count ?? 0}` +
+      ` / 2x2 に 2 個: ${paperIn2?.name ?? "無し"}`,
+  );
+  check(
+    "サトウキビ 3 個の横一列 → 紙 3 枚",
+    paper?.out === PAPER && paper.count === 3,
+    `${paper?.name ?? "無し"} x${paper?.count ?? 0}`,
+  );
+  check("2x2 では紙は作れない（3 幅なので作業台が要る）", paperIn2 === null, paperIn2?.name ?? "無し");
+
+  // 本は**形なし 4 つ**（紙 3 + 革 1）なので、**牛を狩ったその場の 2x2 で作れる**。
+  const book = findRecipe(grid(2, ["AA", "AL"], K), 2);
+  const bookShuffled = findRecipe(grid(2, ["LA", "AA"], K), 2);
+  const bookNoLeather = findRecipe(grid(2, ["AA", "A."], K), 2);
+  console.log(
+    `      紙 3 + 革 1 → ${book?.name ?? "無し"} x${book?.count ?? 0}` +
+      `（並べ替え: ${bookShuffled?.name ?? "無し"} / 革なし: ${bookNoLeather?.name ?? "無し"}）`,
+  );
+  check(
+    "紙 3 + 革 1 → 本 1 冊（2x2 で作れる）",
+    book?.out === BOOK && book.count === 1,
+    `${book?.name ?? "無し"} x${book?.count ?? 0}`,
+  );
+  check("形なしなので並べ替えても揃う", bookShuffled?.out === BOOK, bookShuffled?.name ?? "無し");
+  // **革を抜くと揃わない** —— ここが通ると、牛を狩らずに本が作れる。
+  check("紙 3 個だけ（革なし）では本にならない", bookNoLeather === null, bookNoLeather?.name ?? "無し");
+
+  // 本棚は板 6 + 本 3 の 3x3。**上下が板・真ん中が本**の向きが逆だと揃わないこと。
+  const shelfRows = ["PPP", "BBB", "PPP"];
+  const shelf = findRecipe(grid(3, shelfRows, K), 3);
+  const shelfFlipped = findRecipe(grid(3, ["BBB", "PPP", "BBB"], K), 3);
+  const shelfIn2 = findRecipe(grid(2, ["PP", "BB"], K), 2);
+  console.log(
+    `      板 6 + 本 3（${shelfRows.join(" / ")}）→ ${shelf?.name ?? "無し"} x${shelf?.count ?? 0}` +
+      `（板と本を入れ替え: ${shelfFlipped?.name ?? "無し"} / 2x2: ${shelfIn2?.name ?? "無し"}）`,
+  );
+  check(
+    "板 6 + 本 3 → 本棚 1 個",
+    shelf?.out === BOOKSHELF && shelf.count === 1,
+    `${shelf?.name ?? "無し"} x${shelf?.count ?? 0}`,
+  );
+  check("板と本を入れ替えると本棚にならない", shelfFlipped === null, shelfFlipped?.name ?? "無し");
+  check("2x2 では本棚は作れない（作業台が要る）", shelfIn2 === null, shelfIn2?.name ?? "無し");
+
+  // **作って壊すと本 3 個だけで、板 6 個は戻らない**（本家どおり目減りする）。
+  // 落ちるものは `items.ts` の `DROPS` なので、**レシピ側と突き合わせてここで 1 件**見る ——
+  // 「戻す」レシピを足すと、この片道が黙って往復になる。
+  const dropped = rollDrops(BOOKSHELF, 0.5, 0.5);
+  const backToPlanks = findRecipe(grid(2, ["Z."], { Z: BOOKSHELF }), 2);
+  console.log(
+    `      本棚を作る材料: 板 6 + 本 3 → 壊すと ${dropped.map((s) => `${s.item === BOOK ? "本" : String(s.item)} x${s.count}`).join(" + ")}` +
+      ` / 本棚を戻すレシピ: ${backToPlanks?.name ?? "無し"}`,
+  );
+  check(
+    "本棚を作って壊すと本 3 個だけ（板 6 個は戻らない）",
+    dropped.length === 1 && dropped[0]?.item === BOOK && dropped[0]?.count === 3,
+    dropped.map((s) => `${s.item} x${s.count}`).join(" + "),
+  );
+  check(
+    "本棚を材料に戻すレシピは無い（雪玉 4 個の対とは別の話）",
+    backToPlanks === null,
+    backToPlanks?.name ?? "無し",
+  );
 
   describe("クラフト");
 

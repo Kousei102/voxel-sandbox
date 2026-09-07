@@ -4,6 +4,7 @@ import {
   AIR,
   BED,
   BLOCKS,
+  BOOKSHELF,
   BROWN_MUSHROOM,
   CACTUS,
   COBBLE_SLAB,
@@ -44,6 +45,7 @@ import {
   STONE_STAIRS,
   SUGAR_CANE,
   TALL_GRASS,
+  TIER_HAND,
   TIER_IRON,
   TIER_STONE,
   TORCH,
@@ -83,6 +85,7 @@ import { PLAYER_SIZE } from "../src/physics";
 import {
   APPLE,
   ARROW,
+  BOOK,
   BOW,
   BOWL,
   BREAD,
@@ -100,6 +103,7 @@ import {
   MILK_BUCKET,
   MUSHROOM_STEW,
   NO_ITEM,
+  PAPER,
   RAW_BEEF,
   RAW_CHICKEN,
   SHEARS,
@@ -202,8 +206,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴの 33 個（149 まで）",
-    sharedItems.length === 33 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚の 36 個（152 まで）",
+    sharedItems.length === 36 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -231,15 +235,21 @@ export function run(): void {
       // **149 は `items.ts` に手で足したアイテム**（リンゴ）。**146..148 は飛ばしたまま**
       // （はしごの向き違いが取っている番号で、振り直せないので詰めません）。
       sharedItems[32] === APPLE &&
-      MAX_ITEM_ID === APPLE,
+      // **150 / 151 は `items.ts` に手で足したアイテム**（紙・本）で、**152 は
+      // `items.ts` に 1 行も書かずに増えたブロック**（本棚。145 と同じで `variantOf` が
+      // `AIR` なので for が同じ番号のアイテムを作る）。**上限を持つのがブロック側なのは
+      // 4 度目**なので、`MAX_ITEM_ID` の突き合わせをここで一緒に見る。
+      sharedItems[33] === PAPER && sharedItems[34] === BOOK &&
+      sharedItems[35] === BOOKSHELF &&
+      MAX_ITEM_ID === BOOKSHELF,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 106（リンゴ 149 で 1 個減った）",
-    sharedFree === 106,
+    "111..255 の空きは 103（紙 150・本 151・本棚 152 で 3 個減った）",
+    sharedFree === 103,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1109,8 +1119,153 @@ export function run(): void {
   sugarCane(world, ground);
   ladders();
   apples();
+  paperBookBookshelf();
 
   world.dispose();
+}
+
+/**
+ * 紙（150）・本（151）・本棚（152）。**レシピは `test/crafting.test.ts`**、
+ * ここで見るのは持ち物と形と落ちるものの 4 つです。
+ *
+ * **本棚の落とし物が唯一の面白いところ**です —— `variantOf` を書いていないので
+ * 既定なら「掘ると自分が 1 個」に落ち着くところを、`DROPS` の 1 行で
+ * **本 3 個に差し替えて**あります（板 6 個は戻らない）。**確率にも 2 本目の乱数にも
+ * 繋がっていない**ことを 9 通りで見ます。
+ */
+function paperBookBookshelf(): void {
+  describe("紙・本・本棚");
+
+  // --- 持ち物としての 3 つ（値を出してから判定する） ---
+  const trio: [string, number][] = [["紙", PAPER], ["本", BOOK], ["本棚", BOOKSHELF]];
+  for (const [name, id] of trio) {
+    console.log(
+      `      ${name}(${id}): 名前「${itemName(id)}」/ 置ける ${placedBlock(id)} / ` +
+        `道具 ${toolOf(id) !== null} / 食べ物 ${foodOf(id) !== null} / ` +
+        `1 枠 ${itemStackLimit(id)} 個 / 色 0x${itemColor(id).toString(16)}`,
+    );
+  }
+  // **紙と本は置けません**（`block: AIR`）。**本棚だけは自分に戻ります** ——
+  // ブロック側の for が同じ番号のアイテムを作るからで、`items.ts` には 1 行も無い。
+  check(
+    "紙と本は置けず、本棚だけが置けて自分に戻る",
+    placedBlock(PAPER) === AIR && placedBlock(BOOK) === AIR && placedBlock(BOOKSHELF) === BOOKSHELF,
+    `紙 ${placedBlock(PAPER)} / 本 ${placedBlock(BOOK)} / 本棚 ${placedBlock(BOOKSHELF)}`,
+  );
+  // **道具でないこと**（`tool:` を付けると `TOOL_ATTACK` に無い種類が入って NaN）。
+  check(
+    "3 つとも道具ではない",
+    trio.every(([, id]) => toolOf(id) === null),
+    trio.map(([name, id]) => `${name} ${toolOf(id) === null ? "-" : String(toolOf(id)?.kind)}`).join(" / "),
+  );
+  // **食べ物でもない** —— 種類が 10 のままであることも一緒に見る（`FOODS` に足すと増える）。
+  check(
+    "3 つとも食べ物ではなく、食べられるものは 10 種のまま",
+    trio.every(([, id]) => foodOf(id) === null) && allFoodIds().length === 10,
+    `${trio.map(([name, id]) => `${name} ${foodOf(id) === null ? "-" : "食べ物"}`).join(" / ")} / ${allFoodIds().length} 種`,
+  );
+  check(
+    "3 つとも 1 枠 64 個まで積める（器が戻る食べ物ではない）",
+    trio.every(([, id]) => itemStackLimit(id) === 64),
+    trio.map(([name, id]) => `${name} ${itemStackLimit(id)}`).join(" / "),
+  );
+
+  // --- 一覧に並ぶ色（既存のどれとも見分けが付くこと） ---
+  // **白と茶はもう混み合っています** —— 雪玉・羽根・卵・砂糖／板・原木・はしごが居るので、
+  // 素直な「紙の白」も「木の茶」も 20 を割ります。**いちばん近い相手を出してから判定する。**
+  const dist = (a: number, b: number): number =>
+    Math.hypot(((a >> 16) & 255) - ((b >> 16) & 255), ((a >> 8) & 255) - ((b >> 8) & 255), (a & 255) - (b & 255));
+  for (const [name, id] of trio) {
+    let best = Infinity;
+    let who = "";
+    for (const other of allItemIds()) {
+      if (other === id) continue;
+      const gap = dist(itemColor(id), itemColor(other));
+      if (gap < best) {
+        best = gap;
+        who = itemName(other);
+      }
+    }
+    console.log(`      色のいちばん近い相手: ${name} 0x${itemColor(id).toString(16)} ↔ ${who} ${best.toFixed(1)}`);
+    check(
+      `${name}は既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）`,
+      best >= 20,
+      `いちばん近い ${who} と ${best.toFixed(1)}`,
+    );
+  }
+  // **一覧に出るのは `top` だけ** —— 側面（本の背）は判定に入らないので、
+  // 入れ替わっていないことをここで別に見る（絵で見るのは `npm run shot -- bookshelf`）。
+  const shelf = blockDef(BOOKSHELF);
+  console.log(
+    `      本棚の面の色: 上 0x${shelf.top.toString(16)} / 側 0x${shelf.side.toString(16)} / ` +
+      `下 0x${shelf.bottom.toString(16)} / 一覧 0x${itemColor(BOOKSHELF).toString(16)}`,
+  );
+  check(
+    "本棚は上下が木口・側面が本の背で、一覧の色は上面のほう",
+    shelf.top === 0xd0a878 && shelf.bottom === 0xd0a878 && shelf.side === 0x9c5064 &&
+      itemColor(BOOKSHELF) === shelf.top,
+    `上 0x${shelf.top.toString(16)} / 側 0x${shelf.side.toString(16)} / 下 0x${shelf.bottom.toString(16)}`,
+  );
+
+  // --- 本棚は普通の立方体（`boxes` も `model` も書いていない） ---
+  const boxes = collisionBoxes(BOOKSHELF);
+  const faces: [string, number][] = [
+    ["+X", FACE_XP], ["-X", FACE_XN], ["+Y", FACE_YP],
+    ["-Y", FACE_YN], ["+Z", FACE_ZP], ["-Z", FACE_ZN],
+  ];
+  console.log(
+    `      本棚の形: model ${shelf.model} / variantOf ${shelf.variantOf} / isProp ${isProp(BOOKSHELF)} / ` +
+      `箱 ${boxes.length} 個 ${JSON.stringify(boxes)} / 硬さ ${shelf.hardness} / 道具 ${shelf.tool} / ` +
+      `階層 ${shelf.minTier} / 音 ${shelf.sound} / 支え ${faces.map(([n, f]) => `${n}:${canSupport(BOOKSHELF, f)}`).join(" ")}`,
+  );
+  check(
+    "本棚は 1x1x1 の立方体 1 個で、向き違いではない",
+    !isProp(BOOKSHELF) && shelf.model === "cube" && shelf.variantOf === AIR &&
+      boxes.length === 1 && boxes[0].join(",") === "0,0,0,1,1,1",
+    `isProp ${isProp(BOOKSHELF)} / ${shelf.model} / 箱 ${boxes.length} 個`,
+  );
+  check(
+    "本棚は 6 面とも支えになる（松明もベッドも置ける）",
+    faces.every(([, f]) => canSupport(BOOKSHELF, f)),
+    faces.map(([n, f]) => `${n}:${canSupport(BOOKSHELF, f)}`).join(" "),
+  );
+  check(
+    "本棚は硬さ 1.5・斧が適正・素手でも壊せて木の音（本家の値）",
+    shelf.hardness === 1.5 && shelf.tool === "axe" && shelf.minTier === TIER_HAND && shelf.sound === "wood",
+    `硬さ ${shelf.hardness} / ${shelf.tool} / 階層 ${shelf.minTier} / ${shelf.sound}`,
+  );
+  check(
+    "本棚は不透明で通り抜けられない（普通の立方体の既定のまま）",
+    shelf.opaque && shelf.solid && !shelf.replaceable && !shelf.translucent,
+    `opaque ${shelf.opaque} / solid ${shelf.solid} / replaceable ${shelf.replaceable}`,
+  );
+
+  // --- 壊すと本 3 個（板 6 個は戻らない） ---
+  // **`roll` と `extraRoll` を 9 通りに振っても同じ 1 山**であることが、
+  // 「確率にも 2 本目の乱数にも繋がっていない」の証拠。
+  const rolls = [0.01, 0.5, 0.99];
+  const results: string[] = [];
+  let sameEveryTime = true;
+  for (const roll of rolls) {
+    for (const extraRoll of rolls) {
+      const stacks = rollDrops(BOOKSHELF, roll, extraRoll);
+      results.push(`${roll}/${extraRoll}→${stacks.map((s) => `${itemName(s.item)} x${s.count}`).join(" + ") || "なし"}`);
+      if (stacks.length !== 1 || stacks[0]?.item !== BOOK || stacks[0]?.count !== 3) sameEveryTime = false;
+    }
+  }
+  console.log(`      本棚を壊す 9 通り: ${results.join(" / ")}`);
+  check(
+    "本棚は roll も extraRoll も何であれ本 3 個の 1 山（確率にも 2 本目の乱数にも繋がっていない）",
+    sameEveryTime,
+    results.join(" / "),
+  );
+  // **板は 1 枚も戻りません**（本家どおり。「戻す」レシピも足していない）。
+  const shelfDrop = rollDrop(BOOKSHELF, 0.5);
+  check(
+    "本棚を壊しても板は 1 枚も戻らず、本棚そのものも落ちない",
+    shelfDrop.item === BOOK && shelfDrop.count === 3 && dropOf(BOOKSHELF).item === BOOK,
+    `${itemName(shelfDrop.item)} x${shelfDrop.count}`,
+  );
 }
 
 /**

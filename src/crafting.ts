@@ -1,5 +1,6 @@
 import {
   BED,
+  BOOKSHELF,
   BROWN_MUSHROOM,
   CHEST,
   COBBLE,
@@ -33,6 +34,7 @@ import {
   ARROW,
   BLAZE_POWDER,
   BLAZE_ROD,
+  BOOK,
   BOW,
   BOWL,
   BREAD,
@@ -56,8 +58,10 @@ import {
   IRON_PICKAXE,
   IRON_SHOVEL,
   IRON_SWORD,
+  LEATHER,
   MUSHROOM_STEW,
   NO_ITEM,
+  PAPER,
   SHEARS,
   SNOWBALL,
   STICK,
@@ -202,6 +206,19 @@ export const RECIPES: readonly Recipe[] = [
   // 砂糖はサトウキビ 1 個の形なし（Minecraft と同じ 1 対 1）。**1 個なので 2x2 に
   // 収まり、浜で採ったその場で作れる**（作業台が要らない）。
   { name: "砂糖", out: SUGAR, count: 1, ingredients: [SUGAR_CANE] },
+
+  // 紙・本・本棚の 3 本（どれも Minecraft と同じ形・同じ個数）。**サトウキビの 2 本目の
+  // 使い道**が紙で、砂糖と取り合いになる（1 本のサトウキビは砂糖 1 個か紙 1/3 枚）。
+  //
+  // - **紙は横一列 3 個で 3 枚** —— 3 幅なので作業台が要る（砂糖との違いはそこ）
+  // - **本は形なし**（紙 3 + 革 1）なので、**牛を狩ったその場で 2x2 で作れる**
+  // - **本棚は板 6 + 本 3 の 3x3。壊すと本 3 個だけ**で、**板 6 個は戻らない**
+  //   （落ちるものは `items.ts` の `DROPS`。ここには書かない）。**「戻す」レシピを
+  //   足さないこと** —— 雪玉 4 個の対（`rules/items-survival.md`）は「自分以外のものに
+  //   差し替えた」ときの決まりで、**本家どおり目減りするこれとは別の話**
+  { name: "紙", out: PAPER, count: 3, shape: ["CCC"], key: { C: SUGAR_CANE } },
+  { name: "本", out: BOOK, count: 1, ingredients: [PAPER, PAPER, PAPER, LEATHER] },
+  { name: "本棚", out: BOOKSHELF, count: 1, shape: ["PPP", "BBB", "PPP"], key: { P: PLANK, B: BOOK } },
 
   // はしごは棒 7 本で 3 個（Minecraft と同じ形・同じ個数）。3x3 なので作業台が要る。
   // 形はかまど・チェストの輪と似ているが**真ん中の列が縦に通っている**ので別物。

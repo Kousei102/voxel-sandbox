@@ -1,6 +1,7 @@
 import {
   AIR,
   BLOCKS,
+  BOOKSHELF,
   COAL_ORE,
   COBBLE,
   DIAMOND_ORE,
@@ -401,6 +402,23 @@ export const SUGAR = 144;
 export const APPLE = 149;
 
 /**
+ * 紙。**サトウキビ 3 個の横一列で 3 枚**（本家と同じ形・同じ枚数。3 幅なので作業台が要る）。
+ *
+ * **置けず・道具でもなく・食べ物でもありません**（`block:` は `AIR`、`FOODS` にも
+ * `EMPTIES` にも `THROWN` にも行がありません）。使い道は本のレシピだけです ——
+ * **地図も花火も本家では紙ですが、どちらも別件**です。
+ */
+export const PAPER = 150;
+
+/**
+ * 本。**紙 3 + 革 1 の形なし**（本家と同じ。2x2 に収まるので作業台が要らない）。
+ *
+ * 使い道は本棚のレシピと、**本棚を壊したときに 3 個戻ってくる**ところだけです。
+ * **エンチャントの話は持ち込みません**（経験値もエンチャント台も見送り済み）。
+ */
+export const BOOK = 151;
+
+/**
  * 一覧を作るときに数え上げる上限（`allItemIds()`）。**アイテムの番号だけでなく、
  * ブロックが自動で作るアイテム（上の for）の番号も含みます。**
  *
@@ -409,13 +427,13 @@ export const APPLE = 149;
  * （`craftscreen.ts` の `CREATIVE_ITEMS`）にだけ出てこないブロック**ができます
  * （置けるし掘れるので、型でも `typecheck` でも止まりません）。
  *
- * **いまはリンゴ（アイテム 149）が上限です。** 直前ははしご（ブロック 145）で、
- * 146..148 は `variantOf: LADDER` なのでアイテムを持たず、**空いたまま**です
- * （番号は振り直せないので詰めません）。
+ * **いまは本棚（ブロック 152）が上限です。** 直前はリンゴ（アイテム 149）で、
+ * 150 = 紙・151 = 本もアイテム側です。
  * **共有帯ではブロックとアイテムが 1 本の番号列**なので、上限を持つのがどちら側かは
- * 決まりません（`items.ts` に 1 行も書いていないブロックが上限だったのは 3 度あります）。
+ * 決まりません（`items.ts` に 1 行も書いていないブロックが上限だったのは 4 度目です）。
+ * **本棚のアイテムは上の for が作るので、`item({...})` を手で足さないこと。**
  */
-export const MAX_ITEM_ID = APPLE;
+export const MAX_ITEM_ID = BOOKSHELF;
 
 export const MAX_STACK = 64;
 
@@ -630,6 +648,15 @@ item({ id: SUGAR, name: "砂糖", block: AIR, stack: MAX_STACK, color: 0xffffff,
 // いちばん近い相手からの隔たりを `test/blocks.test.ts` が測っている（実測は赤キノコから 29.5）。
 item({ id: APPLE, name: "リンゴ", block: AIR, stack: MAX_STACK, color: 0xe0342c, tool: null });
 
+// 紙と本。**どちらも `block: AIR` / `tool: null`**（置けず・道具でもなく・食べ物でもない。
+// `FOODS` にも `EMPTIES` にも `THROWN` にも行が無い）。**本棚は `item({...})` を書かない** ——
+// ブロック側の for が同じ番号のアイテムを作るので、手で足すと二重登録になる。
+// **色は白と茶がもう混み合っている**ので、一覧の 111 色から測って選んである
+// （紙はいちばん近い雪玉から 25.5・本はレンガから 38.2。`test/blocks.test.ts` が測る）。
+// 素直な「紙の白」も「木の茶」も 20 を割るので、**紙は青みを、本は赤みを寄せてある。**
+item({ id: PAPER, name: "紙", block: AIR, stack: MAX_STACK, color: 0xd4e0ec, tool: null });
+item({ id: BOOK, name: "本", block: AIR, stack: MAX_STACK, color: 0x9c5064, tool: null });
+
 const EMPTY: ItemDef = ITEMS[NO_ITEM];
 
 export function itemDef(id: number): ItemDef {
@@ -825,6 +852,11 @@ const DROPS = new Map<number, Drop>([
   // エンドクリスタルは砕けて消える（Minecraft では爆発する）。**拾えると、
   // 柱の上へ運び直してドラゴンの回復を復活させられる。**
   [END_CRYSTAL, { item: NO_ITEM, count: 0, chance: 0 }],
+  // 本棚は**本が 3 個だけ**（Minecraft と同じ。**板 6 個は戻らない**）。この 1 行が無いと
+  // 既定の `baseBlock()` が本棚そのものを落とすので、板 6 + 本 3 が無傷で戻ってくる。
+  // **`extra` も `otherwise` も書かないこと** —— `chance: 1` なので `roll` も `extraRoll` も
+  // 結果に効かない（**確率にも 2 本目の乱数にも繋がっていない**のが `test/blocks.test.ts` の判定）。
+  [BOOKSHELF, { item: BOOK, count: 3, chance: 1 }],
 ]);
 
 /**
