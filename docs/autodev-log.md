@@ -2036,3 +2036,70 @@ esbuild で束ねて実際に import して数えました（`ROADMAP.md` も RE
 
 `rules/items-survival.md`（**`MAX_ITEM_ID` を移すと、突き合わせているテストが
 TS2367 で落ちる**）。
+
+## AUTODEV 54（C の周・2026-09-07・クラウドの無人の周）: 防具の枠と防御の計算（キューの 27a）
+
+**判定表は「未着手 8 件」「`AUTODEV-SPEC.md` が `状態: 未着手`」で 3 行目 = C（実装）の周。**
+仕様書（AUTODEV 53 が書いたもの）を全文そのまま実装しました。**サブエージェントは
+立てず、親が自分で実装して自分で `git diff` を点検しました**（`AUTODEV.md` の C-1 / C-2 の
+「返らないなら自分で」。前の周と同じ理由 —— `rules/testing.md` の `git stash` の件）。
+
+### 取ったもの
+
+**入れ物（`inventory.ts` の防具枠 4 つ）と、防具点でダメージを減らす判断（`vitals.ts`）の
+2 つだけ。着られる物は 1 つも足していません**（`items.ts` の `ARMORS` は**空の `Map`**）。
+判断は仕様書のとおり 3 つに割れています:
+
+1. **どの部位が何点か → `items.ts` の `ARMORS`**（`FOODS` / `foodOf()` を写した形。
+   `ArmorSlot` / `ArmorDef` / `armorOf()` / `allArmorIds()`）
+2. **いま合計何点か → `inventory.ts` の `armorPoints`**（**部位が枠の並び
+   `ARMOR_SLOTS` と合っているときだけ**足す。兜を 4 つ着ても 1 部位ぶん）
+3. **どれだけ減るか → `vitals.ts` の `armorReduced(amount, cause, points)`**（純関数。
+   `damage()` はそれを 1 行呼ぶだけで、`cooldown` / `iframe` / `exhaustion` /
+   `hurtFlash` / `cause` は 1 文字も動いていません）
+
+**`vitals.ts` は `items.ts` も `inventory.ts` も import していません**（`FoodValue` と
+同じ線引き。`test/vitals.test.ts` が `sourceOf()` で見張るようにしました）。
+**予告どおり ID 0 個・`main.ts` 0 行**で、`main.ts` は 1 文字も開いていません。
+
+**仕様書に無かったが足したもの 2 つ**（どちらも「防具点は数値でしか持たない」の裏取り）:
+
+- **`Vitals.respawn()` が `armor` を 0 に戻す。** 死ぬと `takeAll()` が防具枠も空にするので、
+  湧き直した瞬間は必ず裸です。**貼り直す側に任せると**、装備が変わったときだけ貼る
+  配線にした周に「死んだ直後だけ点が残って軽傷で済む」が入ります
+- **`Inventory.takeAll()` が防具枠も落とす**（仕様書の（5）が求めた不変条件の側）。
+  あわせて **`deserialize()` は 36 個だけを消す**ようにしました（`clear()` は両方消す）
+
+### 見送ったもの
+
+- **セーブ（`SaveData` の防具のキー）** —— 仕様書が 27b へ回したもの。書き出しに
+  `main.ts` の 1 行が要り、**この周は防具枠がずっと空なので `[0,0,0,0,0,0,0,0]` しか
+  書けません**（`inventory` のキーに 8 要素を継ぎ足す逃げ道は禁じ手のまま）
+- **画面（`inventoryui.ts` の枠 4 つ）と着る経路** —— 27b。`craftscreen.ts` の
+  `SlotArea` に枠を足す形（`rules/inventory-screen.md`）になります
+
+### 差し戻し: 0 回
+
+`npm run typecheck` は一度も落ちていません。**`ARMOR_APPLIES` を
+`Record<DamageCause, boolean>` にしたので、9 種を 1 行ずつ書くまで `tsc` が通りません** ——
+仕様書の（4）が狙ったとおりの止まり方です。
+
+### 撮った絵: 0 枚
+
+**見た目には 1 ドットも出ません**（`*render.ts` / `ui.ts` / `inventoryui.ts` /
+GLSL / `main.ts` に差分 0）。仕様書の（7）が「撮る必要はありません」と書いています。
+
+### 枠
+
+**共有帯 111..255 の空き 102**（**±0**。ID を 1 つも取っていません）/ **1..63 の空き 9**（±0）/
+**立方体 40・非立方体 76**（±0）/ **アイテム 115 種**（`MAX_ITEM_ID` **153** のまま）/
+**レシピ 59 本・食べ物 11 種**（±0）/ **`main.ts` 1450 行**（**±0**。止まる目安に届いたまま）/
+`SaveData` version 1（**形も ±0**）/ `AUTODEV-QUEUE.md` 110 行（上限 150）/
+`npm test` 3214 → **3250 件**（+36）。
+
+### 決まりごと（層 2）: 2 件
+
+- `rules/testing.md`（**新しいテストファイルは `test/run.ts` に import と呼び出しの
+  2 行を足さないと、書いても 1 件も走らない**）
+- `rules/inventory-screen.md`（**`Inventory` に 2 本目の配列を足したら、
+  「全部空にする」経路を数え直すこと**）

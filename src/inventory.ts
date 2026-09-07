@@ -1,9 +1,18 @@
 import { carryWear, damageOf, deserializeWear, serializeWear } from "./durability";
-import { NO_ITEM, itemStackLimit } from "./items";
+import { NO_ITEM, armorOf, itemStackLimit, type ArmorSlot } from "./items";
 
 export const HOTBAR_SIZE = 9;
 export const STORAGE_SIZE = 27;
 export const INVENTORY_SIZE = HOTBAR_SIZE + STORAGE_SIZE;
+
+/** 防具の枠（頭・胴・脚・足）。**36 スロットとは別の配列**（下の `Inventory.armor`）。 */
+export const ARMOR_SIZE = 4;
+
+/**
+ * 防具枠の並び。**`items.ts` の `ArmorSlot` と 1 対 1**で、
+ * **合っていない部位は 0 点**（`armorPoints`）—— 頭の防具を足の枠に入れても効かない。
+ */
+export const ARMOR_SLOTS: readonly ArmorSlot[] = ["head", "chest", "legs", "feet"];
 
 export interface Slot {
   item: number;
@@ -103,6 +112,14 @@ export function bulkDiscard(mods: {
 
 export class Inventory {
   readonly slots: Slot[] = Array.from({ length: INVENTORY_SIZE }, empty);
+
+  /**
+   * 着ている防具 4 枠。**`slots` の 36 個に混ぜないこと** ——
+   * 混ぜると `add()` が拾ったものをそのまま装備し始める（拾った鉄の兜が勝手に頭に載る）。
+   * 拾う・積む・数える・保存はどれも `slots` だけを見ており、ここは別扱い。
+   */
+  readonly armor: Slot[] = Array.from({ length: ARMOR_SIZE }, empty);
+
   selected = 0;
 
   get selectedSlot(): Slot {
@@ -112,6 +129,25 @@ export class Inventory {
   get selectedItem(): number {
     const slot = this.selectedSlot;
     return isEmpty(slot) ? NO_ITEM : slot.item;
+  }
+
+  /**
+   * いま着ているぶんの防具点の合計。**「何を着ているか」を知っているのはここだけ**で、
+   * **どれだけダメージが減るかは `vitals.ts`**（数値だけを受け取る）。
+   *
+   * **部位が枠と合っているときだけ足すこと**（`ARMOR_SLOTS`）—— 合わない枠にも
+   * 点を足すと、兜を 4 つ着るのが最善手になる。
+   */
+  get armorPoints(): number {
+    let points = 0;
+    for (let i = 0; i < ARMOR_SIZE; i++) {
+      const slot = this.armor[i];
+      if (isEmpty(slot)) continue;
+      const def = armorOf(slot.item);
+      if (!def || def.slot !== ARMOR_SLOTS[i]) continue;
+      points += def.defense;
+    }
+    return points;
   }
 
   select(index: number): void {
@@ -217,10 +253,13 @@ export class Inventory {
    *
    * **傷も一緒に返します**（`clearSlot()` より前に読むこと）—— 返さないと、
    * 死んで落とした道具を拾い直したときだけ新品に戻ります。
+   *
+   * **着ている防具も落とします**（本家と同じ）—— 残すと、死んだだけ得をする
+   * 装備ができます。**不変条件の「総数」には防具枠のぶんも入ります。**
    */
   takeAll(): { item: number; count: number; damage: number }[] {
     const out: { item: number; count: number; damage: number }[] = [];
-    for (const slot of this.slots) {
+    for (const slot of [...this.slots, ...this.armor]) {
       if (isEmpty(slot)) continue;
       out.push({ item: slot.item, count: slot.count, damage: damageOf(slot) });
       clearSlot(slot);
@@ -266,8 +305,10 @@ export class Inventory {
     carryWear(this.slots[b], damage);
   }
 
+  /** **防具枠も一緒に空にします**（`deserialize()` は 36 個だけ。下の項）。 */
   clear(): void {
     for (const slot of this.slots) clearSlot(slot);
+    for (const slot of this.armor) clearSlot(slot);
   }
 
   /** 選択中のスロットをこのアイテムで埋める（クリエイティブのスポイト）。 */
@@ -304,8 +345,13 @@ export class Inventory {
     return flat;
   }
 
+  /**
+   * **消すのは 36 個だけ**（`clear()` と違って防具枠に触らない）。
+   * セーブの `inventory` は 36 スロットぶんの平坦配列なので、ここで防具枠まで
+   * 消すと、**防具を別のキーで読み戻す順番によっては着ていたものが消えます。**
+   */
   deserialize(flat: number[] | undefined): void {
-    this.clear();
+    for (const slot of this.slots) clearSlot(slot);
     if (!Array.isArray(flat)) return;
     for (let i = 0; i < INVENTORY_SIZE; i++) {
       const item = flat[i * 2] ?? 0;

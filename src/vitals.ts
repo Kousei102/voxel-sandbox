@@ -115,6 +115,48 @@ export type DamageCause =
   | "落下" | "溺れ" | "奈落" | "モンスター" | "空腹" | "毒" | "溶岩" | "炎上" | "サボテン";
 
 /**
+ * 防具点の上限。**ここから上は同じ**（Minecraft と同じ 20 点 = 8 割減）。
+ * 上げると「装備が揃った瞬間に何も痛くない」ゲームになるので、
+ * 数値を動かすならユーザーと決めること（`TUNING.md`）。
+ */
+export const ARMOR_CAP = 20;
+
+/** 防具点の分母。通るダメージは `1 - 点 / 25`（Minecraft と同じ）。 */
+export const ARMOR_DENOM = 25;
+
+/**
+ * その死因に防具が効くか。**9 種すべてに 1 行**書くこと ——
+ * `Record<DamageCause, …>` なので、**死因が増えたら `tsc` が落として教えてくれます**
+ * （省略可にすると、新しい死因が黙って「効かない」側に落ちます）。
+ *
+ * 効かないほうは Minecraft と同じ 4 つ（溺れ・空腹・毒・奈落）。
+ */
+export const ARMOR_APPLIES: Record<DamageCause, boolean> = {
+  "落下": true,
+  "モンスター": true,
+  "溶岩": true,
+  "炎上": true,
+  "サボテン": true,
+  "溺れ": false,
+  "空腹": false,
+  "毒": false,
+  "奈落": false,
+};
+
+/**
+ * 防具点で減らしたあとのダメージ。**純関数**（`Vitals` の状態を読みません）。
+ *
+ * **`vitals.ts` は `items.ts` も `inventory.ts` も import しません** ——
+ * 受け取るのは点数という数値だけで、「何を着ているか」は `inventory.ts` の
+ * `armorPoints` が知っています（`FoodValue` とまったく同じ線引き）。
+ */
+export function armorReduced(amount: number, cause: DamageCause, points: number): number {
+  if (!ARMOR_APPLIES[cause]) return amount;
+  const effective = Math.max(0, Math.min(points, ARMOR_CAP));
+  return amount * (1 - effective / ARMOR_DENOM);
+}
+
+/**
  * 死亡画面に出す 1 行。**落とした山の数も出すこと** —— 死んだ場所が遠いと
  * 取りに戻れないので、猶予（`drops.ts` の `DESPAWN_AGE` = 5 分）を知らせる。
  */
@@ -274,6 +316,13 @@ export class Vitals {
   /** 0..1。被弾直後の赤い明滅に使う。 */
   hurtFlash = 0;
 
+  /**
+   * いまの防具点。**`inventory.ts` の `armorPoints` を貼るだけ**の数値で、
+   * ここは「何を着ているか」を知りません（`armorReduced()` の項）。
+   * **既定は 0 = 裸**なので、貼らないかぎり今までとまったく同じ量が入ります。
+   */
+  armor = 0;
+
   /** 直近の落下で受けた落差（テストと表示用）。 */
   lastFall = 0;
 
@@ -354,6 +403,9 @@ export class Vitals {
    * `cooldown` を渡したときだけ無敵時間を使う。**既定の 0 のままにしておくこと** ——
    * 落下・溺れ・奈落は引数を渡さないので `iframe` を読みも書きもせず、
    * 挙動が構造的に変わらない（一律の窓を掛けると奈落のダメージが半分になる）。
+   *
+   * **防具が減らすのは体力に入る量だけ**（`armorReduced()`）—— 無敵時間も消耗も
+   * 明滅も死因も、防具点 0 のときと 1 文字も変わらない。
    */
   damage(amount: number, cause: DamageCause, cooldown = 0): boolean {
     if (this.dead || amount <= 0) return false;
@@ -361,7 +413,7 @@ export class Vitals {
       if (this.iframe > 0) return false;
       this.iframe = cooldown;
     }
-    this.health = Math.max(0, this.health - amount);
+    this.health = Math.max(0, this.health - armorReduced(amount, cause, this.armor));
     // 痛い目に遭うと腹も減る（Minecraft と同じ）。呼ぶ側に書かせない。
     this.exhaustion += EXHAUST_HURT;
     this.sinceDamage = 0;
@@ -461,6 +513,10 @@ export class Vitals {
     this.burnLeft = 0;
     this.burnTick = 0;
     this.spikeTimer = SPIKE_INTERVAL;
+    // **死ぬと着ていたものも落とす**（`inventory.takeAll()` が防具枠も空にする）ので、
+    // 湧き直した瞬間は必ず裸。**貼り直す側に任せないこと** —— 装備が変わった
+    // ときだけ貼る配線にすると、死んだ直後だけ点が残って軽傷で済む。
+    this.armor = 0;
   }
 
   update(dt: number, ctx: VitalsContext): void {

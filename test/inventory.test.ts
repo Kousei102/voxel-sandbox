@@ -1,5 +1,13 @@
 import { COBBLE, DIRT, STONE } from "../src/blocks";
-import { HOTBAR_SIZE, INVENTORY_SIZE, Inventory, bulkDiscard, isEmpty } from "../src/inventory";
+import {
+  ARMOR_SIZE,
+  ARMOR_SLOTS,
+  HOTBAR_SIZE,
+  INVENTORY_SIZE,
+  Inventory,
+  bulkDiscard,
+  isEmpty,
+} from "../src/inventory";
 import { MAX_STACK, NO_ITEM, WOOD_PICKAXE, itemStackLimit } from "../src/items";
 import { check, describe } from "./harness";
 
@@ -173,6 +181,53 @@ export function run(): void {
   check("壊れた保存データでも上限を超えない", broken.count(STONE) === MAX_STACK, `${broken.count(STONE)} 個`);
   broken.deserialize(undefined);
   check("保存データが無ければ空になる", broken.slots.every(isEmpty));
+
+  describe("防具の枠");
+
+  {
+    const worn = new Inventory();
+    console.log(`      防具枠 ${worn.armor.length} 個 / 並び ${ARMOR_SLOTS.join(" → ")}`);
+    check("枠は 4 つ", worn.armor.length === ARMOR_SIZE && ARMOR_SIZE === 4, `${worn.armor.length} 枠`);
+    check("並びは 4 部位ぶん", ARMOR_SLOTS.length === ARMOR_SIZE, `[${ARMOR_SLOTS.join(", ")}]`);
+    check("始めは全部空", worn.armor.every(isEmpty));
+    check("裸なら防具点 0", worn.armorPoints === 0, `${worn.armorPoints} 点`);
+
+    // **拾ったものが勝手に装備されないこと。** 36 枠を溢れるまで流し込んでも、
+    // 防具枠には 1 山も入らない（別の配列で持っているのが唯一の理由）。
+    const picked = new Inventory();
+    const leftOver = picked.add(DIRT, INVENTORY_SIZE * MAX_STACK + 10);
+    const usedArmor = picked.armor.filter((slot) => !isEmpty(slot)).length;
+    console.log(`      36 枠を満杯にしたあと: 防具枠 ${usedArmor} 個が埋まった / 溢れ ${leftOver} 個`);
+    check("拾ったものは防具枠に入らない", usedArmor === 0 && leftOver === 10, `防具枠 ${usedArmor} / 溢れ ${leftOver}`);
+    check("満杯でも防具点は 0 のまま", picked.armorPoints === 0, `${picked.armorPoints} 点`);
+
+    // **着ているものも落とすこと**（本家と同じ）。不変条件の総数には防具枠も入る。
+    const corpse = new Inventory();
+    corpse.add(STONE, 5);
+    corpse.armor[0].item = WOOD_PICKAXE; // 着られる物がまだ無いので、枠の入れ物としてだけ使う
+    corpse.armor[0].count = 1;
+    const total =
+      [...corpse.slots, ...corpse.armor].reduce((sum, slot) => sum + (isEmpty(slot) ? 0 : slot.count), 0);
+    const lost = corpse.takeAll();
+    const dropped = lost.reduce((sum, stack) => sum + stack.count, 0);
+    console.log(`      死亡時（防具込み）: ${lost.length} 山 / 計 ${dropped} 個 / 元 ${total} 個`);
+    check("落とした合計が元の総数（防具込み）と合う", dropped === total, `${dropped} 個 / 元 ${total} 個`);
+    check("防具枠も一緒に空になる", corpse.armor.every(isEmpty) && corpse.slots.every(isEmpty));
+
+    // **`deserialize()` は 36 個だけ**（`clear()` と違って防具枠に触らない）。
+    const kept = new Inventory();
+    kept.armor[1].item = WOOD_PICKAXE;
+    kept.armor[1].count = 1;
+    kept.deserialize([STONE, 3]);
+    check(
+      "読み戻しは防具枠を消さない",
+      kept.armor[1].item === WOOD_PICKAXE && kept.count(STONE) === 3,
+      `防具枠 1 = ${kept.armor[1].item} / 石 ${kept.count(STONE)} 個`,
+    );
+    check("保存する 36 枠の平坦配列は今までどおり", kept.serialize().length === INVENTORY_SIZE * 2, `${kept.serialize().length} 要素`);
+    kept.clear();
+    check("clear() は防具枠も空にする", kept.armor.every(isEmpty), `防具枠 ${kept.armor.filter((s) => !isEmpty(s)).length} 個`);
+  }
 
   describe("まとめ捨ての判定（bulkDiscard）");
 

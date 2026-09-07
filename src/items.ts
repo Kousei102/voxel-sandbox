@@ -777,6 +777,42 @@ const FOODS = new Map<number, FoodDef>([
 ]);
 
 /**
+ * 防具を着る部位。**並びは `inventory.ts` の防具枠と同じ**
+ * （0 = 頭 / 1 = 胴 / 2 = 脚 / 3 = 足）。並べ替えると、頭の防具が脚の枠で効きます。
+ */
+export type ArmorSlot = "head" | "chest" | "legs" | "feet";
+
+/**
+ * 防具 1 個ぶんの値。**`FoodDef` と同じ形**（表 1 本に持ち、判断は他所へ書かない）。
+ */
+export interface ArmorDef {
+  /** どの部位に着るか。 */
+  readonly slot: ArmorSlot;
+  /** 防具点。**どれだけダメージが減るかは `vitals.ts`**（ここは点数だけ）。 */
+  readonly defense: number;
+}
+
+/**
+ * 着られるもの。**ここに無いものは着られない**（`FOODS` とまったく同じ作法）。
+ *
+ * **いまは 1 行もありません** —— 枠と減り方だけを先に入れた周なので、
+ * 着られる物は 1 つもありません（革の 4 部位は次の周）。
+ * **足すのはここに 1 行ずつ**で、`inventory.ts` にも `vitals.ts` にも
+ * アイテムの名前を書かないこと。
+ */
+const ARMORS = new Map<number, ArmorDef>([]);
+
+/** その防具の値。着られないなら null（`foodOf()` と同じ形）。 */
+export function armorOf(id: number): ArmorDef | null {
+  return ARMORS.get(id) ?? null;
+}
+
+/** 着られるアイテムの一覧（テストと表示用）。 */
+export function allArmorIds(): number[] {
+  return [...ARMORS.keys()];
+}
+
+/**
  * 食べ切ったあとに手の中へ戻るもの（器）。**戻らないなら `NO_ITEM`。**
  *
  * **表 1 本にすること**（`FILLED_BUCKETS` / `THROWN` と同じ作法）——

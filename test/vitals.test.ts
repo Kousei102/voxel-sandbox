@@ -1,5 +1,9 @@
 import {
   AIR_SECONDS,
+  ARMOR_APPLIES,
+  ARMOR_CAP,
+  ARMOR_DENOM,
+  armorReduced,
   BURN_DAMAGE,
   BURN_SECONDS,
   DROWN_DAMAGE,
@@ -33,6 +37,7 @@ import {
   VOID_Y,
   Vitals,
   fallDamage,
+  type DamageCause,
   type VitalsContext,
 } from "../src/vitals";
 import {
@@ -49,9 +54,15 @@ import {
   itemName,
 } from "../src/items";
 import { heartStates } from "../src/ui";
+import { sourceOf } from "./arena";
 import { check, describe } from "./harness";
 
 const STEP = 1 / 60;
+
+/** 0.72 のような値は 2 進小数で丸まるので、防具の判定は幅で見る。 */
+function near(a: number, b: number, eps = 1e-9): boolean {
+  return Math.abs(a - b) <= eps;
+}
 
 /** `player.ts` の WALK_SPEED / SPRINT_SPEED。消耗の実感を出すために合わせておく。 */
 const WALK_SPEED = 5.2;
@@ -366,6 +377,95 @@ export function run(): void {
   check("被弾で赤くなる", flash.hurtFlash === 1);
   advance(flash, 1);
   check("赤みは消える", flash.hurtFlash === 0);
+
+
+  describe("防具でダメージが減る");
+
+  {
+    // **まず純関数を直に呼んだ表を出す**（`Vitals` の状態を通さずに見る）。
+    // 効く 5 種と効かない 4 種が、点数を上げても入れ替わらないことの足場。
+    const causes: DamageCause[] = ["落下", "モンスター", "溶岩", "炎上", "サボテン", "溺れ", "空腹", "毒", "奈落"];
+    console.log("      armorReduced(10, 死因, 点) の表:");
+    for (const points of [0, 7, ARMOR_CAP, 25]) {
+      const row = causes.map((cause) => `${cause} ${armorReduced(10, cause, points).toFixed(2)}`);
+      console.log(`        ${String(points).padStart(2)} 点: ${row.join(" / ")}`);
+    }
+    console.log(`      効く死因: ${causes.filter((c) => ARMOR_APPLIES[c]).join("・")}`);
+    console.log(`      効かない死因: ${causes.filter((c) => !ARMOR_APPLIES[c]).join("・")}`);
+
+    check(
+      "9 種すべてに 1 行ある",
+      Object.keys(ARMOR_APPLIES).length === causes.length && causes.every((c) => c in ARMOR_APPLIES),
+      `${Object.keys(ARMOR_APPLIES).length} 行`,
+    );
+    check(
+      "効くのは落下・モンスター・溶岩・炎上・サボテンの 5 種",
+      causes.filter((c) => ARMOR_APPLIES[c]).join(",") === "落下,モンスター,溶岩,炎上,サボテン",
+    );
+    check(
+      "効かないのは溺れ・空腹・毒・奈落の 4 種",
+      causes.filter((c) => !ARMOR_APPLIES[c]).join(",") === "溺れ,空腹,毒,奈落",
+    );
+
+    // 数値は本家のまま `amount * (1 - min(点, 20) / 25)`。
+    check("防具点 0 なら 1 も減らない", armorReduced(10, "モンスター", 0) === 10, `${armorReduced(10, "モンスター", 0)}`);
+    check(
+      "防具点 7（革一式ぶん）で 7.2",
+      near(armorReduced(10, "モンスター", 7), 10 * (1 - 7 / ARMOR_DENOM)) && near(armorReduced(10, "モンスター", 7), 7.2),
+      `${armorReduced(10, "モンスター", 7).toFixed(3)}`,
+    );
+    check(
+      "防具点 20 で 2（8 割減で頭打ち）",
+      near(armorReduced(10, "モンスター", ARMOR_CAP), 2),
+      `${armorReduced(10, "モンスター", ARMOR_CAP).toFixed(3)}`,
+    );
+    check(
+      "防具点 25 でも 2 のまま（上限 20）",
+      near(armorReduced(10, "モンスター", 25), 2),
+      `${armorReduced(10, "モンスター", 25).toFixed(3)}`,
+    );
+    check(
+      "防具が効かない死因は点が幾らでも 10 のまま",
+      (["溺れ", "空腹", "毒", "奈落"] as DamageCause[]).every((c) => armorReduced(10, c, 25) === 10),
+    );
+
+    // --- 同じ値が `Vitals.armor` を立てた `damage()` でも出ること ---
+    for (const points of [0, 7, ARMOR_CAP, 25]) {
+      const v = new Vitals();
+      v.armor = points;
+      v.damage(10, "モンスター");
+      const lost = MAX_HEALTH - v.health;
+      check(
+        `防具点 ${points} で damage(10, モンスター) が ${armorReduced(10, "モンスター", points).toFixed(2)} 減らす`,
+        near(lost, armorReduced(10, "モンスター", points)),
+        `hp ${v.health.toFixed(3)}（-${lost.toFixed(3)}）`,
+      );
+    }
+    for (const cause of ["溺れ", "空腹", "毒", "奈落"] as DamageCause[]) {
+      const v = new Vitals();
+      v.armor = ARMOR_CAP;
+      v.damage(10, cause);
+      check(`防具点 20 でも ${cause} は 10 減る`, v.health === MAX_HEALTH - 10, `hp ${v.health}`);
+    }
+
+    // **減らすのは体力に入る量だけ。** 無敵時間も明滅も死因も、点 0 のときと変わらない。
+    const armored = new Vitals();
+    armored.armor = ARMOR_CAP;
+    check("防具越しでも当たれば true", armored.damage(4, "モンスター", MOB_HURT_COOLDOWN));
+    check("無敵時間は今までどおり効く", !armored.damage(4, "モンスター", MOB_HURT_COOLDOWN), `hp ${armored.health}`);
+    check("明滅と死因も今までどおり", armored.hurtFlash === 1 && armored.cause === "モンスター");
+    check("既定は裸（0 点）", new Vitals().armor === 0);
+    // 死ぬと `inventory.takeAll()` が防具枠も空にするので、湧き直した瞬間は必ず裸。
+    armored.respawn();
+    check("湧き直すと裸に戻る", armored.armor === 0, `${armored.armor} 点`);
+
+    // **`vitals.ts` は持ち物の表を知らないこと**（`FoodValue` と同じ線引き）。
+    const src = sourceOf("src/vitals.ts");
+    check(
+      "vitals.ts は items.ts も inventory.ts も import しない",
+      !/from "\.\/items"/.test(src) && !/from "\.\/inventory"/.test(src),
+    );
+  }
 
 
   describe("溶岩と炎上");
