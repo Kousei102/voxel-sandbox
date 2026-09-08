@@ -2,6 +2,7 @@ import {
   BED,
   BOOKSHELF,
   BROWN_MUSHROOM,
+  CAKE,
   CHEST,
   COBBLE,
   COBBLE_SLAB,
@@ -29,7 +30,7 @@ import {
   WOOD,
   WOOL,
 } from "./blocks";
-import { isEmpty, type Slot } from "./inventory";
+import { clearSlot, isEmpty, type Slot } from "./inventory";
 import {
   APPLE,
   ARROW,
@@ -47,6 +48,7 @@ import {
   DIAMOND_PICKAXE,
   DIAMOND_SHOVEL,
   DIAMOND_SWORD,
+  EGG,
   ENDER_EYE,
   ENDER_PEARL,
   FEATHER,
@@ -61,6 +63,7 @@ import {
   IRON_SHOVEL,
   IRON_SWORD,
   LEATHER,
+  MILK_BUCKET,
   MUSHROOM_STEW,
   NO_ITEM,
   PAPER,
@@ -80,6 +83,7 @@ import {
   WOOD_PICKAXE,
   WOOD_SHOVEL,
   WOOD_SWORD,
+  leftoverOf,
 } from "./items";
 
 export interface Recipe {
@@ -236,6 +240,24 @@ export const RECIPES: readonly Recipe[] = [
     count: 1,
     shape: ["GGG", "GAG", "GGG"],
     key: { G: GOLD_INGOT, A: APPLE },
+  },
+
+  // ケーキはミルクバケツ 3 + 砂糖 2 + 卵 1 + 小麦 3 の 3x3（Minecraft と同じ形・並び）。
+  // **3x3 なので作業台が要り、2x2 では作れない。** 左右対称なので反転しても同じ形。
+  //
+  // **ミルクバケツ 3 個は空のバケツになって盤面に残る**（＝鉄 9 個は消えない）。
+  // **それを決めているのはここではなく `items.ts` の `LEFTOVERS`** で、
+  // `consumeGrid()` は `leftoverOf()` に聞くだけ。**`Recipe` にキーを足さないこと** ——
+  // 残りかすはアイテムの性質で、レシピの性質ではない（同じミルクバケツは
+  // どのレシピで使っても空のバケツに戻る）。
+  //
+  // **食べたときに何が起きるかは 24b**（かじる 7 回）。いまは置けるだけ。
+  {
+    name: "ケーキ",
+    out: CAKE,
+    count: 1,
+    shape: ["MMM", "SES", "WWW"],
+    key: { M: MILK_BUCKET, S: SUGAR, E: EGG, W: WHEAT },
   },
 
   // 鉱物をしまう／戻す 3 対（Minecraft と同じ 9 個 ↔ 1 個）。**倉庫の枠を 9 分の 1 に
@@ -437,14 +459,29 @@ export function findRecipe(grid: readonly Slot[], size: number): Recipe | null {
   return null;
 }
 
-/** レシピが要求する数だけ盤面から取り除く（1 スロットにつき 1 個）。 */
+/**
+ * レシピが要求する数だけ盤面から取り除く（**1 スロットにつき 1 個**。この規則は変えないこと）。
+ *
+ * **使い切ったときに「残りかす」が残るものがあります**（ミルクバケツ → 空のバケツ）。
+ * **何が何になるかの表はここに持たず、`items.ts` の `leftoverOf()` に聞くこと** ——
+ * 残りかすはアイテムの性質なので、レシピが増えるたびにここへ分岐が生えてはいけません。
+ *
+ * **必ず `clearSlot()` を通してから残りかすを置くこと。** 素通しで `slot.item` を
+ * 書き換えると、**傷（`damage`）が空のバケツに乗り移ります**（`clearSlot()` は
+ * `item` / `count` / `damage` の 3 つを捨てる唯一の入口。`rules/inventory-screen.md`）。
+ */
 export function consumeGrid(grid: Slot[]): void {
   for (const slot of grid) {
     if (isEmpty(slot)) continue;
+    // **減らす前に引くこと** —— `clearSlot()` のあとでは `slot.item` が `NO_ITEM` になる。
+    const leftover = leftoverOf(slot.item);
     slot.count -= 1;
     if (slot.count <= 0) {
-      slot.item = NO_ITEM;
-      slot.count = 0;
+      clearSlot(slot);
+      if (leftover !== NO_ITEM) {
+        slot.item = leftover;
+        slot.count = 1;
+      }
     }
   }
 }

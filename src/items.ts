@@ -2,6 +2,7 @@ import {
   AIR,
   BLOCKS,
   BOOKSHELF,
+  CAKE,
   COAL_ORE,
   COBWEB,
   COBBLE,
@@ -443,13 +444,13 @@ export const GOLDEN_APPLE = 153;
  * （`craftscreen.ts` の `CREATIVE_ITEMS`）にだけ出てこないブロック**ができます
  * （置けるし掘れるので、型でも `typecheck` でも止まりません）。
  *
- * **いまはクモの巣（ブロック 154）が上限です。** 直前が金のリンゴ（アイテム 153）で、
- * その前が本棚（ブロック 152）・リンゴ（149）・紙（150）・本（151）。
+ * **いまはケーキ（ブロック 155）が上限です。** 直前がクモの巣（ブロック 154）で、
+ * その前が金のリンゴ（アイテム 153）・本棚（ブロック 152）・紙（150）・本（151）。
  * **共有帯ではブロックとアイテムが 1 本の番号列**なので、上限を持つのがどちら側かは
- * 決まりません（`items.ts` に 1 行も書いていないブロックが上限なのは 5 度目です）。
- * **クモの巣のアイテムは上の for が作るので、`item({...})` を手で足さないこと。**
+ * 決まりません（`items.ts` に 1 行も書いていないブロックが上限なのは **6 度目**です）。
+ * **ケーキのアイテムは上の for が作るので、`item({...})` を手で足さないこと。**
  */
-export const MAX_ITEM_ID = COBWEB;
+export const MAX_ITEM_ID = CAKE;
 
 export const MAX_STACK = 64;
 
@@ -829,6 +830,37 @@ export function emptyAfterEating(id: number): number {
   return EMPTIES.get(id) ?? NO_ITEM;
 }
 
+/**
+ * **クラフトで使い切ったときに盤面へ残る「残りかす」**。残らないなら `NO_ITEM`。
+ * いま入っているのは**ミルクバケツ（138）→ バケツ（84）の 1 行**だけです（ケーキ）。
+ *
+ * **`EMPTIES` と別の表にしてあります。1 つにまとめないこと** ——
+ * あちらは**食べ切ったあとに手の中へ戻る器**（シチュー → ボウル）で、
+ * こちらは**クラフトで盤面に残るもの**です。**起きる場所も、戻る先も違います。**
+ *
+ * **`Recipe` に新しいキーを足さないこと。** 残りかすは**アイテムの性質**であって
+ * レシピの性質ではありません —— 同じミルクバケツは、どのレシピで使っても
+ * 空のバケツに戻ります（本家と同じ）。`crafting.ts` の `consumeGrid()` は
+ * **表を持たず、この関数に聞くだけ**です。
+ *
+ * **載せてよいのは `stack: 1` のものだけです。これは手触りではなく不変条件**
+ * （`EMPTIES` の「器が戻る食べ物は `stack: 1`」とまったく同じ理由）——
+ * 積める物を載せると、**山が 1 個ずつ減るのに残りかすは 1 個で頭打ち**になり、
+ * 2 個目を作った拍子に残りかすが消えます。`test/crafting.test.ts` が
+ * **表に載っているものの `itemStackLimit()` が全部 1** であることを見張っています。
+ */
+const LEFTOVERS = new Map<number, number>([[MILK_BUCKET, BUCKET]]);
+
+/** そのアイテムをクラフトで使い切ったあとに盤面へ残るもの。残らないなら `NO_ITEM`。 */
+export function leftoverOf(id: number): number {
+  return LEFTOVERS.get(id) ?? NO_ITEM;
+}
+
+/** 残りかすを持つアイテムの一覧（テスト用）。 */
+export function allLeftoverIds(): number[] {
+  return [...LEFTOVERS.keys()];
+}
+
 /** そのアイテムを食べたときの値。食べられないなら null。 */
 export function foodOf(id: number): FoodDef | null {
   return FOODS.get(id) ?? null;
@@ -937,6 +969,11 @@ const DROPS = new Map<number, Drop>([
   // `mining.ts` の `canHarvest()`** が決める（刃物でなければそもそも収穫にならない）ので、
   // ここは `chance: 1` のまま —— **`extra` も `otherwise` も書かないこと。**
   [COBWEB, { item: STRING, count: 1, chance: 1 }],
+  // ケーキは**何も落ちない**（Minecraft と同じ。置いたら食べるしかない）。ガラス・
+  // ポータルの面と同じ `NO_ITEM` の 1 行で、**道具では変わらない** —— 収穫の可否を
+  // 見るのは `canHarvest()` だが、こちらは**落ちるものが最初から無い**ので
+  // **素手でもツルハシでも剣でも 0 個**（`test/blocks.test.ts` が 3 通り並べて見る）。
+  [CAKE, { item: NO_ITEM, count: 0, chance: 0 }],
 ]);
 
 /**

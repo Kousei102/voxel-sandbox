@@ -442,6 +442,28 @@ export const BOOKSHELF = 152;
  */
 export const COBWEB = 154;
 
+/**
+ * ケーキ。**小麦 3 + 砂糖 2 + 卵 1 + ミルクバケツ 3 の 3x3**（`crafting.ts`）。
+ * **まだかじれません** —— 置けるところまでが 24a で、かじる 7 回は 24b の仕事です。
+ *
+ * **形は `model: "boxes"` の `CAKE_BOX`**（本家と同じ 1/16 の縁・高さ 8/16）。
+ * ベッドと同じで **`solid: true`（歩いて乗れる）/ `supportFace: FACE_YN`（床が要る・
+ * 床が消えたら壊れる）**で、**`replaceable` も `stacksOnSelf` も `variantOf` も
+ * 付けません**（前 2 つは置いたケーキが黙って消える／宙に積み上がる。3 つ目は
+ * アイテムが作られなくなる）。
+ *
+ * **壊すと何も落ちません**（`items.ts` の `DROPS` に `NO_ITEM` の 1 行。ガラスと同じで、
+ * **素手でもツルハシでも 0 個**）。本家と同じで、置いたら食べるしかありません。
+ *
+ * **アイテム 155 は `items.ts` の for が自動で作ります**（`variantOf` が `AIR` なので。
+ * 手で `item({...})` を足すと二重登録）。**`MAX_ITEM_ID` だけは伸ばすこと。**
+ *
+ * **自然生成しません**（`worldgen.ts` にも `biomes.ts` にも 0 行）。だから
+ * **`npm run shot` の既存の場面には 1 枚も写りません** —— 本棚・クモの巣と同じ理由で
+ * `tools/shot.ts` に `cake` の場面を持っています。
+ */
+export const CAKE = 155;
+
 /** 上付きハーフ。見た目と当たり判定だけが違うので、大元は下付きのハーフ。 */
 export const STONE_SLAB_TOP = 64;
 export const COBBLE_SLAB_TOP = 65;
@@ -584,6 +606,18 @@ export const LADDER_BOX_ZN: BoxList = [[0, 0, 0, 1, 1, LADDER_THICKNESS]];
  */
 export const BED_HEIGHT = 0.5625;
 export const BED_BOX: BoxList = [[0, 0, 0, 1, BED_HEIGHT, 1]];
+/**
+ * ケーキ。**本家と同じで縁が 1/16 ずつ内側・高さは 8/16**（皿の上に乗っている形）。
+ *
+ * **`BED_BOX` と違って横も痩せている**ので、サボテン（`CACTUS_BOX`）と同じく
+ * **`canSupport()` が通りません**（`box[u] = 0.0625 > 0`）—— 上に松明もベッドも
+ * 付きませんが、**`solid: true` なので歩いて乗れます**（0.5 は `STEP_HEIGHT` の
+ * 0.6 より低いので、そのまま登れる。ハーフと同じ）。
+ *
+ * **かじった回数で高さが変わるのは 24b の仕事**です（位置ごとの状態）。
+ * **段階をブロック ID で表さないこと** —— 6 個の番号が消えます（`crops.ts` と同じ線）。
+ */
+export const CAKE_BOX: BoxList = [[0.0625, 0, 0.0625, 0.9375, 0.5, 0.9375]];
 
 /** 道具の階層。0 = 素手、1 = 木、2 = 石、3 = 鉄、4 = ダイヤ。 */
 export const TIER_HAND = 0;
@@ -1560,6 +1594,26 @@ export const BLOCKS: readonly BlockDef[] = [
     boxes: CROSS_BOX,
     sticky: true,
     bladed: true,
+  }),
+
+  // ケーキ（上のコメント）。**ベッドの定義から違うのは 3 つ**:
+  // **箱（`CAKE_BOX`。横も 1/16 ずつ痩せている）** / **硬さ 0.5** / **向き違いが無い**。
+  // **`blocksSky` は既定（`opaque` = false のまま）** —— 屋根材ではないので、
+  // 止めても見えるところは変わらず、崖の縁で下のマスが暗くなるだけ損をする（ベッドと同じ）。
+  // **`replaceable` も `stacksOnSelf` も `variantOf` も書かないこと**（上のコメント）。
+  // **色**: 上面は**生クリームに赤い実が散った平均**（1 面 1 色なので、白と赤が
+  // 混ざった薄紅になる）。**素直なクリーム色は使えない** —— 白っぽい一覧が
+  // 羊毛・羽根（0xe8e4dc）・卵（0xf7f0e0）・シチュー（0xf0dcb4）で混んでいて、
+  // 0xf2ded2 は羊毛から **15.4** しか離れない（判定は 20）。赤みへ寄せて 31.5。
+  // **一覧に出るのは `top` だけ**なので、側面（スポンジ）と下面は隔たりに入らない。
+  def(CAKE, "ケーキ", { top: 0xffd0e4, side: 0xe8c9a0, bottom: 0xd9b98a }, {
+    opaque: false,
+    solid: true,
+    hardness: 0.5,
+    sound: "wool",
+    model: "boxes",
+    boxes: CAKE_BOX,
+    supportFace: FACE_YN,
   }),
 ];
 

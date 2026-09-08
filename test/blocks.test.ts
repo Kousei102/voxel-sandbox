@@ -7,6 +7,7 @@ import {
   BOOKSHELF,
   BROWN_MUSHROOM,
   CACTUS,
+  CAKE,
   COBBLE_SLAB,
   COBWEB,
   DIAMOND_BLOCK,
@@ -147,7 +148,7 @@ import {
   toolOf,
 } from "../src/items";
 import { PROJECTILE_KINDS } from "../src/projectiles";
-import { breakTime } from "../src/mining";
+import { breakTime, canHarvest } from "../src/mining";
 import { Player } from "../src/player";
 import { raycastVoxels } from "../src/raycast";
 import { World } from "../src/world";
@@ -216,8 +217,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣の 38 個（154 まで）",
-    sharedItems.length === 38 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキの 39 個（155 まで）",
+    sharedItems.length === 39 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -256,18 +257,21 @@ export function run(): void {
       sharedItems[36] === GOLDEN_APPLE &&
       // **154 は `items.ts` に 1 行も書かずに増えたブロック**（クモの巣。152 本棚と
       // 同じで `variantOf` が `AIR` なので for が同じ番号のアイテムを作る）。
-      // **上限を持つのがブロック側なのは 5 度目**なので、`MAX_ITEM_ID` の
-      // 突き合わせをここで一緒に見る（伸ばし忘れは型では止まらない）。
       sharedItems[37] === COBWEB &&
-      MAX_ITEM_ID === COBWEB,
+      // **155 も同じ**（ケーキ。`variantOf` が `AIR`）。**上限を持つのがブロック側なのは
+      // 6 度目**なので、`MAX_ITEM_ID` の突き合わせをここで一緒に見る
+      // （伸ばし忘れは型では止まらない。**比べる相手を新しい番号に直すこと** ——
+      // 古い番号のまま残すと `tsc` が TS2367 で落ちます。`rules/testing.md`）。
+      sharedItems[38] === CAKE &&
+      MAX_ITEM_ID === CAKE,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 101（クモの巣 154 で 1 個減った）",
-    sharedFree === 101,
+    "111..255 の空きは 100（ケーキ 155 で 1 個減った）",
+    sharedFree === 100,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1140,8 +1144,162 @@ export function run(): void {
   paperBookBookshelf();
   goldenApples();
   cobwebs();
+  cakes();
 
   world.dispose();
+}
+
+/**
+ * ケーキ（ブロック 155）。**置けるところまで**が 24a なので、ここで見るのは
+ * **表の値そのもの**だけです —— **かじる 7 回は 24b**（位置ごとの状態）。
+ *
+ * **レシピと「ミルクバケツが空のバケツになって残る」は `test/crafting.test.ts`**
+ * （あちらが盤面を並べて `consumeGrid()` を回します）。
+ */
+function cakes(): void {
+  describe("ケーキ");
+
+  // --- 形と性質（ベッドと同じ `boxes` + `solid` + `FACE_YN`。違うのは箱と硬さ） ---
+  const def = blockDef(CAKE);
+  const boxes = collisionBoxes(CAKE);
+  const box = boxes[0];
+  console.log(
+    `      model ${def.model} / opaque ${def.opaque} / solid ${def.solid} / ` +
+      `replaceable ${def.replaceable} / stacksOnSelf ${stacksOnSelf(CAKE)} / ` +
+      `hardness ${def.hardness} / sound ${def.sound} / supportFace ${def.supportFace} / ` +
+      `variantOf ${def.variantOf} / 箱 ${boxes.length} 個 [${box.join(" ")}]`,
+  );
+  check(
+    "箱 1 個の `boxes` で、高さは 8/16（縁は 1/16 ずつ内側）",
+    def.model === "boxes" && boxes.length === 1 &&
+      box[0] === 0.0625 && box[1] === 0 && box[2] === 0.0625 &&
+      box[3] === 0.9375 && box[4] === 0.5 && box[5] === 0.9375,
+    `[${box.join(" ")}]`,
+  );
+  // **高さ 0.5 は `STEP_HEIGHT`（0.6）より低い** —— ハーフと同じで歩いて登れる。
+  // ここが 0.6 を超えると、置いたケーキの縁で跳ばされる（ベッドと同じ罠）。
+  check(
+    "solid（上に乗れる）で、高さ 0.5 は段差の自動登り 0.6 より低い",
+    def.solid && box[4] === 0.5 && box[4] < PLAYER_SIZE.step,
+    `solid=${def.solid} 高さ ${box[4]} / STEP_HEIGHT ${PLAYER_SIZE.step}`,
+  );
+  // **`variantOf` を書くとアイテムが作られない**（クリエイティブの一覧に出ず、置けない）。
+  // **`replaceable` を付けると置いたケーキが黙って消え**、**`stacksOnSelf` を付けると
+  // 宙に積み上がる**（どちらも `rules/blocks-shapes.md`）。
+  check(
+    "variantOf も replaceable も stacksOnSelf も付いていない",
+    def.variantOf === AIR && !def.replaceable && !stacksOnSelf(CAKE),
+    `variantOf ${def.variantOf} / replaceable ${def.replaceable} / stacksOnSelf ${stacksOnSelf(CAKE)}`,
+  );
+  // **床が要ることと、床が消えたら壊れることは `supportFace: FACE_YN` が面倒を見る**
+  // （ベッドと同じ。`world.canPlaceAt` / `breakUnsupported` がそのまま通る）。
+  // **対照はクモの巣**（`NO_SUPPORT` で宙に浮く）。`def.supportFace !== NO_SUPPORT` と
+  // 続けて書くと `tsc` が TS2367 で落ちるので、**別のブロックと比べる**のが正解
+  // （`rules/testing.md` の「同じ値に `=== A` と `!== B`」）。
+  check(
+    "supportFace は FACE_YN（床が要る。宙に浮くクモの巣とは違う）",
+    def.supportFace === FACE_YN && blockDef(COBWEB).supportFace === NO_SUPPORT,
+    `ケーキ ${def.supportFace} / クモの巣 ${blockDef(COBWEB).supportFace}`,
+  );
+  // **道具を要求しない**ので `toolSpeed()` は常に 1・`canHarvest()` は常に真 ——
+  // つまり**どの道具でも同じ 0.75 秒**（`0.5 × 1.5`）。数値を出してから判定する。
+  check(
+    "硬さは 0.5・音は wool・道具を要求しない（どの道具でも 0.75 秒）",
+    def.hardness === 0.5 && def.sound === "wool" && blockTool(CAKE) === null &&
+      breakTime(CAKE, NO_ITEM) === 0.75 && breakTime(CAKE, WOOD_PICKAXE) === 0.75,
+    `hardness ${def.hardness} / sound ${def.sound} / tool ${blockTool(CAKE)} / ` +
+      `素手 ${breakTime(CAKE, NO_ITEM).toFixed(2)}s ツルハシ ${breakTime(CAKE, WOOD_PICKAXE).toFixed(2)}s`,
+  );
+  // **横も痩せているので支えになれない**（サボテンと同じ。`canSupport()` は
+  // 「面が端まで埋まっているか」を見るので、`box[u] = 0.0625 > 0` で落ちる）。
+  check(
+    "上面は支えにならない（横が 1/16 痩せている。サボテンと同じ）",
+    !canSupport(CAKE, FACE_YP) && !canSupport(CACTUS, FACE_YP),
+    `ケーキ ${canSupport(CAKE, FACE_YP)} / サボテン ${canSupport(CACTUS, FACE_YP)}`,
+  );
+
+  // --- 掘って出るもの（**3 通りとも 0 個**。ガラスと同じ `NO_ITEM` の 1 行） ---
+  // **道具で変わらないこと**を並べて見る —— `canHarvest()` の側で塞いだのではなく、
+  // **落ちるものが最初から無い**（`chance: 0`）のが正しい形。
+  const tools: [string, number][] = [
+    ["素手", NO_ITEM], ["木のツルハシ", WOOD_PICKAXE], ["木の剣", WOOD_SWORD],
+  ];
+  const drop = dropOf(CAKE);
+  // **道具は `canHarvest()` の側だけを動かす** —— 3 通りとも収穫にはなるが、
+  // 落ちるものが最初から無いので山は 0（クモの巣は逆で、`canHarvest()` が塞いでいる）。
+  const harvest = tools.map(([, item]) => canHarvest(CAKE, item));
+  const stacks = rollDrops(CAKE, 0.5, 0.5);
+  console.log(
+    `      dropOf(): ${drop.item} x${drop.count} chance ${drop.chance} / ` +
+      `rollDrops(0.5, 0.5) の山 ${stacks.length} 個 / ` +
+      `rollDrop(0.0) x${rollDrop(CAKE, 0).count} / rollDrop(0.99) x${rollDrop(CAKE, 0.99).count} / ` +
+      `canHarvest: ${tools.map(([n], i) => `${n} ${harvest[i]}`).join(" / ")}`,
+  );
+  check(
+    "掘っても何も落ちない（素手・ツルハシ・剣の 3 通りとも 0 個）",
+    drop.item === NO_ITEM && drop.count === 0 && drop.chance === 0 &&
+      stacks.length === 0 && harvest.every((ok) => ok) &&
+      rollDrop(CAKE, 0).count === 0 && rollDrop(CAKE, 0.99).count === 0,
+    `山 ${stacks.length} 個 / ${tools.map(([n], i) => `${n} canHarvest=${harvest[i]}`).join(" ")}`,
+  );
+  // **`otherwise` を書くと「外れたらケーキが戻る」になる**（砂利の形）。ガラスと同じで
+  // ここは書かない —— 置いたら食べるしかないのが本家の形。
+  check(
+    "extra も otherwise も書いていない（山は 0 のまま）",
+    drop.extra === undefined && drop.otherwise === undefined,
+    `extra ${drop.extra === undefined ? "無し" : "有り"} / otherwise ${drop.otherwise === undefined ? "無し" : "有り"}`,
+  );
+
+  // --- アイテム 155（`items.ts` の for が自動で作る。手で足すと二重登録） ---
+  console.log(
+    `      アイテム ${CAKE}: 「${itemName(CAKE)}」 placedBlock ${placedBlock(CAKE)} / ` +
+      `1 枠 ${itemStackLimit(CAKE)} 個 / 道具 ${toolOf(CAKE) === null ? "でない" : "である"} / ` +
+      `食べ物 ${foodOf(CAKE) === null ? "でない" : "である"}`,
+  );
+  check(
+    "アイテム 155 は「ケーキ」で、置くと 155 が戻る（一覧にも出る）",
+    itemName(CAKE) === "ケーキ" && placedBlock(CAKE) === CAKE &&
+      allItemIds().includes(CAKE) && toolOf(CAKE) === null,
+    `${itemName(CAKE)} / placedBlock ${placedBlock(CAKE)} / 一覧に ${allItemIds().includes(CAKE)}`,
+  );
+  // **まだ食べられません**（満腹度も回復量も 24b で決める）。`FOODS` に 1 行でも
+  // 足すと、かじる仕掛けが無いまま「手に持って右クリックで消える」になる。
+  check(
+    "まだ食べ物ではない（FOODS に 1 行も無い。かじるのは 24b）",
+    foodOf(CAKE) === null && !allFoodIds().includes(CAKE) &&
+      emptyAfterEating(CAKE) === NO_ITEM,
+    `foodOf ${foodOf(CAKE)} / 食べ物 ${allFoodIds().length} 種`,
+  );
+
+  // --- 一覧に並ぶ色（既存のどれとも見分けが付くこと。**判定に入るのは `top` だけ**） ---
+  const dist = (a: number, b: number): number =>
+    Math.hypot(((a >> 16) & 255) - ((b >> 16) & 255), ((a >> 8) & 255) - ((b >> 8) & 255), (a & 255) - (b & 255));
+  let best = Infinity;
+  let who = "";
+  for (const other of allItemIds()) {
+    if (other === CAKE) continue;
+    const gap = dist(itemColor(CAKE), itemColor(other));
+    if (gap < best) {
+      best = gap;
+      who = itemName(other);
+    }
+  }
+  console.log(
+    `      色のいちばん近い相手: ケーキ 0x${itemColor(CAKE).toString(16)} ↔ ${who} ${best.toFixed(1)}` +
+      `（側面 0x${def.side.toString(16)} / 下面 0x${def.bottom.toString(16)} は一覧に出ない）`,
+  );
+  check(
+    "ケーキは既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）",
+    best >= 20,
+    `いちばん近い ${who} と ${best.toFixed(1)}`,
+  );
+  // **`bottom` を書き忘れると `side` が下面まで落ちてくる**（`def()` の既定。
+  // 2026-09-07 の本棚で踏んだ罠で、**絵でも下から覗かないと分かりません**）。
+  check(
+    "上面・側面・下面が 3 つとも違う色（bottom の書き忘れが無い）",
+    def.top !== def.side && def.side !== def.bottom && def.top !== def.bottom,
+    `top 0x${def.top.toString(16)} / side 0x${def.side.toString(16)} / bottom 0x${def.bottom.toString(16)}`,
+  );
 }
 
 /**

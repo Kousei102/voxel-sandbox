@@ -2,6 +2,7 @@ import {
   BED,
   BOOKSHELF,
   BROWN_MUSHROOM,
+  CAKE,
   COBBLE,
   CRAFTING_TABLE,
   DIAMOND_BLOCK,
@@ -23,7 +24,8 @@ import {
   WOOL,
 } from "../src/blocks";
 import { RECIPES, consumeGrid, findRecipe } from "../src/crafting";
-import { isEmpty, type Slot } from "../src/inventory";
+import { CraftScreen } from "../src/craftscreen";
+import { Inventory, isEmpty, type Slot } from "../src/inventory";
 import {
   APPLE,
   ARROW,
@@ -42,6 +44,7 @@ import {
   IRON_INGOT,
   DIAMOND_PICKAXE,
   DIAMOND_SWORD,
+  EGG,
   FEATHER,
   FLINT,
   FLINT_AND_STEEL,
@@ -50,6 +53,7 @@ import {
   IRON_HOE,
   IRON_SWORD,
   LEATHER,
+  MILK_BUCKET,
   MUSHROOM_STEW,
   NO_ITEM,
   PAPER,
@@ -66,7 +70,10 @@ import {
   WOOD_PICKAXE,
   WOOD_SHOVEL,
   WOOD_SWORD,
+  allLeftoverIds,
+  emptyAfterEating,
   itemStackLimit,
+  leftoverOf,
   rollDrops,
 } from "../src/items";
 import { check, describe } from "./harness";
@@ -642,6 +649,119 @@ export function run(): void {
     "真ん中も金インゴットなら今までどおり金ブロック",
     allGold?.out === GOLD_BLOCK,
     allGold?.name ?? "無し",
+  );
+
+  describe("ケーキ");
+
+  // **ミルクバケツ 3 + 砂糖 2 + 卵 1 + 小麦 3 の 3x3**（本家と同じ形・並び）。
+  // ここの主役は**残りかす** —— ミルクバケツ 3 個が**空のバケツになって盤面に残る**
+  // （鉄 9 個が消えない）。**表は `items.ts` の `LEFTOVERS`** で、`consumeGrid()` は
+  // `leftoverOf()` に聞くだけ。
+  const CK = { M: MILK_BUCKET, S: SUGAR, E: EGG, W: WHEAT, B: BUCKET };
+  const cakeRows = ["MMM", "SES", "WWW"];
+  const cake = findRecipe(grid(3, cakeRows, CK), 3);
+  // **2x2 では作れない**（3 段あるので作業台が要る）。左上 4 マスだけを渡す。
+  const cakeIn2 = findRecipe(grid(2, ["MM", "SE"], CK), 2);
+  console.log(
+    `      ${cakeRows.join(" / ")} → ${cake?.name ?? "無し"} x${cake?.count ?? 0}` +
+      `（2x2: ${cakeIn2?.name ?? "無し"}）  レシピ ${RECIPES.length} 本`,
+  );
+  check(
+    "ミルクバケツ 3 + 砂糖 2 + 卵 1 + 小麦 3 → ケーキ 1 個",
+    cake?.out === CAKE && cake.count === 1,
+    `${cake?.name ?? "無し"} x${cake?.count ?? 0}`,
+  );
+  check("2x2 ではケーキは作れない（3x3 なので作業台が要る）", cakeIn2 === null, cakeIn2?.name ?? "無し");
+  // **本数も 1 件として見張る** —— レシピを足したのに表から漏れていたら、
+  // 上の `findRecipe` だけでは「揃わないのが正しい」と読めてしまう。
+  check("レシピは 60 本（ケーキで 1 本増えた）", RECIPES.length === 60, `${RECIPES.length} 本`);
+
+  // --- 残りかす（`consumeGrid()` の前後の盤面を 9 枠ぶん並べて見る） ---
+  const cakeGrid = grid(3, cakeRows, CK);
+  const show = (g: readonly Slot[]): string =>
+    g.map((s) => (isEmpty(s) ? "空" : `${s.item}x${s.count}`)).join(" ");
+  console.log(`      consumeGrid の前: ${show(cakeGrid)}`);
+  consumeGrid(cakeGrid);
+  console.log(`      consumeGrid の後: ${show(cakeGrid)}`);
+  // **上 3 枠だけが空のバケツ 1 個ずつ、残り 6 枠は空**。片方だけ見ると、
+  // 「全部バケツになった」でも「1 枠も残らなかった」でも緑になりうる。
+  const milkSlots = [0, 1, 2];
+  const others = [3, 4, 5, 6, 7, 8];
+  check(
+    "ミルクバケツ 3 枠は空のバケツ 1 個ずつに変わる",
+    milkSlots.every((i) => cakeGrid[i].item === BUCKET && cakeGrid[i].count === 1),
+    milkSlots.map((i) => `${i}:${cakeGrid[i].item}x${cakeGrid[i].count}`).join(" "),
+  );
+  check(
+    "砂糖・卵・小麦の 6 枠は空になる（残りかすを持たない）",
+    others.every((i) => isEmpty(cakeGrid[i])),
+    others.map((i) => `${i}:${cakeGrid[i].item}x${cakeGrid[i].count}`).join(" "),
+  );
+  // **2 個目は作れない** —— 盤面が空のバケツ 3 個だけになるので `findRecipe` が null。
+  // ここが揃ってしまうと、材料 1 組でケーキが無限に出る。
+  const second = findRecipe(cakeGrid, 3);
+  check("続けてもう 1 個は作れない（盤面が空バケツ 3 個になる）", second === null, second?.name ?? "無し");
+
+  // --- 傷の乗り移り（`clearSlot()` を通さないとここが落ちる） ---
+  // **道具の傷が空のバケツに乗り移らないこと。** ミルクバケツは道具ではないので
+  // 普段 `damage` は 0 だが、`slot.item` を素通しで書き換える実装だと、
+  // **前に何が入っていたかの傷がそのまま残ります**（`rules/inventory-screen.md`）。
+  const wornGrid = grid(3, cakeRows, CK);
+  for (const i of milkSlots) wornGrid[i].damage = 7;
+  consumeGrid(wornGrid);
+  console.log(
+    `      傷 7 のミルクバケツ 3 個 → ${milkSlots.map((i) => `${wornGrid[i].item} damage ${wornGrid[i].damage ?? 0}`).join(" / ")}`,
+  );
+  check(
+    "傷 7 のミルクバケツを置いても、戻った空バケツの damage は 0",
+    milkSlots.every((i) => wornGrid[i].item === BUCKET && (wornGrid[i].damage ?? 0) === 0),
+    milkSlots.map((i) => `damage ${wornGrid[i].damage ?? 0}`).join(" "),
+  );
+
+  // --- 一括クラフト（シフトクリック）も 1 個で止まる ---
+  // **`quickCraft()` は作れるだけ作る**ので、残りかすが材料に化けていると
+  // ここで 64 個まで走ります（`findRecipe` の null だけでは気付けない）。
+  const cakeScreen = new CraftScreen(new Inventory());
+  cakeScreen.openScreen(3);
+  const cakeItems = [MILK_BUCKET, MILK_BUCKET, MILK_BUCKET, SUGAR, EGG, SUGAR, WHEAT, WHEAT, WHEAT];
+  cakeItems.forEach((item, i) => {
+    cakeScreen.grid[i].item = item;
+    cakeScreen.grid[i].count = 1;
+  });
+  const took = cakeScreen.takeResult(true);
+  const cakeMade = cakeScreen.inventory.slots.filter((s) => s.item === CAKE)
+    .reduce((sum, s) => sum + s.count, 0);
+  const leftBuckets = cakeScreen.grid.filter((s) => s.item === BUCKET).length;
+  console.log(
+    `      シフトクリック: crafted ${took.crafted} / 手に入ったケーキ ${cakeMade} 個 / ` +
+      `盤面に残った空バケツ ${leftBuckets} 個`,
+  );
+  check(
+    "シフトクリックでも 1 個で止まる（空バケツ 3 個が盤面に残る）",
+    took.crafted && cakeMade === 1 && leftBuckets === 3,
+    `ケーキ ${cakeMade} 個 / 空バケツ ${leftBuckets} 個`,
+  );
+
+  // --- 表そのもの（載せてよいのは `stack: 1` のものだけ） ---
+  // **積める物を載せると、山が 1 個ずつ減るのに残りかすは 1 個で頭打ち**になり、
+  // 2 個目を作った拍子に残りかすが消えます（`EMPTIES` の `stack: 1` と同じ不変条件）。
+  const leftovers = allLeftoverIds();
+  console.log(
+    `      leftoverOf の表: ${leftovers.map((id) => `${id}（1 枠 ${itemStackLimit(id)} 個）→ ${leftoverOf(id)}`).join(" / ")}`,
+  );
+  check(
+    "残りかすを持つアイテムは全部 1 枠 1 個まで",
+    leftovers.length > 0 && leftovers.every((id) => itemStackLimit(id) === 1),
+    leftovers.map((id) => `${id}:${itemStackLimit(id)}`).join(" "),
+  );
+  // **`EMPTIES` と別の表であること** —— 混ぜると、食べ終わりに戻る器と
+  // クラフトの残りかすが同じ規則になります（起きる場所も戻る先も違う）。
+  check(
+    "ミルクバケツの残りかすは空のバケツで、シチューは残りかすを持たない",
+    leftoverOf(MILK_BUCKET) === BUCKET && leftoverOf(MUSHROOM_STEW) === NO_ITEM &&
+      emptyAfterEating(MUSHROOM_STEW) === BOWL && emptyAfterEating(MILK_BUCKET) === NO_ITEM,
+    `残りかす: ミルク → ${leftoverOf(MILK_BUCKET)} / シチュー → ${leftoverOf(MUSHROOM_STEW)}` +
+      ` ｜ 器: シチュー → ${emptyAfterEating(MUSHROOM_STEW)} / ミルク → ${emptyAfterEating(MILK_BUCKET)}`,
   );
 
   describe("クラフト");

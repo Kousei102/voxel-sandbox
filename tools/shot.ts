@@ -21,6 +21,7 @@ import {
   AIR,
   BOOKSHELF,
   BROWN_MUSHROOM,
+  CAKE,
   COBWEB,
   DIRT,
   FARMLAND,
@@ -30,6 +31,7 @@ import {
   LADDER_ZN,
   LADDER_ZP,
   PLANK,
+  PLANK_SLAB,
   RED_MUSHROOM,
   STONE,
   SUGAR_CANE,
@@ -469,6 +471,51 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
       camera: look(setup, new Vector3(3.5, y + 3.4, 8), new Vector3(0, y + 1.2, 1)),
       dayNight: skyOf(OVERWORLD, setup.time),
       note: `巣の壁 3x2（0..2,${y},0）/ 宙に浮いた 1 個 1,${y + 4},3 / 石の上 4,${y + 1},3 / 比べる草むら 3 本（-4..-2,${y},0）`,
+    };
+  },
+
+  /**
+   * ケーキ（155）。**本棚・クモの巣と同じで自然には 1 個も生えない**（本家にも
+   * 湧かない）ので、ここへ直に置くしかない。見るのは 4 つ:
+   * **`model: "boxes"` の箱 1 個が縁 1/16・高さ 8/16 で出ているか**（ハーフより低く、
+   * 横も痩せている）/ **上面（薄紅 0xffd0e4）と側面（スポンジ 0xe8c9a0）と
+   * 下面（0xd9b98a）が入れ替わっていないか** / **隣の下付きハーフと高さで見分けが
+   * 付くか**（0.5 で同じ高さ・横幅だけが違う）/ **面が欠けたり裏返ったりしないか。**
+   */
+  cake(setup) {
+    const { scene, world } = makeWorld(OVERWORLD, 3);
+    const pad = 6;
+    // **平らな台を作る**（`bookshelf` と同じ理由。地形なりだとケーキが斜面に埋まる）。
+    let y = 0;
+    for (let dz = -pad; dz <= pad; dz++) {
+      for (let dx = -pad; dx <= pad; dx++) y = Math.max(y, world.surfaceY(dx, dz));
+    }
+    for (let dz = -pad; dz <= pad; dz++) {
+      for (let dx = -pad; dx <= pad; dx++) {
+        for (let h = y; h < y + 8; h++) world.setVoxel(dx, h, dz, AIR);
+        for (let h = y - 4; h < y; h++) world.setVoxel(dx, h, dz, DIRT);
+        world.setVoxel(dx, y - 1, dz, GRASS);
+      }
+    }
+    // **1 個だけ離して置くこと**（本棚と同じ）—— 並べると側面どうしが接して、
+    // 「上面と側面が入れ替わっていないか」を見る足場が消える。
+    world.setVoxel(0, y, 0, CAKE);
+    // **石の台の上にもう 1 個。** 縁の 1/16 が台からはみ出さずに引っ込んで見えるか
+    // （`CACTUS_BOX` と同じ痩せ方で、`FULL_BOX` との差はここにしか出ない）。
+    world.setVoxel(3, y, 0, STONE);
+    world.setVoxel(3, y + 1, 0, CAKE);
+    // **比べる下付きハーフを隣に。** 高さが同じ 0.5 なので、**横が痩せていること**
+    // だけが違いになる（数値は `test/blocks.test.ts` が見るが、目で見るのは別）。
+    world.setVoxel(-3, y, 0, PLANK_SLAB);
+    // **書き換えたらメッシュ化をもう一度流すこと**（`bookshelf` と同じ）。
+    world.primeAround(0.5, 0.5, 3);
+    return {
+      scene,
+      // **すぐそばの斜め上から。** 真横だと上面（薄紅）が 1 画素も写らず、
+      // 入れ替わりにも高さ 8/16 にも気付けない。
+      camera: look(setup, new Vector3(1.2, y + 1.9, 4.2), new Vector3(0.2, y + 0.4, 0)),
+      dayNight: skyOf(OVERWORLD, setup.time),
+      note: `ケーキ 0,${y},0 / 石の上 3,${y + 1},0 / 比べる板ハーフ -3,${y},0`,
     };
   },
 
