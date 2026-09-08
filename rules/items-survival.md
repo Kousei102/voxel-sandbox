@@ -164,6 +164,22 @@ paths:
 - **どのブロックにも `tool: "sword"` を付けないこと**（`test/blocks.test.ts` が見張っています）。
   付けた瞬間、剣がそのブロックの採掘道具になって速く掘れます。**掘る速さは
   `speed: 1`**（素手と同じ）で、`TIER_SPEEDS` を渡さないこと。
+- **では「剣でだけ落ちるブロック」はどう書くか —— `BlockDef.bladed` の旗 1 本です**
+  （2026-09-08 のクモの巣）。`BlockDef.tool` は**「掘る速さ」の表**で、
+  `canHarvest()` と `toolSpeed()` の**両方**が引きます。だから `tool: "sword"` は
+  「剣でだけ落ちる」ではなく「**剣で速く掘れる**」になってしまう —— **落ちるかどうかと
+  速さは別の話**なので、旗も別に持ちます。形は 3 つに割れます:
+  - **どのブロックか → `blocks.ts` の `bladed`**（表 1 本・`isBladed()`。`spiky` /
+    `climbable` / `sticky` と同じ形）
+  - **何が刃物か → `items.ts` の `isBlade()`** = `isSword(item) || isShears(item)`。
+    **`item === SHEARS` と書かないこと** —— 既にある 2 本の合成にしておけば、
+    剣の階層が増えてもシアーズが増えても 1 行も直りません
+  - **どこで効くか → `mining.ts` の `canHarvest()` の 1 行だけ**。`isBreakable()` の
+    直後、**`blockTool()` の帯より前**に `if (isBladed(id)) return isBlade(item);`。
+    **`toolSpeed()` には 1 文字も足さないこと** —— 足すと剣が掘る道具に戻ります
+  - **`sticky`（絡む）と 1 つの旗にまとめないこと。** 氷は鈍らせるだけ・ツタは刃物だけ、と
+    **片方しか要らないもの**がこの先に来ます。**速さは「適正か（1.5 倍 : 5 倍）」だけで
+    決まる**ので、硬さの側で手ざわりを作ることになります（クモの巣が 1.2 なのはそれ。`TUNING.md`）
 - **どれが剣かは `items.ts` の `isSword()`**（`toolOf(id)?.kind === "sword"`）。
   火種・弓と違って表を持たないのは、剣が 4 本とも `ToolDef` を持っているからです。
   **`durability.ts` に `item === WOOD_SWORD` と書かないこと**（`test/durability.test.ts` が見張り）。

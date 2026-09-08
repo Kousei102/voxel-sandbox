@@ -11,7 +11,7 @@
  */
 
 import { PerspectiveCamera } from "three";
-import { AIR, BEDROCK, CACTUS, LADDER, STONE, STONE_SLAB, STONE_STAIRS, WATER } from "../src/blocks";
+import { AIR, BEDROCK, CACTUS, COBWEB, LADDER, STONE, STONE_SLAB, STONE_STAIRS, WATER } from "../src/blocks";
 import { WORLD_HEIGHT } from "../src/constants";
 import { PLAYER_SIZE } from "../src/physics";
 import { Player } from "../src/player";
@@ -447,5 +447,146 @@ export function run(): void {
     "自由落下よりずっと遅い（対照と比べる）",
     fell > slid * 3 && dropped.velocity.y < slideVy * 5,
     `はしご ${slid.toFixed(3)} m / 自由落下 ${fell.toFixed(3)} m`,
+  );
+
+  cobweb(rungs);
+}
+
+/**
+ * クモの巣に絡まる（`player.inCobweb`）。**はしごの節を写した形**で、違うのは
+ * 「掴まって登る」ではなく「素通りするが鈍る」ところ。
+ *
+ * 巣は `solid: false` なので押し戻しは 1 度も起きず、**マスが重なるかどうか**だけで
+ * 決まる（サボテン・はしごとまったく同じ `bodyTouches()` の走査）。
+ * **どのブロックが絡むかは `blocks.ts` の `isSticky()`**、**どれだけ鈍るかは
+ * `player.ts` の 2 定数**、**落ちたぶんを積むかどうかは `clinging`**。
+ */
+function cobweb(rungs: Player): void {
+  describe("クモの巣に絡まる（player.inCobweb）");
+
+  // 床 y=10（上面 11）の上、x=3..40 に巣を 2 段（y=11,12）敷く。体は 1.8 m なので
+  // 頭（12.8）まで巣の中に入る。**歩いて入る**ので、手前（x<3）は空けておく。
+  const field = new Arena();
+  field.fill(-4, 60, 10, 10, -4, 4, STONE);
+  field.fill(3, 40, 11, 12, -4, 4, COBWEB);
+  const web = field as unknown as World;
+
+  const walker = new Player(new PerspectiveCamera());
+  walker.position.set(0.5, 11, 0.5);
+  walker.yaw = -Math.PI / 2; // 前 = +X
+  for (let i = 0; i < 30; i++) walker.update(1 / 60, web);
+  // **まず「まだ届いていない」ことを出す** —— 常に真を返す実装をここで落とす。
+  check(
+    "歩き出す前（x≈0.5）は絡まっていない",
+    !walker.inCobweb,
+    `x=${walker.position.x.toFixed(3)} inCobweb=${walker.inCobweb}`,
+  );
+
+  walker.setKey("KeyW", true);
+  for (let i = 0; i < 120; i++) walker.update(1 / 60, web);
+  console.log(
+    `      巣へ歩いて入った: x=${walker.position.x.toFixed(3)}` +
+      `（体の右端=${(walker.position.x + PLAYER_SIZE.half).toFixed(3)} → マス ${Math.floor(walker.position.x + PLAYER_SIZE.half)}）` +
+      ` inCobweb=${walker.inCobweb} onGround=${walker.onGround}`,
+  );
+  check(
+    "巣のマスへ歩いて入ると inCobweb が真",
+    walker.inCobweb && walker.position.x > 3,
+    `x=${walker.position.x.toFixed(3)} inCobweb=${walker.inCobweb}`,
+  );
+
+  // 隣のマス（x=2 のまん中）に立っているだけでは偽。**これが無いと、
+  // 常に真を返す実装でも上の 1 件が通ってしまう。**
+  const nextTo = new Player(new PerspectiveCamera());
+  nextTo.position.set(2.5, 11, 0.5);
+  for (let i = 0; i < 30; i++) nextTo.update(1 / 60, web);
+  check(
+    "隣のマスに立っているだけでは偽",
+    !nextTo.inCobweb,
+    `x=${nextTo.position.x.toFixed(3)} 右端=${(nextTo.position.x + PLAYER_SIZE.half).toFixed(3)}（境目 3.0）`,
+  );
+
+  // --- 横の速さ（巣の外の 1/4）。**対照と同じ 1 秒で測ること。** ---
+  // 上で 2 秒歩いているので、もう加速し切っている（測るのは定常速度）。
+  const insideFrom = walker.position.x;
+  for (let i = 0; i < 60; i++) walker.update(1 / 60, web);
+  const insideSpeed = walker.position.x - insideFrom;
+
+  const open = new Player(new PerspectiveCamera());
+  open.position.set(0.5, 11, 0.5);
+  open.yaw = -Math.PI / 2;
+  open.setKey("KeyW", true);
+  // 巣に入る手前で測る —— 巣は x=3 からなので、床だけの試験場で走らせる。
+  const bare = new Arena();
+  bare.fill(-4, 60, 10, 10, -4, 4, STONE);
+  const clear = bare as unknown as World;
+  for (let i = 0; i < 120; i++) open.update(1 / 60, clear);
+  const openFrom = open.position.x;
+  for (let i = 0; i < 60; i++) open.update(1 / 60, clear);
+  const openSpeed = open.position.x - openFrom;
+  console.log(
+    `      1 秒で進んだ距離: 巣の中 ${insideSpeed.toFixed(3)} m/s / 巣の外 ${openSpeed.toFixed(3)} m/s` +
+      `（比 ${(insideSpeed / openSpeed).toFixed(3)}。既定 0.25）`,
+  );
+  check(
+    "巣の外は今までどおり 5.2 m/s（対照）",
+    openSpeed > 5.1 && openSpeed < 5.3 && !open.inCobweb,
+    `${openSpeed.toFixed(3)} m/s inCobweb=${open.inCobweb}`,
+  );
+  check(
+    "巣の中では横の速さが 1/4（1.3 m/s ほど）",
+    insideSpeed > 1.25 && insideSpeed < 1.35 && walker.inCobweb,
+    `${insideSpeed.toFixed(3)} m/s（比 ${(insideSpeed / openSpeed).toFixed(3)}）`,
+  );
+
+  // --- 落ちる速さ（1.0 m/s 止まり）。**通り抜けない厚みで積むこと。** ---
+  // 1 秒で 1 m しか落ちないので、y=20..40 に積んでおけば足りる。床は遠く（y=10）。
+  const tower = new Arena();
+  tower.fill(-4, 4, 10, 10, -4, 4, STONE);
+  tower.fill(-4, 4, 20, 40, -4, 4, COBWEB);
+  const shaftWeb = tower as unknown as World;
+
+  const hanging = new Player(new PerspectiveCamera());
+  hanging.position.set(0.5, 35, 0.5);
+  for (let i = 0; i < 30; i++) hanging.update(1 / 60, shaftWeb);
+  const fallFrom = hanging.position.y;
+  for (let i = 0; i < 60; i++) hanging.update(1 / 60, shaftWeb);
+  const sank = fallFrom - hanging.position.y;
+
+  // **対照（巣の無い所で同じ 1 秒）** —— 無いと「重力のまま落ちている」実装が通る。
+  // **巣の無い試験場で落とすこと** —— 同じ塔で落とすと、1.5 秒で 31 m 落ちて
+  // 巣の帯（20..40）に突っ込み、対照が対照でなくなる（最初に書いたときそれで落ちた）。
+  const freefall = new Player(new PerspectiveCamera());
+  freefall.position.set(0.5, 60, 0.5); // 床（10）までは 1.5 秒では届かない
+  for (let i = 0; i < 30; i++) freefall.update(1 / 60, clear);
+  const bareFrom = freefall.position.y;
+  for (let i = 0; i < 60; i++) freefall.update(1 / 60, clear);
+  const bareFell = bareFrom - freefall.position.y;
+  console.log(
+    `      1 秒で落ちた距離: 巣の中 ${sank.toFixed(3)} m（vy=${hanging.velocity.y.toFixed(2)}）` +
+      ` / 対照の自由落下 ${bareFell.toFixed(3)} m（vy=${freefall.velocity.y.toFixed(2)}）`,
+  );
+  check(
+    "巣の中では 1.0 m/s 止まりで落ちる",
+    sank > 0.95 && sank < 1.05 && Math.abs(hanging.velocity.y + 1) < 1e-9 && hanging.inCobweb,
+    `${sank.toFixed(3)} m vy=${hanging.velocity.y.toFixed(3)}`,
+  );
+  check(
+    "自由落下よりずっと遅い（対照と比べる）",
+    bareFell > sank * 10 && !freefall.inCobweb,
+    `巣 ${sank.toFixed(3)} m / 自由落下 ${bareFell.toFixed(3)} m`,
+  );
+
+  // --- 絡まっているあいだは落ちたぶんを積まない（`clinging`。はしごと同じ扱い） ---
+  // **判断は `player.ts` の `clinging` ゲッター 1 か所**（`vitals.ts` は
+  // 「はしごか巣か」を知らない。落下ダメージそのものは `test/vitals.test.ts`）。
+  console.log(
+    `      clinging: 巣の中 ${hanging.clinging}（onLadder=${hanging.onLadder} inCobweb=${hanging.inCobweb})` +
+      ` / はしご ${rungs.clinging} / 何も無い所 ${freefall.clinging}`,
+  );
+  check(
+    "巣の中でもはしごでも clinging が真、何も無い所では偽",
+    hanging.clinging && rungs.clinging && !freefall.clinging,
+    `巣 ${hanging.clinging} / はしご ${rungs.clinging} / 対照 ${freefall.clinging}`,
   );
 }

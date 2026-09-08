@@ -1,5 +1,5 @@
 import { Euler, Vector3, type PerspectiveCamera } from "three";
-import { AIR, WATER, isClimbable, isHotLiquid, isLiquid, isSpiky } from "./blocks";
+import { AIR, WATER, isClimbable, isHotLiquid, isLiquid, isSpiky, isSticky } from "./blocks";
 import { PLAYER_SIZE, blockOverlapsBody, bodyTouches, moveBody } from "./physics";
 import type { World } from "./world";
 
@@ -24,6 +24,18 @@ const LADDER_CLIMB_SPEED = 2.35;
  * 重力を足さない（足すと毎フレーム速くなって「掴まっている」感じが消える）。
  */
 const LADDER_SLIDE_SPEED = 3.0;
+
+/**
+ * クモの巣の中での横の速さの倍率。**本家の「歩きが 4 分の 1 ほどになる」を
+ * 1 つの数値に均したもの**（`TUNING.md`）。走っていても掛かる。
+ */
+const COBWEB_SPEED_SCALE = 0.25;
+/**
+ * クモの巣の中での上下の速さの上限 (m/s)。**落ちる速さも昇る速さもここで頭打ち**に
+ * するので、重力は今までどおり足したうえで**あとから挟む**（前に置くと重力に
+ * 上書きされて落下が止まらない）。
+ */
+const COBWEB_FALL_SPEED = 1.0;
 
 const scratch = new Vector3();
 
@@ -60,6 +72,12 @@ export class Player {
    * **ここに数値を書かないこと・`vitals.ts` を import しないこと。**
    */
   onLadder = false;
+  /**
+   * 体が絡むブロック（クモの巣）のマスと重なっている。**`onLadder` と同じで事実だけ** ——
+   * どれだけ鈍るかは下の 2 定数、落ちたぶんを打ち消すかどうかは `clinging` のもの。
+   * **ここに `vitals.ts` を import しないこと。**
+   */
+  inCobweb = false;
 
   private readonly keys = new Set<string>();
   private readonly euler = new Euler(0, 0, 0, "YXZ");
@@ -80,6 +98,15 @@ export class Player {
   /** 溶岩に浸かっているか。ダメージの判断は `vitals.ts`（ここは事実を渡すだけ）。 */
   get inLava(): boolean {
     return isHotLiquid(this.liquid);
+  }
+
+  /**
+   * 何かに掴まっている／絡まっている（はしご・クモの巣）。**「落ちたぶんを積まないのは
+   * どれか」の判断はここ 1 か所**で、`main.ts` にも `vitals.ts` にも
+   * `inCobweb` の文字を出さない（`VitalsContext.clinging` が受け取るのはこの値）。
+   */
+  get clinging(): boolean {
+    return this.onLadder || this.inCobweb;
   }
 
   constructor(private readonly camera: PerspectiveCamera) {}
@@ -140,6 +167,7 @@ export class Player {
     // フレームで真になったり、離れたフレームで真のまま残ったりする
     this.touchingSpikes = bodyTouches(world, this.position, PLAYER_SIZE, isSpiky);
     this.onLadder = bodyTouches(world, this.position, PLAYER_SIZE, isClimbable);
+    this.inCobweb = bodyTouches(world, this.position, PLAYER_SIZE, isSticky);
     this.syncCamera();
   }
 
@@ -161,7 +189,10 @@ export class Player {
   }
 
   private updateWalk(dt: number, sprinting: boolean): void {
-    const speed = (sprinting ? SPRINT_SPEED : WALK_SPEED) * (this.inLiquid ? 0.6 : 1);
+    const speed =
+      (sprinting ? SPRINT_SPEED : WALK_SPEED) *
+      (this.inLiquid ? 0.6 : 1) *
+      (this.inCobweb ? COBWEB_SPEED_SCALE : 1);
     const accel = (this.onGround ? ACCEL_GROUND : ACCEL_AIR) * dt;
     const targetX = this.wish.x * speed;
     const targetZ = this.wish.z * speed;
@@ -183,6 +214,12 @@ export class Player {
         this.velocity.y = JUMP_SPEED;
         this.onGround = false;
       }
+    }
+
+    // **液体／はしご／重力の if-else の「あと」**で挟むこと —— 前に置くと、else の
+    // 重力が上書きして落下が止まらない。上下どちらも同じ上限で頭打ちにする。
+    if (this.inCobweb) {
+      this.velocity.y = Math.max(-COBWEB_FALL_SPEED, Math.min(COBWEB_FALL_SPEED, this.velocity.y));
     }
 
     if (this.onGround && this.wish.lengthSq() === 0) {

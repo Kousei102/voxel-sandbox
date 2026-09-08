@@ -419,6 +419,29 @@ export const LADDER_ZN = 148;
  */
 export const BOOKSHELF = 152;
 
+/**
+ * クモの巣。**中に居ると動きが鈍り、刃物（剣かシアーズ）で壊すと糸が 1 個**落ちます。
+ *
+ * **形は草むら・キノコと同じ `model: "cross"` / `CROSS_BOX`** で、`solid: false` なので
+ * 体は通り抜けます（鈍るのは速さだけ）。**支えは要りません**（`supportFace` は既定の
+ * `NO_SUPPORT`）—— 本家と同じで宙に浮きます。**`replaceable` は付けないこと** ——
+ * 付けると、置いた巣の上にブロックを置いた拍子に黙って消えます。
+ *
+ * **旗は 2 つに割れています。1 つにまとめないこと**（氷やツタは片方だけ要ります）:
+ *
+ * - **`sticky`（`isSticky()`）** —— 中に居ると鈍る。**どれだけ鈍るかは持ちません**
+ *   （`COBWEB_SPEED_SCALE` / `COBWEB_FALL_SPEED` は `player.ts` のもの。`spiky` が
+ *   痛さを持たないのとまったく同じ線）
+ * - **`bladed`（`isBladed()`）** —— 刃物でだけ落ちる。**`tool: "sword"` と書かないこと** ——
+ *   書くと剣がこのブロックの採掘道具になって速く掘れます（`ToolKind` のコメント）。
+ *   **何が刃物かは `items.ts` の `isBlade()`**、**どこで効くかは `mining.ts` の
+ *   `canHarvest()` の 1 行**です
+ *
+ * **自然生成しません**（要塞や廃坑に湧かせるのは別の周）。作って置くものでもなく、
+ * **手に入るのはクリエイティブの一覧からだけ**です（本家にレシピはありません）。
+ */
+export const COBWEB = 154;
+
 /** 上付きハーフ。見た目と当たり判定だけが違うので、大元は下付きのハーフ。 */
 export const STONE_SLAB_TOP = 64;
 export const COBBLE_SLAB_TOP = 65;
@@ -645,6 +668,23 @@ export interface BlockDef {
    * **どのマスに効くかは `player.ts`**（体の箱と重なるマスを `bodyTouches()` で走査する）。
    */
   readonly climbable: boolean;
+  /**
+   * 体が重なっているあいだ動きが鈍るブロック（クモの巣）。**`id === COBWEB` と
+   * 書かないこと** —— `liquid` / `hot` / `falls` / `spiky` / `climbable` と同じく
+   * 表 1 本（`isSticky()`）に聞く。**どれだけ鈍るかは持たない**
+   * （`COBWEB_SPEED_SCALE` と `COBWEB_FALL_SPEED` は `player.ts` のもの）。
+   * **どのマスに効くかは `player.ts`**（体の箱と重なるマスを `bodyTouches()` で走査する）。
+   */
+  readonly sticky: boolean;
+  /**
+   * 刃物（剣・シアーズ）で壊したときだけ落ちるブロック（クモの巣）。
+   * **`tool: "sword"` で表さないこと** —— `BlockDef.tool` は「掘るのに向いた種類」の
+   * 表なので、書くと剣がそのブロックの採掘道具になって速く掘れる（`ToolKind` の
+   * コメント）。**何が刃物かは持たない**（`items.ts` の `isBlade()`）。
+   * **`sticky` と 1 つの旗にまとめないこと** —— 氷は鈍らせるだけ、ツタは刃物だけ、と
+   * 片方しか要らないものがこの先に来る。
+   */
+  readonly bladed: boolean;
   /** 頭が浸かったときのフォグ。液体だけが持つ。 */
   readonly fog: LiquidFog | null;
   /** 足音・破壊・設置の音の材質。既定は "stone"。 */
@@ -786,6 +826,8 @@ function def(
     falls: opts.falls ?? false,
     spiky: opts.spiky ?? false,
     climbable: opts.climbable ?? false,
+    sticky: opts.sticky ?? false,
+    bladed: opts.bladed ?? false,
     fog: opts.fog ?? null,
     emission: opts.emission ?? 0,
     sound: opts.sound ?? "stone",
@@ -1503,6 +1545,22 @@ export const BLOCKS: readonly BlockDef[] = [
     tool: "axe",
     sound: "wood",
   }),
+
+  // クモの巣（上のコメント）。**キノコの定義から違うのは 4 つ**:
+  // **色** / **硬さ（0 ではなく 1.2）** / **旗 2 つ（`sticky` と `bladed`）** /
+  // **支えが要らない（`supportFace` を書かない = `NO_SUPPORT`。宙に浮く）**。
+  // **`replaceable` は付けないこと**（置いた巣が黙って消える）。
+  // **`tool` は書かないこと** —— 刃物かどうかは `bladed` の側で見る。
+  def(COBWEB, "クモの巣", { top: 0xc8c8dc }, {
+    opaque: false,
+    solid: false,
+    hardness: 1.2,
+    sound: "wool",
+    model: "cross",
+    boxes: CROSS_BOX,
+    sticky: true,
+    bladed: true,
+  }),
 ];
 
 
@@ -1580,6 +1638,10 @@ const FALLS = new Uint8Array(ID_LIMIT);
 const SPIKY = new Uint8Array(ID_LIMIT);
 /** 1 = 重なっているあいだ登れる（はしご）。どのマスに効くかは `player.ts`。 */
 const CLIMBABLE = new Uint8Array(ID_LIMIT);
+/** 1 = 重なっているあいだ動きが鈍る（クモの巣）。どのマスに効くかは `player.ts`。 */
+const STICKY = new Uint8Array(ID_LIMIT);
+/** 1 = 刃物で壊したときだけ落ちる（クモの巣）。引くのは `mining.ts` の `canHarvest()`。 */
+const BLADED = new Uint8Array(ID_LIMIT);
 /** 1 = 自分の上に自分を積める（サトウキビ）。引くのは `supportsBlock()` だけ。 */
 const STACKS_ON_SELF = new Uint8Array(ID_LIMIT);
 const VARIANT_OF = new Uint8Array(ID_LIMIT);
@@ -1599,6 +1661,8 @@ for (const block of BLOCKS) {
   FALLS[block.id] = block.falls ? 1 : 0;
   SPIKY[block.id] = block.spiky ? 1 : 0;
   CLIMBABLE[block.id] = block.climbable ? 1 : 0;
+  STICKY[block.id] = block.sticky ? 1 : 0;
+  BLADED[block.id] = block.bladed ? 1 : 0;
   STACKS_ON_SELF[block.id] = block.stacksOnSelf ? 1 : 0;
   VARIANT_OF[block.id] = block.variantOf;
 }
@@ -1797,6 +1861,26 @@ export function isSpiky(id: number): boolean {
  */
 export function isClimbable(id: number): boolean {
   return CLIMBABLE[id] === 1;
+}
+
+/**
+ * 体が重なっているあいだ動きが鈍るか（クモの巣）。**`id === COBWEB` と書かないこと** ——
+ * `isSpiky()` / `isClimbable()` と同じ表 1 本に聞く。座標は知らない。
+ * **どのマスに効くか**（体の箱と重なるマス）は `player.ts` が
+ * `physics.ts` の `bodyTouches()` で走査する。**どれだけ鈍るかも `player.ts`。**
+ */
+export function isSticky(id: number): boolean {
+  return STICKY[id] === 1;
+}
+
+/**
+ * 刃物（剣・シアーズ）で壊したときだけ落ちるか（クモの巣）。
+ * **`id === COBWEB` と書かないこと** —— `isSpiky()` / `isSticky()` と同じ表 1 本に聞く。
+ * **何が刃物かは知らない**（`items.ts` の `isBlade()`）。
+ * 引くのは `mining.ts` の `canHarvest()` の 1 行だけ。
+ */
+export function isBladed(id: number): boolean {
+  return BLADED[id] === 1;
 }
 
 /** 頭がそのブロックの中にあるときのフォグ。液体でなければ null。 */

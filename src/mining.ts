@@ -1,5 +1,5 @@
-import { blockHardness, blockMinTier, blockTool, isBreakable } from "./blocks";
-import { NO_ITEM, toolOf } from "./items";
+import { blockHardness, blockMinTier, blockTool, isBladed, isBreakable } from "./blocks";
+import { NO_ITEM, isBlade, toolOf } from "./items";
 
 /**
  * 採掘にかかる時間。Minecraft の式に合わせてある。
@@ -16,6 +16,11 @@ export const MISMATCH_FACTOR = 5;
 /** その道具でブロックを壊したときアイテムが出るか。 */
 export function canHarvest(blockId: number, itemId: number): boolean {
   if (!isBreakable(blockId)) return false;
+  // 刃物でだけ落ちるブロック（クモの巣）は、`blockTool()` の帯より前で決める ——
+  // **`BlockDef.tool` に `"sword"` と書くと剣が採掘道具になって速く掘れる**ので、
+  // 「速さ」の表とは別の旗（`isBladed()`）で見ている（`blocks.ts` のコメント）。
+  // **`toolSpeed()` には 1 文字も足さないこと** —— 刃物でも掘る速さは素手と同じ。
+  if (isBladed(blockId)) return isBlade(itemId);
   const required = blockTool(blockId);
   if (required === null) return true;
   const tool = toolOf(itemId);

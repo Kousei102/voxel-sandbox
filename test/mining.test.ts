@@ -2,6 +2,7 @@ import {
   BEDROCK,
   COAL_ORE,
   COBBLE,
+  COBWEB,
   DIAMOND_ORE,
   DIRT,
   GLASS,
@@ -23,10 +24,12 @@ import {
   FLINT,
   IRON_PICKAXE,
   NO_ITEM,
+  SHEARS,
   STONE_PICKAXE,
   WHEAT,
   WOOD_AXE,
   WOOD_PICKAXE,
+  WOOD_SWORD,
   dropOf,
   itemName,
   rollDrop,
@@ -233,5 +236,75 @@ function stackCounts(): void {
     "rollDrop() は今までどおり 1 山目だけを答える",
     rollDrop(WHEAT_CROP_RIPE, 0.5).item === WHEAT && rollDrop(WHEAT_CROP_RIPE, 0.5).count === 1,
     `${itemName(rollDrop(WHEAT_CROP_RIPE, 0.5).item)} x${rollDrop(WHEAT_CROP_RIPE, 0.5).count}`,
+  );
+
+  bladedBlocks();
+}
+
+/**
+ * 刃物でだけ落ちるブロック（クモの巣）。**`canHarvest()` に足した 1 行**が、
+ * `blockTool()` の帯より前で効いていることを道具 5 通り x 2 ブロックの表で見る。
+ *
+ * **`toolSpeed()` には 1 文字も足していない**ことが `breakTime()` の側に出る ——
+ * 刃物で掘っても速くならず、変わるのは「適正か（1.5 倍 : 5 倍）」だけ。
+ */
+function bladedBlocks(): void {
+  describe("刃物でだけ落ちるブロック（クモの巣）");
+
+  // **表を出してから判定する。** 対照に石を並べるのは、「いつも刃物を要求する」
+  // 実装がここを素通りしないため。
+  const kit: [string, number][] = [
+    ["素手", NO_ITEM],
+    ["木の剣", WOOD_SWORD],
+    ["シアーズ", SHEARS],
+    ["木のツルハシ", WOOD_PICKAXE],
+    ["木の斧", WOOD_AXE],
+  ];
+  console.log("      ブロック      " + kit.map(([n]) => n.padStart(9)).join(""));
+  for (const block of [COBWEB, STONE]) {
+    const cells = kit.map(([, tool]) => {
+      const text = breakTime(block, tool).toFixed(2) + (canHarvest(block, tool) ? "" : "x");
+      return text.padStart(9);
+    });
+    console.log(`      ${blockName(block).padEnd(12)}${cells.join("")}`);
+  }
+
+  check(
+    "刃物（剣・シアーズ）なら糸が落ちる",
+    canHarvest(COBWEB, WOOD_SWORD) && canHarvest(COBWEB, SHEARS),
+    `剣 ${canHarvest(COBWEB, WOOD_SWORD)} / シアーズ ${canHarvest(COBWEB, SHEARS)}`,
+  );
+  check(
+    "素手・ツルハシ・斧では何も落ちない",
+    !canHarvest(COBWEB, NO_ITEM) && !canHarvest(COBWEB, WOOD_PICKAXE) && !canHarvest(COBWEB, WOOD_AXE),
+    `素手 ${canHarvest(COBWEB, NO_ITEM)} / ツルハシ ${canHarvest(COBWEB, WOOD_PICKAXE)}`,
+  );
+  // **対照。** 石は今までどおり「ツルハシなら落ちる・素手では落ちない」で、
+  // 剣を持っても落ちない（`bladed` の 1 行が `blockTool()` の帯を素通しにしていない）。
+  check(
+    "石は今までどおり（ツルハシで落ちて、剣では落ちない）",
+    canHarvest(STONE, WOOD_PICKAXE) && !canHarvest(STONE, WOOD_SWORD) && !canHarvest(STONE, NO_ITEM),
+    `ツルハシ ${canHarvest(STONE, WOOD_PICKAXE)} / 剣 ${canHarvest(STONE, WOOD_SWORD)}`,
+  );
+
+  // **時間は「適正か」だけで決まる**（`toolSpeed()` は剣もシアーズも 1 を返す）。
+  // 硬さ 1.2 x 1.5 = 1.8 秒 / 1.2 x 5 = 6.0 秒。
+  console.log(
+    `      breakTime: 刃物 ${breakTime(COBWEB, WOOD_SWORD).toFixed(2)} 秒 / ` +
+      `シアーズ ${breakTime(COBWEB, SHEARS).toFixed(2)} 秒 / ` +
+      `素手 ${breakTime(COBWEB, NO_ITEM).toFixed(2)} 秒 / ` +
+      `ツルハシ ${breakTime(COBWEB, WOOD_PICKAXE).toFixed(2)} 秒`,
+  );
+  check(
+    "刃物なら 1.8 秒（剣もシアーズも同じ速さ）",
+    Math.abs(breakTime(COBWEB, WOOD_SWORD) - 1.8) < 1e-9 &&
+      Math.abs(breakTime(COBWEB, SHEARS) - 1.8) < 1e-9,
+    `${breakTime(COBWEB, WOOD_SWORD).toFixed(3)} 秒`,
+  );
+  check(
+    "素手・ツルハシでは 6.0 秒（落ちないうえに遅い）",
+    Math.abs(breakTime(COBWEB, NO_ITEM) - 6) < 1e-9 &&
+      Math.abs(breakTime(COBWEB, WOOD_PICKAXE) - 6) < 1e-9,
+    `${breakTime(COBWEB, NO_ITEM).toFixed(3)} 秒`,
   );
 }

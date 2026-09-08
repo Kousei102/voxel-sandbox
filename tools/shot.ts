@@ -21,6 +21,7 @@ import {
   AIR,
   BOOKSHELF,
   BROWN_MUSHROOM,
+  COBWEB,
   DIRT,
   FARMLAND,
   GRASS,
@@ -32,6 +33,7 @@ import {
   RED_MUSHROOM,
   STONE,
   SUGAR_CANE,
+  TALL_GRASS,
   WATER,
   WHEAT_CROP,
   WHEAT_CROP_RIPE,
@@ -423,6 +425,50 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
       camera: look(setup, new Vector3(3.5, y + 3.4, 7.5), new Vector3(0, y + 0.8, 1.5)),
       dayNight: skyOf(OVERWORLD, setup.time),
       note: `本棚の壁 3x2（0..2,${y},0）+ 単体 1,${y},4 / 比べる板の壁 3x2（-4..-2,${y},0）`,
+    };
+  },
+
+  /**
+   * クモの巣（154）。**本棚・はしごと同じで自然には 1 個も生えない**（この周では
+   * 湧かせていない）ので、ここへ直に置くしかない。見るのは 3 つ:
+   * **十字の板 2 枚が組まれているか**（`model: "cross"` の発行点は草むらと同じ）/
+   * **色 0xc8c8dc が石や雪と見分けられるか** / **宙に浮いた 1 個が欠けないか**
+   * （`supportFace` が `NO_SUPPORT` なので、支えの無い所に置ける）。
+   */
+  cobweb(setup) {
+    const { scene, world } = makeWorld(OVERWORLD, 3);
+    const pad = 6;
+    // **平らな台を作る**（`bookshelf` と同じ理由。地形なりだと巣が斜面に埋まる）。
+    let y = 0;
+    for (let dz = -pad; dz <= pad; dz++) {
+      for (let dx = -pad; dx <= pad; dx++) y = Math.max(y, world.surfaceY(dx, dz));
+    }
+    for (let dz = -pad; dz <= pad; dz++) {
+      for (let dx = -pad; dx <= pad; dx++) {
+        for (let h = y; h < y + 8; h++) world.setVoxel(dx, h, dz, AIR);
+        for (let h = y - 4; h < y; h++) world.setVoxel(dx, h, dz, DIRT);
+        world.setVoxel(dx, y - 1, dz, GRASS);
+      }
+    }
+    // **3x2 の壁**（洞窟の入口を塞いだ形）と、**その左に草むらを 3 本**。
+    // 草むらを隣に並べるのは、**同じ十字がどう組まれるか**を見比べるため
+    // （形が同じで色だけが違う、というのが絵からしか読めない）。
+    for (let dx = 0; dx < 3; dx++) {
+      for (let h = y; h < y + 2; h++) world.setVoxel(dx, h, 0, COBWEB);
+      world.setVoxel(dx - 4, y, 0, TALL_GRASS);
+    }
+    // **宙に浮いた 1 個**（支えが要らないことの足場）と、**石の隣の 1 個**（色の見比べ）。
+    world.setVoxel(1, y + 4, 3, COBWEB);
+    world.setVoxel(4, y, 3, STONE);
+    world.setVoxel(4, y + 1, 3, COBWEB);
+    // **書き換えたらメッシュ化をもう一度流すこと**（`bookshelf` と同じ）。
+    world.primeAround(0.5, 0.5, 3);
+    return {
+      scene,
+      // **すぐそばの斜めから**（`ladders` と同じ。遠いと十字の板が数画素に潰れる）。
+      camera: look(setup, new Vector3(3.5, y + 3.4, 8), new Vector3(0, y + 1.2, 1)),
+      dayNight: skyOf(OVERWORLD, setup.time),
+      note: `巣の壁 3x2（0..2,${y},0）/ 宙に浮いた 1 個 1,${y + 4},3 / 石の上 4,${y + 1},3 / 比べる草むら 3 本（-4..-2,${y},0）`,
     };
   },
 

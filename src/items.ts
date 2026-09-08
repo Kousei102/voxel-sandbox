@@ -3,6 +3,7 @@ import {
   BLOCKS,
   BOOKSHELF,
   COAL_ORE,
+  COBWEB,
   COBBLE,
   DIAMOND_ORE,
   DIRT,
@@ -442,13 +443,13 @@ export const GOLDEN_APPLE = 153;
  * （`craftscreen.ts` の `CREATIVE_ITEMS`）にだけ出てこないブロック**ができます
  * （置けるし掘れるので、型でも `typecheck` でも止まりません）。
  *
- * **いまは金のリンゴ（アイテム 153）が上限です。** 直前は本棚（ブロック 152）で、
- * その前がリンゴ（149）・紙（150）・本（151）。
+ * **いまはクモの巣（ブロック 154）が上限です。** 直前が金のリンゴ（アイテム 153）で、
+ * その前が本棚（ブロック 152）・リンゴ（149）・紙（150）・本（151）。
  * **共有帯ではブロックとアイテムが 1 本の番号列**なので、上限を持つのがどちら側かは
- * 決まりません（`items.ts` に 1 行も書いていないブロックが上限だったのは 4 度目です）。
- * **本棚のアイテムは上の for が作るので、`item({...})` を手で足さないこと。**
+ * 決まりません（`items.ts` に 1 行も書いていないブロックが上限なのは 5 度目です）。
+ * **クモの巣のアイテムは上の for が作るので、`item({...})` を手で足さないこと。**
  */
-export const MAX_ITEM_ID = GOLDEN_APPLE;
+export const MAX_ITEM_ID = COBWEB;
 
 export const MAX_STACK = 64;
 
@@ -931,6 +932,11 @@ const DROPS = new Map<number, Drop>([
   // **`extra` も `otherwise` も書かないこと** —— `chance: 1` なので `roll` も `extraRoll` も
   // 結果に効かない（**確率にも 2 本目の乱数にも繋がっていない**のが `test/blocks.test.ts` の判定）。
   [BOOKSHELF, { item: BOOK, count: 3, chance: 1 }],
+  // クモの巣は**糸が 1 個**（Minecraft と同じ。巣そのものは戻らない）。この 1 行が無いと
+  // 既定の `baseBlock()` が巣そのものを落とす。**落ちるかどうかは `chance` ではなく
+  // `mining.ts` の `canHarvest()`** が決める（刃物でなければそもそも収穫にならない）ので、
+  // ここは `chance: 1` のまま —— **`extra` も `otherwise` も書かないこと。**
+  [COBWEB, { item: STRING, count: 1, chance: 1 }],
 ]);
 
 /**
@@ -1135,6 +1141,19 @@ export function isSword(item: number): boolean {
  */
 export function isHoe(item: number): boolean {
   return toolOf(item)?.kind === "hoe";
+}
+
+/**
+ * 刃物（剣かシアーズ）か。**クモの巣のような `isBladed()` なブロックが、これでだけ
+ * 落ちます**（`mining.ts` の `canHarvest()` の 1 行）。
+ *
+ * **`item === SHEARS` と書かないこと** —— どちらも既にある `isSword()` /
+ * `isShears()` の合成にしておけば、剣の階層が増えてもシアーズが増えても 1 行も直りません。
+ * **「掘る速さ」には 1 文字も効きません**（`toolSpeed()` は `BlockDef.tool` を見るだけで、
+ * 剣もシアーズも `speed: 1`）—— 刃物は「落ちるかどうか」だけを決めます。
+ */
+export function isBlade(item: number): boolean {
+  return isSword(item) || isShears(item);
 }
 
 /** 全アイテム ID（テストと UI の列挙用）。 */

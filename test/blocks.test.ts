@@ -8,6 +8,7 @@ import {
   BROWN_MUSHROOM,
   CACTUS,
   COBBLE_SLAB,
+  COBWEB,
   DIAMOND_BLOCK,
   DIRT,
   END_PORTAL_FRAME,
@@ -30,6 +31,7 @@ import {
   LAVA,
   LOW_BAND_MAX,
   MAX_BLOCK_ID,
+  NO_SUPPORT,
   PLANK_SLAB,
   PLANK_SLAB_TOP,
   PLANK_STAIRS,
@@ -70,7 +72,9 @@ import {
   ladderVariant,
   isLiquid,
   isReplaceable,
+  isBladed,
   isSpiky,
+  isSticky,
   liquidFog,
   placeSpot,
   placedVariant,
@@ -92,6 +96,7 @@ import {
   BUCKET,
   COOKED_CHICKEN,
   DIAMOND,
+  DIAMOND_SWORD,
   DIAMOND_HOE,
   EGG,
   FEATHER,
@@ -116,7 +121,10 @@ import {
   WATER_BUCKET,
   WHEAT,
   WHEAT_SEEDS,
+  WOOD_AXE,
   WOOD_HOE,
+  WOOD_PICKAXE,
+  WOOD_SWORD,
   allFoodIds,
   allItemIds,
   bucketOf,
@@ -124,6 +132,7 @@ import {
   dropOf,
   emptyAfterEating,
   foodOf,
+  isBlade,
   isBucket,
   isHoe,
   isSeed,
@@ -207,8 +216,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴの 37 個（153 まで）",
-    sharedItems.length === 37 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣の 38 個（154 まで）",
+    sharedItems.length === 38 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -245,15 +254,20 @@ export function run(): void {
       // **153 は `items.ts` に手で足したアイテム**（金のリンゴ）。**ブロックは 1 つも
       // 増えていない**ので、上限がアイテム側に戻った（本棚で 4 度目だったブロック側から）。
       sharedItems[36] === GOLDEN_APPLE &&
-      MAX_ITEM_ID === GOLDEN_APPLE,
+      // **154 は `items.ts` に 1 行も書かずに増えたブロック**（クモの巣。152 本棚と
+      // 同じで `variantOf` が `AIR` なので for が同じ番号のアイテムを作る）。
+      // **上限を持つのがブロック側なのは 5 度目**なので、`MAX_ITEM_ID` の
+      // 突き合わせをここで一緒に見る（伸ばし忘れは型では止まらない）。
+      sharedItems[37] === COBWEB &&
+      MAX_ITEM_ID === COBWEB,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 102（金のリンゴ 153 で 1 個減った）",
-    sharedFree === 102,
+    "111..255 の空きは 101（クモの巣 154 で 1 個減った）",
+    sharedFree === 101,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1125,8 +1139,136 @@ export function run(): void {
   apples();
   paperBookBookshelf();
   goldenApples();
+  cobwebs();
 
   world.dispose();
+}
+
+/**
+ * クモの巣（ブロック 154）。**旗が 2 つに割れている**のがここの全部です ——
+ * `sticky`（鈍る）と `bladed`（刃物でだけ落ちる）を 1 つにまとめると、
+ * 氷（鈍るだけ）やツタ（刃物だけ）を足した周に必ず片方を巻き添えにします。
+ *
+ * **どれだけ鈍るかは `test/physics.test.ts`**（あちらが `Player` を実際に歩かせます）。
+ * **壊す時間と収穫は `test/mining.test.ts`**。ここで見るのは**表の値そのもの**だけ。
+ */
+function cobwebs(): void {
+  describe("クモの巣");
+
+  // --- 旗 2 つ（**どちらもクモの巣だけ**。値を並べて出してから判定する） ---
+  const sticky = BLOCKS.filter((b) => isSticky(b.id)).map((b) => `${b.id}:${b.name}`);
+  const bladed = BLOCKS.filter((b) => isBladed(b.id)).map((b) => `${b.id}:${b.name}`);
+  console.log(`      isSticky: [${sticky.join(" ")}]  isBladed: [${bladed.join(" ")}]`);
+  // 対照を並べる —— 「いつも真」の実装がここを素通りしないため。
+  const others: [string, number][] = [
+    ["石", STONE], ["草むら", TALL_GRASS], ["はしご", LADDER], ["サボテン", CACTUS], ["水", WATER],
+  ];
+  console.log(
+    `      対照: ${others.map(([n, id]) => `${n} sticky=${isSticky(id)} bladed=${isBladed(id)}`).join(" / ")}`,
+  );
+  check(
+    "isSticky が真なのはクモの巣だけ（石・草むら・はしご・サボテン・水は偽）",
+    sticky.length === 1 && isSticky(COBWEB) && others.every(([, id]) => !isSticky(id)),
+    sticky.join(" ") || "0 個",
+  );
+  check(
+    "isBladed が真なのもクモの巣だけ",
+    bladed.length === 1 && isBladed(COBWEB) && others.every(([, id]) => !isBladed(id)),
+    bladed.join(" ") || "0 個",
+  );
+  // **`tool: "sword"` で表していないこと**が `bladed` を別の旗にした理由そのもの
+  // （上の「『sword』を要求するブロックが 1 つも無い」と対で見る）。
+  check(
+    "クモの巣は tool を要求しない（剣を採掘道具にしていない）",
+    blockTool(COBWEB) === null,
+    `tool ${blockTool(COBWEB)}`,
+  );
+
+  // --- 何が刃物か（`items.ts` の `isBlade()` = 剣 or シアーズ） ---
+  const blades: [string, number][] = [
+    ["木の剣", WOOD_SWORD], ["ダイヤの剣", DIAMOND_SWORD], ["シアーズ", SHEARS],
+  ];
+  const dull: [string, number][] = [
+    ["素手", NO_ITEM], ["木のツルハシ", WOOD_PICKAXE], ["木の斧", WOOD_AXE], ["石", STONE],
+  ];
+  console.log(
+    `      isBlade: ${blades.map(([n, i]) => `${n} ${isBlade(i)}`).join(" / ")}` +
+      ` ｜ ${dull.map(([n, i]) => `${n} ${isBlade(i)}`).join(" / ")}`,
+  );
+  check(
+    "刃物は剣 4 本とシアーズだけ（素手・ツルハシ・斧は違う）",
+    blades.every(([, i]) => isBlade(i)) && dull.every(([, i]) => !isBlade(i)),
+    blades.concat(dull).map(([n, i]) => `${n}:${isBlade(i)}`).join(" "),
+  );
+
+  // --- 落ちるもの（刃物なら糸 1 個・そうでなければ何も落ちない） ---
+  // **`chance` は 1 のまま**で、落ちるかどうかを決めているのは `canHarvest()` のほう。
+  const drop = rollDrop(COBWEB, 0.5);
+  console.log(
+    `      dropOf(): ${itemName(dropOf(COBWEB).item)} x${dropOf(COBWEB).count} ` +
+      `chance ${dropOf(COBWEB).chance}  rollDrop(0.5): ${itemName(drop.item)} x${drop.count}`,
+  );
+  check(
+    "掘ると糸が 1 個（巣そのものは戻らない）",
+    drop.item === STRING && drop.count === 1 && dropOf(COBWEB).chance === 1,
+    `${itemName(drop.item)} x${drop.count}`,
+  );
+  // **2 山目にも「外したら別のもの」にも繋がっていない**（本棚と同じ形の見張り）。
+  const stacks = rollDrops(COBWEB, 0.99, 0.99);
+  check(
+    "山は 1 つだけ（extra も otherwise も書いていない）",
+    stacks.length === 1 && stacks[0].item === STRING && dropOf(COBWEB).extra === undefined,
+    `${stacks.length} 山 / extra ${dropOf(COBWEB).extra === undefined ? "無し" : "有り"}`,
+  );
+
+  // --- 形と性質（草むら・キノコと同じ十字。違うのは硬さと支えと `replaceable`） ---
+  const def = blockDef(COBWEB);
+  console.log(
+    `      model ${def.model} / opaque ${def.opaque} / solid ${def.solid} / ` +
+      `replaceable ${def.replaceable} / hardness ${def.hardness} / sound ${def.sound} / ` +
+      `supportFace ${def.supportFace} / variantOf ${def.variantOf} / 箱 ${collisionBoxes(COBWEB).length} 個`,
+  );
+  check(
+    "十字で通り抜けられて、支えが要らない（宙に浮く）",
+    def.model === "cross" && !def.opaque && !def.solid && def.supportFace === NO_SUPPORT &&
+      isProp(COBWEB),
+    `${def.model} solid=${def.solid} supportFace=${def.supportFace}`,
+  );
+  // **`replaceable` を付けないこと** —— 付けると、置いた巣の上にブロックを置いた
+  // 拍子に `placeSpot()` が狙ったマス自身を返して黙って消える（草むらとの違い）。
+  check(
+    "replaceable ではない（草むらとの違い。置いた巣が黙って消えない）",
+    !def.replaceable && isReplaceable(TALL_GRASS),
+    `巣 ${def.replaceable} / 草むら ${isReplaceable(TALL_GRASS)}`,
+  );
+  // 硬さ 0 にすると素手で一瞬で消える（草むらと同じになってしまう）。
+  check(
+    "硬さは 1.2（草むらの 0 とは違って、素手では時間が掛かる）",
+    def.hardness === 1.2 && def.variantOf === AIR && def.sound === "wool",
+    `hardness ${def.hardness} / sound ${def.sound}`,
+  );
+
+  // --- 一覧に並ぶ色（既存のどれとも見分けが付くこと） ---
+  const dist = (a: number, b: number): number =>
+    Math.hypot(((a >> 16) & 255) - ((b >> 16) & 255), ((a >> 8) & 255) - ((b >> 8) & 255), (a & 255) - (b & 255));
+  let best = Infinity;
+  let who = "";
+  for (const other of allItemIds()) {
+    if (other === COBWEB) continue;
+    const gap = dist(itemColor(COBWEB), itemColor(other));
+    if (gap < best) {
+      best = gap;
+      who = itemName(other);
+    }
+  }
+  console.log(
+    `      色のいちばん近い相手: クモの巣 0x${itemColor(COBWEB).toString(16)} ↔ ${who} ${best.toFixed(1)}`,
+  );
+  check(
+    "クモの巣は既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）",
+    best >= 20,
+    `いちばん近い ${who} と ${best.toFixed(1)}`,
+  );
 }
 
 /**
@@ -1182,11 +1324,14 @@ function goldenApples(): void {
     special.length === 1 && special[0] === GOLDEN_APPLE,
     special.map((id) => `${id} ${itemName(id)}`).join(" / ") || "0 個",
   );
-  // **上限がアイテム側へ戻った**（本棚 152 → 金のリンゴ 153）。伸ばし忘れると
-  // クリエイティブの一覧にだけ出てこない（`rules/items-survival.md`）。
+  // 伸ばし忘れるとクリエイティブの一覧にだけ出てこない（`rules/items-survival.md`）。
+  // **上限そのものはクモの巣（154）へ移った**ので、ここで見るのは「金のリンゴが
+  // 一覧に届いている」ことと「上限がそこまで下がっていない」ことの 2 つ ——
+  // **番号ちょうどの突き合わせは共有帯の一覧（38 個）の側**が持っている
+  // （同じ値に `=== A` と `!== B` を並べると `tsc` が落ちる。`rules/testing.md`）。
   check(
-    "MAX_ITEM_ID が金のリンゴまで伸びている",
-    MAX_ITEM_ID === GOLDEN_APPLE && allItemIds().includes(GOLDEN_APPLE),
+    "MAX_ITEM_ID は金のリンゴまで届いている（一覧にも出る）",
+    MAX_ITEM_ID >= GOLDEN_APPLE && allItemIds().includes(GOLDEN_APPLE),
     `MAX_ITEM_ID ${MAX_ITEM_ID} / 一覧に ${allItemIds().includes(GOLDEN_APPLE)}`,
   );
 

@@ -280,11 +280,12 @@ export interface VitalsContext {
    */
   touchingSpikes: boolean;
   /**
-   * はしごに掴まっている。**`inLiquid` とまったく同じ扱い**で、落ちたぶんを打ち消す
-   * （滑り降りただけで着地に痛い思いをしない）。**事実だけ**を受け取り、
-   * 登る速さも滑る速さも `player.ts` のもの。
+   * 何かに掴まっている／絡まっている（はしご・クモの巣）。**`inLiquid` とまったく
+   * 同じ扱い**で、落ちたぶんを打ち消す（滑り降りただけ・巣を抜けただけで着地に
+   * 痛い思いをしない）。**事実だけ**を受け取り、**どのブロックがそれかも、
+   * 登る／滑る／絡む速さも `player.ts` のもの**（`player.clinging`）。
    */
-  onLadder: boolean;
+  clinging: boolean;
   /**
    * 頭まで水中（息が減る）。**液体すべてに広げないこと** ——
    * 溶岩で溺れ始める（`CLAUDE.md` の液体の項）。
@@ -557,12 +558,12 @@ export class Vitals {
 
   /** 空中に居るあいだの最高到達点を覚えておき、着地したときの落差でダメージを出す。 */
   private updateFall(ctx: VitalsContext): void {
-    const grounded = ctx.onGround || ctx.flying || ctx.inLiquid || ctx.onLadder;
+    const grounded = ctx.onGround || ctx.flying || ctx.inLiquid || ctx.clinging;
     if (grounded) {
       if (this.airborne) {
         this.lastFall = Math.max(0, this.peakY - ctx.y);
-        // 水に落ちた場合・飛行に切り替えた場合・はしごに掴まっている場合はダメージ無し
-        if (ctx.onGround && !ctx.inLiquid && !ctx.flying && !ctx.onLadder) {
+        // 水に落ちた場合・飛行に切り替えた場合・掴まっている場合はダメージ無し
+        if (ctx.onGround && !ctx.inLiquid && !ctx.flying && !ctx.clinging) {
           this.damage(fallDamage(this.lastFall), "落下");
         }
         this.airborne = false;

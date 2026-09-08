@@ -75,7 +75,7 @@ function ctx(over: Partial<VitalsContext> = {}): VitalsContext {
     inLiquid: false,
     inLava: false,
     touchingSpikes: false,
-    onLadder: false,
+    clinging: false,
     headInWater: false,
     flying: false,
     invulnerable: false,
@@ -150,23 +150,25 @@ export function run(): void {
   drop(flyer, 20, { flying: true });
   check("飛行中は落下ダメージを受けない", flyer.health === MAX_HEALTH, `hp ${flyer.health}`);
 
-  // はしごを滑り降りたぶんは落差に数えない（`inLiquid` とまったく同じ扱い）。
-  // **対照の 1 件が要る** —— 無いと「いつも落差 0」の実装がここを素通りする。
+  // 掴まって（はしご・クモの巣）降りたぶんは落差に数えない（`inLiquid` とまったく
+  // 同じ扱い）。**対照の 1 件が要る** —— 無いと「いつも落差 0」の実装がここを素通りする。
+  // **`vitals.ts` は「はしごか巣か」を知りません**（受け取るのは `clinging` 1 つで、
+  // どのブロックがそれかは `player.ts` の `clinging` ゲッターが決める）。
   const slider = new Vitals();
-  drop(slider, 20, { onLadder: true });
+  drop(slider, 20, { clinging: true });
   const control = new Vitals();
   drop(control, 20);
   console.log(
-    `      20 マス降りたあと: はしご hp=${slider.health} 落差=${slider.lastFall.toFixed(1)}` +
+    `      20 マス降りたあと: 掴まり hp=${slider.health} 落差=${slider.lastFall.toFixed(1)}` +
       ` / 対照 hp=${control.health} 落差=${control.lastFall.toFixed(1)}`,
   );
   check(
-    "はしごで 20 マス滑り降りても落差 0・体力満タン",
+    "掴まっていれば（はしご・クモの巣）20 マス降りても落差 0・体力満タン",
     slider.lastFall === 0 && slider.health === MAX_HEALTH,
     `落差 ${slider.lastFall.toFixed(1)} / hp ${slider.health}`,
   );
   check(
-    "対照（はしご無し）では同じ 20 マスでちゃんと痛い",
+    "対照（掴まっていない）では同じ 20 マスでちゃんと痛い",
     control.lastFall === 20 && control.health === MAX_HEALTH - 17,
     `落差 ${control.lastFall.toFixed(1)} / hp ${control.health}`,
   );
