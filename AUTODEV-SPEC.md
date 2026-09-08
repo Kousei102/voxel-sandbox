@@ -1,119 +1,114 @@
-# 仕様: クモの巣（キューの 23）
+# 仕様: ケーキ（キューの 24a・置けるところまで）
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-**自然生成はこの周では 1 マスもしません**（要塞や廃坑に湧かせる話は別の周）。
+**キューの 24 を 2 件に割った前半です。** かじる（7 回）は **24b** に回しました ——
+**理由は `main.ts` の行数**で、B の周で数えた結果は次のとおりです:
+
+- **かじるには `main.ts` に最低 1 行**（`useOrPlace()` の `switch` に `case "cake":`）と、
+  **効果を貼る助け 6〜8 行**が要ります（`tillAt` / `plantAt` と同じ形）。
+  いま **1449 行**なので `AUTODEV.md` の停止条件 2（1450 行）に当たります
+- **前半（このファイル）は `main.ts` に 1 行も要りません** —— ブロック 1 つと
+  レシピ 1 本で、置く経路も落とす経路も既にあるものを通ります
 
 ## 1. 何を足すか と 完了の判定
 
-**クモの巣（ブロック 154）。中に居ると動きが鈍り、剣かシアーズで壊すと糸（133）が 1 個。**
+**ケーキ（ブロック 155 / 同番のアイテム）。作って置けるが、まだかじれない。**
 
-`npm test` が緑のまま（いま **3250 件**）、次の 6 つが**値を出してから**増えていること:
+`npm test` が緑のまま（いま **3273 件**）、次の 6 つが**値を出してから**増えていること:
 
-- `isSticky()` が真なのは**クモの巣だけ**（石・草むら・はしご・サボテン・水は偽）
-- `isBladed()` が真なのも**クモの巣だけ**。**`tool: "sword"` を要求するブロックは 0 個のまま**
-- **刃物なら糸 1 個・そうでなければ何も落ちない** —— `canHarvest(COBWEB, 木の剣)` と
-  `canHarvest(COBWEB, シアーズ)` が真、素手・ツルハシ・斧が偽
-- **壊す時間**が刃物 1.8 秒 / 素手 6.0 秒（`breakTime()` を 4 通り出してから）
-- **中に居ると横が 1/4・落ちる速さが 1.0 m/s 止まり**（`player.ts` を 1 秒ぶん回して実測）
-- **絡まっているあいだは落ちたぶんが積まれない** —— `clinging` が真のフレームでは
-  `Vitals` の落下ダメージが 0（はしごと同じ扱い）
+- **155 は `model: "boxes"` の高さ 0.5・`solid: true`・`variantOf` なし** ——
+  アイテム 155 が自動で付き（`MAX_ITEM_ID` **155**）、**111..255 の空きが 101 → 100**
+- **壊すと何も落ちない**（ガラスと同じ `NO_ITEM` の 1 行。**素手でもツルハシでも 0 個**）
+- **レシピが 59 → 60 本**。`["MMM","SES","WWW"]` で、**2x2 では作れない**
+  （`findRecipe(grid, 2)` が null・`findRecipe(grid, 3)` がケーキ、の 2 通りを出してから）
+- **ミルクバケツ 3 個が空のバケツ 3 個になって盤面に残る** ——
+  `consumeGrid()` の前後を**枠 9 つぶん並べてから**判定する
+- **続けてもう 1 個は作れない**（盤面が空バケツに変わるので `findRecipe` が null）。
+  `quickCraft()` が 1 個で止まることも一緒に見る
+- **一覧の色**がいちばん近い相手と **RGB で 20 以上**離れている
+  （**相手の名前と数値を出してから**。判定に入るのは `top` だけ）
 
-## 2. 触るファイル / 触らないファイル
+## 2. 触るファイルと、触らないファイル
 
-| ファイル | 何を足すか |
-| --- | --- |
-| `src/blocks.ts` | `COBWEB = 154` / `def()` 1 つ / `sticky` と `bladed` の 2 旗 / `isSticky()` / `isBladed()` |
-| `src/items.ts` | `MAX_ITEM_ID` を `COBWEB` へ / `DROPS` に 1 行 / `isBlade()` |
-| `src/mining.ts` | `canHarvest()` に**刃物の 1 行** |
-| `src/player.ts` | `inCobweb` / `clinging` / 速さの 2 定数 / `updateWalk()` の 2 か所 |
-| `src/vitals.ts` | `VitalsContext.onLadder` を **`clinging` に改名**（中身は 1 文字も変えない） |
-| `src/main.ts` | **±0 行。`onLadder: player.onLadder,` を `clinging: player.clinging,` に書き換えるだけ** |
-| `test/blocks.test.ts` / `test/mining.test.ts` / `test/physics.test.ts` / `test/vitals.test.ts` / `test/mobs.test.ts` | 下の（5） |
+**触る**: `src/blocks.ts` / `src/items.ts` / `src/crafting.ts` / `tools/shot.ts` /
+`test/blocks.test.ts` / `test/crafting.test.ts` / `ROADMAP.md` / `AUTODEV-QUEUE.md` /
+`docs/autodev-log.md` / `HANDOFF.md`
 
-**触らないファイル**: `src/stronghold.ts` / `src/worldgen.ts` / `src/fortress.ts`（自然生成は
-別の周）/ `src/crafting.ts`（**レシピは足さない**。本家に無い）/ `src/mobs.ts` /
-`src/durability.ts` / `src/inventory.ts` / `src/sfx.ts` / `src/mesher.ts` / `src/ui.ts`。
+**触らない**: **`src/main.ts`（1 行も開かないこと）** / `use.ts` / `craftscreen.ts` /
+`placing.ts` / `vitals.ts` / `inventory.ts` / `worldgen.ts` / `inventoryui.ts` / `session.ts`
 
-**先に読む決まりごと（層 2。渡された側は全文を読むこと）**: `rules/blocks-shapes.md`・
-`rules/items-survival.md`・`rules/vitals.md`・`rules/mobs.md`・`rules/drops.md`・`rules/testing.md`。
+先に読むこと（**自動では読み込まれません**）:
+**`rules/blocks-shapes.md`**（`isProp()` と箱の形）/ **`rules/items-survival.md`**
+（`tool:` を持たせない・`FOODS` の作法）/ **`rules/inventory-screen.md`**（盤面と `consumeGrid`）/
+**`rules/drops.md`** / **`rules/testing.md`**。スキルは **`add-block`**
+（**`add-stateful-block` はこの周では要りません** —— 位置ごとの状態は 24b の仕事）。
 
 ## 3. 使う ID
 
-**ブロック 154 を 1 つだけ。** `ROADMAP.md` の予約表の「次に取るのは 154」がその根拠です。
-**アイテム 154 は `items.ts` の `for (const block of BLOCKS)` が勝手に作ります**
-（`variantOf` が `AIR` なので。本棚・サトウキビと同じ）。**だから `MAX_ITEM_ID` を
-`COBWEB` へ伸ばすのだけは手作業**で、`item({ id: COBWEB ... })` は書かないこと。
-この周のあと **111..255 の空きは 101**、共有帯のアイテムは **38 個**です。
+**155 ひとつだけ**（`ROADMAP.md` の予約表の「次の空き」）。**ブロックとアイテムで 1 本の番号**で、
+`items.ts` に `item({...})` は書かず、**`MAX_ITEM_ID` を 154 → 155 へ手で伸ばすだけ**
+（クモの巣・はしご・本棚とまったく同じ道）。**ほかの番号を 1 つも取らないこと** ——
+かじった回数をブロック ID で表そうとすると 6 個消えます（それは 24b で、しかも
+`crops.ts` の「段階を ID で表さない」に当たります）。
 
-## 4. 判断をどこに置くか
+## 4. 判断をどのファイルに置くか
 
-**新しく「確かめられないもの」は 1 つも増えません**（`unverifiable-pair` は要りません）。
-判断は 4 か所に割れます。**このとおりに割ること:**
+| 何を | どこに |
+| --- | --- |
+| 形・硬さ・音・支え | `blocks.ts` の `def` 1 つ + `CAKE_BOX` |
+| 落ちるものが無いこと | `items.ts` の `DROPS` 1 行（`{ item: NO_ITEM, count: 0, chance: 0 }`） |
+| **何が残りかすになるか** | **`items.ts` の `LEFTOVERS` / `leftoverOf()` 1 本**（`EMPTIES` / `emptyAfterEating()` と同じ形） |
+| 盤面から取り除く手順 | `crafting.ts` の `consumeGrid()`（**表は持たず `leftoverOf()` に聞く**） |
+| レシピの形 | `crafting.ts` の `RECIPES` 1 行 |
 
-- **どのブロックが絡むか → `blocks.ts` の `sticky`（表 1 本・`isSticky()`）。**
-  `spiky` / `climbable` をそのまま写した形にすること。**どれだけ鈍るかは持たせない**
-- **どのブロックが刃物でだけ落ちるか → `blocks.ts` の `bladed`（表 1 本・`isBladed()`）。**
-  **`BlockDef.tool` に `"sword"` と書かないこと**（書くと剣が採掘道具になります）
-- **何が刃物か → `items.ts` の `isBlade(item)`** = `isSword(item) || isShears(item)`
-  （**どちらも既にあります**。`item === SHEARS` と書かないこと）。`canHarvest()` は
-  `isBreakable()` の直後（`blockTool()` の帯より前）に
-  **`if (isBladed(blockId)) return isBlade(itemId);`** の 1 行を置くだけ。
-  **`toolSpeed()` は 1 文字も触らないこと**
-- **どれだけ鈍るか → `player.ts` の 2 定数**（`vitals.ts` も `blocks.ts` の数値も見ない）:
-  `COBWEB_SPEED_SCALE = 0.25` / `COBWEB_FALL_SPEED = 1.0`（m/s）
+**新しく「確かめられないもの」は足しません**（`unverifiable-pair` は要りません）。
 
-`player.ts` の形（`onLadder` を写すこと）:
-
-- `inCobweb` は**押し戻したあとで** `bodyTouches(world, this.position, PLAYER_SIZE, isSticky)`
-- `updateWalk()` の `speed` に `* (this.inCobweb ? COBWEB_SPEED_SCALE : 1)` を掛ける
-- **液体／はしご／重力の if-else の「あと」**で
-  `this.velocity.y = Math.max(-COBWEB_FALL_SPEED, Math.min(COBWEB_FALL_SPEED, this.velocity.y))`。
-  **前に置かないこと** —— 重力に上書きされて落下が止まりません。**`updateFly()` は触らない**
-- `get clinging(): boolean { return this.onLadder || this.inCobweb; }`
-  —— **「落ちたぶんを積まないのはどれか」の判断はここ 1 か所**。`main.ts` にも
-  `vitals.ts` にも `inCobweb` の文字を出さないこと
-
-ブロックの値（本家のまま。硬さだけ下の（6））: 色 `0xc8c8dc`（いちばん近い既存の
-アイテムは鉄インゴットで **27.5** 離れています）/ `opaque: false` / `solid: false` /
-`hardness: 1.2` / `sound: "wool"` / `model: "cross"` / `boxes: CROSS_BOX` /
-`supportFace` は既定（`NO_SUPPORT`。**宙に浮いてよい**）/ `replaceable` は付けない。
+- **形**: `CAKE_BOX = [[0.0625, 0, 0.0625, 0.9375, 0.5, 0.9375]]`（本家と同じ 1/16 の縁と
+  高さ 8/16）。`solid: true`（上に乗れる）/ `hardness: 0.5` / `sound: "wool"` /
+  **`supportFace: FACE_YN`**（床が要る・床が消えたら壊れる。ベッドと同じ）。
+  **`replaceable` も `stacksOnSelf` も `variantOf` も付けないこと**
+- **色**: `top: 0xf2ded2` / `side: 0xe8c9a0` / `bottom: 0xd9b98a` を暫定で置く。
+  **一覧に出るのは `top` だけ**なので、20 を割ったら **`top` だけ**を寄せ直し、
+  **どこまで動かしたかを `TUNING.md` に 1 行**（白は雪玉・羽根・卵・砂糖・紙で混んでいます）
+- **残りかす**: `LEFTOVERS = new Map([[MILK_BUCKET, BUCKET]])`。`consumeGrid()` は
+  1 個減らして 0 になったとき、**`clearSlot(slot)` を通してから**残りかすを 1 個置く
+  （素通しで `slot.item` を書き換えると、**傷が空のバケツに乗り移ります**）。
+  **`Recipe` に新しいキーを足さないこと** —— 残りかすは**アイテムの性質**で、
+  レシピの性質ではありません（同じミルクバケツはどのレシピでも空バケツに戻る）
 
 ## 5. 書くテスト
 
-**値を `console.log` で出してから判定すること**（`rules/testing.md`）。
+**どれも値を出してから判定すること**（`rules/testing.md`）。
 
-- `test/blocks.test.ts`: 上の（1）の 1〜4 行目 / **色が既存のどのアイテムとも RGB で
-  20 以上**（`dist()` の既存の形を写す）/ **数を数えている判定は数え直すこと**（共有帯の
-  アイテム **38 個**・`MAX_ITEM_ID === COBWEB`・非立方体 **77**）。
-  **「37 個」を「37 個以上」に書き換えて通さないこと**
-- `test/mining.test.ts`: `canHarvest()` と `breakTime()` を**道具 5 通り × 2 ブロック**の表で
-- `test/physics.test.ts`: はしごの節（`player.onLadder`）を写して、**巣のマスへ歩いて入ると
-  `inCobweb` が真** / **横の速さが巣の外の 1/4 付近** / **落ちる速さが 1.0 m/s 止まり**
-  （巣を通り抜けない厚みで積むこと）/ **隣のマスでは偽**
-- `test/vitals.test.ts` と `test/mobs.test.ts`: `onLadder:` と書いてある
-  `VitalsContext` の 3 か所を `clinging:` に直し、**`clinging: true` で落下 0** を残すこと
-- **既存の判定を 1 つもゆるめないこと** —— とくに `test/physics.test.ts` のはしごの
-  2.35 / 3.0 m/s と `test/blocks.test.ts` の「`sword` を要求するブロックが 0 個」
+- `test/blocks.test.ts`: ケーキ 1 節 —— `model` / `boxes` の高さ / `solid` / `variantOf` /
+  `supportFace` / 硬さ / **掘って出るもの 0 個**（素手・ツルハシ・剣の 3 通りを並べる）/
+  アイテム名と `placedBlock()` が 155 に戻ること / **色のいちばん近い相手**（既存の節を写す）
+- `test/blocks.test.ts` の空きの節: **111..255 の空きが 100・`MAX_ITEM_ID` 155**
+- `test/crafting.test.ts`: **レシピ 60 本** / 3x3 で揃うこと・2x2 では揃わないこと /
+  **`consumeGrid()` の前後の盤面 9 枠**（ミルクバケツ 3 → 空バケツ 3・ほかは空）/
+  **傷 7 のミルクバケツを置いても、戻った空バケツの `damage` が 0** /
+  **2 個目は作れない**（`findRecipe` が null・`quickCraft` が 1 個で止まる）/
+  **`leftoverOf()` の表に載っているものは全部 1 枠 1 個まで**（積める物を載せると
+  残りかすが 1 個に潰れます）
 
-## 6. この周の禁じ手
+## 6. このタスク固有の禁じ手
 
-- **`src/main.ts` の行数を 1 行も増やさないこと。** 直すのは `updateVitals()` に渡す
-  1 行の**名前だけ**（`onLadder: player.onLadder,` → `clinging: player.clinging,`）。
-  **`||` も条件も `main.ts` に書かないこと**（判断は `player.ts` の `clinging`）
-- **`BlockDef.tool` に `"sword"` を書かない**・**`ToolKind` を増やさない**
-  （シアーズと種で 2 度踏んでいる罠。`items.ts` のコメント）
-- **自然生成もレシピも足さないこと**（本家にレシピは無く、手に入るのは一覧からです）
-- **`DROPS` の既存の行を 1 行も書き換えないこと**（足すのは `[COBWEB, ...]` の 1 行）
-- **`SaveData` に手を出さないこと**（`version` は 1 のまま。1 バイトも増えません）
-- **`sticky` と `bladed` を 1 つの旗にまとめないこと**（氷やツタは片方だけ要ります）
+- **`main.ts` を開かないこと**（この周の一番の目的です）
+- **`FOODS` に 1 行も足さない**（まだ食べられません。**満腹度も回復量も 24b で決めます**）
+- **`EMPTIES` を作り替えない** —— 食べ終わりに戻る器（シチュー → ボウル）と、
+  クラフトの残りかす（ミルクバケツ → バケツ）は**別の表**です
+- **ミルクバケツを `FILLED_BUCKETS` に足さない**（足すと地面に流せます。`rules/use.md`）
+- **既存のレシピ 59 本を 1 行も書き換えない。`consumeGrid()` の「1 枠につき 1 個」も変えない**
+- **`SaveData` の形を変えない**（`version` は 1・キーも増やさない）
+- **自然生成 0 行**（本家にケーキは湧きません）
 
 ## 7. 終了条件
 
-`npm run typecheck` と `npm test` が緑（**3250 件から増えていること**）/ `npm run build` が
-通る / **コミット 1 つ**で `master` へ push / **見た目に出るので撮って自分の目で見ること**
-（`node tools/browsershot.mjs` と `npm run shot -- terrain`。**撮ったら `Read` で開く**）/
-`TUNING.md` に 1 行（**本家は硬さ 4.0 + 剣が 15 倍で「素手 20 秒 / 剣 0.4 秒」。ここは
-剣の掘る速さが 1 のままなので比を作れず、硬さ 1.2 に均して「素手 6.0 秒 / 刃物 1.8 秒」**）/
-`AUTODEV-QUEUE.md` の 23 の行を消し、このファイルの `状態:` を `済` にする。
+`npm run typecheck` と `npm test`（3273 件 + 増えたぶん）が**すべて緑** / `npm run build` 緑 /
+**コミット 1 つを `master` へ push** / `tools/shot.ts` に `cake` の場面を足して
+**`npm run shot -- cake` を撮り、`Read` で開いて見た**（自然生成しないので既存の場面には
+写りません）/ 手触りの数値（色を寄せ直したら）を `TUNING.md` に 1 行 /
+`ROADMAP.md` の予約表に 155 を「実装済み」で 1 行 / `AUTODEV-QUEUE.md` の 24a を消す /
+このファイルの `状態:` を `済` に / `HANDOFF.md` を丸ごと書き直す。
