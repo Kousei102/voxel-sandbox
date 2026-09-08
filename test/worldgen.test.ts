@@ -9,6 +9,7 @@ import {
   GOLD_ORE,
   GRAVEL,
   GRASS,
+  ICE,
   IRON_ORE,
   LAVA,
   LEAVES,
@@ -34,6 +35,7 @@ import {
   BIOMES,
   DESERT,
   FOREST,
+  FROZEN_OCEAN,
   OCEAN,
   TAIGA,
   biomeDef,
@@ -553,6 +555,12 @@ export function run(): void {
     "寒い浜は雪の浜になる",
     climates.every((c) => resolve(c, SEA_LEVEL + 1, cool) === SNOWY_BEACH),
   );
+  // 25b。**上の「海面より下はどの気候でも海」（暖かい側）はそのまま残してある** ——
+  // 「海か凍った海のどちらか」にゆるめると、暖かい海が凍っても気付けない。
+  check(
+    "寒い海は凍った海になる",
+    climates.every((c) => resolve(c, SEA_LEVEL - 1, cool) === FROZEN_OCEAN),
+  );
 
   // --- 実際の分布 ---
   const spread = new Map<number, number>();
@@ -577,6 +585,112 @@ export function run(): void {
     "どれか 1 つが世界を埋め尽くさない",
     [...spread.values()].every((c) => c / samples < 0.45),
     `最大 ${((Math.max(...spread.values()) / samples) * 100).toFixed(0)}%`,
+  );
+  // 25b。海 26.4% が「暖かい海」と「凍った海」に割れる。**どちらかが消えていないこと**
+  // ——「寒い海はぜんぶ凍る」なので、片方に寄ると気付かないまま海が半分になる。
+  const openShare = ((spread.get(OCEAN) ?? 0) / samples) * 100;
+  const frozenShare = ((spread.get(FROZEN_OCEAN) ?? 0) / samples) * 100;
+  check("凍った海が世界の 5% 以上ある", frozenShare >= 5, `${frozenShare.toFixed(1)}%`);
+  check("凍っていない海も 5% 以上ある", openShare >= 5, `${openShare.toFixed(1)}%`);
+
+  // --- 凍った海の断面（25b） ---
+  //
+  // **海面 1 段だけが氷で、その下は水のまま。** 底も深さも「海」と同じなので、
+  // 違いはいちばん上の 1 マスだけ（`BiomeDef.seaSurface`）。
+  //
+  // 集め方は `rules/worldgen.md` の帯の作法どおり: **`biomeAt` で ±400 を 1 マスおきに
+  // 舐めて候補の列を集め、`voxel()` を呼ぶのは 200 列だけ**（`voxel()` は 1 点につき
+  // チャンクを 1 個生成するので、**点数がそのまま実行時間**になる）。
+  // **先頭から 200 本取ると 1 本の帯に偏る**（走査が x の小さい側から進むため）ので、
+  // 集めた列を等間隔に間引いて、世界じゅうの凍った海から取る。
+  const frozenColumns: [number, number][] = [];
+  const openColumns: [number, number][] = [];
+  for (let x = -400; x < 400; x++) {
+    for (let z = -400; z < 400; z++) {
+      const b = gen.biomeAt(x, z);
+      if (b === FROZEN_OCEAN) frozenColumns.push([x, z]);
+      else if (b === OCEAN) openColumns.push([x, z]);
+    }
+  }
+  const SEA_PLOTS = 200;
+  const thin = (all: [number, number][]) => {
+    const step = Math.max(1, Math.floor(all.length / SEA_PLOTS));
+    const out: [number, number][] = [];
+    for (let i = 0; i < all.length && out.length < SEA_PLOTS; i += step) out.push(all[i]);
+    return out;
+  };
+  const frozenPlots = thin(frozenColumns);
+  const openPlots = thin(openColumns);
+  console.log(
+    `      ±400 の凍った海 ${frozenColumns.length} 列 / 凍っていない海 ${openColumns.length} 列` +
+      `（断面を見るのは ${frozenPlots.length} 列と ${openPlots.length} 列）`,
+  );
+  check(
+    "原点のまわり（±400）にも凍った海がある",
+    frozenPlots.length === SEA_PLOTS,
+    `${frozenColumns.length} 列`,
+  );
+
+  // 海の列は必ず海面より低い（`resolve()` が `height < SEA_LEVEL` で海にするため）。
+  // **地形が 1 マスも動いていないことの代わり**でもある。
+  let frozenAboveSea = 0;
+  for (const [x, z] of frozenPlots) if (gen.heightAt(x, z) >= SEA_LEVEL) frozenAboveSea++;
+  check(
+    "凍った海の列の高さは必ず海面より下",
+    frozenAboveSea === 0,
+    `${frozenPlots.length} 列中 ${frozenAboveSea} 列`,
+  );
+
+  // y40 が氷 / その下は海底まで水 / y41 は空気（**氷の板の上に立てる**）
+  //
+  // **「y39 も y38 も水」と決め打ちにしないこと** —— 海の列は
+  // `height < SEA_LEVEL` なので**海底が y39 の浅瀬もある**（そこは y39 が砂）。
+  // 見るのは「氷の 1 つ下から海底の 1 つ上まで」で、深さは列ごとに違う。
+  let notIce = 0;
+  let notWaterBelow = 0;
+  let waterCells = 0;
+  let notAirAbove = 0;
+  let deepColumns = 0;
+  let shallowest = SEA_LEVEL;
+  let deepest = 0;
+  for (const [x, z] of frozenPlots) {
+    const h = gen.heightAt(x, z);
+    shallowest = Math.min(shallowest, SEA_LEVEL - h);
+    deepest = Math.max(deepest, SEA_LEVEL - h);
+    if (SEA_LEVEL - h >= 3) deepColumns++;
+    if (voxel(x, SEA_LEVEL, z) !== ICE) notIce++;
+    for (let y = h + 1; y < SEA_LEVEL; y++) {
+      waterCells++;
+      if (voxel(x, y, z) !== WATER) notWaterBelow++;
+    }
+    if (voxel(x, SEA_LEVEL + 1, z) !== AIR) notAirAbove++;
+  }
+  console.log(
+    `      氷の下の水の深さ ${shallowest}〜${deepest} マス` +
+      `（3 マス以上ある列 ${deepColumns} / ${frozenPlots.length}）`,
+  );
+  check("凍った海の海面（y40）が氷", notIce === 0, `${frozenPlots.length} 列中 ${notIce} 列`);
+  check(
+    "氷の下は海底まで水のまま（氷は 1 段だけ）",
+    notWaterBelow === 0,
+    `${waterCells} マス中 ${notWaterBelow} マス`,
+  );
+  // 上の判定は「氷の下に水が 1 マスも無い」列だけでも通ってしまう（`waterCells` が 0）。
+  // **泳げる深さの列が実際にあること**を別に見ておく。
+  check("氷の下に 3 マス以上の水がある列がある", deepColumns > 0, `${deepColumns} 列`);
+  check(
+    "氷の上（y41）は空気（立てる）",
+    notAirAbove === 0,
+    `${frozenPlots.length} 列中 ${notAirAbove} 列`,
+  );
+
+  // **凍っていない海には氷が 1 マスも無い**（`seaSurface` の足し忘れがここで出る）
+  let strayIce = 0;
+  for (const [x, z] of openPlots) if (voxel(x, SEA_LEVEL, z) !== WATER) strayIce++;
+  check(
+    "凍っていない海の海面は今までどおり水",
+    strayIce === 0,
+    `${openPlots.length} 列中 ${strayIce} 列`,
   );
 
   // --- 地表がバイオームどおりか ---

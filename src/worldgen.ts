@@ -291,7 +291,7 @@ export class WorldGen {
         const at = lz * CHUNK_SIZE + lx;
         const h = height[at];
         // 内側の 16 段で毎回引かないよう、ここで取り出しておく
-        const { surface, filler, grass, mushroom, cane } = biomeDef(biome[at]);
+        const { surface, filler, grass, mushroom, cane, seaSurface } = biomeDef(biome[at]);
         // 生えもの（サトウキビかキノコか草むら）は地表のすぐ上から上へ `tall` マス
         // （**サトウキビだけが 1〜3 で、あとは 1 マス**）。列ごとに 1 回引けば済む。
         //
@@ -334,7 +334,18 @@ export class WorldGen {
           const index = (ly * CHUNK_SIZE + lz) * CHUNK_SIZE + lx;
 
           if (wy > h) {
-            data[index] = wy <= SEA_LEVEL ? WATER : wy <= h + tall ? tuft : AIR;
+            // **海面のいちばん上の 1 段だけ `BiomeDef.seaSurface`**（凍った海なら氷、
+            // ほかは水）。**どのブロックを置くかは `biomes.ts` が持つ** ——
+            // ここで `ICE` を import して条件を書くと、地表のブロックの判断が
+            // `worldgen.ts` 側に漏れる（`rules/worldgen.md` の頭）。
+            data[index] =
+              wy === SEA_LEVEL
+                ? seaSurface
+                : wy < SEA_LEVEL
+                  ? WATER
+                  : wy <= h + tall
+                    ? tuft
+                    : AIR;
             continue;
           }
           if (wy === 0) {

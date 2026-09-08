@@ -1,4 +1,4 @@
-import { DIRT, GRASS, SAND, SANDSTONE, SNOW, STONE } from "./blocks";
+import { DIRT, GRASS, ICE, SAND, SANDSTONE, SNOW, STONE, WATER } from "./blocks";
 import { SEA_LEVEL } from "./constants";
 
 /**
@@ -23,6 +23,12 @@ export const SNOWY = 6;
 export const ALPINE = 7;
 export const ALPINE_ROCK = 8;
 export const SNOWY_BEACH = 9;
+/**
+ * 寒い海。**海面 1 段（y = `SEA_LEVEL`）だけが氷で、その下は水のまま**
+ * （`BiomeDef.seaSurface`）。海の底は今までどおり砂なので、`OCEAN` との違いは
+ * 「いちばん上の 1 マスに何が乗るか」だけ。
+ */
+export const FROZEN_OCEAN = 10;
 
 /** この高さ以上は山（気候によって雪か岩かが変わる）。 */
 export const ALPINE_HEIGHT = 76;
@@ -78,6 +84,15 @@ export interface BiomeDef {
    * **生成した場所そのものが「置けない場所」になる**（`rules/worldgen.md`）。
    */
   readonly cane: number;
+  /**
+   * 海面 1 段（y = `SEA_LEVEL`）に置くブロック。**普通は `WATER`、凍った海だけ `ICE`。**
+   *
+   * **`?:`（省略可）にしないこと** —— 足し忘れが黙って通り、あとから足した
+   * バイオームの海面だけが `undefined` になる。地表のブロックの判断は
+   * ここ（`biomes.ts`）に置く決まりなので、**`worldgen.ts` に `ICE` を
+   * import しないこと**（`rules/worldgen.md` の頭）。
+   */
+  readonly seaSurface: number;
 }
 
 /**
@@ -89,22 +104,31 @@ const COLD = -0.16;
 const DRY = 0.0;
 const WET = 0.02;
 
+/**
+ * **足すときは末尾に足すこと。** `biomeDef(id)` は `BIOMES[id]` を引くだけなので、
+ * 添字と `id` が一致していないと別のバイオームの表が返る（`rules/worldgen.md`）。
+ */
 export const BIOMES: readonly BiomeDef[] = [
-  { id: OCEAN, name: "海", surface: SAND, filler: SAND, trees: 0, treeKind: "oak", grass: 0, mushroom: 0, cane: 0 },
+  { id: OCEAN, name: "海", surface: SAND, filler: SAND, trees: 0, treeKind: "oak", grass: 0, mushroom: 0, cane: 0, seaSurface: WATER },
   // **サトウキビが生えるのは浜だけ**（`cane`）。雪の浜は地表が雪、砂漠には水が無い。
-  { id: BEACH, name: "浜", surface: SAND, filler: SAND, trees: 0, treeKind: "oak", grass: 0, mushroom: 0, cane: 0.12 },
+  { id: BEACH, name: "浜", surface: SAND, filler: SAND, trees: 0, treeKind: "oak", grass: 0, mushroom: 0, cane: 0.12, seaSurface: WATER },
   // 砂漠だけ木の代わりにサボテンが立つ
-  { id: DESERT, name: "砂漠", surface: SAND, filler: SANDSTONE, trees: 0.35, treeKind: "cactus", grass: 0, mushroom: 0, cane: 0 },
+  { id: DESERT, name: "砂漠", surface: SAND, filler: SANDSTONE, trees: 0.35, treeKind: "cactus", grass: 0, mushroom: 0, cane: 0, seaSurface: WATER },
   // 平原がいちばん草深い（Minecraft と同じで、森は木の下なので少なめ）。
   // **平原にキノコは生えない** —— 木陰の生えものなので、森と針葉樹林だけにしてある。
-  { id: PLAINS, name: "平原", surface: GRASS, filler: DIRT, trees: 0.3, treeKind: "oak", grass: 0.3, mushroom: 0, cane: 0 },
-  { id: FOREST, name: "森", surface: GRASS, filler: DIRT, trees: 0.8, treeKind: "oak", grass: 0.15, mushroom: 0.015, cane: 0 },
-  { id: TAIGA, name: "針葉樹林", surface: GRASS, filler: DIRT, trees: 0.65, treeKind: "spruce", grass: 0.1, mushroom: 0.01, cane: 0 },
-  { id: SNOWY, name: "雪原", surface: SNOW, filler: DIRT, trees: 0.15, treeKind: "spruce", grass: 0, mushroom: 0, cane: 0 },
-  { id: ALPINE, name: "高山", surface: SNOW, filler: STONE, trees: 0, treeKind: "spruce", grass: 0, mushroom: 0, cane: 0 },
+  { id: PLAINS, name: "平原", surface: GRASS, filler: DIRT, trees: 0.3, treeKind: "oak", grass: 0.3, mushroom: 0, cane: 0, seaSurface: WATER },
+  { id: FOREST, name: "森", surface: GRASS, filler: DIRT, trees: 0.8, treeKind: "oak", grass: 0.15, mushroom: 0.015, cane: 0, seaSurface: WATER },
+  { id: TAIGA, name: "針葉樹林", surface: GRASS, filler: DIRT, trees: 0.65, treeKind: "spruce", grass: 0.1, mushroom: 0.01, cane: 0, seaSurface: WATER },
+  { id: SNOWY, name: "雪原", surface: SNOW, filler: DIRT, trees: 0.15, treeKind: "spruce", grass: 0, mushroom: 0, cane: 0, seaSurface: WATER },
+  { id: ALPINE, name: "高山", surface: SNOW, filler: STONE, trees: 0, treeKind: "spruce", grass: 0, mushroom: 0, cane: 0, seaSurface: WATER },
   // 暖かい土地の山。雪をかぶらないので、砂漠から生えた山も砂 → 岩肌になる。
-  { id: ALPINE_ROCK, name: "岩山", surface: STONE, filler: STONE, trees: 0, treeKind: "oak", grass: 0, mushroom: 0, cane: 0 },
-  { id: SNOWY_BEACH, name: "雪の浜", surface: SNOW, filler: SAND, trees: 0, treeKind: "spruce", grass: 0, mushroom: 0, cane: 0 },
+  { id: ALPINE_ROCK, name: "岩山", surface: STONE, filler: STONE, trees: 0, treeKind: "oak", grass: 0, mushroom: 0, cane: 0, seaSurface: WATER },
+  { id: SNOWY_BEACH, name: "雪の浜", surface: SNOW, filler: SAND, trees: 0, treeKind: "spruce", grass: 0, mushroom: 0, cane: 0, seaSurface: WATER },
+  // 寒い海。**海の行の写しで、違うのは `seaSurface` だけ**（海面 1 段が氷）。
+  // **`surface` を `SNOW` にしないこと** —— これは海の「底」なので、水の底に雪が
+  // 敷かれるうえ、「砂と雪が接するのは海岸だけ」の見張りに当たる。
+  // 生えもの（`trees` / `grass` / `mushroom` / `cane`）は海と同じで全部 0。
+  { id: FROZEN_OCEAN, name: "凍った海", surface: SAND, filler: SAND, trees: 0, treeKind: "oak", grass: 0, mushroom: 0, cane: 0, seaSurface: ICE },
 ];
 
 /** 気候だけで決まるバイオーム。**高さを見ないこと**（循環する）。 */
@@ -122,7 +146,8 @@ export function classify(temperature: number, humidity: number): number {
  */
 export function resolve(climate: number, height: number, temperature: number): number {
   const snowy = temperature <= SNOW_TEMP;
-  if (height < SEA_LEVEL) return OCEAN;
+  // 寒い海だけ凍る（海面 1 段が氷になるだけで、底も深さも海と同じ）
+  if (height < SEA_LEVEL) return snowy ? FROZEN_OCEAN : OCEAN;
   if (height <= SEA_LEVEL + 1) return snowy ? SNOWY_BEACH : BEACH;
   if (height >= ALPINE_HEIGHT) return snowy ? ALPINE : ALPINE_ROCK;
   return climate;
