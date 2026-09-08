@@ -7,12 +7,15 @@ import {
   FURNACE,
   FURNACE_LIT,
   GRAVEL,
+  ICE,
   LEAVES,
   STONE,
   TORCH,
+  WATER,
   WHEAT_CROP,
   WHEAT_CROP_RIPE,
   bedPartner,
+  blockName,
 } from "../src/blocks";
 import { autoBreak, tryBreak, type BreakContainers } from "../src/breaking";
 import { APPLE, FLINT, NO_ITEM, STICK, WHEAT, WHEAT_SEEDS, WOOD_PICKAXE, itemName } from "../src/items";
@@ -388,6 +391,46 @@ export function run(): void {
     world.setVoxel(0, 11, 0, STONE);
     const out = tryBreak(world, containers(), order(STONE));
     check("掘って出た山は傷を持たない", out.drops.every((d) => d.damage === undefined), describeDrops(out.drops));
+  }
+
+  // --- 壊したあとにマスへ残るもの（氷だけが水。ほかは今までどおり空気） --------
+  // **決めるのは `blocks.ts` の `remainsAfterBreak()`** で、ここは書き込むだけ。
+  // **前後のボクセルを並べてから判定する** —— 「壊れていない」実装は
+  // 「壊すと水になる」と絵でも数値でも見分けが付かないので、**先に氷だったこと**も出す。
+  {
+    const ways: [string, { tool: number; creative: boolean }][] = [
+      ["素手", { tool: NO_ITEM, creative: false }],
+      ["木のツルハシ", { tool: WOOD_PICKAXE, creative: false }],
+      ["クリエイティブ", { tool: NO_ITEM, creative: true }],
+    ];
+    const seen: string[] = [];
+    for (const [name, over] of ways) {
+      const world = new Slab();
+      world.setVoxel(0, 11, 0, ICE);
+      const before = world.getVoxel(0, 11, 0);
+      const out = tryBreak(world, containers(), order(ICE, over));
+      const after = world.getVoxel(0, 11, 0);
+      seen.push(
+        `${name}: ${blockName(before)} → ${blockName(after)}` +
+          `（broken=${out.broken} 山 ${describeDrops(out.drops)}）`,
+      );
+      check(
+        `氷を壊したマスは水になる（${name}）`,
+        before === ICE && after === WATER && out.broken,
+        `${blockName(before)} → ${blockName(after)}`,
+      );
+      check(`氷からは何も落ちない（${name}）`, out.drops.length === 0, describeDrops(out.drops));
+    }
+    console.log(`      氷を壊した前後: ${seen.join(" / ")}`);
+  }
+  {
+    // **石は今までどおり空気**（既定が `AIR` のままであること。ここが水になったら
+    // `remainsAfterBreak()` の既定を取り違えている）。
+    const world = new Slab();
+    world.setVoxel(0, 11, 0, STONE);
+    tryBreak(world, containers(), order(STONE));
+    const after = world.getVoxel(0, 11, 0);
+    check("石を壊したマスは今までどおり空気", after === AIR, blockName(after));
   }
 }
 

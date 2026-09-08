@@ -22,7 +22,9 @@ import {
   FARMLAND,
   FRAME_HEIGHT,
   GOLD_BLOCK,
+  GLASS,
   GRASS,
+  ICE,
   IRON_BLOCK,
   LADDER,
   LADDER_XN,
@@ -74,8 +76,11 @@ import {
   isLiquid,
   isReplaceable,
   isBladed,
+  isSlippery,
   isSpiky,
   isSticky,
+  isTranslucent,
+  remainsAfterBreak,
   liquidFog,
   placeSpot,
   placedVariant,
@@ -217,8 +222,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキの 39 個（155 まで）",
-    sharedItems.length === 39 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷の 40 個（156 まで）",
+    sharedItems.length === 40 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -258,20 +263,22 @@ export function run(): void {
       // **154 は `items.ts` に 1 行も書かずに増えたブロック**（クモの巣。152 本棚と
       // 同じで `variantOf` が `AIR` なので for が同じ番号のアイテムを作る）。
       sharedItems[37] === COBWEB &&
-      // **155 も同じ**（ケーキ。`variantOf` が `AIR`）。**上限を持つのがブロック側なのは
-      // 6 度目**なので、`MAX_ITEM_ID` の突き合わせをここで一緒に見る
-      // （伸ばし忘れは型では止まらない。**比べる相手を新しい番号に直すこと** ——
-      // 古い番号のまま残すと `tsc` が TS2367 で落ちます。`rules/testing.md`）。
+      // **155 も同じ**（ケーキ。`variantOf` が `AIR`）。
       sharedItems[38] === CAKE &&
-      MAX_ITEM_ID === CAKE,
+      // **156 も同じ**（氷。`variantOf` が `AIR` なので for が同じ番号のアイテムを作る）。
+      // **上限を持つのがブロック側なのは 7 度目**なので、`MAX_ITEM_ID` の突き合わせを
+      // ここで一緒に見る（伸ばし忘れは型では止まらない。**比べる相手を新しい番号に
+      // 直すこと** —— 古い番号のまま残すと `tsc` が TS2367 で落ちます。`rules/testing.md`）。
+      sharedItems[39] === ICE &&
+      MAX_ITEM_ID === ICE,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 100（ケーキ 155 で 1 個減った）",
-    sharedFree === 100,
+    "111..255 の空きは 99（氷 156 で 1 個減った）",
+    sharedFree === 99,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1145,8 +1152,178 @@ export function run(): void {
   goldenApples();
   cobwebs();
   cakes();
+  ices();
 
   world.dispose();
+}
+
+/**
+ * 氷（ブロック 156）。**ブロックと滑りだけ**が 25a なので、ここで見るのは
+ * **表の値そのもの**だけです —— **凍った海（自然生成）は 25b**。
+ *
+ * **どれだけ滑るかは `test/physics.test.ts`**（あちらが `Player` を実際に走らせます）。
+ * **壊したマスが水になることは `test/breaking.test.ts`**（あちらが `tryBreak()` を回します）。
+ */
+function ices(): void {
+  describe("氷");
+
+  // --- 形と性質（**普通の立方体**。ガラスと違うのは濃さ・硬さ・道具・旗 2 つ） ---
+  const def = blockDef(ICE);
+  const glass = blockDef(GLASS);
+  console.log(
+    `      model ${def.model} / isProp ${isProp(ICE)} / opaque ${def.opaque} / ` +
+      `blocksSky ${def.blocksSky} / translucent ${isTranslucent(ICE)} / alpha ${def.alpha} / ` +
+      `solid ${def.solid} / replaceable ${def.replaceable} / variantOf ${def.variantOf} / ` +
+      `supportFace ${def.supportFace} / hardness ${def.hardness} / tool ${blockTool(ICE)} / ` +
+      `sound ${def.sound}  ｜ 対照のガラス: alpha ${glass.alpha} / hardness ${glass.hardness} / tool ${blockTool(GLASS)}`,
+  );
+  check(
+    "普通の立方体（model は cube・isProp は偽・箱は 1 個の 1x1x1）",
+    def.model === "cube" && !isProp(ICE) && collisionBoxes(ICE).length === 1 &&
+      collisionBoxes(ICE)[0][3] === 1 && collisionBoxes(ICE)[0][4] === 1,
+    `model ${def.model} / 箱 [${collisionBoxes(ICE)[0].join(" ")}]`,
+  );
+  // **`translucent` が効くのは立方体だけ**（`isProp` なブロックは `buildProps()` が
+  // 必ず不透明側へ積むので黙って無視される。`rules/meshing-render.md`）。
+  // だから**立方体であること**と半透明であることを続けて見る。
+  check(
+    "半透明で、濃さはガラス（0.3）より濃い 0.6",
+    isTranslucent(ICE) && !def.opaque && def.alpha === 0.6 && def.alpha > glass.alpha,
+    `alpha ${def.alpha} / ガラス ${glass.alpha} / translucent ${isTranslucent(ICE)}`,
+  );
+  // **`blocksSky` を書くと 25b で氷の下の海が真っ暗になる**（既定は `opaque` = false）。
+  // 対照は屋根材のハーフ（`opaque: false` なのに `blocksSky: true`）。
+  check(
+    "blocksSky は false（書いていない。屋根材のハーフとは違う）",
+    !def.blocksSky && blockDef(STONE_SLAB).blocksSky,
+    `氷 ${def.blocksSky} / 石ハーフ ${blockDef(STONE_SLAB).blocksSky}`,
+  );
+  // **`variantOf` を書くとアイテムが作られない**（一覧に出ず、置けない）。
+  // **`replaceable` を付けると置いた氷が黙って消え**、**`supportFace` を書くと
+  // 床が消えたときに壊れる**（氷は宙に浮いてよい）。
+  check(
+    "solid で、variantOf も replaceable も supportFace も付いていない",
+    def.solid && def.variantOf === AIR && !def.replaceable &&
+      def.supportFace === NO_SUPPORT && !stacksOnSelf(ICE),
+    `solid ${def.solid} / variantOf ${def.variantOf} / replaceable ${def.replaceable} / ` +
+      `supportFace ${def.supportFace} / stacksOnSelf ${stacksOnSelf(ICE)}`,
+  );
+  // **`minTier` を書かないこと** —— 木のツルハシで掘れるのが本家。**`minTier` が 0 なので
+  // 素手でも「適正」**（`canHarvest()` が早い return で真を返す）で、ツルハシは
+  // **速さだけ**が変わる（`0.5 × 1.5` = 0.75 秒 ↔ `0.5 × 1.5 / 2` = 0.375 秒）。
+  // **数値を出してから判定する** —— 「素手だと 5 倍」は `minTier` を書いたときの話。
+  check(
+    "硬さ 0.5・ツルハシが適正・階層は要らない（素手 0.75 秒 / 木のツルハシ 0.375 秒）",
+    def.hardness === 0.5 && blockTool(ICE) === "pickaxe" && def.sound === "glass" &&
+      canHarvest(ICE, NO_ITEM) && breakTime(ICE, NO_ITEM) === 0.75 &&
+      breakTime(ICE, WOOD_PICKAXE) === 0.375,
+    `hardness ${def.hardness} / tool ${blockTool(ICE)} / ` +
+      `素手 ${breakTime(ICE, NO_ITEM).toFixed(3)}s ツルハシ ${breakTime(ICE, WOOD_PICKAXE).toFixed(3)}s`,
+  );
+
+  // --- 旗 2 つ（**どちらも氷だけ**。値を並べて出してから判定する） ---
+  const slippery = BLOCKS.filter((b) => isSlippery(b.id)).map((b) => `${b.id}:${b.name}`);
+  const remains = BLOCKS.filter((b) => remainsAfterBreak(b.id) !== AIR)
+    .map((b) => `${b.id}:${b.name}→${blockName(remainsAfterBreak(b.id))}`);
+  console.log(`      isSlippery: [${slippery.join(" ")}]  breaksInto: [${remains.join(" ")}]`);
+  // 対照を並べる —— 「いつも真」の実装がここを素通りしないため。
+  const others: [string, number][] = [
+    ["石", STONE], ["雪", SNOW], ["ガラス", GLASS], ["水", WATER], ["クモの巣", COBWEB],
+  ];
+  console.log(
+    `      対照: ${others.map(([n, id]) => `${n} slippery=${isSlippery(id)} 残る=${blockName(remainsAfterBreak(id))}`).join(" / ")}`,
+  );
+  check(
+    "isSlippery が真なのは氷だけ（石・雪・ガラス・水・クモの巣は偽）",
+    slippery.length === 1 && isSlippery(ICE) && others.every(([, id]) => !isSlippery(id)),
+    slippery.join(" ") || "0 個",
+  );
+  // **`sticky` と 1 つの旗にまとめないこと**（`blocks.ts` のコメントが名指しで断っている）
+  // —— 氷は滑らせるだけ・クモの巣は鈍らせるだけ。**両方に付いていないこと**を見る。
+  check(
+    "滑るのと鈍るのは別の旗（氷は sticky でなく、クモの巣は slippery でない）",
+    isSlippery(ICE) && !isSticky(ICE) && isSticky(COBWEB) && !isSlippery(COBWEB),
+    `氷 slippery=${isSlippery(ICE)} sticky=${isSticky(ICE)} / ` +
+      `巣 slippery=${isSlippery(COBWEB)} sticky=${isSticky(COBWEB)}`,
+  );
+  check(
+    "壊したあとに何かが残るのも氷だけ（水が残る。ほかは全部 AIR）",
+    remains.length === 1 && remainsAfterBreak(ICE) === WATER &&
+      others.every(([, id]) => remainsAfterBreak(id) === AIR),
+    remains.join(" ") || "0 個",
+  );
+
+  // --- 掘って出るもの（**3 通りとも 0 個**。ガラス・ケーキと同じ `NO_ITEM` の 1 行） ---
+  const tools: [string, number][] = [
+    ["素手", NO_ITEM], ["木のツルハシ", WOOD_PICKAXE], ["木の剣", WOOD_SWORD],
+  ];
+  const drop = dropOf(ICE);
+  const harvest = tools.map(([, item]) => canHarvest(ICE, item));
+  const stacks = rollDrops(ICE, 0.5, 0.5);
+  console.log(
+    `      dropOf(): ${drop.item} x${drop.count} chance ${drop.chance} / ` +
+      `rollDrops(0.5, 0.5) の山 ${stacks.length} 個 / ` +
+      `rollDrop(0.0) x${rollDrop(ICE, 0).count} / rollDrop(0.99) x${rollDrop(ICE, 0.99).count} / ` +
+      `canHarvest: ${tools.map(([n], i) => `${n} ${harvest[i]}`).join(" / ")}`,
+  );
+  check(
+    "掘っても何も落ちない（素手・ツルハシ・剣の 3 通りとも 0 個）",
+    drop.item === NO_ITEM && drop.count === 0 && drop.chance === 0 &&
+      stacks.length === 0 && harvest.every((ok) => ok) &&
+      rollDrop(ICE, 0).count === 0 && rollDrop(ICE, 0.99).count === 0,
+    `山 ${stacks.length} 個 / ${tools.map(([n], i) => `${n} canHarvest=${harvest[i]}`).join(" ")}`,
+  );
+  // **`otherwise` を書くと「外れたら氷が戻る」になる**（砂利の形）。ガラス・ケーキと
+  // 同じでここは書かない —— 壊したら水になって消えるのが本家の形。
+  check(
+    "extra も otherwise も書いていない（山は 0 のまま）",
+    drop.extra === undefined && drop.otherwise === undefined,
+    `extra ${drop.extra === undefined ? "無し" : "有り"} / otherwise ${drop.otherwise === undefined ? "無し" : "有り"}`,
+  );
+
+  // --- アイテム 156（`items.ts` の for が自動で作る。手で足すと二重登録） ---
+  console.log(
+    `      アイテム ${ICE}: 「${itemName(ICE)}」 placedBlock ${placedBlock(ICE)} / ` +
+      `1 枠 ${itemStackLimit(ICE)} 個 / 道具 ${toolOf(ICE) === null ? "でない" : "である"} / ` +
+      `食べ物 ${foodOf(ICE) === null ? "でない" : "である"}`,
+  );
+  check(
+    "アイテム 156 は「氷」で、置くと 156 が戻る（一覧にも出る）",
+    itemName(ICE) === "氷" && placedBlock(ICE) === ICE &&
+      allItemIds().includes(ICE) && toolOf(ICE) === null && foodOf(ICE) === null,
+    `${itemName(ICE)} / placedBlock ${placedBlock(ICE)} / 一覧に ${allItemIds().includes(ICE)}`,
+  );
+
+  // --- 一覧に並ぶ色（既存のどれとも見分けが付くこと。**判定に入るのは `top` だけ**） ---
+  const dist = (a: number, b: number): number =>
+    Math.hypot(((a >> 16) & 255) - ((b >> 16) & 255), ((a >> 8) & 255) - ((b >> 8) & 255), (a & 255) - (b & 255));
+  let best = Infinity;
+  let who = "";
+  for (const other of allItemIds()) {
+    if (other === ICE) continue;
+    const gap = dist(itemColor(ICE), itemColor(other));
+    if (gap < best) {
+      best = gap;
+      who = itemName(other);
+    }
+  }
+  console.log(
+    `      色のいちばん近い相手: 氷 0x${itemColor(ICE).toString(16)} ↔ ${who} ${best.toFixed(1)}` +
+      `（ガラス 0x${itemColor(GLASS).toString(16)} とは ${dist(itemColor(ICE), itemColor(GLASS)).toFixed(1)}）`,
+  );
+  check(
+    "氷は既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）",
+    best >= 20,
+    `いちばん近い ${who} と ${best.toFixed(1)}`,
+  );
+  // **1 色のブロック**（`side` も `bottom` も `top` から落ちてくる）。ガラス・
+  // クモの巣と同じで、上下と側面で見分ける必要が無い —— **書き分けたつもりで
+  // `side` だけ書くと下面まで側面色になる**罠（本棚）の裏返しをここで固定しておく。
+  check(
+    "上面・側面・下面が同じ 1 色（top だけを書いている）",
+    def.top === def.side && def.side === def.bottom && def.top === 0x8fc4f2,
+    `top 0x${def.top.toString(16)} / side 0x${def.side.toString(16)} / bottom 0x${def.bottom.toString(16)}`,
+  );
 }
 
 /**

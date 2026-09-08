@@ -464,6 +464,34 @@ export const COBWEB = 154;
  */
 export const CAKE = 155;
 
+/**
+ * 氷。**半透明の立方体で、上を歩くと滑り、壊すと水に戻ります。**
+ *
+ * **普通の立方体です**（`opaque: false` と `translucent: true` 以外は既定のまま。
+ * `solid` も `replaceable` も `variantOf` も `supportFace` も持ちません）。
+ * **`blocksSky` は書かないこと** —— 既定は `opaque`（false）で、書くと
+ * **氷の下の海が真っ暗**になります（凍った海は 25b）。
+ *
+ * **旗は 2 つに割れています。1 つにまとめないこと**（クモの巣のコメントの逆側）:
+ *
+ * - **`slippery`（`isSlippery()`）** —— 上に立つと滑る。**どれだけ滑るかは持ちません**
+ *   （`ICE_FRICTION` / `ICE_ACCEL_SCALE` は `player.ts` のもの。`sticky` が
+ *   どれだけ鈍るかを持たないのとまったく同じ線）。**`sticky` と 1 つにしないこと** ——
+ *   氷は鈍らせず滑らせるだけ、クモの巣は滑らせず鈍らせるだけです
+ * - **`breaksInto`（`remainsAfterBreak()`）** —— 壊したあとに残るブロック。既定は `AIR` で、
+ *   **氷だけが `WATER`**。**どのマスに効くかは `breaking.ts` の `tryBreak()` の
+ *   `setVoxel` 1 か所**（`isSlippery()` と同じで、ここは座標を知りません）
+ *
+ * **壊すと何も落ちません**（`items.ts` の `DROPS` に `NO_ITEM` の 1 行。ガラス・ケーキと
+ * 同じで、**素手でもツルハシでも 0 個**）。本家の「シルクタッチでだけ持ち帰れる」は
+ * まだ無いので、置いた氷は壊すと水になって消えます。
+ *
+ * **自然生成しません**（`worldgen.ts` にも `biomes.ts` にも 0 行）—— 凍った海は **25b** で、
+ * `biomes.ts` に「凍った海」を 1 つ足す周です。だから**既存の場面には 1 枚も写りません**
+ * （本棚・クモの巣・ケーキと同じ理由で `tools/shot.ts` に `ice` の場面を持っています）。
+ */
+export const ICE = 156;
+
 /** 上付きハーフ。見た目と当たり判定だけが違うので、大元は下付きのハーフ。 */
 export const STONE_SLAB_TOP = 64;
 export const COBBLE_SLAB_TOP = 65;
@@ -719,6 +747,25 @@ export interface BlockDef {
    * 片方しか要らないものがこの先に来る。
    */
   readonly bladed: boolean;
+  /**
+   * 上に立つと滑るブロック（氷）。**`id === ICE` と書かないこと** ——
+   * `spiky` / `climbable` / `sticky` / `bladed` と同じく表 1 本（`isSlippery()`）に聞く。
+   * **どれだけ滑るかは持たない**（`ICE_FRICTION` と `ICE_ACCEL_SCALE` は `player.ts` の
+   * もの）。**どのマスに効くかは `player.ts`**（足元のマスを `physics.ts` の
+   * `bodyStandsOn()` で走査する。`sticky` が体と重なるマスを見るのとは別の走査）。
+   *
+   * **`sticky` と 1 つの旗にまとめないこと** —— 氷は滑らせるだけ・クモの巣は
+   * 鈍らせるだけで、**片方しか要らないものが両側に居る**（`bladed` のコメントの逆側）。
+   */
+  readonly slippery: boolean;
+  /**
+   * 壊したあとにそのマスへ残るブロック。既定は `AIR`（普通は空くだけ）で、
+   * **氷だけが `WATER`**。**`id === ICE` と書かないこと** ——
+   * 引くのは `remainsAfterBreak()` 1 本で、**どのマスに効くかは `breaking.ts` の
+   * `tryBreak()` の `setVoxel` 1 か所**（`autoBreak()` は通らない —— 支えを失って
+   * 勝手に壊れるマスを消すのは `world.ts` のほう）。
+   */
+  readonly breaksInto: number;
   /** 頭が浸かったときのフォグ。液体だけが持つ。 */
   readonly fog: LiquidFog | null;
   /** 足音・破壊・設置の音の材質。既定は "stone"。 */
@@ -862,6 +909,8 @@ function def(
     climbable: opts.climbable ?? false,
     sticky: opts.sticky ?? false,
     bladed: opts.bladed ?? false,
+    slippery: opts.slippery ?? false,
+    breaksInto: opts.breaksInto ?? AIR,
     fog: opts.fog ?? null,
     emission: opts.emission ?? 0,
     sound: opts.sound ?? "stone",
@@ -1615,6 +1664,25 @@ export const BLOCKS: readonly BlockDef[] = [
     boxes: CAKE_BOX,
     supportFace: FACE_YN,
   }),
+
+  // 氷（上のコメント）。**ガラスの定義から違うのは 4 つ**:
+  // **色** / **`alpha` が濃い（0.3 ではなく 0.6。下が透けるが水面ほどは見えない）** /
+  // **硬さ 0.5 と `tool: "pickaxe"`（`minTier` は書かない = 木のツルハシで掘れる）** /
+  // **旗 2 つ（`slippery` と `breaksInto: WATER`）**。
+  // **`blocksSky` は書かないこと**（既定は `opaque` = false。書くと 25b で氷の下の海が真っ暗）。
+  // **`solid` も `replaceable` も `variantOf` も `supportFace` も付けないこと**（普通の立方体）。
+  // **色**: 一覧に出るのは `top` だけで、いちばん近いのはガラス（0xa9d8e8）。
+  // 水色へ寄せて 34.3 離してある（判定は 20。`TUNING.md`）。
+  def(ICE, "氷", { top: 0x8fc4f2 }, {
+    opaque: false,
+    translucent: true,
+    alpha: 0.6,
+    hardness: 0.5,
+    tool: "pickaxe",
+    sound: "glass",
+    slippery: true,
+    breaksInto: WATER,
+  }),
 ];
 
 
@@ -1696,6 +1764,10 @@ const CLIMBABLE = new Uint8Array(ID_LIMIT);
 const STICKY = new Uint8Array(ID_LIMIT);
 /** 1 = 刃物で壊したときだけ落ちる（クモの巣）。引くのは `mining.ts` の `canHarvest()`。 */
 const BLADED = new Uint8Array(ID_LIMIT);
+/** 1 = 上に立つと滑る（氷）。どのマスに効くかは `player.ts`。 */
+const SLIPPERY = new Uint8Array(ID_LIMIT);
+/** 壊したあとにそのマスへ残るブロック（既定は空気。氷だけが水）。引くのは `breaking.ts`。 */
+const BREAKS_INTO = new Uint8Array(ID_LIMIT);
 /** 1 = 自分の上に自分を積める（サトウキビ）。引くのは `supportsBlock()` だけ。 */
 const STACKS_ON_SELF = new Uint8Array(ID_LIMIT);
 const VARIANT_OF = new Uint8Array(ID_LIMIT);
@@ -1717,6 +1789,8 @@ for (const block of BLOCKS) {
   CLIMBABLE[block.id] = block.climbable ? 1 : 0;
   STICKY[block.id] = block.sticky ? 1 : 0;
   BLADED[block.id] = block.bladed ? 1 : 0;
+  SLIPPERY[block.id] = block.slippery ? 1 : 0;
+  BREAKS_INTO[block.id] = block.breaksInto;
   STACKS_ON_SELF[block.id] = block.stacksOnSelf ? 1 : 0;
   VARIANT_OF[block.id] = block.variantOf;
 }
@@ -1935,6 +2009,26 @@ export function isSticky(id: number): boolean {
  */
 export function isBladed(id: number): boolean {
   return BLADED[id] === 1;
+}
+
+/**
+ * 上に立つと滑るか（氷）。**`id === ICE` と書かないこと** ——
+ * `isSpiky()` / `isClimbable()` / `isSticky()` と同じ表 1 本に聞く。座標は知らない。
+ * **どのマスに効くか**（足元のマス）は `player.ts` が `physics.ts` の
+ * `bodyStandsOn()` で走査する。**どれだけ滑るかも `player.ts`。**
+ */
+export function isSlippery(id: number): boolean {
+  return SLIPPERY[id] === 1;
+}
+
+/**
+ * そのブロックを壊したあと、マスに残るブロック。既定は `AIR` で、**氷だけが `WATER`**。
+ * **`id === ICE` と書かないこと** —— `isSlippery()` と同じ表 1 本に聞く。
+ * **どのマスに効くかは `breaking.ts` の `tryBreak()` の `setVoxel` 1 か所**
+ * （座標も、そこに何が置けるかも知らない）。
+ */
+export function remainsAfterBreak(id: number): number {
+  return BREAKS_INTO[id];
 }
 
 /** 頭がそのブロックの中にあるときのフォグ。液体でなければ null。 */

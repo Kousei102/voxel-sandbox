@@ -12,7 +12,7 @@
  * **乱数も呼ぶ側が作ります**（`rollDrop()` と同じ約束。`rules/items-survival.md`）。
  */
 
-import { AIR, CHEST, FURNACE, baseBlock } from "./blocks";
+import { CHEST, FURNACE, baseBlock, remainsAfterBreak } from "./blocks";
 import { clearBedPartner } from "./beds";
 import { wearForBreaking } from "./durability";
 import { settleColumn } from "./gravity";
@@ -100,7 +100,10 @@ export function tryBreak(
   order: BreakOrder,
 ): BreakOutcome {
   const { x, y, z, id, creative } = order;
-  if (!world.setVoxel(x, y, z, AIR)) return NOTHING;
+  // **掘ったあとに何が残るかは `blocks.ts` の `remainsAfterBreak()`**（既定は空気で、
+  // **氷だけが水**）。**ここに `id === ICE` と書かないこと** —— 残るものが増えるたびに
+  // 分岐が生えて、掘る側と支えを失う側で食い違います。**書き込みはこの 1 か所のまま。**
+  if (!world.setVoxel(x, y, z, remainsAfterBreak(id))) return NOTHING;
   // 掘って空けたマスの真上に砂・砂利が積まれていたら、そのぶんだけ 1 つずつ下がる。
   settleColumn(world, x, y, z);
 

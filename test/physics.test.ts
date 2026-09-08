@@ -11,7 +11,7 @@
  */
 
 import { PerspectiveCamera } from "three";
-import { AIR, BEDROCK, CACTUS, COBWEB, LADDER, STONE, STONE_SLAB, STONE_STAIRS, WATER } from "../src/blocks";
+import { AIR, BEDROCK, CACTUS, COBWEB, DIRT, ICE, LADDER, STONE, STONE_SLAB, STONE_STAIRS, WATER } from "../src/blocks";
 import { WORLD_HEIGHT } from "../src/constants";
 import { PLAYER_SIZE } from "../src/physics";
 import { Player } from "../src/player";
@@ -450,6 +450,7 @@ export function run(): void {
   );
 
   cobweb(rungs);
+  ice();
 }
 
 /**
@@ -588,5 +589,153 @@ function cobweb(rungs: Player): void {
     "巣の中でもはしごでも clinging が真、何も無い所では偽",
     hanging.clinging && rungs.clinging && !freefall.clinging,
     `巣 ${hanging.clinging} / はしご ${rungs.clinging} / 対照 ${freefall.clinging}`,
+  );
+}
+
+/**
+ * 氷の上で滑る（`player.onSlippery`）。**クモの巣の節の裏返し**で、違うのは
+ * **体と重なるマスではなく足元のマスを見る**ところ（`bodyStandsOn()`）——
+ * 氷は `solid` なので体は 1 度も重ならず、`bodyTouches()` では永久に偽です。
+ *
+ * **どのブロックが滑るかは `blocks.ts` の `isSlippery()`**、**どれだけ滑るかは
+ * `player.ts` の 2 定数**（摩擦 2.3 と地上の加速 0.23 倍）。
+ */
+function ice(): void {
+  describe("氷の上で滑る（player.onSlippery）");
+
+  // 床 y=10（上面 11）は土で、**x=3..40 だけ氷**。歩いて乗るので手前は空けておく。
+  const rink = new Arena();
+  rink.fill(-4, 60, 10, 10, -4, 4, DIRT);
+  rink.fill(3, 40, 10, 10, -4, 4, ICE);
+  const frozen = rink as unknown as World;
+  // 対照は**同じ形の土だけの床**（比べる 1 秒でどこにも氷が無いこと）。
+  const bare = new Arena();
+  bare.fill(-4, 60, 10, 10, -4, 4, DIRT);
+  const plain = bare as unknown as World;
+
+  const skater = new Player(new PerspectiveCamera());
+  skater.position.set(0.5, 11, 0.5);
+  skater.yaw = -Math.PI / 2; // 前 = +X
+  for (let i = 0; i < 30; i++) skater.update(1 / 60, frozen);
+  // **まず「まだ乗っていない」ことを出す** —— 常に真を返す実装をここで落とす。
+  check(
+    "歩き出す前（x≈0.5・足元は土）は onSlippery が偽",
+    !skater.onSlippery && skater.onGround,
+    `x=${skater.position.x.toFixed(3)} onSlippery=${skater.onSlippery} onGround=${skater.onGround}`,
+  );
+
+  skater.setKey("KeyW", true);
+  for (let i = 0; i < 120; i++) skater.update(1 / 60, frozen);
+  console.log(
+    `      氷へ歩いて乗った: x=${skater.position.x.toFixed(3)} y=${skater.position.y.toFixed(3)}` +
+      ` onSlippery=${skater.onSlippery} onGround=${skater.onGround}` +
+      `（足元のマス ${Math.floor(skater.position.y - 0.004)}）`,
+  );
+  check(
+    "氷の上へ歩いて乗ると onSlippery が真",
+    skater.onSlippery && skater.onGround && skater.position.x > 3,
+    `x=${skater.position.x.toFixed(3)} onSlippery=${skater.onSlippery}`,
+  );
+
+  // **隣のマスに立っているだけでは偽**（体は氷と重ならないので、走査を
+  // `bodyTouches()` に取り違えていると**どこでも偽**になり、上の 1 件で落ちる。
+  // 逆に「足元 2 段」まで見ていると、ここが真になって落ちる）。
+  const beside = new Player(new PerspectiveCamera());
+  beside.position.set(2.5, 11, 0.5);
+  for (let i = 0; i < 30; i++) beside.update(1 / 60, frozen);
+  check(
+    "氷の隣のマスに立っているだけでは偽",
+    !beside.onSlippery,
+    `x=${beside.position.x.toFixed(3)} 右端=${(beside.position.x + PLAYER_SIZE.half).toFixed(3)}（境目 3.0）`,
+  );
+
+  // --- 入力を離してから 1 秒で進む距離（**土の 3 倍以上**。両方の速度も出す） ---
+  // 2 秒歩いたので、どちらももう 5.2 m/s に乗り切っている（＝同じ速さから離す）。
+  const walker = new Player(new PerspectiveCamera());
+  walker.position.set(0.5, 11, 0.5);
+  walker.yaw = -Math.PI / 2;
+  walker.setKey("KeyW", true);
+  for (let i = 0; i < 120; i++) walker.update(1 / 60, plain);
+
+  const iceSpeed = Math.hypot(skater.velocity.x, skater.velocity.z);
+  const dirtSpeed = Math.hypot(walker.velocity.x, walker.velocity.z);
+  skater.setKey("KeyW", false);
+  walker.setKey("KeyW", false);
+  const iceFrom = skater.position.x;
+  const dirtFrom = walker.position.x;
+  for (let i = 0; i < 60; i++) skater.update(1 / 60, frozen);
+  for (let i = 0; i < 60; i++) walker.update(1 / 60, plain);
+  const iceSlide = skater.position.x - iceFrom;
+  const dirtSlide = walker.position.x - dirtFrom;
+  console.log(
+    `      離す直前の速さ: 氷 ${iceSpeed.toFixed(3)} m/s / 土 ${dirtSpeed.toFixed(3)} m/s` +
+      ` ｜ 離してから 1 秒で進んだ距離: 氷 ${iceSlide.toFixed(3)} m / 土 ${dirtSlide.toFixed(3)} m` +
+      `（比 ${(iceSlide / dirtSlide).toFixed(2)} 倍。摩擦 2.3 ↔ 12・地上の加速 0.23 倍）`,
+  );
+  // **同じ速さから離していること**を先に見る —— 片方だけ遅ければ、距離の比は
+  // 滑りではなく「乗り切っていない」を測っていることになる。
+  check(
+    "どちらも 5.2 m/s に乗り切ってから離している（対照が成立している）",
+    iceSpeed > 5.1 && iceSpeed < 5.3 && dirtSpeed > 5.1 && dirtSpeed < 5.3,
+    `氷 ${iceSpeed.toFixed(3)} / 土 ${dirtSpeed.toFixed(3)}`,
+  );
+  check(
+    "離してから 1 秒で進む距離が土の 3 倍以上（氷の上は止まらない）",
+    iceSlide > dirtSlide * 3 && skater.onSlippery && !walker.onSlippery,
+    `氷 ${iceSlide.toFixed(3)} m / 土 ${dirtSlide.toFixed(3)} m（比 ${(iceSlide / dirtSlide).toFixed(2)}）`,
+  );
+
+  // --- 走り出しは氷のほうが遅い（地上の加速が 0.23 倍。0.2 秒後の速さを両方出す） ---
+  // **止まった所から測ること** —— 上の 2 人はもう乗っているので新しく置く。
+  const onIce = new Player(new PerspectiveCamera());
+  onIce.position.set(10.5, 11, 0.5);
+  onIce.yaw = -Math.PI / 2;
+  const onDirt = new Player(new PerspectiveCamera());
+  onDirt.position.set(10.5, 11, 0.5);
+  onDirt.yaw = -Math.PI / 2;
+  // **1 フレーム流して足元を見させてから**押すこと（`onSlippery` は `moveBody()` の
+  // あとで入るので、置いた直後のフレームはまだ偽）。
+  onIce.update(1 / 60, frozen);
+  onDirt.update(1 / 60, plain);
+  onIce.setKey("KeyW", true);
+  onDirt.setKey("KeyW", true);
+  for (let i = 0; i < 12; i++) onIce.update(1 / 60, frozen);
+  for (let i = 0; i < 12; i++) onDirt.update(1 / 60, plain);
+  const iceStart = Math.hypot(onIce.velocity.x, onIce.velocity.z);
+  const dirtStart = Math.hypot(onDirt.velocity.x, onDirt.velocity.z);
+  console.log(
+    `      走り出して 0.2 秒後の速さ: 氷 ${iceStart.toFixed(3)} m/s / 土 ${dirtStart.toFixed(3)} m/s` +
+      `（土は 60 × 0.2 = 12 で上限 5.2 に届く / 氷は 13.8 × 0.2 = 2.76）`,
+  );
+  check(
+    "氷の上では走り出しが遅い（0.2 秒後に土は 5.2・氷は 3 未満）",
+    dirtStart > 5.1 && iceStart < 3 && onIce.onSlippery && !onDirt.onSlippery,
+    `氷 ${iceStart.toFixed(3)} / 土 ${dirtStart.toFixed(3)}`,
+  );
+
+  // --- 空中では差が出ない（`ACCEL_AIR` は足元を見ない） ---
+  // 氷の真上と土の真上から落としながら 0.2 秒だけ押す。**0.5 秒にしないこと** ——
+  // 14 × 0.5 = 7 で両方とも上限 5.2 に張り付き、差が出なくても緑になる。
+  const overIce = new Player(new PerspectiveCamera());
+  overIce.position.set(10.5, 20, 0.5);
+  overIce.yaw = -Math.PI / 2;
+  const overDirt = new Player(new PerspectiveCamera());
+  overDirt.position.set(10.5, 20, 0.5);
+  overDirt.yaw = -Math.PI / 2;
+  overIce.setKey("KeyW", true);
+  overDirt.setKey("KeyW", true);
+  for (let i = 0; i < 12; i++) overIce.update(1 / 60, frozen);
+  for (let i = 0; i < 12; i++) overDirt.update(1 / 60, plain);
+  const airIce = Math.hypot(overIce.velocity.x, overIce.velocity.z);
+  const airDirt = Math.hypot(overDirt.velocity.x, overDirt.velocity.z);
+  console.log(
+    `      空中で 0.2 秒押した速さ: 氷の上 ${airIce.toFixed(4)} m/s / 土の上 ${airDirt.toFixed(4)} m/s` +
+      `（どちらも ACCEL_AIR 14 × 0.2 = 2.8。y=${overIce.position.y.toFixed(2)} onGround=${overIce.onGround}）`,
+  );
+  check(
+    "空中では氷でも土でも同じ（落ちている途中で、どちらも接地していない）",
+    Math.abs(airIce - airDirt) < 1e-9 && !overIce.onGround && !overDirt.onGround &&
+      !overIce.onSlippery && airIce > 2.7 && airIce < 2.9,
+    `氷 ${airIce.toFixed(6)} / 土 ${airDirt.toFixed(6)}`,
   );
 }

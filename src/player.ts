@@ -1,6 +1,6 @@
 import { Euler, Vector3, type PerspectiveCamera } from "three";
-import { AIR, WATER, isClimbable, isHotLiquid, isLiquid, isSpiky, isSticky } from "./blocks";
-import { PLAYER_SIZE, blockOverlapsBody, bodyTouches, moveBody } from "./physics";
+import { AIR, WATER, isClimbable, isHotLiquid, isLiquid, isSlippery, isSpiky, isSticky } from "./blocks";
+import { PLAYER_SIZE, blockOverlapsBody, bodyStandsOn, bodyTouches, moveBody } from "./physics";
 import type { World } from "./world";
 
 const EYE = 1.62;
@@ -36,6 +36,28 @@ const COBWEB_SPEED_SCALE = 0.25;
  * 上書きされて落下が止まらない）。
  */
 const COBWEB_FALL_SPEED = 1.0;
+
+/**
+ * 普通のブロックの上で立ち止まったときの摩擦（毎秒）。**値は今までの 12 のまま**で、
+ * 名前を付けただけ。本家の「滑りやすさ 0.6」を毎秒に直すと 12.1 なので、
+ * ここは最初から本家の普通のブロックと同じ手ざわりでした（`TUNING.md`）。
+ */
+const GROUND_FRICTION = 12;
+/**
+ * 氷の上での摩擦（毎秒）。本家の滑りやすさ 0.98（普通のブロックは 0.6）から
+ * `-20 * ln(0.98 * 0.91) = 2.29`。**同じ式の定数を差し替えるだけ。**
+ * **ただし止める力の主役はこちらではありません** —— 実測（`test/physics.test.ts`）で
+ * 離してから 1 秒に進むのは氷 0.594 m ↔ 土 0.099 m の 6.0 倍で、効いているのは
+ * 下の `ICE_ACCEL_SCALE`（目標速度 0 へ寄せる加速）のほうです（`TUNING.md`）。
+ * **どのブロックが滑るかは `blocks.ts` の `isSlippery()`**（ここは数値だけを持つ）。
+ */
+const ICE_FRICTION = 2.3;
+/**
+ * 氷の上での地上の加速の倍率。本家の `(0.6 / 滑りやすさ)³` = 0.2296 から。
+ * `ACCEL_GROUND` 60 × 0.23 = 13.8 で、**空中の 14 とほぼ同じ** ——
+ * つまり氷の上は「空を歩いている」のと同じ効きになります。
+ */
+const ICE_ACCEL_SCALE = 0.23;
 
 const scratch = new Vector3();
 
@@ -78,6 +100,15 @@ export class Player {
    * **ここに `vitals.ts` を import しないこと。**
    */
   inCobweb = false;
+  /**
+   * **足元のマス**が滑るブロック（氷）。**`inCobweb` と同じで事実だけ** ——
+   * どれだけ滑るかは `ICE_FRICTION` と `ICE_ACCEL_SCALE`、どのブロックが滑るかは
+   * `blocks.ts` の `isSlippery()` のもの。
+   *
+   * **`inCobweb` とは走査が違います**（`bodyStandsOn()` と `bodyTouches()`）——
+   * 氷は体と重ならず、**上に立っているだけ**なので、体の箱で探すと 1 度も真になりません。
+   */
+  onSlippery = false;
 
   private readonly keys = new Set<string>();
   private readonly euler = new Euler(0, 0, 0, "YXZ");
@@ -168,6 +199,9 @@ export class Player {
     this.touchingSpikes = bodyTouches(world, this.position, PLAYER_SIZE, isSpiky);
     this.onLadder = bodyTouches(world, this.position, PLAYER_SIZE, isClimbable);
     this.inCobweb = bodyTouches(world, this.position, PLAYER_SIZE, isSticky);
+    // **足元は `bodyStandsOn()`**（氷は体と重ならないので `bodyTouches()` では拾えない）。
+    // **ここも押し戻したあとで見ること** —— 前に置くと、まだ乗っていないフレームで真になる。
+    this.onSlippery = bodyStandsOn(world, this.position, PLAYER_SIZE, isSlippery);
     this.syncCamera();
   }
 
@@ -193,7 +227,10 @@ export class Player {
       (sprinting ? SPRINT_SPEED : WALK_SPEED) *
       (this.inLiquid ? 0.6 : 1) *
       (this.inCobweb ? COBWEB_SPEED_SCALE : 1);
-    const accel = (this.onGround ? ACCEL_GROUND : ACCEL_AIR) * dt;
+    // **氷の上では地上の効きが 0.23 倍**（空中の 14 とほぼ同じ）。**空中には掛けない** ——
+    // 掛けると氷の上を跳んだだけで操作が二重に鈍ります（本家も地上だけ）。
+    const ground = ACCEL_GROUND * (this.onSlippery ? ICE_ACCEL_SCALE : 1);
+    const accel = (this.onGround ? ground : ACCEL_AIR) * dt;
     const targetX = this.wish.x * speed;
     const targetZ = this.wish.z * speed;
     this.velocity.x += Math.max(-accel, Math.min(accel, targetX - this.velocity.x));
@@ -223,8 +260,8 @@ export class Player {
     }
 
     if (this.onGround && this.wish.lengthSq() === 0) {
-      // 摩擦
-      const damp = Math.max(0, 1 - dt * 12);
+      // 摩擦。**式は 1 行も変えず、掛ける数だけを足元で選ぶ**（氷は 2.3・ほかは 12）。
+      const damp = Math.max(0, 1 - dt * (this.onSlippery ? ICE_FRICTION : GROUND_FRICTION));
       this.velocity.x *= damp;
       this.velocity.z *= damp;
     }

@@ -252,6 +252,39 @@ export function bodyTouches(
 }
 
 /**
+ * **足元のマス**（体の真下 1 段）に、`match` を満たすブロックがあるか。
+ *
+ * `bodyTouches()` の足元版で、**こちらも幾何だけ**（何を探しているかは知らない）。
+ * 違うのは走査する範囲だけ: あちらは体の箱と重なるマス、こちらは**立っているマスの
+ * 1 つ下**を見る。氷は**体と重なっていない**（上に立っているだけ）ので、
+ * `bodyTouches()` では 1 度も真になりません。
+ *
+ * 深さは `moveBody()` が接地を見るのと同じ `EPS * 4` 下。**同じ値を使うこと** ——
+ * 別の深さにすると、**接地しているのに滑らない**（浅すぎて自分のマスを拾う）か、
+ * **浮いていても滑る**（深すぎて 1 段下を拾う）フレームができます。
+ * 横は `collides()` と同じ EPS のぶん内側なので、**隣のマスの氷には乗りません。**
+ */
+export function bodyStandsOn(
+  world: World,
+  position: Vector3,
+  size: BodySize,
+  match: (id: number) => boolean,
+): boolean {
+  const px0 = position.x - size.half + EPS;
+  const px1 = position.x + size.half - EPS;
+  const by = Math.floor(position.y - EPS * 4);
+  const pz0 = position.z - size.half + EPS;
+  const pz1 = position.z + size.half - EPS;
+
+  for (let bz = Math.floor(pz0); bz <= Math.floor(pz1); bz++) {
+    for (let bx = Math.floor(px0); bx <= Math.floor(px1); bx++) {
+      if (match(world.getVoxel(bx, by, bz))) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * 足元 `maxDrop` ブロック以内にある足場の上面。無ければ `-Infinity`。
  * **崖から落ちないモブ**に使う（「豚が全部穴に落ちた」は実際に起きる）。
  */
