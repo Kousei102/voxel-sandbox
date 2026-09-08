@@ -1,114 +1,119 @@
-# 仕様: ケーキ（キューの 24a・置けるところまで）
+# 仕様: 氷（キューの 25a・ブロックと滑りだけ）
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-**キューの 24 を 2 件に割った前半です。** かじる（7 回）は **24b** に回しました ——
-**理由は `main.ts` の行数**で、B の周で数えた結果は次のとおりです:
+**キューの 25 を 2 件に割った前半です。** 自然生成（凍った海）は **25b** に回しました ——
+**理由は 120 行**で、B の周でコードを追った結果は次のとおりです:
 
-- **かじるには `main.ts` に最低 1 行**（`useOrPlace()` の `switch` に `case "cake":`）と、
-  **効果を貼る助け 6〜8 行**が要ります（`tillAt` / `plantAt` と同じ形）。
-  いま **1449 行**なので `AUTODEV.md` の停止条件 2（1450 行）に当たります
-- **前半（このファイル）は `main.ts` に 1 行も要りません** —— ブロック 1 つと
-  レシピ 1 本で、置く経路も落とす経路も既にあるものを通ります
+- **凍らせるには `biomes.ts` に「凍った海」を 1 つ足す**しかありません。`resolve()` は
+  **海面より低い列を気温に関わらず `OCEAN` に潰す**ので、雪の浜の隣の海も `OCEAN` です
+- 前半（このファイル）は **`worldgen.ts` も `biomes.ts` も 1 行も触りません**
+- **`main.ts` は ±0 行**（数えました）—— 置く経路は `placing.ts`、壊す経路は
+  `breakBlock()` が `tryBreak()` に丸投げで、**残るブロックは `breaking.ts` の `setVoxel` 1 か所**
 
 ## 1. 何を足すか と 完了の判定
 
-**ケーキ（ブロック 155 / 同番のアイテム）。作って置けるが、まだかじれない。**
+**氷（ブロック 156 / 同番のアイテム）。半透明の立方体で、上は滑り、壊すと水に戻る。**
 
-`npm test` が緑のまま（いま **3273 件**）、次の 6 つが**値を出してから**増えていること:
+`npm test` が緑のまま（いま **3295 件**）、次の 6 つが**値を出してから**増えていること:
 
-- **155 は `model: "boxes"` の高さ 0.5・`solid: true`・`variantOf` なし** ——
-  アイテム 155 が自動で付き（`MAX_ITEM_ID` **155**）、**111..255 の空きが 101 → 100**
-- **壊すと何も落ちない**（ガラスと同じ `NO_ITEM` の 1 行。**素手でもツルハシでも 0 個**）
-- **レシピが 59 → 60 本**。`["MMM","SES","WWW"]` で、**2x2 では作れない**
-  （`findRecipe(grid, 2)` が null・`findRecipe(grid, 3)` がケーキ、の 2 通りを出してから）
-- **ミルクバケツ 3 個が空のバケツ 3 個になって盤面に残る** ——
-  `consumeGrid()` の前後を**枠 9 つぶん並べてから**判定する
-- **続けてもう 1 個は作れない**（盤面が空バケツに変わるので `findRecipe` が null）。
-  `quickCraft()` が 1 個で止まることも一緒に見る
-- **一覧の色**がいちばん近い相手と **RGB で 20 以上**離れている
-  （**相手の名前と数値を出してから**。判定に入るのは `top` だけ）
+- **156 は普通の立方体・`translucent`・`variantOf` なし** —— アイテム 156 が自動で付き
+  （`MAX_ITEM_ID` **156**）、**111..255 の空きが 100 → 99**
+- **壊すと何も落ちない**（ガラス・ケーキと同じ `NO_ITEM` の 1 行。素手でもツルハシでも 0 個）
+- **壊したマスが `AIR` ではなく `WATER` になる**（素手・ツルハシ・クリエイティブの 3 通り。
+  **前後のボクセルを並べてから**）。**石を壊したマスは今までどおり `AIR`**
+- **氷の上で滑る** —— 入力を離してから 1 秒で進む距離が土の **3 倍以上**で、
+  **空中では差が出ない**（両方の速度と距離を出してから）
+- **一覧の色**がいちばん近い相手と **RGB で 20 以上**離れている（**相手の名前と数値を出してから**）
 
 ## 2. 触るファイルと、触らないファイル
 
-**触る**: `src/blocks.ts` / `src/items.ts` / `src/crafting.ts` / `tools/shot.ts` /
-`test/blocks.test.ts` / `test/crafting.test.ts` / `ROADMAP.md` / `AUTODEV-QUEUE.md` /
+**触る**: `src/blocks.ts` / `src/items.ts` / `src/breaking.ts` / `src/physics.ts` /
+`src/player.ts` / `tools/shot.ts` / `test/blocks.test.ts` / `test/breaking.test.ts` /
+`test/physics.test.ts` / `ROADMAP.md` / `TUNING.md` / `AUTODEV-QUEUE.md` /
 `docs/autodev-log.md` / `HANDOFF.md`
 
-**触らない**: **`src/main.ts`（1 行も開かないこと）** / `use.ts` / `craftscreen.ts` /
-`placing.ts` / `vitals.ts` / `inventory.ts` / `worldgen.ts` / `inventoryui.ts` / `session.ts`
+**触らない**: **`src/main.ts`（1 行も開かないこと）** / `worldgen.ts` / `biomes.ts` /
+`world.ts` / `mesher.ts` / `lighting.ts` / `gravity.ts` / `mining.ts` / `crafting.ts` /
+`vitals.ts` / `placing.ts` / `use.ts` / `items.ts` の `FOODS`
 
-先に読むこと（**自動では読み込まれません**）:
-**`rules/blocks-shapes.md`**（`isProp()` と箱の形）/ **`rules/items-survival.md`**
-（`tool:` を持たせない・`FOODS` の作法）/ **`rules/inventory-screen.md`**（盤面と `consumeGrid`）/
-**`rules/drops.md`** / **`rules/testing.md`**。スキルは **`add-block`**
-（**`add-stateful-block` はこの周では要りません** —— 位置ごとの状態は 24b の仕事）。
+先に読むこと（**自動では読み込まれません**）: **`rules/blocks-shapes.md`**（旗の足し方・
+`isSpiky` / `isClimbable` / `isSticky` の作法）/ **`rules/items-survival.md`**（`DROPS` と
+`MAX_ITEM_ID`）/ **`rules/drops.md`** / **`rules/testing.md`**。スキルは **`add-block`**。
 
 ## 3. 使う ID
 
-**155 ひとつだけ**（`ROADMAP.md` の予約表の「次の空き」）。**ブロックとアイテムで 1 本の番号**で、
-`items.ts` に `item({...})` は書かず、**`MAX_ITEM_ID` を 154 → 155 へ手で伸ばすだけ**
-（クモの巣・はしご・本棚とまったく同じ道）。**ほかの番号を 1 つも取らないこと** ——
-かじった回数をブロック ID で表そうとすると 6 個消えます（それは 24b で、しかも
-`crops.ts` の「段階を ID で表さない」に当たります）。
+**156 ひとつだけ**（`ROADMAP.md` の予約表の「次の空き」）。**ブロックとアイテムで 1 本の番号**で、
+`items.ts` に `item({...})` は書かず、**`MAX_ITEM_ID` を 155 → 156 へ手で伸ばすだけ**
+（クモの巣・ケーキとまったく同じ道）。**ほかの番号を 1 つも取らないこと。**
 
 ## 4. 判断をどのファイルに置くか
 
 | 何を | どこに |
 | --- | --- |
-| 形・硬さ・音・支え | `blocks.ts` の `def` 1 つ + `CAKE_BOX` |
-| 落ちるものが無いこと | `items.ts` の `DROPS` 1 行（`{ item: NO_ITEM, count: 0, chance: 0 }`） |
-| **何が残りかすになるか** | **`items.ts` の `LEFTOVERS` / `leftoverOf()` 1 本**（`EMPTIES` / `emptyAfterEating()` と同じ形） |
-| 盤面から取り除く手順 | `crafting.ts` の `consumeGrid()`（**表は持たず `leftoverOf()` に聞く**） |
-| レシピの形 | `crafting.ts` の `RECIPES` 1 行 |
+| 形・色・硬さ・音・半透明 | `blocks.ts` の `def` 1 つ |
+| **滑るか**（旗だけ。どれだけ滑るかは持たない） | `blocks.ts` の `slippery` / `isSlippery()` |
+| **壊したあとに残るブロック** | `blocks.ts` の `breaksInto` / `remainsAfterBreak()` |
+| 落ちるものが無いこと | `items.ts` の `DROPS` 1 行 |
+| 残ったブロックを書き込む | `breaking.ts` の `tryBreak()` の `setVoxel` **1 か所** |
+| 足元のマスを走査する | `physics.ts` の **`bodyStandsOn()`**（`bodyTouches()` の足元版） |
+| **どれだけ滑るか** | `player.ts` の 2 定数 |
 
 **新しく「確かめられないもの」は足しません**（`unverifiable-pair` は要りません）。
 
-- **形**: `CAKE_BOX = [[0.0625, 0, 0.0625, 0.9375, 0.5, 0.9375]]`（本家と同じ 1/16 の縁と
-  高さ 8/16）。`solid: true`（上に乗れる）/ `hardness: 0.5` / `sound: "wool"` /
-  **`supportFace: FACE_YN`**（床が要る・床が消えたら壊れる。ベッドと同じ）。
-  **`replaceable` も `stacksOnSelf` も `variantOf` も付けないこと**
-- **色**: `top: 0xf2ded2` / `side: 0xe8c9a0` / `bottom: 0xd9b98a` を暫定で置く。
-  **一覧に出るのは `top` だけ**なので、20 を割ったら **`top` だけ**を寄せ直し、
-  **どこまで動かしたかを `TUNING.md` に 1 行**（白は雪玉・羽根・卵・砂糖・紙で混んでいます）
-- **残りかす**: `LEFTOVERS = new Map([[MILK_BUCKET, BUCKET]])`。`consumeGrid()` は
-  1 個減らして 0 になったとき、**`clearSlot(slot)` を通してから**残りかすを 1 個置く
-  （素通しで `slot.item` を書き換えると、**傷が空のバケツに乗り移ります**）。
-  **`Recipe` に新しいキーを足さないこと** —— 残りかすは**アイテムの性質**で、
-  レシピの性質ではありません（同じミルクバケツはどのレシピでも空バケツに戻る）
+- **`def`**: `{ top: 0x8fc4f2 }` / `opaque: false` / `translucent: true` / `alpha: 0.6` /
+  `hardness: 0.5` / `tool: "pickaxe"` / `sound: "glass"` / `slippery: true`。
+  **`blocksSky` は書かないこと**（既定の false。書くと 25b で氷の下の海が真っ暗になります）。
+  **`solid` も `replaceable` も `variantOf` も `supportFace` も付けないこと**（普通の立方体）
+- **色**: 一覧に出るのは `top` だけ。**20 を割ったら `top` だけ**を寄せ直し、
+  **どこまで動かしたかを `TUNING.md` に 1 行**（近いのはガラス `0xa9d8e8`・雪・ダイヤ鉱石）
+- **旗**: `slippery` は **`sticky` と 1 つにまとめないこと**（`blocks.ts` の 718 行目の
+  コメントが名指しで断っています）。**`isSlippery()` は座標も数値も知らない**
+- **残るブロック**: `breaksInto` の既定は `AIR`。氷だけ `WATER`。`tryBreak()` は
+  `world.setVoxel(x, y, z, remainsAfterBreak(id))` に**書き換えるだけ**で、
+  **`settleColumn()` の呼び方も `autoBreak()` も変えないこと**（氷は支えが要らないので
+  勝手に壊れる経路を通りません）
+- **滑り**（本家の値から。`TUNING.md` に 1 節）: いまの摩擦 `1 - dt * 12` の **12 を
+  `GROUND_FRICTION` に出すだけ**（値は変えない）。氷は **`ICE_FRICTION = 2.3`** ——
+  本家の滑りやすさ 0.98（普通のブロックは 0.6）に毎 tick 0.91 を掛けるので
+  `-20 * ln(0.98 * 0.91) = 2.29`（普通のブロックは 12.1 で、**いまの 12 とほぼ同じ**）。
+  地上の加速は **`ICE_ACCEL_SCALE = 0.23`**（本家は `(0.6 / 滑りやすさ)³` = 0.2296。
+  `ACCEL_GROUND` 60 × 0.23 = 13.8 で、空中の 14 とほぼ同じ）
+- **`onSlippery` は `moveBody()` の「あと」で見ること**（`inCobweb` と同じ 1 行の並び。
+  前に置くと、まだめり込んでいないフレームで真になります）
 
 ## 5. 書くテスト
 
 **どれも値を出してから判定すること**（`rules/testing.md`）。
 
-- `test/blocks.test.ts`: ケーキ 1 節 —— `model` / `boxes` の高さ / `solid` / `variantOf` /
-  `supportFace` / 硬さ / **掘って出るもの 0 個**（素手・ツルハシ・剣の 3 通りを並べる）/
-  アイテム名と `placedBlock()` が 155 に戻ること / **色のいちばん近い相手**（既存の節を写す）
-- `test/blocks.test.ts` の空きの節: **111..255 の空きが 100・`MAX_ITEM_ID` 155**
-- `test/crafting.test.ts`: **レシピ 60 本** / 3x3 で揃うこと・2x2 では揃わないこと /
-  **`consumeGrid()` の前後の盤面 9 枠**（ミルクバケツ 3 → 空バケツ 3・ほかは空）/
-  **傷 7 のミルクバケツを置いても、戻った空バケツの `damage` が 0** /
-  **2 個目は作れない**（`findRecipe` が null・`quickCraft` が 1 個で止まる）/
-  **`leftoverOf()` の表に載っているものは全部 1 枠 1 個まで**（積める物を載せると
-  残りかすが 1 個に潰れます）
+- `test/blocks.test.ts`: 氷 1 節 —— 立方体か / `isTranslucent` / `alpha` / 硬さ / `tool` /
+  `isSlippery` / `variantOf` なし / **掘って出るもの 0 個**（素手・ツルハシ・剣の 3 通り）/
+  アイテム名と `placedBlock()` が 156 / **色のいちばん近い相手**（既存の節を写す）
+- `test/blocks.test.ts` の空きの節: **111..255 の空きが 99・`MAX_ITEM_ID` 156**
+- `test/breaking.test.ts`: **壊したマスが水になる**（素手・ツルハシ・クリエイティブ）/
+  **石は今までどおり空気**（1 件）/ **落ちるものは 0 山**
+- `test/physics.test.ts`: **入力を離してから 1 秒の距離が土の 3 倍以上**（両方出す）/
+  **走り出しは氷のほうが遅い**（0.2 秒後の速さを両方出す）/ **空中では同じ**
 
 ## 6. このタスク固有の禁じ手
 
 - **`main.ts` を開かないこと**（この周の一番の目的です）
-- **`FOODS` に 1 行も足さない**（まだ食べられません。**満腹度も回復量も 24b で決めます**）
-- **`EMPTIES` を作り替えない** —— 食べ終わりに戻る器（シチュー → ボウル）と、
-  クラフトの残りかす（ミルクバケツ → バケツ）は**別の表**です
-- **ミルクバケツを `FILLED_BUCKETS` に足さない**（足すと地面に流せます。`rules/use.md`）
-- **既存のレシピ 59 本を 1 行も書き換えない。`consumeGrid()` の「1 枠につき 1 個」も変えない**
+- **自然生成 0 行**（`worldgen.ts` も `biomes.ts` も触らない。凍った海は 25b）
+- **`isSticky()` に氷を載せない**（鈍るのと滑るのは別の旗）
+- **`tool: "pickaxe"` を書いても `minTier` は書かないこと**（木のツルハシで掘れます）
+- **`ICE` をレシピにも精錬にも燃料にも `FOODS` にも 1 行も足さない**
+- **`settleColumn()` と `landingY()` の判定を変えないこと**（水は `replaceable` なので、
+  氷を壊した上の砂は今までどおり落ちてきます。**それでよい**）
 - **`SaveData` の形を変えない**（`version` は 1・キーも増やさない）
-- **自然生成 0 行**（本家にケーキは湧きません）
+- **既存の摩擦 12 と `ACCEL_GROUND` 60 の値を変えないこと**（定数に出すだけ）
 
 ## 7. 終了条件
 
-`npm run typecheck` と `npm test`（3273 件 + 増えたぶん）が**すべて緑** / `npm run build` 緑 /
-**コミット 1 つを `master` へ push** / `tools/shot.ts` に `cake` の場面を足して
-**`npm run shot -- cake` を撮り、`Read` で開いて見た**（自然生成しないので既存の場面には
-写りません）/ 手触りの数値（色を寄せ直したら）を `TUNING.md` に 1 行 /
-`ROADMAP.md` の予約表に 155 を「実装済み」で 1 行 / `AUTODEV-QUEUE.md` の 24a を消す /
-このファイルの `状態:` を `済` に / `HANDOFF.md` を丸ごと書き直す。
+`npm run typecheck` と `npm test`（3295 件 + 増えたぶん）が**すべて緑** / `npm run build` 緑 /
+**コミット 1 つを `master` へ push** / `tools/shot.ts` に `ice` の場面を足して
+**`npm run shot -- ice` を撮り、`Read` で開いて見た**（自然生成しないので既存の場面には
+写りません。**半透明の下が透けているか**と**ガラスと見分けが付くか**を見ること）/
+滑りの 2 定数と色を `TUNING.md` に 1 節 / `ROADMAP.md` の予約表に 156 を「実装済み」で 1 行 /
+`AUTODEV-QUEUE.md` の 25a を消す / このファイルの `状態:` を `済` に /
+`HANDOFF.md` を丸ごと書き直す。
