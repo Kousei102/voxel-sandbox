@@ -1,7 +1,10 @@
 import {
   AIR,
   CACTUS,
+  FENCE,
   GLASS,
+  LEAVES,
+  PLANK,
   STONE,
   STONE_SLAB,
   STONE_SLAB_TOP,
@@ -28,6 +31,27 @@ const blockPad = new Uint8Array(PAD_VOLUME);
 const put = (x: number, y: number, z: number, id: number) => {
   pad[padIndex(x, y, z)] = id;
 };
+
+/** 不透明メッシュの三角形の数（面が 1 枚も無ければ `opaque` は null）。 */
+function opaqueTriangles(): number {
+  const mesh = buildChunkMesh(pad, lightPad, blockPad).opaque;
+  return mesh ? mesh.indices.length / 3 : 0;
+}
+
+/**
+ * (5,5,5) のフェンス **1 本ぶん**の三角形を数える。
+ *
+ * 隣のブロック自身も面を出す（石 1 個で 12 三角形）ので、**隣だけを置いた状態から
+ * 引き算する。** フェンスは `opaque: false` なので隣の面を 1 枚も消さず、
+ * 差はそのままフェンスの箱の数 x 12 になる。
+ */
+function fenceTriangles(placeNeighbours: () => void): number {
+  pad.fill(AIR);
+  placeNeighbours();
+  const before = opaqueTriangles();
+  put(5, 5, 5, FENCE);
+  return opaqueTriangles() - before;
+}
 
 export function run(): void {
   describe("メッシュ化 (greedy meshing)");
@@ -421,4 +445,117 @@ export function run(): void {
     check(`${name}: 法線が軸に平行な単位ベクトル`, mesh.normals.every((v) => v === 0 || Math.abs(v) === 1));
     check(`${name}: 四角形として整合`, verts % 4 === 0 && mesh.indices.length / 6 === verts / 4);
   }
+
+  fences();
+}
+
+/**
+ * フェンスが隣と繋がって見える（26b）。**`box()` は 6 面を必ず出す**ので
+ * **箱 1 個 = 12 三角形**で、三角形の数がそのまま「腕が何本出ているか」になる。
+ *
+ * **柱だけ = 12 / 腕 1 方向 = 36（3 箱）/ 4 方向 = 108（9 箱）。**
+ * 繋がる相手の表そのものは `test/blocks.test.ts` の `fenceConnects()` 側で見る。
+ */
+function fences(): void {
+  describe("フェンスが隣と繋がって見える");
+
+  // --- 何も無ければ柱だけ（26a は 9 箱を常に積んでいた） ---
+  const alone = fenceTriangles(() => {});
+  pad.fill(AIR);
+  put(5, 5, 5, FENCE);
+  const aloneMesh = buildChunkMesh(pad, lightPad, blockPad).opaque!;
+  console.log(`      1 本だけ: ${alone} 三角形（柱 1 箱 = 12 / 26a は 9 箱 = 108 だった）`);
+  check("隣が空気なら柱だけの 12 三角形", alone === 12, `${alone} 三角形`);
+  verifyWinding("1 本だけのフェンス", aloneMesh, [5.5, 5.5, 5.5]);
+  check(
+    "柱は 6/16 角のまま（腕がどこへも伸びていない）",
+    aloneMesh.positions.every((v, i) => (i % 3 === 1 ? v >= 5 && v <= 6 : v >= 5.375 - 1e-9 && v <= 5.625 + 1e-9)),
+    `x/z ${Math.min(...[...aloneMesh.positions].filter((_, i) => i % 3 === 0))}..` +
+      `${Math.max(...[...aloneMesh.positions].filter((_, i) => i % 3 === 0))}`,
+  );
+
+  // --- +X に 2 本並べる（26a と同じ絵にならないこと） ---
+  pad.fill(AIR);
+  put(5, 5, 5, FENCE);
+  put(6, 5, 5, FENCE);
+  const pair = buildChunkMesh(pad, lightPad, blockPad).opaque!;
+  const pairTriangles = pair.indices.length / 3;
+  console.log(`      +X に 2 本: ${pairTriangles} 三角形（片方 3 箱 = 36 ずつ）`);
+  check("2 本並べると 72 三角形（互いに 1 方向だけ腕を出す）", pairTriangles === 72, `${pairTriangles} 三角形`);
+  verifyWinding("2 本並べたフェンス", pair, null);
+  check(
+    "腕は 2 本のあいだを埋める（x = 6.0 に面がある）",
+    [...pair.positions].some((v, i) => i % 3 === 0 && v === 6),
+    `x ${[...new Set([...pair.positions].filter((_, i) => i % 3 === 0))].sort((a, b) => a - b).join(" ")}`,
+  );
+
+  // --- 4 方向すべて（26a と同じ 9 箱の絵） ---
+  pad.fill(AIR);
+  put(5, 5, 5, FENCE);
+  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) put(5 + dx, 5, 5 + dz, FENCE);
+  const crossed = buildChunkMesh(pad, lightPad, blockPad).opaque!;
+  const crossedTriangles = crossed.indices.length / 3;
+  // 隣の 4 本は中央としか繋がらないので 36 ずつ。中央は 108（9 箱）。
+  console.log(`      4 方向すべて: ${crossedTriangles} 三角形（中央 108 + 隣 4 本 x 36 = 252）`);
+  check(
+    "4 方向とも繋がると中央は 9 箱ぶん（108）に戻る",
+    crossedTriangles === 252 && crossedTriangles - 4 * 36 === 108,
+    `${crossedTriangles} 三角形（中央 ${crossedTriangles - 4 * 36}）`,
+  );
+  verifyWinding("十字のフェンス", crossed, null);
+
+  // --- 繋がる相手・繋がらない相手（1 つずつ数を出す。「いつも真」を素通りさせない） ---
+  // **フェンスどうしはここに並べられない** —— 引き算の相手（隣だけを置いた状態）が
+  // フェンスを足すと一緒に腕を伸ばすので、差が 36 にならない（上の 72 が見ている）。
+  const neighbours: [string, number][] = [
+    ["石", STONE], ["葉", LEAVES], ["板", PLANK],
+    ["ガラス", GLASS], ["水", WATER], ["草", TALL_GRASS], ["松明", TORCH],
+    ["石ハーフ", STONE_SLAB], ["石階段", STONE_STAIRS], ["サボテン", CACTUS], ["空気", AIR],
+  ];
+  const counts = neighbours.map(([name, id]) => {
+    const n = fenceTriangles(() => {
+      if (id !== AIR) put(6, 5, 5, id);
+    });
+    return [name, n] as const;
+  });
+  console.log(`      +X の隣ごとのフェンスの三角形: ${counts.map(([n, c]) => `${n} ${c}`).join(" / ")}`);
+  const connects = new Set(["石", "葉", "板"]);
+  check(
+    "石・葉・板の隣では腕が出る（36 三角形）",
+    counts.filter(([n]) => connects.has(n)).every(([, c]) => c === 36),
+    counts.filter(([n]) => connects.has(n)).map(([n, c]) => `${n} ${c}`).join(" / "),
+  );
+  check(
+    "ガラス・水・草・松明・ハーフ・階段・サボテン・空気では出ない（12 三角形）",
+    counts.filter(([n]) => !connects.has(n)).every(([, c]) => c === 12),
+    counts.filter(([n]) => !connects.has(n)).map(([n, c]) => `${n} ${c}`).join(" / "),
+  );
+
+  // --- 腕は繋がった側にだけ伸びる（数だけでは向きが分からない） ---
+  pad.fill(AIR);
+  put(6, 5, 5, STONE);
+  put(5, 5, 5, FENCE);
+  const oneArm = buildChunkMesh(pad, lightPad, blockPad).opaque!;
+  const armXs = [...oneArm.positions].filter((_, i) => i % 3 === 0).filter((v) => v <= 6);
+  console.log(`      +X だけ石: フェンス側の x = ${[...new Set(armXs)].sort((a, b) => a - b).join(" ")}`);
+  check(
+    "腕は +X 側だけマスの端（6.0）まで伸び、-X 側は柱の 5.375 で止まる",
+    Math.min(...armXs) === 5.375 && armXs.includes(6),
+    `x ${Math.min(...armXs)}..${Math.max(...armXs)}`,
+  );
+
+  // --- チャンクの外の隣（pad の -1）でも繋がる ---
+  // 石は x = -1 なのでメッシュには 1 面も出ない。数はフェンスぶんそのもの。
+  pad.fill(AIR);
+  put(-1, 5, 5, STONE);
+  put(0, 5, 5, FENCE);
+  const edge = buildChunkMesh(pad, lightPad, blockPad).opaque!;
+  const edgeTriangles = edge.indices.length / 3;
+  console.log(`      x=0 のフェンスの -X が pad の石: ${edgeTriangles} 三角形（柱 12 + 腕 24）`);
+  check(
+    "チャンクの外の隣とも繋がる（36 三角形）",
+    edgeTriangles === 36,
+    `${edgeTriangles} 三角形`,
+  );
+  verifyWinding("チャンクの端のフェンス", edge, null);
 }

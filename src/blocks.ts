@@ -511,8 +511,10 @@ export const ICE = 156;
  *   見ます。** どのブロックが高いかは `isTallCollision()`（表 1 本）で、
  *   **手で旗を書かず `collision` の最大 y > 1 から立てること**
  *
- * **腕は 4 方向とも常に描きます**（隣に何も無い側を描かないのは **26b**。
- * `mesher.ts` は 1 行も触っていません）。
+ * **腕は繋がる側だけ描きます**（26b）。相手は `fenceConnects()` の表 1 本
+ * （フェンスどうしと、立方体で `solid` かつ `opaque` なもの）で、
+ * **`mesher.ts` の `case "fence"` が `FENCE_POST_BOX` / `FENCE_ARMS` を積みます。**
+ * **狙う判定と選択枠は 9 箱のまま**なので、繋がっていない側からも狙えます。
  *
  * **`supportFace` を書きません**（本家どおり宙に浮きます）。**`blocksSky` も
  * 書きません**（既定で false。フェンスの下は暗くなりません）。壊すと自分が 1 個
@@ -617,8 +619,12 @@ export function faceFromNormal(dx: number, dy: number, dz: number): number {
  *
  * "boxes" は `boxes` に並べた箱をそのまま描く（ハーフ・階段・サボテン）。
  * **見た目と当たり判定が同じ形になる**ので、片方だけ直して食い違うことがない。
+ *
+ * "fence" だけが**隣のマスを見て形が変わる**（柱は常に、腕は繋がる側だけ）。
+ * **`boxes` は 9 箱のまま**で、狙う判定と選択枠は今までどおりそこを引く ——
+ * 減らすと**繋がっていない側から狙えなくなる**（見た目だけの話に留めること）。
  */
-export type BlockModel = "cube" | "torch" | "boxes" | "cross";
+export type BlockModel = "cube" | "torch" | "boxes" | "cross" | "fence";
 
 /**
  * ブロック 1 個の中の箱 `[x0,y0,z0,x1,y1,z1]` の並び（1 ブロック = 1.0）。
@@ -689,23 +695,64 @@ export const CAKE_BOX: BoxList = [[0.0625, 0, 0.0625, 0.9375, 0.5, 0.9375]];
  * 柱は 6/16 角（0.375..0.625）。腕は**柱の外側からマスの端まで**伸ばし、
  * 幅は 0.4375..0.5625（2/16）、高さは下段 0.375..0.5625・上段 0.75..0.9375。
  *
- * **腕は 4 方向とも常に出します** —— 隣に何も無い側を描かないのは 26b（`mesher.ts`）。
- * **当たり判定はこれではなく `FENCE_COLLISION_BOX`**（`BlockDef.collision`）です。
+ * **見た目の腕は繋がる側だけ**（26b。`mesher.ts` の `case "fence"` が
+ * `FENCE_POST_BOX` と `FENCE_ARMS` から組む）。**この `FENCE_BOXES` は 9 箱のまま**で、
+ * **狙う判定（`raycast`）と選択枠が引くのはこちら** —— 腕を減らすと
+ * **繋がっていない側から狙えなくなります。**
+ * **当たり判定はこれでもなく `FENCE_COLLISION_BOX`**（`BlockDef.collision`）です。
  */
 const FENCE_POST = 0.375;
 const FENCE_ARM_LOW: readonly number[] = [0.375, 0.5625];
 const FENCE_ARM_HIGH: readonly number[] = [0.75, 0.9375];
 const FENCE_ARM_HALF: readonly number[] = [0.4375, 0.5625];
+
+/** フェンスの柱（1 箱）。**繋がる相手が 1 つも無くてもこれだけは描く。** */
+export const FENCE_POST_BOX: readonly number[] =
+  [FENCE_POST, 0, FENCE_POST, 1 - FENCE_POST, 1, 1 - FENCE_POST];
+
+/** 腕 1 方向ぶん。隣のマスは `dx` / `dz`、`boxes` は `[下段, 上段]` の 2 箱。 */
+export interface FenceArm {
+  readonly dx: number;
+  readonly dz: number;
+  readonly boxes: BoxList;
+}
+
+/** 腕を 1 本作る。**幅は伸びる軸と直交する側**（+X の腕は Z 方向に 2/16）。 */
+function fenceArm(dx: number, dz: number, y0: number, y1: number): readonly number[] {
+  const [near, far] = [FENCE_ARM_HALF[0], FENCE_ARM_HALF[1]];
+  if (dx !== 0) {
+    return dx > 0
+      ? [1 - FENCE_POST, y0, near, 1, y1, far]
+      : [0, y0, near, FENCE_POST, y1, far];
+  }
+  return dz > 0
+    ? [near, y0, 1 - FENCE_POST, far, y1, 1]
+    : [near, y0, 0, far, y1, FENCE_POST];
+}
+
+/**
+ * 腕 4 方向。**並びは `FENCE_BOXES` の +X / -X / +Z / -Z と同じ**
+ * （`test/blocks.test.ts` が `shape[0]` を柱として見ている）。
+ */
+export const FENCE_ARMS: readonly FenceArm[] = [
+  { dx: 1, dz: 0 },
+  { dx: -1, dz: 0 },
+  { dx: 0, dz: 1 },
+  { dx: 0, dz: -1 },
+].map(({ dx, dz }) => ({
+  dx,
+  dz,
+  boxes: [
+    fenceArm(dx, dz, FENCE_ARM_LOW[0], FENCE_ARM_LOW[1]),
+    fenceArm(dx, dz, FENCE_ARM_HIGH[0], FENCE_ARM_HIGH[1]),
+  ],
+}));
+
+/** **柱 1 + 下段 4 + 上段 4 の 9 箱**（並びは 26a のまま。値も 1 つも変えていない）。 */
 export const FENCE_BOXES: BoxList = [
-  [FENCE_POST, 0, FENCE_POST, 1 - FENCE_POST, 1, 1 - FENCE_POST],
-  ...[FENCE_ARM_LOW, FENCE_ARM_HIGH].flatMap(([y0, y1]) => [
-    // +X / -X（幅が Z 方向）
-    [1 - FENCE_POST, y0, FENCE_ARM_HALF[0], 1, y1, FENCE_ARM_HALF[1]],
-    [0, y0, FENCE_ARM_HALF[0], FENCE_POST, y1, FENCE_ARM_HALF[1]],
-    // +Z / -Z（幅が X 方向）
-    [FENCE_ARM_HALF[0], y0, 1 - FENCE_POST, FENCE_ARM_HALF[1], y1, 1],
-    [FENCE_ARM_HALF[0], y0, 0, FENCE_ARM_HALF[1], y1, FENCE_POST],
-  ]),
+  FENCE_POST_BOX,
+  ...FENCE_ARMS.map((arm) => arm.boxes[0]),
+  ...FENCE_ARMS.map((arm) => arm.boxes[1]),
 ];
 
 /**
@@ -1777,7 +1824,8 @@ export const BLOCKS: readonly BlockDef[] = [
     breaksInto: WATER,
   }),
 
-  // フェンス（上のコメント）。**ケーキの定義から違うのは 4 つ**:
+  // フェンス（上のコメント）。**ケーキの定義から違うのは 5 つ**:
+  // **`model: "fence"`（隣を見て腕を出し分ける唯一の形。26b）** /
   // **箱（`FENCE_BOXES`。柱 1 + 腕 8 の 9 個）** / **`collision` を持つ（当たり判定
   // だけマスいっぱい x 1.5）** / **硬さ 2・斧・木の音** / **支えが要らない
   // （`supportFace` を書かない = `NO_SUPPORT`。宙に浮く）**。
@@ -1793,7 +1841,7 @@ export const BLOCKS: readonly BlockDef[] = [
     hardness: 2,
     tool: "axe",
     sound: "wood",
-    model: "boxes",
+    model: "fence",
     boxes: FENCE_BOXES,
     collision: FENCE_COLLISION_BOX,
   }),
@@ -1991,6 +2039,25 @@ export function collisionBoxes(id: number): BoxList {
  */
 export function isTallCollision(id: number): boolean {
   return TALL_COLLISION[id] === 1;
+}
+
+/**
+ * フェンスの腕がその隣へ伸びるか（26b）。**繋がるのはフェンスどうしと、
+ * 立方体で `solid` かつ `opaque` なブロック**（石・土・葉・板…）だけ。
+ *
+ * **`id === FENCE` と書かないこと** —— `isTallCollision()` と同じ理由で、
+ * 石のフェンスを足したときに 2 か所へ書くことになる。
+ *
+ * **`mesher.ts` に「どのブロックと繋がるか」を書かないこと。** あちらは
+ * この表に聞いて `FENCE_ARMS` の 2 箱を積むだけで、判断はここ 1 か所にある。
+ * 繋がる相手を増やすなら**ここと `test/blocks.test.ts` の表を同じ周で**直すこと。
+ */
+export function fenceConnects(id: number): boolean {
+  if (blockModel(id) === "fence") return true;
+  // 立方体だけ（ハーフ・階段・松明・草は腕が宙に浮くので繋がない）。
+  // ガラス・水・氷は `opaque: false` でここに落ちる。
+  const def = blockDef(id);
+  return !isProp(id) && def.solid && def.opaque;
 }
 
 /**

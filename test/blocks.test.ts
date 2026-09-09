@@ -21,6 +21,8 @@ import {
   FACE_ZP,
   FARMLAND,
   FENCE,
+  FENCE_ARMS,
+  FENCE_POST_BOX,
   FRAME_HEIGHT,
   GOLD_BLOCK,
   GLASS,
@@ -68,6 +70,7 @@ import {
   canSupport,
   collisionBoxes,
   endPortalFrame,
+  fenceConnects,
   frameFacing,
   frameHasEye,
   isEndPortalFrame,
@@ -1361,7 +1364,8 @@ function fences(): void {
       `当たり判定（collisionBoxes）: 箱 ${collision.length} 個 [${collision[0].join(" ")}] 上端 ${collisionTop}\n` +
       `      選択枠（shapeBounds）: [${bounds.join(" ")}]（形の側 = 上端 ${bounds[4]}）`,
   );
-  // 柱 1 + 腕 4 方向 x 2 段 = 9 個。**腕は 4 方向とも常に出す**（26b で隣を見る）。
+  // 柱 1 + 腕 4 方向 x 2 段 = 9 個。**見た目の腕は繋がる側だけ**（26b）だが、
+  // **`boxes` は 9 箱のまま** —— 減らすと繋がっていない側から狙えなくなる。
   check(
     "見た目と狙いの形は柱 1 + 腕 8 の 9 個で、上端はマスの 1.0",
     shape.length === 9 && shapeTop === 1 &&
@@ -1411,6 +1415,46 @@ function fences(): void {
     "isTallCollision が真なのもフェンスだけ（石・ハーフ・階段・サボテン・ケーキ・はしごは偽）",
     tall.length === 1 && isTallCollision(FENCE) && others.every(([, id]) => !isTallCollision(id)),
     tall.join(" ") || "0 個",
+  );
+
+  // --- 繋がる相手の表（26b）。**表を出してから判定する**（「いつも真」を素通りさせない） ---
+  // 繋がるのは**フェンスどうし**と、**立方体で `solid` かつ `opaque`** なものだけ。
+  // **見た目の腕がどこへ伸びるかだけ**で、当たり判定（マスいっぱい x 1.5）は隣に依らない。
+  const connectTable: [string, number][] = [
+    ["石", STONE], ["葉", LEAVES], ["板", PLANK], ["フェンス", FENCE],
+    ["ガラス", GLASS], ["水", WATER], ["草", TALL_GRASS], ["空気", AIR],
+    ["石ハーフ", STONE_SLAB], ["石階段", STONE_STAIRS], ["サボテン", CACTUS],
+  ];
+  console.log(
+    `      fenceConnects: ${connectTable
+      .map(([n, id]) => `${n} ${fenceConnects(id)}`)
+      .join(" / ")}`,
+  );
+  console.log(
+    `      内訳（isProp / solid / opaque）: ${connectTable
+      .map(([n, id]) => `${n} ${isProp(id)}/${blockDef(id).solid}/${blockDef(id).opaque}`)
+      .join(" / ")}`,
+  );
+  const connected = new Set(["石", "葉", "板", "フェンス"]);
+  check(
+    "繋がるのは石・葉・板・フェンスだけ（立方体で solid かつ opaque、とフェンス）",
+    connectTable.every(([n, id]) => fenceConnects(id) === connected.has(n)),
+    connectTable.map(([n, id]) => `${n} ${fenceConnects(id)}`).join(" / "),
+  );
+
+  // --- 形は 1 か所（`FENCE_BOXES` は `FENCE_POST_BOX` と `FENCE_ARMS` から組む） ---
+  // **箱の数値を 2 か所に書かないこと** —— `mesher.ts` は同じ配列を積むだけ。
+  console.log(
+    `      柱 [${FENCE_POST_BOX.join(" ")}] / 腕 ${FENCE_ARMS.length} 方向 ` +
+      `${FENCE_ARMS.map((a) => `(${a.dx},${a.dz})x${a.boxes.length}`).join(" ")}`,
+  );
+  check(
+    "9 箱は 柱 1 + 腕 4 方向 x 2 段 を組んだもの（同じ配列を指している）",
+    shape[0] === FENCE_POST_BOX && FENCE_ARMS.length === 4 &&
+      FENCE_ARMS.every((a) => a.boxes.length === 2) &&
+      FENCE_ARMS.every((a, i) => shape[1 + i] === a.boxes[0] && shape[5 + i] === a.boxes[1]) &&
+      FENCE_ARMS.every((a) => Math.abs(a.dx) + Math.abs(a.dz) === 1),
+    `柱 ${shape[0] === FENCE_POST_BOX} / 腕 ${FENCE_ARMS.length} 方向`,
   );
 
   // --- 性質（**`supportFace` を書かないので宙に浮く**。旗も 1 つも付けない） ---

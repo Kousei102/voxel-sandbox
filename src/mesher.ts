@@ -4,9 +4,12 @@ import {
   FACE_YP,
   FACE_XP,
   FACE_ZP,
+  FENCE_ARMS,
+  FENCE_POST_BOX,
   blockDef,
   blockModel,
   faceColor,
+  fenceConnects,
   isOpaque,
   isProp,
   isTranslucent,
@@ -273,6 +276,16 @@ function buildProps(
           case "cross":
             // 草。大きさは狙う判定と同じ箱から引く（形を 2 か所に書かない）。
             cross(builder, x, y, z, blockDef(id).boxes[0], id, sky, block);
+            break;
+          case "fence":
+            // フェンス。**柱は常に、腕は繋がる側だけ**（26b）。隣のマスは pad に
+            // 入っているので新しい入り口は要らない（`padIndex` は -1..16 を取る）。
+            // **どのブロックと繋がるかを書かないこと** —— 表は `fenceConnects()`。
+            box(builder, x, y, z, FENCE_POST_BOX, id, -1, sky, block);
+            for (const arm of FENCE_ARMS) {
+              if (!fenceConnects(pad[padIndex(x + arm.dx, y, z + arm.dz)])) continue;
+              for (const shape of arm.boxes) box(builder, x, y, z, shape, id, -1, sky, block);
+            }
             break;
           default:
             break;
