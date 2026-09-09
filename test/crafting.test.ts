@@ -6,6 +6,7 @@ import {
   COBBLE,
   CRAFTING_TABLE,
   DIAMOND_BLOCK,
+  FENCE,
   GOLD_BLOCK,
   IRON_BLOCK,
   LADDER,
@@ -651,6 +652,35 @@ export function run(): void {
     allGold?.name ?? "無し",
   );
 
+  describe("フェンス");
+
+  // **棒 6 本で 2 個**（Minecraft の古い形）。**3 幅なので作業台が要る** ——
+  // 2x2 で通ると、はしごや作業台と同じ「手持ちで作れてしまう」形になる。
+  const FN = { S: STICK };
+  const fenceRows = ["SSS", "SSS"];
+  const fence = findRecipe(grid(3, fenceRows, FN), 3);
+  const fenceIn2 = findRecipe(grid(2, ["SS", "SS"], FN), 2);
+  // **はしご（棒 7 本・`["S.S","SSS","S.S"]`）と食い違っていないこと**も一緒に見る ——
+  // 材料が同じ棒だけなので、形の判定が甘いと**どちらか片方しか作れなくなる**。
+  const ladderShape = ["S.S", "SSS", "S.S"];
+  const ladderAgain = findRecipe(grid(3, ladderShape, FN), 3);
+  console.log(
+    `      ${fenceRows.join(" / ")} → ${fence?.name ?? "無し"} x${fence?.count ?? 0}` +
+      `（2x2 の ${["SS", "SS"].join(" / ")}: ${fenceIn2?.name ?? "無し"}）  ` +
+      `対照 ${ladderShape.join(" / ")} → ${ladderAgain?.name ?? "無し"} x${ladderAgain?.count ?? 0}`,
+  );
+  check(
+    "棒 6 本 → フェンス 2 個",
+    fence?.out === FENCE && fence.count === 2,
+    `${fence?.name ?? "無し"} x${fence?.count ?? 0}`,
+  );
+  check("2x2 ではフェンスは作れない（3 幅なので作業台が要る）", fenceIn2 === null, fenceIn2?.name ?? "無し");
+  check(
+    "棒だけのはしご（7 本・真ん中が縦に通る形）は今までどおり 3 個",
+    ladderAgain?.out === LADDER && ladderAgain.count === 3,
+    `${ladderAgain?.name ?? "無し"} x${ladderAgain?.count ?? 0}`,
+  );
+
   describe("ケーキ");
 
   // **ミルクバケツ 3 + 砂糖 2 + 卵 1 + 小麦 3 の 3x3**（本家と同じ形・並び）。
@@ -674,7 +704,7 @@ export function run(): void {
   check("2x2 ではケーキは作れない（3x3 なので作業台が要る）", cakeIn2 === null, cakeIn2?.name ?? "無し");
   // **本数も 1 件として見張る** —— レシピを足したのに表から漏れていたら、
   // 上の `findRecipe` だけでは「揃わないのが正しい」と読めてしまう。
-  check("レシピは 60 本（ケーキで 1 本増えた）", RECIPES.length === 60, `${RECIPES.length} 本`);
+  check("レシピは 61 本（フェンスで 1 本増えた）", RECIPES.length === 61, `${RECIPES.length} 本`);
 
   // --- 残りかす（`consumeGrid()` の前後の盤面を 9 枠ぶん並べて見る） ---
   const cakeGrid = grid(3, cakeRows, CK);

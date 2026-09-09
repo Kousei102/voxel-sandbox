@@ -9,6 +9,7 @@ import {
   COBBLE_STAIRS,
   CRAFTING_TABLE,
   DIAMOND_BLOCK,
+  FENCE,
   FURNACE,
   GOLD_BLOCK,
   IRON_BLOCK,
@@ -225,6 +226,12 @@ export const RECIPES: readonly Recipe[] = [
   { name: "紙", out: PAPER, count: 3, shape: ["CCC"], key: { C: SUGAR_CANE } },
   { name: "本", out: BOOK, count: 1, ingredients: [PAPER, PAPER, PAPER, LEATHER] },
   { name: "本棚", out: BOOKSHELF, count: 1, shape: ["PPP", "BBB", "PPP"], key: { P: PLANK, B: BOOK } },
+
+  // フェンスは棒 6 本で 2 個（Minecraft の古い形。3 幅なので作業台が要る）。
+  // **「戻す」レシピを足さないこと** —— 壊すと自分が 1 個戻るだけで、棒 6 本は
+  // 戻りません（本棚と同じ、本家どおりの目減り。`rules/items-survival.md`）。
+  // **形は棒だけの 3x2 なので、はしご（`["S.S","SSS","S.S"]`）とは別物。**
+  { name: "フェンス", out: FENCE, count: 2, shape: ["SSS", "SSS"], key: { S: STICK } },
 
   // はしごは棒 7 本で 3 個（Minecraft と同じ形・同じ個数）。3x3 なので作業台が要る。
   // 形はかまど・チェストの輪と似ているが**真ん中の列が縦に通っている**ので別物。

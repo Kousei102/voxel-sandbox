@@ -492,6 +492,41 @@ export const CAKE = 155;
  */
 export const ICE = 156;
 
+/**
+ * フェンス（26a・置けて跳び越えられないところまで）。**棒 6 本で 2 個**（`crafting.ts`）。
+ *
+ * **`BlockDef.collision` を持つ唯一のブロックです。** 見た目と狙いの形（`boxes` =
+ * `FENCE_BOXES`）は**上端 1.0** なのに、当たり判定（`collision` =
+ * `FENCE_COLLISION_BOX`）だけが**マスいっぱい × 高さ 1.5**。本家と同じで、
+ * **60fps では跳んでも越えられません**（実測 1.4883 m。**余裕は 0.0117 しか
+ * ありません**）。**刻みが粗いと越えられます** —— 跳躍の到達は
+ * `9.2²/(2×30) + 9.2×dt/2` なので **dt ≥ 0.0194（およそ 52fps 未満）で 1.5 を超え**、
+ * `main.ts` の刻みは 0.05 で頭打ちです（`TUNING.md`。**人が決める話**）。
+ *
+ * - **`boxes` のほうを 1.5 にしないこと** —— 狙う判定も選択枠も 1.5 になり、
+ *   **空中を狙っているのにフェンスに当たります**（`rules/blocks-shapes.md` の 1.）
+ * - **当たり判定を柱の太さ（0.25）にしないこと** —— `collisionBoxes()` は座標を
+ *   知らないので腕を隣で出し分けられず、柱だけだと**列のあいだを歩いて抜けられます**
+ * - **1 マスより高い箱が下から届くように、`physics.ts` の `collides()` が 1 段下も
+ *   見ます。** どのブロックが高いかは `isTallCollision()`（表 1 本）で、
+ *   **手で旗を書かず `collision` の最大 y > 1 から立てること**
+ *
+ * **腕は 4 方向とも常に描きます**（隣に何も無い側を描かないのは **26b**。
+ * `mesher.ts` は 1 行も触っていません）。
+ *
+ * **`supportFace` を書きません**（本家どおり宙に浮きます）。**`blocksSky` も
+ * 書きません**（既定で false。フェンスの下は暗くなりません）。壊すと自分が 1 個
+ * （`DROPS` は 0 行 —— 既定が `baseBlock()`）。
+ *
+ * **アイテム 157 は `items.ts` の for が自動で作ります**（`variantOf` が `AIR` なので。
+ * 手で `item({...})` を足すと二重登録）。**`MAX_ITEM_ID` だけは伸ばすこと。**
+ *
+ * **自然生成しません**（`worldgen.ts` にも `biomes.ts` にも 0 行）—— だから
+ * **`npm run shot` の既存の場面には 1 枚も写りません**（本棚・クモの巣・ケーキ・氷と
+ * 同じ理由で `tools/shot.ts` に `fence` の場面を持っています）。
+ */
+export const FENCE = 157;
+
 /** 上付きハーフ。見た目と当たり判定だけが違うので、大元は下付きのハーフ。 */
 export const STONE_SLAB_TOP = 64;
 export const COBBLE_SLAB_TOP = 65;
@@ -647,6 +682,43 @@ export const BED_BOX: BoxList = [[0, 0, 0, 1, BED_HEIGHT, 1]];
  */
 export const CAKE_BOX: BoxList = [[0.0625, 0, 0.0625, 0.9375, 0.5, 0.9375]];
 
+/**
+ * フェンス（157）の**見た目と狙いの形**。本家と同じ 16 分の 1 刻みで、
+ * **柱 1 本 + 腕 4 方向 x 2 段 = 9 個**。上端は柱の 1.0（当たり判定の 1.5 ではない）。
+ *
+ * 柱は 6/16 角（0.375..0.625）。腕は**柱の外側からマスの端まで**伸ばし、
+ * 幅は 0.4375..0.5625（2/16）、高さは下段 0.375..0.5625・上段 0.75..0.9375。
+ *
+ * **腕は 4 方向とも常に出します** —— 隣に何も無い側を描かないのは 26b（`mesher.ts`）。
+ * **当たり判定はこれではなく `FENCE_COLLISION_BOX`**（`BlockDef.collision`）です。
+ */
+const FENCE_POST = 0.375;
+const FENCE_ARM_LOW: readonly number[] = [0.375, 0.5625];
+const FENCE_ARM_HIGH: readonly number[] = [0.75, 0.9375];
+const FENCE_ARM_HALF: readonly number[] = [0.4375, 0.5625];
+export const FENCE_BOXES: BoxList = [
+  [FENCE_POST, 0, FENCE_POST, 1 - FENCE_POST, 1, 1 - FENCE_POST],
+  ...[FENCE_ARM_LOW, FENCE_ARM_HIGH].flatMap(([y0, y1]) => [
+    // +X / -X（幅が Z 方向）
+    [1 - FENCE_POST, y0, FENCE_ARM_HALF[0], 1, y1, FENCE_ARM_HALF[1]],
+    [0, y0, FENCE_ARM_HALF[0], FENCE_POST, y1, FENCE_ARM_HALF[1]],
+    // +Z / -Z（幅が X 方向）
+    [FENCE_ARM_HALF[0], y0, 1 - FENCE_POST, FENCE_ARM_HALF[1], y1, 1],
+    [FENCE_ARM_HALF[0], y0, 0, FENCE_ARM_HALF[1], y1, FENCE_POST],
+  ]),
+];
+
+/**
+ * フェンス（157）の**当たり判定だけ**の形。**マスいっぱい x 高さ 1.5** で、
+ * 見た目（`FENCE_BOXES`・上端 1.0）とは**わざと違えてあります**（本家と同じ）。
+ *
+ * **柱の太さ（0.25）にしないこと** —— `collisionBoxes()` は座標を知らないので
+ * 腕を隣で出し分けられず、柱だけだと**フェンスの列のあいだを歩いて抜けられます。**
+ * **1.5 は 60fps の跳躍の到達（実測 1.4883 m）より 0.0117 だけ高いだけ**なので、
+ * `JUMP_SPEED` / `GRAVITY` を触るなら一緒に見直すこと（`TUNING.md`）。
+ */
+export const FENCE_COLLISION_BOX: BoxList = [[0, 0, 0, 1, 1.5, 1]];
+
 /** 道具の階層。0 = 素手、1 = 木、2 = 石、3 = 鉄、4 = ダイヤ。 */
 export const TIER_HAND = 0;
 export const TIER_WOOD = 1;
@@ -777,6 +849,23 @@ export interface BlockDef {
    */
   readonly boxes: BoxList;
   /**
+   * **当たり判定だけの形。** 既定は `boxes` そのもの（`def()` が入れる）なので、
+   * ふつうのブロックは**見た目・狙い・当たりの 3 つが同じ形**のままです
+   * （`rules/blocks-shapes.md` の「形は 3 つの用途を兼ねる」）。
+   *
+   * **書いてよいのはフェンス（157）だけ** —— 見た目と狙いは上端 1.0 なのに
+   * 当たり判定だけ 1.5 で、本家と同じ「跳んでも越えられない」を作ります。
+   * **`boxes` のほうを 1.5 にしないこと**（狙う判定も選択枠も 1.5 になり、
+   * **空中を狙っているのにフェンスに当たります**）。
+   *
+   * **引くのは `collisionBoxes()` だけ** —— `shapeBoxes()` と `shapeBounds()` は
+   * 今までどおり `boxes` を見ます。**`?:` の任意の項目にしないこと** ——
+   * 足し忘れが黙って `undefined` になり、そのブロックだけ通り抜けられます。
+   * **1 マスより高い箱を持つかどうかは `isTallCollision()`**（この `collision` の
+   * 最大 y から立てた表。手で旗を書くと必ず食い違います）。
+   */
+  readonly collision: BoxList;
+  /**
    * 支えとして固いブロックが要る向き（面番号）。`NO_SUPPORT` なら要らない。
    * 床置きの松明は `FACE_YN`（真下）、壁掛けは付いている壁の側。
    * **その向きのブロックが消えたら、このブロックも壊れる**（`world.setVoxel`）。
@@ -887,6 +976,9 @@ function def(
 ): BlockDef {
   const opaque = opts.opaque ?? true;
   const solid = opts.solid ?? true;
+  // **当たり判定の既定は「形そのもの」。** 一度ここで束ねてから両方に入れるので、
+  // `collision` を書かないブロックでは 2 つが必ず同じ配列になる（食い違えない）。
+  const boxes = opts.boxes ?? FULL_BOX;
   return {
     id,
     name,
@@ -915,7 +1007,8 @@ function def(
     emission: opts.emission ?? 0,
     sound: opts.sound ?? "stone",
     model: opts.model ?? "cube",
-    boxes: opts.boxes ?? FULL_BOX,
+    boxes,
+    collision: opts.collision ?? boxes,
     supportFace: opts.supportFace ?? NO_SUPPORT,
     stacksOnSelf: opts.stacksOnSelf ?? false,
     variantOf: opts.variantOf ?? AIR,
@@ -1683,6 +1776,27 @@ export const BLOCKS: readonly BlockDef[] = [
     slippery: true,
     breaksInto: WATER,
   }),
+
+  // フェンス（上のコメント）。**ケーキの定義から違うのは 4 つ**:
+  // **箱（`FENCE_BOXES`。柱 1 + 腕 8 の 9 個）** / **`collision` を持つ（当たり判定
+  // だけマスいっぱい x 1.5）** / **硬さ 2・斧・木の音** / **支えが要らない
+  // （`supportFace` を書かない = `NO_SUPPORT`。宙に浮く）**。
+  // **`blocksSky` は書かないこと**（既定は `opaque` = false。本家どおり下は暗くならない）。
+  // **`replaceable` も `stacksOnSelf` も `variantOf` も `spiky` も `sticky` も
+  // 付けないこと**（置いたフェンスが黙って消える／宙に積み上がる／アイテムが作られない）。
+  // **色**: 一覧に出るのは `top` だけで、**板（0xb18a56）は使えない** ——
+  // 木の茶色は一覧でいちばん混んでいる帯で、板からは 7.1 しか離れない（判定は 20）。
+  // 灰緑へ寄せた `0x988a5e` なら板から 26.2（`TUNING.md`）。
+  def(FENCE, "フェンス", { top: 0x988a5e }, {
+    opaque: false,
+    solid: true,
+    hardness: 2,
+    tool: "axe",
+    sound: "wood",
+    model: "boxes",
+    boxes: FENCE_BOXES,
+    collision: FENCE_COLLISION_BOX,
+  }),
 ];
 
 
@@ -1770,6 +1884,13 @@ const SLIPPERY = new Uint8Array(ID_LIMIT);
 const BREAKS_INTO = new Uint8Array(ID_LIMIT);
 /** 1 = 自分の上に自分を積める（サトウキビ）。引くのは `supportsBlock()` だけ。 */
 const STACKS_ON_SELF = new Uint8Array(ID_LIMIT);
+/**
+ * 1 = 当たり判定が 1 マスより高い（フェンス）。**手で旗を書かず、`collision` の
+ * 最大 y > 1 から立てる**（2 か所に書くと必ず食い違う）。引くのは `physics.ts` の
+ * `collides()` で、**1 段下の層でここが偽のマスを飛ばす**ため
+ * （毎フレーム体ごとに 3 回走るので、箱を回す前にここで弾く）。
+ */
+const TALL_COLLISION = new Uint8Array(ID_LIMIT);
 const VARIANT_OF = new Uint8Array(ID_LIMIT);
 /** ID から定義を引く表。ID が飛び飛びなので、BLOCKS の並びとは別に持つ。 */
 const BY_ID: BlockDef[] = [];
@@ -1792,6 +1913,9 @@ for (const block of BLOCKS) {
   SLIPPERY[block.id] = block.slippery ? 1 : 0;
   BREAKS_INTO[block.id] = block.breaksInto;
   STACKS_ON_SELF[block.id] = block.stacksOnSelf ? 1 : 0;
+  // **`solid` なブロックだけ**（通り抜けられるブロックの箱は当たり判定に使われない）。
+  TALL_COLLISION[block.id] =
+    block.solid && block.collision.some((b) => b[4] > 1) ? 1 : 0;
   VARIANT_OF[block.id] = block.variantOf;
 }
 // 定義の無い ID を引くと undefined が伝播して原因が遠くに出るので、ここで落とす
@@ -1845,10 +1969,28 @@ export function shapeBounds(id: number, out: number[]): void {
   }
 }
 
-/** 当たり判定の箱。通り抜けられるブロック（水・松明・草）は空。 */
+/**
+ * 当たり判定の箱。通り抜けられるブロック（水・松明・草）は空。
+ *
+ * **`boxes` ではなく `collision` を引くこと** —— 既定では同じ配列だが、
+ * フェンスだけは見た目（上端 1.0）と当たり判定（1.5）が違う。
+ * **`shapeBoxes()` / `shapeBounds()` は今までどおり `boxes`。**
+ */
 export function collisionBoxes(id: number): BoxList {
   const def = blockDef(id);
-  return def.solid ? def.boxes : NO_BOX;
+  return def.solid ? def.collision : NO_BOX;
+}
+
+/**
+ * 当たり判定が 1 マスより高いか（フェンス）。**`id === FENCE` と書かないこと** ——
+ * `isSlippery()` などと同じ表 1 本（`collision` の最大 y から立てたもの）に聞く。
+ *
+ * **引くのは `physics.ts` の `collides()` だけ**で、1 段下の層をここで弾く。
+ * **走査を全部のブロックへ広げないこと** —— `collides()` は毎フレーム体ごとに
+ * 3 回走るので、箱を回す前にこの表 1 回で落とす。
+ */
+export function isTallCollision(id: number): boolean {
+  return TALL_COLLISION[id] === 1;
 }
 
 /**

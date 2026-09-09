@@ -20,6 +20,7 @@ import {
   FACE_ZN,
   FACE_ZP,
   FARMLAND,
+  FENCE,
   FRAME_HEIGHT,
   GOLD_BLOCK,
   GLASS,
@@ -35,6 +36,7 @@ import {
   LOW_BAND_MAX,
   MAX_BLOCK_ID,
   NO_SUPPORT,
+  PLANK,
   PLANK_SLAB,
   PLANK_SLAB_TOP,
   PLANK_STAIRS,
@@ -79,12 +81,14 @@ import {
   isSlippery,
   isSpiky,
   isSticky,
+  isTallCollision,
   isTranslucent,
   remainsAfterBreak,
   liquidFog,
   placeSpot,
   placedVariant,
   shapeBoxes,
+  shapeBounds,
   stacksOnSelf,
   supportsBlock,
   tilled,
@@ -222,8 +226,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷の 40 個（156 まで）",
-    sharedItems.length === 40 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンスの 41 個（157 まで）",
+    sharedItems.length === 41 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -266,19 +270,21 @@ export function run(): void {
       // **155 も同じ**（ケーキ。`variantOf` が `AIR`）。
       sharedItems[38] === CAKE &&
       // **156 も同じ**（氷。`variantOf` が `AIR` なので for が同じ番号のアイテムを作る）。
-      // **上限を持つのがブロック側なのは 7 度目**なので、`MAX_ITEM_ID` の突き合わせを
+      sharedItems[39] === ICE &&
+      // **157 も同じ**（フェンス。`variantOf` が `AIR`）。
+      // **上限を持つのがブロック側なのは 8 度目**なので、`MAX_ITEM_ID` の突き合わせを
       // ここで一緒に見る（伸ばし忘れは型では止まらない。**比べる相手を新しい番号に
       // 直すこと** —— 古い番号のまま残すと `tsc` が TS2367 で落ちます。`rules/testing.md`）。
-      sharedItems[39] === ICE &&
-      MAX_ITEM_ID === ICE,
+      sharedItems[40] === FENCE &&
+      MAX_ITEM_ID === FENCE,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 99（氷 156 で 1 個減った）",
-    sharedFree === 99,
+    "111..255 の空きは 98（フェンス 157 で 1 個減った）",
+    sharedFree === 98,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1153,6 +1159,7 @@ export function run(): void {
   cobwebs();
   cakes();
   ices();
+  fences();
 
   world.dispose();
 }
@@ -1322,6 +1329,182 @@ function ices(): void {
   check(
     "上面・側面・下面が同じ 1 色（top だけを書いている）",
     def.top === def.side && def.side === def.bottom && def.top === 0x8fc4f2,
+    `top 0x${def.top.toString(16)} / side 0x${def.side.toString(16)} / bottom 0x${def.bottom.toString(16)}`,
+  );
+}
+
+/**
+ * フェンス（ブロック 157・26a）。**ここで見るのは表の値そのもの**で、
+ * **跳んでも越えられない／通り抜けられない／上でガタつかないは
+ * `test/physics.test.ts`**（あちらが本物の `Player` を走らせます）。
+ *
+ * **このブロックだけが `BlockDef.collision` を持ちます** —— 見た目と狙いの形
+ * （`shapeBoxes`・上端 1.0）と当たり判定（`collisionBoxes`・上端 1.5）が違う
+ * 唯一の例外なので、**2 種類の箱を両方とも数と上端で出してから**判定します。
+ */
+function fences(): void {
+  describe("フェンス");
+
+  // --- 形が 2 本立ちしている（**ここが 26a の全部**。数と上端を両方出す） ---
+  const def = blockDef(FENCE);
+  const shape = shapeBoxes(FENCE);
+  const collision = collisionBoxes(FENCE);
+  const shapeTop = Math.max(...shape.map((b) => b[4]));
+  const collisionTop = Math.max(...collision.map((b) => b[4]));
+  const bounds = [0, 0, 0, 0, 0, 0];
+  shapeBounds(FENCE, bounds);
+  console.log(
+    `      model ${def.model} / isProp ${isProp(FENCE)} / opaque ${def.opaque} / ` +
+      `blocksSky ${def.blocksSky} / solid ${def.solid} / hardness ${def.hardness} / ` +
+      `tool ${blockTool(FENCE)} / sound ${def.sound}\n` +
+      `      形（shapeBoxes）: 箱 ${shape.length} 個 上端 ${shapeTop} / ` +
+      `当たり判定（collisionBoxes）: 箱 ${collision.length} 個 [${collision[0].join(" ")}] 上端 ${collisionTop}\n` +
+      `      選択枠（shapeBounds）: [${bounds.join(" ")}]（形の側 = 上端 ${bounds[4]}）`,
+  );
+  // 柱 1 + 腕 4 方向 x 2 段 = 9 個。**腕は 4 方向とも常に出す**（26b で隣を見る）。
+  check(
+    "見た目と狙いの形は柱 1 + 腕 8 の 9 個で、上端はマスの 1.0",
+    shape.length === 9 && shapeTop === 1 &&
+      shape[0][0] === 0.375 && shape[0][3] === 0.625 && shape[0][4] === 1,
+    `箱 ${shape.length} 個 / 上端 ${shapeTop} / 柱 [${shape[0].join(" ")}]`,
+  );
+  // **当たり判定だけマスいっぱい x 1.5。** 柱の太さ（0.25）にすると、`collisionBoxes()`
+  // は座標を知らないので**列のあいだを歩いて抜けられる**（`blocks.ts` のコメント）。
+  check(
+    "当たり判定は [[0,0,0,1,1.5,1]] の 1 個だけ（マスいっぱい x 高さ 1.5）",
+    collision.length === 1 && collision[0][0] === 0 && collision[0][1] === 0 &&
+      collision[0][2] === 0 && collision[0][3] === 1 && collision[0][4] === 1.5 &&
+      collision[0][5] === 1,
+    `箱 ${collision.length} 個 [${collision[0].join(" ")}]`,
+  );
+  // **`boxes` のほうを 1.5 にすると、狙う判定も選択枠も 1.5 になる**
+  // （空中を狙っているのにフェンスに当たる）。**選択枠は形の側**であることを見る。
+  check(
+    "選択枠とひび割れ（shapeBounds）は形の側の 1.0 まで（当たり判定の 1.5 ではない）",
+    bounds[4] === 1 && bounds[4] < collisionTop && collisionTop === 1.5,
+    `選択枠の上端 ${bounds[4]} / 当たり判定の上端 ${collisionTop}`,
+  );
+
+  // --- `collision` を持つのはフェンスだけ（値を並べて出してから判定する） ---
+  const differs = BLOCKS.filter((b) => b.collision !== b.boxes).map((b) => `${b.id}:${b.name}`);
+  const tall = BLOCKS.filter((b) => isTallCollision(b.id)).map((b) => `${b.id}:${b.name}`);
+  console.log(
+    `      collision が boxes と別: [${differs.join(" ")}]  isTallCollision: [${tall.join(" ")}]`,
+  );
+  // 対照を並べる —— 「いつも真」の実装がここを素通りしないため。
+  const others: [string, number][] = [
+    ["石", STONE], ["石ハーフ", STONE_SLAB], ["石階段", STONE_STAIRS],
+    ["サボテン", CACTUS], ["ケーキ", CAKE], ["はしご", LADDER],
+  ];
+  console.log(
+    `      対照: ${others.map(([n, id]) => `${n} 当たり上端 ${Math.max(0, ...collisionBoxes(id).map((b) => b[4]))} tall=${isTallCollision(id)}`).join(" / ")}`,
+  );
+  check(
+    "見た目と当たり判定が違うのはフェンスだけ（ほかは 3 つの用途が同じ形）",
+    differs.length === 1 && def.collision !== def.boxes &&
+      others.every(([, id]) => blockDef(id).collision === blockDef(id).boxes),
+    differs.join(" ") || "0 個",
+  );
+  // **手で旗を書かず `collision` の最大 y > 1 から立てること**（2 か所に書くと食い違う）。
+  // **`isTallCollision()` が真のマスだけ**が `collides()` の 1 段下の層に残る。
+  check(
+    "isTallCollision が真なのもフェンスだけ（石・ハーフ・階段・サボテン・ケーキ・はしごは偽）",
+    tall.length === 1 && isTallCollision(FENCE) && others.every(([, id]) => !isTallCollision(id)),
+    tall.join(" ") || "0 個",
+  );
+
+  // --- 性質（**`supportFace` を書かないので宙に浮く**。旗も 1 つも付けない） ---
+  check(
+    "solid で、variantOf も replaceable も supportFace も旗も付いていない",
+    def.solid && def.variantOf === AIR && !def.replaceable &&
+      def.supportFace === NO_SUPPORT && !stacksOnSelf(FENCE) &&
+      !isSpiky(FENCE) && !isSticky(FENCE) && !isSlippery(FENCE) && !isClimbable(FENCE) &&
+      !isBladed(FENCE) && remainsAfterBreak(FENCE) === AIR,
+    `solid ${def.solid} / variantOf ${def.variantOf} / supportFace ${def.supportFace} / ` +
+      `spiky ${isSpiky(FENCE)} sticky ${isSticky(FENCE)} slippery ${isSlippery(FENCE)}`,
+  );
+  // **`blocksSky` を書くとフェンスの下だけ一段暗くなる**（既定は `opaque` = false）。
+  // 対照は屋根材のハーフ（`opaque: false` なのに `blocksSky: true`）。
+  check(
+    "blocksSky は false（書いていない。屋根材のハーフとは違う）",
+    !def.blocksSky && !def.opaque && blockDef(STONE_SLAB).blocksSky,
+    `フェンス ${def.blocksSky} / 石ハーフ ${blockDef(STONE_SLAB).blocksSky}`,
+  );
+  // **数値を出してから判定する。** 硬さ 2・斧が適正・`minTier` は書かない
+  // （素手でも落ちる）。**`minTier` が 0 なので素手でも「適正」**（`canHarvest()` が
+  // 早い return で真を返す）で、斧は**速さだけ**が変わる ——
+  // 素手 `2 × 1.5` = 3.0 秒 / 木の斧 `2 × 1.5 / 2` = 1.5 秒。
+  // **「素手だと 5 倍」は `minTier` を書いたときの話**（氷の節と同じ罠）。
+  console.log(
+    `      硬さ ${def.hardness} / tool ${blockTool(FENCE)} / minTier ${def.minTier} / ` +
+      `素手 ${breakTime(FENCE, NO_ITEM).toFixed(3)}s 木の斧 ${breakTime(FENCE, WOOD_AXE).toFixed(3)}s ` +
+      `木のツルハシ ${breakTime(FENCE, WOOD_PICKAXE).toFixed(3)}s`,
+  );
+  check(
+    "硬さ 2・斧が適正・階層は要らない（素手 3.0 秒 / 木の斧 1.5 秒）",
+    def.hardness === 2 && blockTool(FENCE) === "axe" && def.sound === "wood" &&
+      def.minTier === TIER_HAND && canHarvest(FENCE, NO_ITEM) &&
+      breakTime(FENCE, NO_ITEM) === 3 && breakTime(FENCE, WOOD_AXE) === 1.5,
+    `hardness ${def.hardness} / tool ${blockTool(FENCE)} / ` +
+      `素手 ${breakTime(FENCE, NO_ITEM).toFixed(3)}s 斧 ${breakTime(FENCE, WOOD_AXE).toFixed(3)}s`,
+  );
+
+  // --- 掘って出るもの（**自分が 1 個**。`DROPS` は 0 行で、既定の `baseBlock()`） ---
+  const drop = dropOf(FENCE);
+  const stacks = rollDrops(FENCE, 0.5, 0.5);
+  console.log(
+    `      dropOf(): ${itemName(drop.item)}(${drop.item}) x${drop.count} chance ${drop.chance} / ` +
+      `rollDrops(0.5, 0.5) の山 ${stacks.length} 個 ${stacks.map((s) => `${itemName(s.item)} x${s.count}`).join(" ")} / ` +
+      `baseBlock ${baseBlock(FENCE)}`,
+  );
+  check(
+    "壊すと自分が 1 個落ちる（DROPS に 1 行も書いていない = 既定の baseBlock）",
+    drop.item === FENCE && drop.count === 1 && drop.chance === 1 &&
+      baseBlock(FENCE) === FENCE && stacks.length === 1 && stacks[0].item === FENCE &&
+      stacks[0].count === 1 && drop.extra === undefined && drop.otherwise === undefined,
+    `${itemName(drop.item)} x${drop.count} / 山 ${stacks.length} 個`,
+  );
+
+  // --- アイテム 157（`items.ts` の for が自動で作る。手で足すと二重登録） ---
+  console.log(
+    `      アイテム ${FENCE}: 「${itemName(FENCE)}」 placedBlock ${placedBlock(FENCE)} / ` +
+      `1 枠 ${itemStackLimit(FENCE)} 個 / 道具 ${toolOf(FENCE) === null ? "でない" : "である"} / ` +
+      `食べ物 ${foodOf(FENCE) === null ? "でない" : "である"}`,
+  );
+  check(
+    "アイテム 157 は「フェンス」で、置くと 157 が戻る（一覧にも出る）",
+    itemName(FENCE) === "フェンス" && placedBlock(FENCE) === FENCE &&
+      allItemIds().includes(FENCE) && toolOf(FENCE) === null && foodOf(FENCE) === null,
+    `${itemName(FENCE)} / placedBlock ${placedBlock(FENCE)} / 一覧に ${allItemIds().includes(FENCE)}`,
+  );
+
+  // --- 一覧に並ぶ色（既存のどれとも見分けが付くこと。**判定に入るのは `top` だけ**） ---
+  // **木の茶色は一覧でいちばん混んでいる帯**で、板（0xb18a56）をそのまま使うと
+  // 板から 7.1 しか離れず判定（20）に落ちる。灰緑へ寄せて 26.2 離してある。
+  const dist = (a: number, b: number): number =>
+    Math.hypot(((a >> 16) & 255) - ((b >> 16) & 255), ((a >> 8) & 255) - ((b >> 8) & 255), (a & 255) - (b & 255));
+  let best = Infinity;
+  let who = "";
+  for (const other of allItemIds()) {
+    if (other === FENCE) continue;
+    const gap = dist(itemColor(FENCE), itemColor(other));
+    if (gap < best) {
+      best = gap;
+      who = itemName(other);
+    }
+  }
+  console.log(
+    `      色のいちばん近い相手: フェンス 0x${itemColor(FENCE).toString(16)} ↔ ${who} ${best.toFixed(1)}` +
+      `（板 0x${itemColor(PLANK).toString(16)} とは ${dist(itemColor(FENCE), itemColor(PLANK)).toFixed(1)}）`,
+  );
+  check(
+    "フェンスは既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）",
+    best >= 20,
+    `いちばん近い ${who} と ${best.toFixed(1)}`,
+  );
+  check(
+    "上面・側面・下面が同じ 1 色（top だけを書いている）",
+    def.top === def.side && def.side === def.bottom && def.top === 0x988a5e,
     `top 0x${def.top.toString(16)} / side 0x${def.side.toString(16)} / bottom 0x${def.bottom.toString(16)}`,
   );
 }

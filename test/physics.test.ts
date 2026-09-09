@@ -11,7 +11,7 @@
  */
 
 import { PerspectiveCamera } from "three";
-import { AIR, BEDROCK, CACTUS, COBWEB, DIRT, ICE, LADDER, STONE, STONE_SLAB, STONE_STAIRS, WATER } from "../src/blocks";
+import { AIR, BEDROCK, CACTUS, COBWEB, DIRT, FENCE, ICE, LADDER, STONE, STONE_SLAB, STONE_STAIRS, WATER } from "../src/blocks";
 import { WORLD_HEIGHT } from "../src/constants";
 import { PLAYER_SIZE } from "../src/physics";
 import { Player } from "../src/player";
@@ -451,6 +451,7 @@ export function run(): void {
 
   cobweb(rungs);
   ice();
+  fence();
 }
 
 /**
@@ -737,5 +738,177 @@ function ice(): void {
     Math.abs(airIce - airDirt) < 1e-9 && !overIce.onGround && !overDirt.onGround &&
       !overIce.onSlippery && airIce > 2.7 && airIce < 2.9,
     `氷 ${airIce.toFixed(6)} / 土 ${airDirt.toFixed(6)}`,
+  );
+}
+
+/**
+ * フェンス（`BlockDef.collision`）。**当たり判定だけがマスいっぱい x 高さ 1.5** で、
+ * 見た目と狙いの形（`FENCE_BOXES`）は上端 1.0。本家と同じ「跳んでも越えられない」を
+ * ここで数値にします。
+ *
+ * **見るのは 3 つ**: 跳んでも越えられない（**足の y の最大**を出す）/
+ * 横から歩いて通り抜けられない（**到達した x** を出す）/ 上に立ってもガタつかない
+ * （**2 フレームぶんの y と `onGround`** を出す。`collides()` が 1 段下を見ないと、
+ * 足元のフェンスが自分のマスから消えて 0.5 落ちては跳ね上がります）。
+ */
+function fence(): void {
+  describe("フェンス（跳び越えられない・通り抜けられない）");
+
+  // 床 y=10（上面 11）。**x=3 の列だけ**フェンス（z=-4..4 の壁）。
+  // 当たり判定は 11..12.5、見た目は 11..12。
+  const yard = new Arena();
+  yard.fill(-4, 40, 10, 10, -4, 4, DIRT);
+  yard.fill(3, 3, 11, 11, -4, 4, FENCE);
+  const fenced = yard as unknown as World;
+
+  // --- 1. 跳んでも越えられない（**足の y の最大**を出してから 1.5 と比べる） ---
+  // **`JUMP_SPEED` 9.2 / `GRAVITY` 30 なので到達は 9.2² / (2 × 30) = 1.4107 m。**
+  // 当たり判定の 1.5 との余裕は 0.09 しかない（`TUNING.md`）。
+  const jumper = new Player(new PerspectiveCamera());
+  jumper.position.set(0.5, 11, 0.5);
+  jumper.yaw = -Math.PI / 2; // 前 = +X
+  for (let i = 0; i < 30; i++) jumper.update(1 / 60, fenced);
+  // **まず「接地している」ことを出す** —— 浮いたままだと跳べず、何も測れない。
+  check(
+    "跳ぶ前は床（y=11）に接地している",
+    jumper.onGround && Math.abs(jumper.position.y - 11) < 1e-6,
+    `y=${jumper.position.y.toFixed(4)} onGround=${jumper.onGround}`,
+  );
+
+  jumper.setKey("Space", true);
+  jumper.setKey("KeyW", true);
+  let peak = jumper.position.y;
+  for (let i = 0; i < 240; i++) {
+    jumper.update(1 / 60, fenced);
+    peak = Math.max(peak, jumper.position.y);
+  }
+  const fenceTop = 11 + 1.5;
+  console.log(
+    `      跳びながら 4 秒 +X へ: 足の y の最大 ${peak.toFixed(4)}（床 11 から ${(peak - 11).toFixed(4)} m）` +
+      ` / 当たり判定の上面 ${fenceTop} / 余裕 ${(fenceTop - peak).toFixed(4)}` +
+      ` ｜ 止まった x=${jumper.position.x.toFixed(4)}（フェンスの手前の面 3.0 - 半幅 0.3 = 2.7）`,
+  );
+  // **跳べていること**を先に見る（跳ばずに 11 のままなら、越えられないのは当然）。
+  check(
+    "跳べている（足が 1.4 m ほど上がる）",
+    peak > 12.3 && peak < 12.5,
+    `最大 y=${peak.toFixed(4)}（床 11 から ${(peak - 11).toFixed(4)} m）`,
+  );
+  check(
+    "跳んでもフェンスの上（1.5）は越えられない",
+    peak < fenceTop && jumper.position.x < 3,
+    `最大 y=${peak.toFixed(4)} < ${fenceTop} / x=${jumper.position.x.toFixed(4)}`,
+  );
+
+  // --- 1b. 跳躍の到達は 1 フレームの刻みに比例して伸びる（**余裕 0.09 は 60fps の話**） ---
+  // **`player.ts` は跳ぶ frame だけ `velocity.y = JUMP_SPEED` を重力のあとに入れる**ので、
+  // その 1 フレームは重力を 1 度も引かずに `9.2 * dt` 進む。だから到達は
+  // **`9.2² / (2 × 30) + 9.2 × dt / 2`** で、**刻みが粗いほど高く跳べる。**
+  // 1.5 を越えるのは `dt ≥ 0.0194`（**およそ 52fps 未満**）で、`main.ts` の刻みは
+  // 0.05 で頭打ちなので、**重いフレームではフェンスを跳び越せます**（`TUNING.md`）。
+  // **ここをゆるめて黙らせないこと** —— 直すなら跳躍の積分か 1.5 の側で、
+  // どちらも手触りの判断なので人が決めます。
+  const JUMP_SPEED = 9.2;
+  const GRAVITY = 30;
+  const rise = (dt: number): number => {
+    const solo = new Arena();
+    solo.fill(-4, 40, 10, 10, -4, 4, DIRT);
+    const ground = solo as unknown as World;
+    const hopper = new Player(new PerspectiveCamera());
+    hopper.position.set(0.5, 11, 0.5);
+    for (let i = 0; i < Math.ceil(0.5 / dt); i++) hopper.update(dt, ground);
+    hopper.setKey("Space", true);
+    hopper.update(dt, ground);
+    hopper.setKey("Space", false);
+    let top = hopper.position.y;
+    for (let i = 0; i < Math.ceil(2 / dt); i++) {
+      hopper.update(dt, ground);
+      top = Math.max(top, hopper.position.y);
+    }
+    return top - 11;
+  };
+  // **`main.ts` の刻みは `Math.min(実時間, 0.05)`** なので、0.05 が最悪の場合。
+  const steps: [string, number][] = [["60fps", 1 / 60], ["30fps", 1 / 30], ["刻みの上限", 0.05]];
+  const rises = steps.map(([, dt]) => rise(dt));
+  const formula = (dt: number): number => (JUMP_SPEED * JUMP_SPEED) / (2 * GRAVITY) + (JUMP_SPEED * dt) / 2;
+  console.log(
+    `      刻みごとの跳躍の到達（フェンスの当たり判定は 1.5）: ` +
+      steps.map(([n, dt], i) => `${n}(dt=${dt.toFixed(4)}) ${rises[i].toFixed(4)}（式 ${formula(dt).toFixed(4)}）${rises[i] < 1.5 ? "越えない" : "★越える"}`).join(" / ") +
+      `\n      1.5 を越える刻みは dt ≥ ${((1.5 - (JUMP_SPEED * JUMP_SPEED) / (2 * GRAVITY)) * 2 / JUMP_SPEED).toFixed(4)}（およそ ` +
+      `${(1 / (((1.5 - (JUMP_SPEED * JUMP_SPEED) / (2 * GRAVITY)) * 2) / JUMP_SPEED)).toFixed(0)}fps 未満）`,
+  );
+  check(
+    "跳躍の到達は 9.2²/(2×30) + 9.2×dt/2（刻みが粗いほど高く跳べる）",
+    steps.every(([, dt], i) => Math.abs(rises[i] - formula(dt)) < 0.01),
+    steps.map(([n, dt], i) => `${n} ${rises[i].toFixed(4)} ↔ 式 ${formula(dt).toFixed(4)}`).join(" / "),
+  );
+  check(
+    "60fps では越えられないが、余裕は 0.0117 しかない（30fps では越える）",
+    rises[0] < 1.5 && 1.5 - rises[0] < 0.02 && rises[1] > 1.5,
+    `60fps ${rises[0].toFixed(4)}（余裕 ${(1.5 - rises[0]).toFixed(4)}） / 30fps ${rises[1].toFixed(4)}`,
+  );
+
+  // --- 2. 横から歩いて通り抜けられない（**到達した x** を出す） ---
+  // **当たり判定を柱の太さ（0.25）にすると、ここを素通りする** ——
+  // `collisionBoxes()` は座標を知らないので、腕を隣で出し分けられない。
+  const walker = new Player(new PerspectiveCamera());
+  walker.position.set(0.5, 11, 0.5);
+  walker.yaw = -Math.PI / 2;
+  walker.setKey("KeyW", true);
+  for (let i = 0; i < 60; i++) walker.update(1 / 60, fenced);
+  // 対照は**同じ床でフェンスが 1 マスも無い試験場**（1 秒で 3 を越えること）。
+  const open = new Arena();
+  open.fill(-4, 40, 10, 10, -4, 4, DIRT);
+  const plain = open as unknown as World;
+  const control = new Player(new PerspectiveCamera());
+  control.position.set(0.5, 11, 0.5);
+  control.yaw = -Math.PI / 2;
+  control.setKey("KeyW", true);
+  for (let i = 0; i < 60; i++) control.update(1 / 60, plain);
+  console.log(
+    `      1 秒歩いた x: フェンス有り ${walker.position.x.toFixed(4)} / 何も無い床 ${control.position.x.toFixed(4)}` +
+      `（押し戻し先は 3.0 - 0.3 - EPS = 2.699）`,
+  );
+  // **対照が向こう側へ出ていること**を先に見る —— 出ていなければ、
+  // 止まったのはフェンスのせいではなく「歩いていない」だけ。
+  check(
+    "対照（フェンスの無い床）は 1 秒で x=3 を越える",
+    control.position.x > 3.5,
+    `x=${control.position.x.toFixed(4)}`,
+  );
+  check(
+    "フェンスの列は歩いて通り抜けられない（手前 2.699 で止まる）",
+    walker.position.x < 3 && Math.abs(walker.position.x - 2.699) < 0.01,
+    `x=${walker.position.x.toFixed(4)}`,
+  );
+
+  // --- 3. 上に立ってもガタつかない（**2 フレームぶんの y と `onGround`**） ---
+  // **`collides()` が 1 段下を見ないと、上に立った瞬間にフェンスが自分のマスから
+  // 消える**（体は y=12.5 以上なので、重なるマスは y=12 から）。すると接地が偽に
+  // なって 0.5 落ち、落ちた先で当たって跳ね上がる、を延々と繰り返す。
+  const stander = new Player(new PerspectiveCamera());
+  stander.position.set(3.5, 14, 0.5);
+  for (let i = 0; i < 120; i++) stander.update(1 / 60, fenced);
+  const first = { y: stander.position.y, onGround: stander.onGround };
+  stander.update(1 / 60, fenced);
+  const second = { y: stander.position.y, onGround: stander.onGround };
+  stander.update(1 / 60, fenced);
+  const third = { y: stander.position.y, onGround: stander.onGround };
+  console.log(
+    `      フェンスの真上へ落とした 3 フレーム: ` +
+      `y=${first.y.toFixed(4)}/${second.y.toFixed(4)}/${third.y.toFixed(4)} ` +
+      `onGround=${first.onGround}/${second.onGround}/${third.onGround}` +
+      `（当たり判定の上面 ${fenceTop}。見た目の上端は 12.0）`,
+  );
+  check(
+    "フェンスの上（当たり判定の 1.5）に立てる",
+    Math.abs(first.y - fenceTop) < 1e-6 && first.onGround,
+    `y=${first.y.toFixed(4)} onGround=${first.onGround}`,
+  );
+  check(
+    "立ったまま 2 フレーム続けて y も接地も動かない（ガタつかない）",
+    second.y === first.y && third.y === first.y && second.onGround && third.onGround,
+    `y=${first.y.toFixed(4)}/${second.y.toFixed(4)}/${third.y.toFixed(4)} ` +
+      `onGround=${second.onGround}/${third.onGround}`,
   );
 }

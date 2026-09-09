@@ -10,7 +10,7 @@
  */
 
 import { Vector3 } from "three";
-import { collisionBoxes } from "./blocks";
+import { collisionBoxes, isTallCollision } from "./blocks";
 import type { World } from "./world";
 
 const EPS = 1e-3;
@@ -58,6 +58,12 @@ const contactMax = [0, 0, 0];
  *
  * ブロックは 1x1x1 とは限らない（ハーフ・階段）ので、
  * **`isSolid` ではなく `collisionBoxes` を見ること。**
+ *
+ * **1 段下も見る**のは、フェンスのように**当たり判定が 1 マスより高い**ブロックが
+ * 下から届くため。**その 1 層だけは `isTallCollision()` でないマスを飛ばす** ——
+ * ここは毎フレーム体ごとに 3 回走るので、全部のブロックへ広げると、
+ * 普通の床の上に立っているだけで箱を回す仕事が 1 層ぶん増える。
+ * **押し戻しの式・EPS・評価順は 1 文字も変えていない**（軌跡が動く）。
  */
 function collides(world: World, x: number, y: number, z: number, size: BodySize): boolean {
   // 端がぴったり接しているだけの状態を「めり込み」と見ないよう、少し内側で見る
@@ -72,10 +78,15 @@ function collides(world: World, x: number, y: number, z: number, size: BodySize)
   contactMax[0] = contactMax[1] = contactMax[2] = -Infinity;
   let hit = false;
 
-  for (let by = Math.floor(py0); by <= Math.floor(py1); by++) {
+  const byLow = Math.floor(py0);
+  for (let by = byLow - 1; by <= Math.floor(py1); by++) {
+    // 体と重ならない 1 段下の層。**高い当たり判定を持つマスだけ**を見る。
+    const tallOnly = by < byLow;
     for (let bz = Math.floor(pz0); bz <= Math.floor(pz1); bz++) {
       for (let bx = Math.floor(px0); bx <= Math.floor(px1); bx++) {
-        for (const b of collisionBoxes(world.getVoxel(bx, by, bz))) {
+        const id = world.getVoxel(bx, by, bz);
+        if (tallOnly && !isTallCollision(id)) continue;
+        for (const b of collisionBoxes(id)) {
           const bx0 = bx + b[0];
           const by0 = by + b[1];
           const bz0 = bz + b[2];
