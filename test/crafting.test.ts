@@ -54,6 +54,10 @@ import {
   IRON_HOE,
   IRON_SWORD,
   LEATHER,
+  LEATHER_BOOTS,
+  LEATHER_CHESTPLATE,
+  LEATHER_HELMET,
+  LEATHER_LEGGINGS,
   MILK_BUCKET,
   MUSHROOM_STEW,
   NO_ITEM,
@@ -704,7 +708,7 @@ export function run(): void {
   check("2x2 ではケーキは作れない（3x3 なので作業台が要る）", cakeIn2 === null, cakeIn2?.name ?? "無し");
   // **本数も 1 件として見張る** —— レシピを足したのに表から漏れていたら、
   // 上の `findRecipe` だけでは「揃わないのが正しい」と読めてしまう。
-  check("レシピは 61 本（フェンスで 1 本増えた）", RECIPES.length === 61, `${RECIPES.length} 本`);
+  check("レシピは 65 本（革の防具 4 部位で 4 本増えた）", RECIPES.length === 65, `${RECIPES.length} 本`);
 
   // --- 残りかす（`consumeGrid()` の前後の盤面を 9 枠ぶん並べて見る） ---
   const cakeGrid = grid(3, cakeRows, CK);
@@ -793,6 +797,35 @@ export function run(): void {
     `残りかす: ミルク → ${leftoverOf(MILK_BUCKET)} / シチュー → ${leftoverOf(MUSHROOM_STEW)}` +
       ` ｜ 器: シチュー → ${emptyAfterEating(MUSHROOM_STEW)} / ミルク → ${emptyAfterEating(MILK_BUCKET)}`,
   );
+
+  describe("革の防具");
+
+  // **形も枚数も本家のまま**（5 / 8 / 7 / 4 枚）。**4 本とも 3 幅なので作業台が要る** ——
+  // 靴は 2 段だが真ん中の列が空くので幅 3 のまま（2x2 には収まらない）。
+  // **どの部位に着るか・何点かはここではなく `items.ts` の `ARMORS`**（`test/items.test.ts`）。
+  const LA = { L: LEATHER };
+  const armorRecipes: [string, number, string[], number][] = [
+    ["革の帽子", LEATHER_HELMET, ["LLL", "L.L"], 5],
+    ["革の上着", LEATHER_CHESTPLATE, ["L.L", "LLL", "LLL"], 8],
+    ["革のズボン", LEATHER_LEGGINGS, ["LLL", "L.L", "L.L"], 7],
+    ["革の靴", LEATHER_BOOTS, ["L.L", "L.L"], 4],
+  ];
+  for (const [name, out, rows, leather] of armorRecipes) {
+    const found = findRecipe(grid(3, rows, LA), 3);
+    // **2x2 では作れないこと。** 左上 4 マスだけを渡す（3 幅が要る形なので揃わない）。
+    const in2 = findRecipe(grid(2, rows.slice(0, 2).map((row) => row.slice(0, 2)), LA), 2);
+    const used = rows.join("").split("").filter((ch) => ch === "L").length;
+    console.log(
+      `      ${rows.join(" / ")}（革 ${used} 枚） → ${found?.name ?? "無し"} x${found?.count ?? 0}` +
+        `（2x2: ${in2?.name ?? "無し"}）`,
+    );
+    check(
+      `革 ${leather} 枚 → ${name} 1 個`,
+      found?.out === out && found.count === 1 && used === leather,
+      `${found?.name ?? "無し"} x${found?.count ?? 0} / 革 ${used} 枚`,
+    );
+    check(`2x2 では${name}は作れない（3 幅なので作業台が要る）`, in2 === null, in2?.name ?? "無し");
+  }
 
   describe("クラフト");
 

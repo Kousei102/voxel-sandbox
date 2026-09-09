@@ -64,6 +64,10 @@ import {
   IRON_SHOVEL,
   IRON_SWORD,
   LEATHER,
+  LEATHER_BOOTS,
+  LEATHER_CHESTPLATE,
+  LEATHER_HELMET,
+  LEATHER_LEGGINGS,
   MILK_BUCKET,
   MUSHROOM_STEW,
   NO_ITEM,
@@ -278,6 +282,34 @@ export const RECIPES: readonly Recipe[] = [
   { name: "鉄インゴット", out: IRON_INGOT, count: 9, ingredients: [IRON_BLOCK] },
   { name: "金インゴット", out: GOLD_INGOT, count: 9, ingredients: [GOLD_BLOCK] },
   { name: "ダイヤモンド", out: DIAMOND, count: 9, ingredients: [DIAMOND_BLOCK] },
+
+  // 革の防具 4 部位（Minecraft と同じ形・同じ枚数。革は 5 / 8 / 7 / 4 枚）。
+  // **4 本とも 3 幅なので作業台が要る** —— 靴（`["L.L","L.L"]`）は 2 段だが、
+  // 真ん中の列が空くので幅 3 のまま（2x2 には収まらない）。
+  // **どの部位に着るか・何点かはここではなく `items.ts` の `ARMORS`** で、
+  // レシピは「何が作れるか」しか持たない。
+  {
+    name: "革の帽子",
+    out: LEATHER_HELMET,
+    count: 1,
+    shape: ["LLL", "L.L"],
+    key: { L: LEATHER },
+  },
+  {
+    name: "革の上着",
+    out: LEATHER_CHESTPLATE,
+    count: 1,
+    shape: ["L.L", "LLL", "LLL"],
+    key: { L: LEATHER },
+  },
+  {
+    name: "革のズボン",
+    out: LEATHER_LEGGINGS,
+    count: 1,
+    shape: ["LLL", "L.L", "L.L"],
+    key: { L: LEATHER },
+  },
+  { name: "革の靴", out: LEATHER_BOOTS, count: 1, shape: ["L.L", "L.L"], key: { L: LEATHER } },
 
   ...toolRecipes("木", PLANK, WOOD_PICKAXE, WOOD_AXE, WOOD_SHOVEL, WOOD_SWORD, WOOD_HOE),
   ...toolRecipes("石", COBBLE, STONE_PICKAXE, STONE_AXE, STONE_SHOVEL, STONE_SWORD, STONE_HOE),

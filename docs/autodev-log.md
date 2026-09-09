@@ -2563,3 +2563,71 @@ F3 のバイオーム名は `biomeName()` が `BIOMES` を引くので、予告�
 - **斜めの繋ぎ（本家にもありません）** と **フェンスゲート** —— 前の周のまま。
 - **葉と繋がるのをやめること** —— 本家も葉に繋がります。変えるなら
   `fenceConnects()` の 1 か所と表のテストを同じ周で直す決まりにしてあります。
+
+## AUTODEV 68（C の周・2026-09-09）—— 革の防具 4 部位が作れて、着たまま残る（27b-1）
+
+**取ったもの**: キューの先頭 27b-1（`AUTODEV-SPEC.md` の全文どおり）。
+**ID は `ROADMAP.md` の予約表から 158..161 の 4 個**（帽子 158 / 上着 159 /
+ズボン 160 / 靴 161）。**共有帯の空きは 98 → 94。**
+
+- `items.ts` —— ID 4 つ・`item()` 4 行（`block: AIR` / `tool: null` / `stack: 1`）・
+  `ARMORS` 4 行（点数は本家のまま 1 / 3 / 2 / 1 = 合計 7）・`MAX_ITEM_ID` を
+  `FENCE` から `LEATHER_BOOTS` へ
+- `crafting.ts` —— レシピ 4 本（革 5 / 8 / 7 / 4 枚。**4 本とも 3 幅**）。**55 → 65 本**
+- `inventory.ts` —— `serializeArmor()` / `deserializeArmor()` の 2 本だけ
+- `storage.ts` —— `SaveData.armor?: number[]`（8 要素・省略可。**`version` は 1 のまま**）
+- `session.ts` —— `SaveParts.inventory` を**器そのもの**に変え、
+  `inventory` / `wear` / `armor` の 3 キーを `buildSave()` が呼び分ける形へ。
+  `applyRestore()` に `deserializeArmor()` の 1 行（**36 枠 → 傷 → 防具**の順）
+- `main.ts` —— **予告どおり −1 行**（1449 → **1448**）。2 行を `inventory,` の 1 行に
+
+**`npm test` 3407 件すべて緑**（3372 から **+35**）。`typecheck` / `build` も緑。
+**3 回続けて緑**（音の一群は 1 度も跳ねませんでした）。
+
+### 差し戻し 0 回
+
+**サブエージェントは立てていません。** `AUTODEV.md` の C-1 は「同じ番の中で結果が
+返らないなら自分で実装すること」なので、実装も点検（C-2）も親が持ちました
+（点検は `git diff` を読む形。`rules/testing.md` の「点検役に `git` を打たせないこと」）。
+
+### 型で止まった罠 2 つ（どちらも `rules/items-survival.md` に前から書いてあった）
+
+- **`MAX_ITEM_ID` を移したら `FENCE` の import が余って `typecheck` が落ちた** ——
+  書いてあるとおり、import を一緒に消すのが正解
+- **`test/blocks.test.ts` の `MAX_ITEM_ID === FENCE` が TS2367 で落ちた** ——
+  **判定をゆるめず、比べる相手を新しい番号（`LEATHER_BOOTS`）に直した**
+
+### 踏んだ落とし穴（`rules/` へ据えたもの 3 件）
+
+- **`rules/inventory-screen.md`**: 防具のセーブは**別キー（`SaveData.armor`）**で、
+  読む順は 36 枠 → 傷 → 防具。**`deserializeArmor()` の中で `clear()` を呼ばないこと**
+  （36 枠が消えます）。裸なら `undefined` でキーごと消えること
+- **`rules/dimensions.md`**: **持ち物のキーが 2 つ以上ある器は `SaveParts` へ
+  器そのものを渡すこと** —— `main.ts` に `serialize()` を並べる形にしていると、
+  キーが増えるたびに配線が 1 行ずつ伸びます
+- **`rules/testing.md`**: `test/storage.test.ts` の「キーを 1 つ抜いても読める」の
+  一覧に、**凍らせた v1 に元から無いキーを並べないこと** —— `without(key)` は
+  1 文字も消さないので、**何も測らないまま緑**になります（`armor` で踏みかけました）
+
+### 撮って見たこと（C-3）
+
+**前の周の `HANDOFF.md` の「`node tools/browsershot.mjs` のインベントリの 1 枚が
+見る場所」は間違いでした。** あの `inventory.png` は**サバイバルの空のインベントリ**で、
+新しいアイテムが 1 つも写りません。**一覧の色は `#mode` を押してクリエイティブにし、
+`E` を押して末尾までスクロールしてから撮ります**（`docs/browser-shots/README.md` の
+`creative-stored.png` と同じ手。使い捨てのスクリプトでよく、`browsershot.mjs` は
+書き換えていません）。**ヘッドレスでは `Escape` でメニューが開かないことがある**ので、
+`document.getElementById("mode").click()` を直に呼びました。
+
+- **一覧に 5 つとも並びました**（革 / 革の帽子 / 革の上着 / 革のズボン / 革の靴）。
+  **4 色は明るい順に並び、互いにも隣の物とも見分けが付きます。** console のエラー 0 件
+- **⚠ 写った不具合: 「革のズボン」の名前が 2 行に折れて枠の絵に被ります**（5 文字の
+  名前で出る。4 文字の 3 つは折れません）。**`style.css` の `.slot .label` の既知の件**で、
+  **この周では直していません** —— `style.css` は仕様書の「触らないファイル」（27b-2）です
+
+### 見送ったもの
+
+- **鉄・金・ダイヤの防具**（番号 12 個）—— 仕様書の禁じ手。革が動いてからで足ります
+- **防具の耐久** —— 減らす経路が `vitals.ts` → `inventory.ts` の配線になるので
+  1 周ぶんです（`TUNING.md` に 1 行残しました）
+- **着る経路**（防具枠を画面に出す）—— **27b-2**。この周は `vitals.armor` が 0 のまま

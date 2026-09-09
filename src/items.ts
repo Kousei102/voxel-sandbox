@@ -9,7 +9,6 @@ import {
   DIAMOND_ORE,
   DIRT,
   END_CRYSTAL,
-  FENCE,
   GLASS,
   GRASS,
   GRAVEL,
@@ -438,6 +437,25 @@ export const BOOK = 151;
 export const GOLDEN_APPLE = 153;
 
 /**
+ * 革の防具 4 部位（頭・胴・脚・足）。**着られる唯一の材質**で、鉄・金・ダイヤは
+ * 取っていません（番号 12 個ぶんを後回しにしてあります）。
+ *
+ * **点数は本家のまま 1 / 3 / 2 / 1（合計 7）**で、**どの部位が何点かは下の `ARMORS`
+ * の表 1 本**です（`FOODS` と同じ作法。`inventory.ts` にも `vitals.ts` にも
+ * アイテムの名前を書かないこと）。**どれだけダメージが減るかは `vitals.ts`**
+ * （`armorReduced()`。ここは点数だけ）。
+ *
+ * **傷（耐久）は持ちません** —— 本家の革の防具は傷みますが、減らす経路が
+ * `vitals.ts` → `inventory.ts` の配線になるので別の周です（`TUNING.md`）。
+ * だから `durability.ts` にも `TOOL_USES` にも 1 行もありません。
+ * **それでも `stack: 1`** —— 本家と同じで、着る物は積めません。
+ */
+export const LEATHER_HELMET = 158;
+export const LEATHER_CHESTPLATE = 159;
+export const LEATHER_LEGGINGS = 160;
+export const LEATHER_BOOTS = 161;
+
+/**
  * 一覧を作るときに数え上げる上限（`allItemIds()`）。**アイテムの番号だけでなく、
  * ブロックが自動で作るアイテム（上の for）の番号も含みます。**
  *
@@ -446,13 +464,14 @@ export const GOLDEN_APPLE = 153;
  * （`craftscreen.ts` の `CREATIVE_ITEMS`）にだけ出てこないブロック**ができます
  * （置けるし掘れるので、型でも `typecheck` でも止まりません）。
  *
- * **いまはフェンス（ブロック 157）が上限です。** 直前が氷（ブロック 156）・
- * ケーキ（ブロック 155）・クモの巣（ブロック 154）で、その前が金のリンゴ（アイテム 153）。
+ * **いまは革の靴（アイテム 161）が上限です。** 直前が革のズボン 160・革の上着 159・
+ * 革の帽子 158 で、その前がフェンス（ブロック 157）・氷（ブロック 156）。
  * **共有帯ではブロックとアイテムが 1 本の番号列**なので、上限を持つのがどちら側かは
- * 決まりません（`items.ts` に 1 行も書いていないブロックが上限なのは **8 度目**です）。
- * **フェンスのアイテムは上の for が作るので、`item({...})` を手で足さないこと。**
+ * 決まりません（`items.ts` に 1 行も書いていないブロックが上限だったのは 8 度目まで）。
+ * **上限をこちら側へ移したら、それまで指していたブロックの import を消すこと** ——
+ * 残すと「使われていない」で `npm run typecheck` が落ちます（型で止まる安全な罠）。
  */
-export const MAX_ITEM_ID = FENCE;
+export const MAX_ITEM_ID = LEATHER_BOOTS;
 
 export const MAX_STACK = 64;
 
@@ -683,6 +702,23 @@ item({ id: BOOK, name: "本", block: AIR, stack: MAX_STACK, color: 0x9c5064, too
 // いちばん近い相手からの隔たりを `test/blocks.test.ts` が測っている（実測 56.4）。
 item({ id: GOLDEN_APPLE, name: "金のリンゴ", block: AIR, stack: MAX_STACK, color: 0xf0a800, tool: null });
 
+// 革の防具 4 部位。**どれも `block: AIR` / `tool: null`**（置けず・掘る道具でもない。
+// **`ToolKind` に "armor" を足さないこと** —— `TOOL_ATTACK` に無い種類が入ると
+// `attackDamage()` が NaN を返し、`wearForBreaking()` は掘る道具として 1 を返す。
+// `rules/items-survival.md` の「シアーズに `tool:` を持たせないこと」と同じ罠）。
+// **`stack: 1`** は本家と同じ（着る物は積めない）。
+//
+// **色は革（0xa06a41）の色味のまま明るさで 4 段**に割ってある。木の茶色は一覧で
+// いちばん混んでいる帯で、素直な明るさの階段は真ん中が全部 20 を割る（革・パン・
+// 茶キノコ・はしご・本棚・焼き鳥がその帯に居る）ので、**通る 4 段を探して選んだ値**。
+// **上ほど明るい**（帽子 → 靴で暗くなる）。いちばん近い相手からの隔たりは
+// 靴 22.9（ソウルサンド）/ ズボン 23.2（茶キノコ）/ 上着 27.7（焼き鳥）/
+// 帽子 47.3（本棚）で、**4 つは互いに 45.4 以上**離れている（`test/items.test.ts`）。
+item({ id: LEATHER_HELMET, name: "革の帽子", block: AIR, stack: 1, color: 0xfca168, tool: null });
+item({ id: LEATHER_CHESTPLATE, name: "革の上着", block: AIR, stack: 1, color: 0xd88662, tool: null });
+item({ id: LEATHER_LEGGINGS, name: "革のズボン", block: AIR, stack: 1, color: 0xb16e51, tool: null });
+item({ id: LEATHER_BOOTS, name: "革の靴", block: AIR, stack: 1, color: 0x644122, tool: null });
+
 const EMPTY: ItemDef = ITEMS[NO_ITEM];
 
 export function itemDef(id: number): ItemDef {
@@ -799,12 +835,20 @@ export interface ArmorDef {
 /**
  * 着られるもの。**ここに無いものは着られない**（`FOODS` とまったく同じ作法）。
  *
- * **いまは 1 行もありません** —— 枠と減り方だけを先に入れた周なので、
- * 着られる物は 1 つもありません（革の 4 部位は次の周）。
+ * **いまは革の 4 部位だけ**（鉄・金・ダイヤは番号を取っていません）。
+ * **点数は本家のまま 1 / 3 / 2 / 1 = 合計 7**で、`armorReduced()` に通すと
+ * 7 / 25 = 28% 減ります（`vitals.ts`）。
  * **足すのはここに 1 行ずつ**で、`inventory.ts` にも `vitals.ts` にも
  * アイテムの名前を書かないこと。
+ *
+ * **材料の革（132）はここに入れないこと** —— 入れると「革を頭の枠に置くと固くなる」。
  */
-const ARMORS = new Map<number, ArmorDef>([]);
+const ARMORS = new Map<number, ArmorDef>([
+  [LEATHER_HELMET, { slot: "head", defense: 1 }],
+  [LEATHER_CHESTPLATE, { slot: "chest", defense: 3 }],
+  [LEATHER_LEGGINGS, { slot: "legs", defense: 2 }],
+  [LEATHER_BOOTS, { slot: "feet", defense: 1 }],
+]);
 
 /** その防具の値。着られないなら null（`foodOf()` と同じ形）。 */
 export function armorOf(id: number): ArmorDef | null {

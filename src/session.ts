@@ -75,9 +75,19 @@ export interface SaveParts {
   readonly creative: boolean;
   readonly health: number;
   readonly hunger: number;
-  readonly inventory: number[];
-  /** 道具の傷 36 要素。**全部新品なら `undefined`**（キーごと消える）。 */
-  readonly wear: number[] | undefined;
+  /**
+   * インベントリ**の器そのもの**（`serialize()` を持つ何か）。**どのキーに何を載せるかは
+   * `buildSave()` が決める** —— `main.ts` が `inventory:` と `wear:` を並べる形に
+   * していると、持ち物のキーが増えるたびに配線の側が 1 行ずつ伸びます
+   * （読み戻す `applyRestore()` は最初から器を受け取っているので、書き出しが揃った形）。
+   */
+  readonly inventory: {
+    serialize(): number[];
+    /** 道具の傷 36 要素。**全部新品なら `undefined`**（キーごと消える）。 */
+    serializeWear(): number[] | undefined;
+    /** 着ている防具 8 要素。**裸なら `undefined`**（`wear` と同じ作法）。 */
+    serializeArmor(): number[] | undefined;
+  };
   readonly craft: number[] | undefined;
   /** 預かり物の傷 10 要素。**全部新品なら `undefined`**（`wear` と同じ作法）。 */
   readonly craftWear: number[] | undefined;
@@ -114,8 +124,9 @@ export function buildSave(parts: SaveParts): SaveData {
     creative: parts.creative,
     health: parts.health,
     hunger: parts.hunger,
-    inventory: parts.inventory,
-    wear: parts.wear,
+    inventory: parts.inventory.serialize(),
+    wear: parts.inventory.serializeWear(),
+    armor: parts.inventory.serializeArmor(),
     craft: parts.craft,
     craftWear: parts.craftWear,
     volume: parts.volume,
@@ -170,6 +181,8 @@ export interface RestoreTargets {
     deserialize(data: number[] | undefined): void;
     /** **`deserialize()` のあとで呼ぶ**（何回使える道具かは中身で決まる）。 */
     deserializeWear(data: number[] | undefined): void;
+    /** **36 枠のあとで呼ぶ**（中で `clear()` を呼ばないこと。下の 4.）。 */
+    deserializeArmor(data: number[] | undefined): void;
   };
   readonly craft: {
     deserialize(data: number[] | undefined): void;
@@ -198,6 +211,9 @@ export interface RestoreResult {
  * 2. 返しきれなかったぶんは盤面に残り、次に空きができたときにまた返ります。
  * 3. **傷（`craftWear`）は `deserialize()` のあと、`returnAll()` より前。**
  *    あとに回すと、返した先（インベントリ）に傷が載りません。
+ * 4. **着ている物（`armor`）は 36 枠のあと。** `Inventory.deserializeArmor()` は
+ *    防具枠 4 つだけを空にします —— そこで `clear()` を呼ぶ形にすると、
+ *    先に読み戻した 36 枠が黙って消えます（`rules/inventory-screen.md`）。
  *
  * **`main.ts` に `typeof saved?.health === "number"` のような均しを書き戻さないこと**
  * （均しは `restoredValues()`。ここはそれを貼るだけ）。
@@ -212,6 +228,8 @@ export function applyRestore(
   targets.inventory.deserialize(saved?.inventory);
   // **傷は中身を入れたあとで**（空の枠に傷だけ戻しても、何回使える道具か決まらない）。
   targets.inventory.deserializeWear(saved?.wear);
+  // **着ている物も 36 枠のあとで**（上の 4.）。
+  targets.inventory.deserializeArmor(saved?.armor);
   // **必ずインベントリを入れたあとで**（上の 1.）。
   targets.craft.deserialize(saved?.craft);
   // **返す前に傷を載せること**（上の 3.）。

@@ -32,9 +32,25 @@ function sources(edits: EditMap = new Map()) {
   };
 }
 
+/**
+ * インベントリの器の偽物。**`buildSave()` はこの 3 本を自分で呼ぶ** ——
+ * `main.ts` が `inventory:` と `wear:` を並べる形にしていると、持ち物のキーが
+ * 増えるたびに配線の側が 1 行ずつ伸びる（`armor` がその 3 本目）。
+ */
+function bag(wear?: number[], armor?: number[]) {
+  return {
+    serialize: () => [1, 2],
+    // 道具の傷。**全部新品なら undefined**（キーごと消えて、古いセーブと同じ形になる）。
+    serializeWear: () => wear,
+    // 着ている物。**裸なら undefined**（`wear` と同じ作法）。
+    serializeArmor: () => armor,
+  };
+}
+
 function parts(
   shape: { dim?: string; top: DimensionState; others?: Record<string, DimensionState> },
   bedDim?: string,
+  inventory = bag(),
 ) {
   return {
     seed: 4242,
@@ -43,9 +59,7 @@ function parts(
     creative: false,
     health: 12,
     hunger: 7,
-    inventory: [1, 2],
-    // 道具の傷。**全部新品なら undefined**（キーごと消えて、古いセーブと同じ形になる）。
-    wear: undefined,
+    inventory,
     craft: undefined,
     craftWear: undefined,
     volume: 0.4,
@@ -105,6 +119,26 @@ export function run(): void {
     // 傷が 1 つも無ければ `wear` も出ない（道具を傷めていない人のセーブは、
     // 耐久値が入る前と 1 バイトも変わらない）。
     check("空のキーは省かれる（wear）", !keys.includes("wear"), keys.join(" "));
+    // **裸なら `armor` もキーごと出ない**（`wear` と同じ作法）。
+    check("空のキーは省かれる（armor）", !keys.includes("armor"), keys.join(" "));
+    check("36 枠はそのまま載る", JSON.stringify(save.inventory) === "[1,2]", JSON.stringify(save.inventory));
+  }
+
+  {
+    // --- 着ている防具（`buildSave()` が器に聞いて載せる）---------------------
+    // **`inventory` の平坦配列に継ぎ足さないこと** —— 別キーなので 36 枠は 2 要素のまま。
+    const worn = buildSave(parts({ top: emptyState() }, undefined, bag(undefined, [158, 1, 159, 1, 160, 1, 161, 1])));
+    console.log(
+      `      着ているときのセーブ: armor ${JSON.stringify(worn.armor)} / inventory ${JSON.stringify(worn.inventory)}` +
+        ` / version ${worn.version}`,
+    );
+    check("着ていれば armor が 8 要素で載る", worn.armor?.length === 8, `${worn.armor?.length} 要素`);
+    check(
+      "armor を足しても inventory は 36 枠のまま（継ぎ足していない）",
+      JSON.stringify(worn.inventory) === "[1,2]",
+      JSON.stringify(worn.inventory),
+    );
+    check("armor を足しても version は 1 のまま", worn.version === 1, String(worn.version));
   }
 
   {
@@ -226,6 +260,7 @@ export function run(): void {
       inventory: {
         deserialize: () => order.push("inventory"),
         deserializeWear: () => order.push("wear"),
+        deserializeArmor: () => order.push("armor"),
       },
       craft: {
         deserialize: () => order.push("craft.deserialize"),
@@ -260,6 +295,14 @@ export function run(): void {
       order.indexOf("inventory") < order.indexOf("wear"),
       order.join(" → "),
     );
+    // **着ている物も 36 枠のあと。** `deserializeArmor()` は防具枠 4 つだけを空にするので、
+    // 先に呼んでも 36 枠は消えないが、順番を決めておかないと「中で `clear()` を呼ぶ」形へ
+    // 戻したときに気付けない（`rules/inventory-screen.md` の「意味が 3 つとも違います」）。
+    check(
+      "着ている物もインベントリを入れたあとで戻す",
+      order.indexOf("inventory") < order.indexOf("armor"),
+      order.join(" → "),
+    );
     check("体力と空腹はセーブの値に戻る", targets.vitals.health === 5 && targets.vitals.hunger === 6);
     check("クリエイティブかどうかを返す（貼るのは main.ts）", result.creative);
     // 返したぶんは次の保存で `craft` のキーごと消えるので、保存の印を立てる合図が要る。
@@ -271,7 +314,7 @@ export function run(): void {
     // セーブが無い（初回）。**体力も空腹も触らない**（満タンのまま）。
     const targets = {
       dayNight: { setTime: () => check("初回は時刻を触らない", false) },
-      inventory: { deserialize: () => {}, deserializeWear: () => {} },
+      inventory: { deserialize: () => {}, deserializeWear: () => {}, deserializeArmor: () => {} },
       craft: { deserialize: () => {}, deserializeWear: () => {}, returnAll: () => {} },
       audio: { setVolume: () => {} },
       vitals: { health: MAX_HEALTH, hunger: MAX_HUNGER },

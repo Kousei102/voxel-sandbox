@@ -375,4 +375,37 @@ export class Inventory {
   deserializeWear(flat: number[] | undefined): void {
     deserializeWear(this.slots, flat);
   }
+
+  /**
+   * 着ている物。**`inventory` とは別の省略可キー**（`SaveData.armor`）に置く ——
+   * 36 枠の平坦配列に継ぎ足すと既存のセーブが丸ごとずれる（`wear` を分けたのと同じ理由）。
+   *
+   * `[item, count]` x 4 の **8 要素**で、**裸なら `undefined`**（キーごと消えるので、
+   * 防具を着ていない人のセーブは防具が入る前と 1 バイトも変わらない）。
+   */
+  serializeArmor(): number[] | undefined {
+    if (this.armor.every(isEmpty)) return undefined;
+    const flat: number[] = [];
+    for (const slot of this.armor) flat.push(isEmpty(slot) ? 0 : slot.item, isEmpty(slot) ? 0 : slot.count);
+    return flat;
+  }
+
+  /**
+   * **`deserialize()`（36 枠）→ `deserializeWear()` → ここ**の順で呼ぶこと。
+   *
+   * **ここで `clear()` を呼ばないこと** —— あちらは 36 枠も一緒に空にするので、
+   * 先に読み戻したインベントリが黙って消えます（`rules/inventory-screen.md` の
+   * 「意味が 3 つとも違います」）。空にするのは防具枠 4 つだけ。
+   */
+  deserializeArmor(flat: number[] | undefined): void {
+    for (const slot of this.armor) clearSlot(slot);
+    if (!Array.isArray(flat)) return;
+    for (let i = 0; i < ARMOR_SIZE; i++) {
+      const item = flat[i * 2] ?? 0;
+      const count = flat[i * 2 + 1] ?? 0;
+      if (!item || count <= 0) continue;
+      this.armor[i].item = item;
+      this.armor[i].count = Math.min(count, itemStackLimit(item));
+    }
+  }
 }

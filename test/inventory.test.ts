@@ -8,7 +8,18 @@ import {
   bulkDiscard,
   isEmpty,
 } from "../src/inventory";
-import { MAX_STACK, NO_ITEM, WOOD_PICKAXE, itemStackLimit } from "../src/items";
+import {
+  LEATHER,
+  LEATHER_BOOTS,
+  LEATHER_CHESTPLATE,
+  LEATHER_HELMET,
+  LEATHER_LEGGINGS,
+  MAX_STACK,
+  NO_ITEM,
+  WOOD_PICKAXE,
+  itemName,
+  itemStackLimit,
+} from "../src/items";
 import { check, describe } from "./harness";
 
 export function run(): void {
@@ -227,6 +238,80 @@ export function run(): void {
     check("保存する 36 枠の平坦配列は今までどおり", kept.serialize().length === INVENTORY_SIZE * 2, `${kept.serialize().length} 要素`);
     kept.clear();
     check("clear() は防具枠も空にする", kept.armor.every(isEmpty), `防具枠 ${kept.armor.filter((s) => !isEmpty(s)).length} 個`);
+  }
+
+  describe("着ている防具（点数とセーブ）");
+
+  {
+    // **正しい枠に入れたときだけ点が入る**（`ARMOR_SLOTS` の並びと合っているか）。
+    // 合わない枠でも点が入ると、**いちばん強い部位を 4 つ着るのが最善手**になる。
+    const dressed = new Inventory();
+    const wear = (i: number, item: number) => {
+      dressed.armor[i].item = item;
+      dressed.armor[i].count = 1;
+    };
+    wear(0, LEATHER_HELMET);
+    wear(1, LEATHER_CHESTPLATE);
+    wear(2, LEATHER_LEGGINGS);
+    wear(3, LEATHER_BOOTS);
+    console.log(
+      `      正しく着たとき: ${dressed.armor.map((s) => itemName(s.item)).join(" / ")} → ${dressed.armorPoints} 点`,
+    );
+    check("革一式を正しい枠に着ると 7 点", dressed.armorPoints === 7, `${dressed.armorPoints} 点`);
+
+    // **1 つずらすと減ること。** 帽子（頭 1 点）を足の枠へ、靴（足 1 点）を頭の枠へ
+    // 入れ替えると、どちらも部位が合わないので 2 点ぶんが落ちて 5 点になる。
+    const swapped = new Inventory();
+    swapped.armor[0].item = LEATHER_BOOTS;
+    swapped.armor[0].count = 1;
+    swapped.armor[1].item = LEATHER_CHESTPLATE;
+    swapped.armor[1].count = 1;
+    swapped.armor[2].item = LEATHER_LEGGINGS;
+    swapped.armor[2].count = 1;
+    swapped.armor[3].item = LEATHER_HELMET;
+    swapped.armor[3].count = 1;
+    console.log(
+      `      頭と足を入れ替えたとき: ${swapped.armor.map((s) => itemName(s.item)).join(" / ")} → ${swapped.armorPoints} 点`,
+    );
+    check("帽子を足の枠に入れると減る（7 → 5）", swapped.armorPoints === 5, `${swapped.armorPoints} 点`);
+
+    // **材料の革を枠に入れても 0 点**（`ARMORS` に無いものは着られない）。
+    const raw = new Inventory();
+    raw.armor[1].item = LEATHER;
+    raw.armor[1].count = 1;
+    check("材料の革を枠に入れても 0 点", raw.armorPoints === 0, `${raw.armorPoints} 点`);
+
+    // --- セーブ（`inventory` の 36 枠とは別のキー・8 要素）---
+    const flat = dressed.serializeArmor();
+    console.log(`      serializeArmor(): ${JSON.stringify(flat)}`);
+    check("着ていれば 8 要素", flat?.length === ARMOR_SIZE * 2, `${flat?.length} 要素`);
+    check("裸なら undefined（キーごと消える）", new Inventory().serializeArmor() === undefined, String(new Inventory().serializeArmor()));
+
+    const reloaded = new Inventory();
+    reloaded.deserializeArmor(flat);
+    console.log(
+      `      往復のあと: ${reloaded.armor.map((s) => itemName(s.item)).join(" / ")} → ${reloaded.armorPoints} 点`,
+    );
+    check(
+      "往復しても同じものを着ている（点も 7 のまま）",
+      reloaded.armorPoints === 7 && JSON.stringify(reloaded.serializeArmor()) === JSON.stringify(flat),
+      JSON.stringify(reloaded.serializeArmor()),
+    );
+    reloaded.deserializeArmor(undefined);
+    check("防具の無い古いセーブは裸で始まる", reloaded.armor.every(isEmpty) && reloaded.armorPoints === 0);
+
+    // **`deserializeArmor()` の中で `clear()` を呼ばないこと** —— 36 枠が消える。
+    // `applyRestore()` は 36 枠 → 傷 → 防具の順で呼ぶので、ここで消すと
+    // **読み戻したインベントリが黙って空になる**（`rules/inventory-screen.md`）。
+    const both = new Inventory();
+    both.deserialize([STONE, 3]);
+    both.deserializeArmor(flat);
+    console.log(`      36 枠のあとに防具を戻したとき: 石 ${both.count(STONE)} 個 / 防具 ${both.armorPoints} 点`);
+    check(
+      "防具を読み戻しても 36 枠は消えない",
+      both.count(STONE) === 3 && both.armorPoints === 7,
+      `石 ${both.count(STONE)} 個 / ${both.armorPoints} 点`,
+    );
   }
 
   describe("まとめ捨ての判定（bulkDiscard）");

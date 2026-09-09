@@ -179,6 +179,43 @@ export function run(): void {
     check("crops の無い古いセーブは畑が 0 本", crops.count === 0, `${crops.count} 本`);
   });
 
+  // **`armor` も省略可のキーとして足したもの**（`version` は 1 のまま）。
+  // **凍らせた v1 には無い**ので、書いてあれば効き、無ければ裸、の両方をここで見る
+  // （防具を着ていない人のセーブは、防具が入る前と 1 バイトも変わらない）。
+  withStorage(
+    V1_SAVE.replace('"bed": [9, 41, -3],', '"bed": [9, 41, -3], "armor": [158, 1, 159, 1, 160, 1, 161, 1],'),
+    () => {
+      const saved = load();
+      check("armor を足しても v1 として読める", saved !== null && saved.version === 1, String(saved?.version));
+      const inventory = new Inventory();
+      inventory.deserialize(saved?.inventory);
+      inventory.deserializeArmor(saved?.armor);
+      console.log(
+        `      読み戻した防具: ${inventory.armor.map((s) => s.item).join(" / ")} → ${inventory.armorPoints} 点` +
+          ` ／ 36 枠の 0 番は ${inventory.slots[0].item} が ${inventory.slots[0].count} 個`,
+      );
+      // **36 枠が消えていないことも一緒に見る** —— `deserializeArmor()` が中で
+      // `clear()` を呼ぶ形だと、ここで石 64 個が黙って消える。
+      check(
+        "着ていた防具が読み戻せる（36 枠も無事）",
+        inventory.armorPoints === 7 && inventory.slots[0].count === 64,
+        `${inventory.armorPoints} 点 / 0 番 ${inventory.slots[0].count} 個`,
+      );
+    },
+  );
+
+  withStorage(V1_SAVE, () => {
+    // **`armor` の無い古いセーブは裸**（`deserializeArmor(undefined)` が空にする）。
+    const inventory = new Inventory();
+    inventory.deserialize(load()?.inventory);
+    inventory.deserializeArmor(load()?.armor);
+    check(
+      "armor の無い古いセーブは裸で読める（36 枠は今までどおり）",
+      inventory.armorPoints === 0 && inventory.slots[35].item === 68,
+      `${inventory.armorPoints} 点 / 35 番 ${inventory.slots[35].item}`,
+    );
+  });
+
   // --- 省略可のキーは 1 つずつ抜いても読める -------------------------------
 
   // 次元（`dims`）のような新しいキーもこの形に揃えること
@@ -187,6 +224,10 @@ export function run(): void {
     "time", "creative", "health", "hunger", "inventory",
     "craft", "volume", "drops", "furnaces", "chests", "bed",
   ];
+  // **`armor` はここに並べないこと。** 凍らせた v1 に最初から無いキーなので、
+  // `without("armor")` は 1 文字も削らず、**何も測らないまま緑**になる
+  // （`rules/testing.md` の「先に『ちゃんと動いた』ことを確かめる判定を置くこと」）。
+  // 無いセーブが読めることは上の「armor の無い古いセーブは裸で読める」が見ている。
   const dropped: string[] = [];
   for (const key of optional) {
     withStorage(without(key), () => {

@@ -60,6 +60,17 @@ paths:
   黙って消えます**（`craft` → `craftWear` → `returnAll()` の順が要るのと同じ罠）。
   **拾う・積む・数える・保存（`serialize()`）は `slots` だけ**を見ること ——
   **防具枠を 36 個に混ぜると `add()` が拾った兜をそのまま装備します。**
+- **セーブも同じで、防具は別のキー（`SaveData.armor`・8 要素・省略可）**です
+  （2026-09-09・革の防具）。**`inventory` の 72 要素に継ぎ足さないこと** ——
+  `wear` を分けたのとまったく同じ理由で、既存のセーブが丸ごとずれます。
+  **読む順は `deserialize()`（36 枠）→ `deserializeWear()` → `deserializeArmor()`**
+  （`session.ts` の `applyRestore()`）。
+  - **`deserializeArmor()` の中で `clear()` を呼ばないこと。** あちらは 36 枠も
+    一緒に空にするので、**先に読み戻したインベントリが黙って消えます。**
+    空にしてよいのは防具枠 4 つだけ（`deserialize()` が 36 個だけを消すのと対）
+  - **裸なら `serializeArmor()` は `undefined`**（キーごと消える）。防具を着ていない
+    人のセーブは、防具が入る前と 1 バイトも変わりません
+  - **どの部位が何点かは `items.ts` の `ARMORS`。** 読み戻す側は番号を知りません
 - **どの部位が何点かは `items.ts` の `ARMORS` の表 1 本**（`FOODS` と同じ作法）。
   **合計を出すのは `inventory.ts` の `armorPoints` だけ**で、**部位が枠の並び
   （`ARMOR_SLOTS`）と合っているときだけ足すこと** —— 合わない枠でも点が入ると、

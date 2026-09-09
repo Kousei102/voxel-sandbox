@@ -62,6 +62,14 @@ paths:
   （`test/dimensions.test.ts` が `serializeEdits(` の数を数えています）、`buildSave()` がキーの
   並びを、`restoredValues()` が「読んだ値をどこまで信じるか」を持ちます。**`main.ts` に
   `typeof saved?.health === "number"` のような均しを書き戻さないこと。**
+- **持ち物のキーが 2 つ以上ある器は、`SaveParts` へ器そのものを渡すこと**
+  （2026-09-09・防具）。`main.ts` が `inventory: inventory.serialize(),` と
+  `wear: inventory.serializeWear(),` と並べる形にしていると、**キーが増えるたびに
+  配線の側が 1 行ずつ伸びます** —— いまは `inventory,` の 1 行だけを渡し、
+  **`inventory` / `wear` / `armor` の 3 キーを `buildSave()` が呼び分けます**
+  （読み戻す `applyRestore()` は最初から器を受け取っているので、書き出しが揃った形）。
+  **受けるのは `{ serialize(); serializeWear(); serializeArmor() }` の構造だけ**で、
+  `Inventory` の型は import しません（`StateSources` とまったく同じ作法）。
 - **別のワールドを始めるときは `reset()`。** 忘れると、前のワールドで別の次元に
   置いてきたものが新しいワールドに出てきます（「この種で作り直す」と「保存データを削除」の 2 か所）。
 
