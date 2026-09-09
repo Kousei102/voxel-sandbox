@@ -1,110 +1,118 @@
-# 仕様: フェンスが隣と繋がって見える（キューの 26b・ID 0 個）
+# 仕様: 革の防具 4 部位が作れて、着たまま残る（キューの 27b-1・ID 4 個）
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-**26a（フェンス本体）は 2026-09-09 の C の周で実装済み**で、いま**腕は 4 方向とも常に
-出ています**（`blocks.ts` の `FENCE_BOXES` のコメントが「隣に何も無い側を描かないのは 26b」と
-名指ししています）。**この周は見た目だけ**です —— 当たり判定（`FENCE_COLLISION_BOX` =
-マスいっぱい x 1.5）にも `physics.ts` にも 1 文字も触りません。
+**27b は 120 行に収まらないので 2 件に割りました**（`AUTODEV.md` の B の末尾。理由は
+`AUTODEV-QUEUE.md` の 27b の行）。**割れ目は「画面」**です —— この周は
+**物・点数・レシピ・セーブ**まで（`main.ts` は **−1 行**）、
+**防具枠を画面に出して着る経路は 27b-2**（`craftscreen.ts` / `inventoryui.ts` / `index.html`）。
 
-**取る前にコードで数え直しました**（B の周の決まり）: `mesher.ts` の `buildProps()` は
-`model` で分岐し、フェンスは `model: "boxes"` で `blockDef(id).boxes` を**そのまま 9 箱**
-積むだけです。隣を見る道は 1 行もありません。**`pad` には隣のマスが入っています**
-（18³・`padIndex(x,y,z)` は `x,y,z ∈ [-1,16]`）ので、**新しい入り口は要りません。**
+**取る前にコードで数え直しました**（B の周の決まり）: 27a は済んでいて、
+**`inventory.ts` の `armor` 4 枠・`ARMOR_SLOTS`・`armorPoints`・`vitals.ts` の
+`armorReduced()` はもうあります**。**`items.ts` の `ARMORS` が空の Map**（1 行も無い）で、
+**着られるアイテムが 0 種**なのが今の姿です（`test/items.test.ts` が「まだ 1 つも無い」を
+見張っています —— **この周でその 1 件を書き換えます**）。
 
 ## 1. 何を足すか / 完了の判定
 
-**フェンスの腕（8 箱）を、隣が「繋がる相手」の側だけ描く。** 柱（1 箱）は常に描く。
-繋がる相手は **フェンス**と、**立方体で `solid` かつ `opaque` なブロック**（石・土・葉・板…）。
-**繋がらない**のはそれ以外全部（空気・水・ガラス・草・松明・ハーフ・階段・サボテン・はしご）。
+**革の防具 4 部位（帽子・上着・ズボン・靴）を、作れて・セーブに残るようにする。**
+点数は本家のまま **1 / 3 / 2 / 1（合計 7）**。レシピも本家の形（下の 5.）。
 
-**完了の判定**: `npm test` の「メッシュ化」に**フェンスの節が増えて緑**で、次の 3 つが
-**数を出してから**通ること —— **1 本だけ = 12 三角形（柱 1 箱）** /
-**+X に 1 本並べる = 片方につき 3 箱 = 36 三角形** / **4 方向すべて = 9 箱 = 108 三角形**。
+**この周ではまだ着られません**（防具枠が画面に出るのは 27b-2）。**それでよい**理由:
+着る経路だけ先に入れると、**セーブが無いあいだに着た物がリロードで黙って消えます** ——
+公開サイトに出る順として、**先に残るようにしてから開ける**こと。
+
+**完了の判定**: `npm test` に**「革の防具」の節が増えて緑**で、次の 4 つが
+**値を出してから**通ること —— **`allArmorIds()` が 4 種**（いまは 0 種）/
+**革 4 部位を正しい枠に着ると `armorPoints` が 7**（1 つずらすと減る）/
+**`buildSave()` に `armor` キーが載り、裸なら消える**（8 要素）/
+**`armor` の無い古いセーブがそのまま読める**。
 
 ## 2. 触るファイル / 触らないファイル
 
 **触る**:
 
-- `src/blocks.ts` —— `BlockModel` に `"fence"` を足す / `FENCE_BOXES` を**柱と腕に割る** /
-  `fenceConnects(id)` を書く / フェンスの `def` を `model: "fence"` に
-- `src/mesher.ts` —— `buildProps()` の `switch` に `case "fence":` を 1 つ
-- `test/mesher.test.ts` / `test/blocks.test.ts` —— 下の 5.
-- `tools/shot.ts` —— `fence` の場面に**石の立方体と横に接するフェンス 1 本**を足す（下の 4.）
+- `src/items.ts` —— 4 つの `item({...})` と `ARMORS` の 4 行 / `MAX_ITEM_ID` を伸ばす
+- `src/crafting.ts` —— レシピ 4 本（下の 5.）
+- `src/inventory.ts` —— `serializeArmor()` / `deserializeArmor()` の 2 本だけ
+- `src/storage.ts` —— `SaveData` に **`armor?: number[]`**（省略可。`version` は 1 のまま）
+- `src/session.ts` —— `SaveParts.inventory` を**器そのもの**に変える（下の 4.）/
+  `applyRestore()` に `deserializeArmor()` の 1 行
+- `src/main.ts` —— **`currentSave()` の 2 行（`inventory:` と `wear:`）を 1 行に**。
+  **ここだけ。1449 → 1448 行**（`wc -l`）
+- `test/items.test.ts` / `test/crafting.test.ts` / `test/inventory.test.ts` /
+  `test/session.test.ts` / `test/storage.test.ts` —— 下の 5.
 
-**触らない**（1 文字も）: `src/main.ts` / `src/physics.ts` / `src/player.ts` /
-`src/items.ts` / `src/crafting.ts` / `FENCE_COLLISION_BOX` / `BlockDef.collision` /
-`collisionBoxes()` / `shapeBoxes()` / `shapeBounds()` / greedy 側（`buildProps()` より上）。
-
-**`boxes` は 9 箱のまま**にすること。**狙う判定（`raycast`）と選択枠は `boxes` を引く**ので、
-腕を減らすと**繋がっていない側から狙えなくなります**（見た目だけの話に留めること）。
+**触らない**（1 文字も）: `src/craftscreen.ts` / `src/inventoryui.ts` / `index.html` /
+`src/style.css`（**全部 27b-2**）/ `src/vitals.ts`（`armorReduced()` も `ARMOR_CAP` も
+`ARMOR_DENOM` も完成しています）/ `src/durability.ts` / `src/blocks.ts` / `src/mobs.ts` /
+`inventory.ts` の `armorPoints` / `clear()` / `takeAll()` / `deserialize()`（27a のまま）。
 
 ## 3. 使う ID
 
-**0 個。** ブロックもアイテムも 1 つも取りません（`ROADMAP.md` の予約表は開かない）。
-**`SaveData` も触りません** —— 見え方は毎回 `mesher.ts` が隣から作り直すので、
-**位置ごとの状態は要りません**（`variantOf` の帯 64..110 も使わないこと）。
+**`ROADMAP.md` の予約表から 158 / 159 / 160 / 161 の 4 個**（次の空きは 158。
+**111.. は共有帯なのでブロックと 1 本の番号列**です）。
+**革の帽子 158 / 革の上着 159 / 革のズボン 160 / 革の靴 161**。
+**`MAX_ITEM_ID` は 161（革の靴）へ。** 鉄・金・ダイヤの防具は**取らないこと**（12 番号は後回し）。
 
 ## 4. 判断をどこに置くか
 
-**`mesher.ts` に「どのブロックと繋がるか」を書かないこと。** 判断は `blocks.ts` 側です:
+- **どの部位が何点かは `items.ts` の `ARMORS` の表 1 本**（`FOODS` と同じ作法）。
+  `inventory.ts` にも `vitals.ts` にもアイテムの名前を書かないこと
+- **セーブにどのキーを載せるかは `session.ts`。** いま `main.ts` が
+  `inventory: inventory.serialize(), wear: inventory.serializeWear(),` と**2 行で
+  並べている**のを、**`inventory,`（器そのもの）の 1 行**に変え、
+  **`buildSave()` の側が `serialize()` / `serializeWear()` / `serializeArmor()` を呼ぶ**こと。
+  **読み戻す `applyRestore()` が最初から器を受け取っている**のと同じ形に揃うので、
+  **これは行数合わせではなく判断の移動です**（`SaveParts.inventory` は
+  `{ serialize(); serializeWear(); serializeArmor() }` の**構造だけ**で受けること）
+- **傷（`wear`）と同じ作法**: `serializeArmor()` は**全部空なら `undefined`**（キーごと消える）
+- **読む順は `deserialize()`（36 枠）→ `deserializeWear()` → `deserializeArmor()`。**
+  **`deserializeArmor()` の中で `clear()` を呼ばないこと** —— 36 枠が消えます
+  （`rules/inventory-screen.md` の「意味が 3 つとも違います」）
 
-- **`fenceConnects(id: number): boolean`** を `blocks.ts` に export する
-  （`blockModel(id) === "fence" || (!isProp(id) && def.solid && def.opaque)`）。
-  **`id === FENCE` と直に書かないこと**（`isTallCollision()` と同じ理由。将来の
-  石のフェンスで 2 か所に書くことになります）
-- **形も `blocks.ts` に 1 か所だけ**。`FENCE_POST_BOX`（柱 1 箱）と
-  **`FENCE_ARMS`（4 方向 x `[下段, 上段]` と `dx` / `dz`）**を export し、
-  **`FENCE_BOXES` はその 2 つから組む**こと（`[柱, ...下段 4, ...上段 4]` の**いまの並びのまま**。
-  `test/blocks.test.ts` が `shape[0]` を柱として見ています）。**箱の数値を 2 か所に書かない**
-- `mesher.ts` がやるのは「`pad[padIndex(x + dx, y, z + dz)]` を引いて `fenceConnects()` に
-  聞き、真なら `FENCE_ARMS[i]` の 2 箱を `box()` で積む」だけ
+## 5. 書くテスト（値を出してから判定）
 
-**`box()` の `fixedFace` は `-1`**（いまの `"boxes"` と同じ引き方。柱の上面だけ `top` になる）。
-**新しく確かめられないものは 1 つも増えません**（`unverifiable-pair` は要りません）——
-`mesher.ts` の戻り値は配列なので `npm test` で読めます。
-
-## 5. 書くテスト（**値を出してから判定する**。`rules/testing.md`）
-
-**`test/mesher.test.ts` に節を 1 つ**（`describe("フェンスが隣と繋がって見える")`）。
-`pad` に置いて `buildChunkMesh()` を呼び、**三角形の数を `console.log` してから** `check`:
-
-- **1 本だけ = 12 三角形**（柱だけ）/ **+X に 2 本並べる = 72 三角形**（片方 3 箱ずつ）/
-  **4 方向すべてフェンス = 108 三角形**（9 箱。26a と同じ絵）
-- **石の隣・葉の隣では腕が出る**（36 三角形）/ **ガラス・水・草・松明・ハーフ・空気では
-  出ない**（12 三角形）—— **1 つずつ数を出して並べること**（「いつも真」を素通りさせない）
-- **チャンクの外の隣でも繋がる**（`x = 0` のフェンスの `-X`、`pad` の `-1` に石）
-- **`verifyWinding()` を通すこと**（既存の helper。腕の巡回順が裏返っていないか）
-
-**`test/blocks.test.ts` の `fences()` に追記**: `fenceConnects()` の表を
-**石・葉・板・フェンス・ガラス・水・草・空気・石ハーフ・石階段・サボテン**について
-**1 行に出してから**判定する。**既存の「柱 1 + 腕 8 の 9 個」「上端 1.0」「当たり判定 1.5」
-「isTallCollision はフェンスだけ」の 4 件は 1 文字も変えないこと**（`model` の文字列を
-`"boxes"` から `"fence"` に直すのは、同じ事実の名前が変わるだけなので可）。
+- `test/items.test.ts` —— **「着られる物はまだ 1 つも無い」を書き換える**。
+  `allArmorIds()` を出して **4 種**・部位が `head/chest/legs/feet` で重複なし・
+  点数 1/3/2/1 で**合計 7**・**革（132）は `armorOf()` が null**（材料は着られない）
+- **色**: 4 つを出し、**互いと、既存のどのアイテムとも RGB の隔たり 20 以上**
+  （`Math.hypot`。`test/blocks.test.ts` の氷・フェンスと同じ形）。**革 `0xa06a41` が
+  いちばん近い相手になります** —— 明るさで 4 段に割り、離した値を `TUNING.md` に 1 行
+- `test/crafting.test.ts` —— レシピ 4 本を出して、**革の数が 5 / 8 / 7 / 4**・
+  **4 本とも 3 幅（2x2 では作れない）**・**レシピ総数が 61 → 65**
+- `test/inventory.test.ts` —— `serializeArmor()` の往復（**8 要素**）/ 裸なら `undefined` /
+  **正しい枠なら `armorPoints` が 7、帽子を足の枠に入れると減る**（27a の判定を消さない）/
+  **`deserialize()`（36 枠）を呼んでも着ている物が消えない**
+- `test/session.test.ts` —— `buildSave()` の `armor` を出して、着ていれば 8 要素・
+  裸なら**キーごと `undefined`**・**`version` が 1 のまま**
+- `test/storage.test.ts` —— **`armor` の無いセーブがそのまま読める**（既存の判定を消さない）
 
 ## 6. このタスク固有の禁じ手
 
-- **当たり判定を隣で出し分けないこと。** `collisionBoxes()` は座標を知らないので**できません**
-  （`blocks.ts` のコメント。柱の太さにすると列のあいだを歩いて抜けられます）
-- **`FENCE_BOXES` の 9 箱・並び・数値を変えないこと**（組み直すのは可。値は同じに）
-- **`model: "boxes"` の側（ハーフ・階段・サボテン・ケーキ・はしご）に手を入れないこと**
-- **`default:` の「当てはまらないものは描かない」を消さないこと**（`rules/meshing-render.md`）
-- **`opaque: false` を変えないこと**（true にすると隣の面が greedy 側で消えて地面が透けます）
-- **繋がる相手を増やして「見た目が良いから」で葉やガラスを足し引きしないこと** ——
-  変えるなら `fenceConnects()` の 1 か所と、上の表のテストを同じ周で直すこと
+- **`SaveData.version` を上げないこと**（既存プレイヤーの世界が全部読めなくなります）
+- **`inventory` の 36 枠の平坦配列に防具を継ぎ足さないこと**（`wear` を分けたのと同じ理由）
+- **防具に耐久を持たせないこと** —— `durability.ts` にも `TOOL_USES` にも 1 行も足さない
+  （本家の革の防具は傷みますが、減らす経路が `vitals.ts` → `inventory.ts` の配線になり、
+  この周には入りません。`TUNING.md` に 1 行残すこと）
+- **`vitals.ts` に触らないこと。** 着た点が効くのは 27b-2 です（`vitals.armor` は 0 のまま）
+- **`ARMORS` に鉄・金・ダイヤを足さないこと**（番号は取りません）
+- **`main.ts` を 1449 行より増やさないこと**（この周は −1 行。`AUTODEV.md` の停止条件 2）
+- **`allItemIds()` に別表を作らないこと**（クリエイティブの一覧は自動で増えます）
 
 ## 7. 終了条件
 
-- `npm run typecheck` と `npm test` が**すべて緑**（音の一群が跳ねたらもう一度走らせる）
-- `npm run build` が緑（`src/**` を触るので）。**`npm run bench` は要りません**
-  （生成もメッシュ化の予算も触りませんが、**箱が減るぶん三角形は減ります**）
-- **撮って自分の目で見る**（`AUTODEV.md` の C-3。**見た目そのものの周です**）——
-  `npm run shot -- fence` で**直線・角・1 本だけ・石の上・石の横**の 5 通りを 1 枚に写し、
-  **`Read` で開いて「1 本だけの柱から腕が消えた」「角では 2 方向だけ残った」を確かめる**
-- コミット 1 つ / `AUTODEV-QUEUE.md` の 26b の行を消す / この仕様書を `状態: 済` に
-- 手ざわりの数値は置かない見込み（置いたら `TUNING.md` に 1 行）
-- **触るファイルに当たる `rules/*.md` を先に引いて読むこと**:
-  `grep -l '"src/mesher.ts"' rules/*.md`（→ `lighting.md` / `meshing-render.md`）・
-  `grep -l '"src/blocks.ts"' rules/*.md`（→ `beds.md` / `blocks-shapes.md` / `items-survival.md`）・
-  **`test/**` を触るので `rules/testing.md` も**
+`npm run typecheck` と `npm test`（**3372 件 + 増やしたぶんが全部緑**）/ `npm run build`
+（`src/**` を触るので必ず）/ **コミット 1 つ**を `master` へ / **`npm run shot` は不要**
+（見た目に出るのは一覧の色 4 つだけ。**`node tools/browsershot.mjs` でインベントリを開いた
+1 枚を撮り、`Read` で開いて 4 色が見分けられるか見ること**）/
+手触りの数値（色 4 つ・耐久を入れない判断）を `TUNING.md` に 1 行 /
+`ROADMAP.md` の予約表に 158..161 を「実装済み」/ `AUTODEV-QUEUE.md` の 27b-1 の行を消す /
+`AUTODEV-SPEC.md` を `状態: 済` に / `HANDOFF.md` を書き直す。
+
+**使えるスキル**: `add-block`（ID の取り方と `items.ts` の足し方。**ブロックは足しません**）。
+**読む決まりごと**（自動では読み込まれません。`grep -l '"src/inventory.ts"' rules/*.md`）:
+`rules/inventory-screen.md` / `rules/items-survival.md` / `rules/drops.md` /
+`rules/dimensions.md`（`session.ts` と `storage.ts`）/ `rules/vitals.md`（`items.ts`）/
+`rules/testing.md`（`test/**`）。
