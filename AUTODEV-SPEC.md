@@ -1,118 +1,108 @@
-# 仕様: 革の防具 4 部位が作れて、着たまま残る（キューの 27b-1・ID 4 個）
+# 仕様: 防具枠が画面に出て、着ると固くなる（キューの 27b-2・ID 0 個）
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-**27b は 120 行に収まらないので 2 件に割りました**（`AUTODEV.md` の B の末尾。理由は
-`AUTODEV-QUEUE.md` の 27b の行）。**割れ目は「画面」**です —— この周は
-**物・点数・レシピ・セーブ**まで（`main.ts` は **−1 行**）、
-**防具枠を画面に出して着る経路は 27b-2**（`craftscreen.ts` / `inventoryui.ts` / `index.html`）。
-
-**取る前にコードで数え直しました**（B の周の決まり）: 27a は済んでいて、
-**`inventory.ts` の `armor` 4 枠・`ARMOR_SLOTS`・`armorPoints`・`vitals.ts` の
-`armorReduced()` はもうあります**。**`items.ts` の `ARMORS` が空の Map**（1 行も無い）で、
-**着られるアイテムが 0 種**なのが今の姿です（`test/items.test.ts` が「まだ 1 つも無い」を
-見張っています —— **この周でその 1 件を書き換えます**）。
+**27b を割った後半**です（割れ目は「画面」。前半 27b-1 = 物・点数・レシピ・セーブは
+2026-09-09 に実装済み）。**取る前にコードで数え直しました**（B の周の決まり）:
+`craftscreen.ts` / `inventoryui.ts` / `index.html` / `main.ts` には
+**`armor` の字が 1 つもありません**（`grep -n "armor" ...` で 0 件）。
+一方で **`inventory.ts` の `armor` 4 枠・`ARMOR_SLOTS`・`ARMOR_SIZE`・`armorPoints`**、
+**`items.ts` の `ARMORS`（革 4 種・158..161）と `armorOf()`**、
+**`vitals.ts` の `armor` フィールドと `armorReduced()`** は**全部あります**。
+**残っているのは「画面に出す」ことと「点を貼る 1 行」だけ**です。
 
 ## 1. 何を足すか / 完了の判定
 
-**革の防具 4 部位（帽子・上着・ズボン・靴）を、作れて・セーブに残るようにする。**
-点数は本家のまま **1 / 3 / 2 / 1（合計 7）**。レシピも本家の形（下の 5.）。
+**インベントリ画面に防具枠 4 つ（頭・胴・脚・足）を出し、そこへ入れた革の防具が
+`vitals.armor` に効くようにする。** 点数の表も減り方の式も既にあるので、**数値は 1 つも足しません。**
 
-**この周ではまだ着られません**（防具枠が画面に出るのは 27b-2）。**それでよい**理由:
-着る経路だけ先に入れると、**セーブが無いあいだに着た物がリロードで黙って消えます** ——
-公開サイトに出る順として、**先に残るようにしてから開ける**こと。
+完了 = `npm test` に次の項目が増えて**全部緑**（いま 3407 件）:
 
-**完了の判定**: `npm test` に**「革の防具」の節が増えて緑**で、次の 4 つが
-**値を出してから**通ること —— **`allArmorIds()` が 4 種**（いまは 0 種）/
-**革 4 部位を正しい枠に着ると `armorPoints` が 7**（1 つずらすと減る）/
-**`buildSave()` に `armor` キーが載り、裸なら消える**（8 要素）/
-**`armor` の無い古いセーブがそのまま読める**。
+- 「防具枠の中身が `slotFor("armor", i)` で読める」
+- 「合う部位の防具だけが防具枠に入る」（革の帽子 → 頭は入る / 革の靴 → 頭は**入らない** /
+  土 → 頭は**入らない**）
+- 「シフトクリックで合う枠へ着る」「防具枠をシフトクリックすると脱いでインベントリへ戻る」
+- 「かまど・チェストを開いている間のシフトクリックは今までどおり器へ入る」（退行の見張り）
+- 「数字キーと撫でて配るのも同じ規則で弾かれる」
+- 「着ると `inventory.armorPoints` が 7 になる」（革 4 部位）
+- `test/ui.test.ts` の `routed` に **`["防具点を貼る", "armorPoints"]`** が増えて緑
 
-## 2. 触るファイル / 触らないファイル
+## 2. 触るファイルと、触らないファイル
 
-**触る**:
+| ファイル | やること |
+| --- | --- |
+| `src/craftscreen.ts` | `SlotArea` に `"armor"`・`slotAt()` の 1 行・**`accepts(area, index, item)`**・`quickMove` の行き先 |
+| `src/inventoryui.ts` | 4 枠を `getElementById` で拾って `wire()` と `paint()`。**判断は 1 行も書かない** |
+| `index.html` | `#armorrow` と `#armorhead` / `#armorchest` / `#armorlegs` / `#armorfeet` |
+| `src/style.css` | **`#armorrow` の並び 1 ブロックだけ**（`class="craft"` を借りるので数行） |
+| `src/main.ts` | **1 行だけ**（下の 4.）。**コメントを添えないこと** |
+| `test/craftscreen.test.ts` / `test/ui.test.ts` | 上の項目 |
 
-- `src/items.ts` —— 4 つの `item({...})` と `ARMORS` の 4 行 / `MAX_ITEM_ID` を伸ばす
-- `src/crafting.ts` —— レシピ 4 本（下の 5.）
-- `src/inventory.ts` —— `serializeArmor()` / `deserializeArmor()` の 2 本だけ
-- `src/storage.ts` —— `SaveData` に **`armor?: number[]`**（省略可。`version` は 1 のまま）
-- `src/session.ts` —— `SaveParts.inventory` を**器そのもの**に変える（下の 4.）/
-  `applyRestore()` に `deserializeArmor()` の 1 行
-- `src/main.ts` —— **`currentSave()` の 2 行（`inventory:` と `wear:`）を 1 行に**。
-  **ここだけ。1449 → 1448 行**（`wc -l`）
-- `test/items.test.ts` / `test/crafting.test.ts` / `test/inventory.test.ts` /
-  `test/session.test.ts` / `test/storage.test.ts` —— 下の 5.
-
-**触らない**（1 文字も）: `src/craftscreen.ts` / `src/inventoryui.ts` / `index.html` /
-`src/style.css`（**全部 27b-2**）/ `src/vitals.ts`（`armorReduced()` も `ARMOR_CAP` も
-`ARMOR_DENOM` も完成しています）/ `src/durability.ts` / `src/blocks.ts` / `src/mobs.ts` /
-`inventory.ts` の `armorPoints` / `clear()` / `takeAll()` / `deserialize()`（27a のまま）。
+**触らないファイル**: `src/inventory.ts` / `src/items.ts` / `src/vitals.ts` / `src/storage.ts` /
+`src/session.ts`（27b-1 で済んでいます。**1 文字も開かないこと**）。
 
 ## 3. 使う ID
 
-**`ROADMAP.md` の予約表から 158 / 159 / 160 / 161 の 4 個**（次の空きは 158。
-**111.. は共有帯なのでブロックと 1 本の番号列**です）。
-**革の帽子 158 / 革の上着 159 / 革のズボン 160 / 革の靴 161**。
-**`MAX_ITEM_ID` は 161（革の靴）へ。** 鉄・金・ダイヤの防具は**取らないこと**（12 番号は後回し）。
+**0 個。** `ROADMAP.md` の予約表に触らないこと。**`npm test` の「111..255 の空き」は
+94 のまま**で終わること（減っていたら番号を取った合図です）。
 
-## 4. 判断をどこに置くか
+## 4. 判断をどのファイルに置くか
 
-- **どの部位が何点かは `items.ts` の `ARMORS` の表 1 本**（`FOODS` と同じ作法）。
-  `inventory.ts` にも `vitals.ts` にもアイテムの名前を書かないこと
-- **セーブにどのキーを載せるかは `session.ts`。** いま `main.ts` が
-  `inventory: inventory.serialize(), wear: inventory.serializeWear(),` と**2 行で
-  並べている**のを、**`inventory,`（器そのもの）の 1 行**に変え、
-  **`buildSave()` の側が `serialize()` / `serializeWear()` / `serializeArmor()` を呼ぶ**こと。
-  **読み戻す `applyRestore()` が最初から器を受け取っている**のと同じ形に揃うので、
-  **これは行数合わせではなく判断の移動です**（`SaveParts.inventory` は
-  `{ serialize(); serializeWear(); serializeArmor() }` の**構造だけ**で受けること）
-- **傷（`wear`）と同じ作法**: `serializeArmor()` は**全部空なら `undefined`**（キーごと消える）
-- **読む順は `deserialize()`（36 枠）→ `deserializeWear()` → `deserializeArmor()`。**
-  **`deserializeArmor()` の中で `clear()` を呼ばないこと** —— 36 枠が消えます
-  （`rules/inventory-screen.md` の「意味が 3 つとも違います」）
+- **「その枠にそのアイテムを入れてよいか」は `craftscreen.ts` の `accepts()` 1 か所**。
+  `armorOf(item)?.slot === ARMOR_SLOTS[index]` を見ます（**部位の表は `items.ts`、
+  枠の並びは `inventory.ts`。どちらも写さないこと**）。**`NO_ITEM` は必ず true**
+  ——「空の枠と入れ替えて脱ぐ」が通らなくなります。
+  呼ぶのは **4 か所**: `press()` の置く側（いまの `canPlaceInto` の行）/
+  `hover()` の撫でた集合に足す行（見るのは `this.dragItem`）/ `swapHotbar()`（見るのは
+  ホットバー側のアイテム）/ `quickMove` の行き先。**`transfer()` の中では見ないこと**
+  —— 掴む側にも掛かって、着ている物が外せなくなります。
+- **行き先の順は「チェスト → かまど → 防具枠 → ホットバー/収納」**
+  （`quickMoveFromInventory()`）。**器より先に防具枠を見ないこと** ——
+  チェストを開いて防具をしまう経路が消えます。入れるのは既にある `moveInto()` で。
+- **点を貼るのは `main.ts` の 1 行**: `vitals.armor = inventory.armorPoints;` を
+  **`frame()` の `player.canSprint = ...` の直後**に置くこと。**`updateVitals()` の中に
+  書かないこと** —— 殴るのは `mobs.update()` で、あれは `updateVitals()` より**前**に
+  走るので、1 フレーム古い点数で殴られます（死亡画面が出なかったのと同じ罠）。
+- **防具枠はいつも出します**（`#storage` と `#invhotbar` と同じ扱い）。
+  かまど・チェスト・クリエイティブで隠す分岐を作らないこと —— `refresh()` に
+  5 つ目の `mode !==` が増え、UI に判断が 1 つ戻ります。
 
-## 5. 書くテスト（値を出してから判定）
+## 5. 書くテスト
 
-- `test/items.test.ts` —— **「着られる物はまだ 1 つも無い」を書き換える**。
-  `allArmorIds()` を出して **4 種**・部位が `head/chest/legs/feet` で重複なし・
-  点数 1/3/2/1 で**合計 7**・**革（132）は `armorOf()` が null**（材料は着られない）
-- **色**: 4 つを出し、**互いと、既存のどのアイテムとも RGB の隔たり 20 以上**
-  （`Math.hypot`。`test/blocks.test.ts` の氷・フェンスと同じ形）。**革 `0xa06a41` が
-  いちばん近い相手になります** —— 明るさで 4 段に割り、離した値を `TUNING.md` に 1 行
-- `test/crafting.test.ts` —— レシピ 4 本を出して、**革の数が 5 / 8 / 7 / 4**・
-  **4 本とも 3 幅（2x2 では作れない）**・**レシピ総数が 61 → 65**
-- `test/inventory.test.ts` —— `serializeArmor()` の往復（**8 要素**）/ 裸なら `undefined` /
-  **正しい枠なら `armorPoints` が 7、帽子を足の枠に入れると減る**（27a の判定を消さない）/
-  **`deserialize()`（36 枠）を呼んでも着ている物が消えない**
-- `test/session.test.ts` —— `buildSave()` の `armor` を出して、着ていれば 8 要素・
-  裸なら**キーごと `undefined`**・**`version` が 1 のまま**
-- `test/storage.test.ts` —— **`armor` の無いセーブがそのまま読める**（既存の判定を消さない）
+**値を出してから判定する形**（`rules/testing.md`）。`test/craftscreen.test.ts` の
+既存の `screen()` ヘルパを使い、**防具枠は `screen().inventory.armor` から読むこと**。
+
+- 入る／入らないは **`press()` の戻り（`changed`）と枠の中身の両方**を見ること
+  —— 戻りだけ見ると「弾いたのに入っている」を取り逃します
+- シフトクリックは **`armorPoints` の前後**を出してから比べること（0 → 7）
+- **かまど・チェストの退行の見張り**を必ず 1 件書くこと（防具を持ってチェストを開き、
+  シフトクリックでチェストへ入ること）
+- `test/ui.test.ts` は **`routed` に 1 行足すだけ**。行数の上限（1500）の判定を触らないこと
 
 ## 6. このタスク固有の禁じ手
 
-- **`SaveData.version` を上げないこと**（既存プレイヤーの世界が全部読めなくなります）
-- **`inventory` の 36 枠の平坦配列に防具を継ぎ足さないこと**（`wear` を分けたのと同じ理由）
-- **防具に耐久を持たせないこと** —— `durability.ts` にも `TOOL_USES` にも 1 行も足さない
-  （本家の革の防具は傷みますが、減らす経路が `vitals.ts` → `inventory.ts` の配線になり、
-  この周には入りません。`TUNING.md` に 1 行残すこと）
-- **`vitals.ts` に触らないこと。** 着た点が効くのは 27b-2 です（`vitals.armor` は 0 のまま）
-- **`ARMORS` に鉄・金・ダイヤを足さないこと**（番号は取りません）
-- **`main.ts` を 1449 行より増やさないこと**（この周は −1 行。`AUTODEV.md` の停止条件 2）
-- **`allItemIds()` に別表を作らないこと**（クリエイティブの一覧は自動で増えます）
+- **`style.css` の `.slot .label` に触らないこと。** 5 文字の名前が 2 行に折れて絵に
+  被る件は**人の判断待ち**です（`HANDOFF.md`）。ここで直すと、この周の差分が
+  「防具枠」と「名前の折り返し」の 2 件になります
+- **鉄・金・ダイヤの防具を足さないこと**（ID 12 個の話で、別のキューの行です）
+- **`ARMORS` の点数（1 / 3 / 2 / 1）と `ARMOR_DENOM = 25` を動かさないこと**
+- **`SaveData` に 1 キーも足さないこと**（`armor` は 27b-1 で入っています。
+  **`SaveData.version` は 1 のまま**）
+- **`inventoryui.ts` に `armorOf` / `ARMOR_SLOTS` / `isEmpty(` / `NO_ITEM` を
+  書かないこと** —— `test/craftscreen.test.ts` の「判断が漏れていない」が落ちます
+- **`main.ts` は 1 行だけ。** いま 1448 行（`wc -l`）で、**足して 1449 行
+  （テストの数え方 1450）**。**2 行目を書きたくなったら止まる合図**です
+- **既存の判定をゆるめて緑にしないこと**（とくに `test/ui.test.ts` の 40 件の見張り）
 
 ## 7. 終了条件
 
-`npm run typecheck` と `npm test`（**3372 件 + 増やしたぶんが全部緑**）/ `npm run build`
-（`src/**` を触るので必ず）/ **コミット 1 つ**を `master` へ / **`npm run shot` は不要**
-（見た目に出るのは一覧の色 4 つだけ。**`node tools/browsershot.mjs` でインベントリを開いた
-1 枚を撮り、`Read` で開いて 4 色が見分けられるか見ること**）/
-手触りの数値（色 4 つ・耐久を入れない判断）を `TUNING.md` に 1 行 /
-`ROADMAP.md` の予約表に 158..161 を「実装済み」/ `AUTODEV-QUEUE.md` の 27b-1 の行を消す /
-`AUTODEV-SPEC.md` を `状態: 済` に / `HANDOFF.md` を書き直す。
-
-**使えるスキル**: `add-block`（ID の取り方と `items.ts` の足し方。**ブロックは足しません**）。
-**読む決まりごと**（自動では読み込まれません。`grep -l '"src/inventory.ts"' rules/*.md`）:
-`rules/inventory-screen.md` / `rules/items-survival.md` / `rules/drops.md` /
-`rules/dimensions.md`（`session.ts` と `storage.ts`）/ `rules/vitals.md`（`items.ts`）/
-`rules/testing.md`（`test/**`）。
+- `npm run typecheck` 緑 / `npm test` **全部緑**（音の一群が赤いときはもう一度走らせる）
+- `npm run build` 緑（`src/**` を触るので必須）。`npm run bench` は不要（生成もメッシュ化も触らない）
+- **`src/**` を触るので撮ること**（`AUTODEV.md` の C-3）。**本物のブラウザで `E` を押して
+  防具枠が出ているところ**と、**革の防具を着た姿**を撮り、`Read` で開いて見ること
+- コミット 1 つ / `AUTODEV-QUEUE.md` の 27b-2 の行を消す / この仕様書を `状態: 済` に
+- 手触りの数値を置いたら `TUNING.md` に 1 行（**置かない見込み**です）
+- 使えるスキル: **`add-block` は使いません**（ID 0 個）。読むのは
+  `rules/inventory-screen.md` / `rules/dom-ui.md` / `rules/vitals.md` /
+  `rules/drops.md` / `rules/stateful-blocks.md` / `rules/testing.md`
