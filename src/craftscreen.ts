@@ -2,6 +2,7 @@ import { addToChest, type ChestState } from "./chests";
 import { consumeGrid, findRecipe } from "./crafting";
 import { carryWear, damageOf, deserializeWear, serializeWear } from "./durability";
 import {
+  ARMOR_SLOTS,
   HOTBAR_SIZE,
   INVENTORY_SIZE,
   clearSlot,
@@ -9,7 +10,7 @@ import {
   type Inventory,
   type Slot,
 } from "./inventory";
-import { NO_ITEM, allItemIds, itemStackLimit } from "./items";
+import { NO_ITEM, allItemIds, armorOf, itemStackLimit } from "./items";
 import {
   cookFraction,
   isFuel,
@@ -47,8 +48,12 @@ export const GRID_SLOTS = 9;
  * `creative` は**唯一「本物のスロットでない」枠**。無限の湧き口なので、押したときに
  * 何が起きるかは `pressCreative()` だけが決め、掴む・配る・入れ替えの経路
  * （`slotAt()`）には出さない（出すと、無限に出るものが山ごと動いてしまう）。
+ *
+ * `armor` は**インベントリの持ち物**（`inventory.armor` の 4 枠）なので、かまど・チェストと
+ * 違って画面を閉じても借り物ではない。**枠ごとに入れてよい物が違う**唯一の側で、
+ * その規則は `accepts()` の 1 か所だけが持つ。
  */
-export type SlotArea = "grid" | "inv" | "input" | "fuel" | "output" | "chest" | "creative";
+export type SlotArea = "grid" | "inv" | "input" | "fuel" | "output" | "chest" | "creative" | "armor";
 
 /**
  * 画面の種類。作業台／手持ちなら "craft"、かまどなら "furnace"、チェストなら "chest"、
@@ -338,6 +343,8 @@ export class CraftScreen {
     // 焼き上がりの枠には置けない。**ドラッグも構えないこと**（撫でた集合に
     // 混ざると、そこだけ飛ばす特例を配り方の側にも書くことになる）。
     if (!this.canPlaceInto(area)) return NOTHING;
+    // 部位の合わない防具・防具でない物は、防具枠に置けない（`accepts()`）。
+    if (!this.accepts(area, index, this.heldSlot.item)) return NOTHING;
 
     this.dragButton = button;
     this.dragSlots = [{ area, index }];
@@ -398,6 +405,9 @@ export class CraftScreen {
     if (!pressed || this.dragButton === null) return released;
     if (this.dragSlots.some((ref) => ref.area === area && ref.index === index)) return released;
     if (!this.slotAt(area, index) || !this.canPlaceInto(area)) return released;
+    // 撫でた集合にも同じ規則を掛ける（配る側だけ素通しにすると、撫でれば着られる）。
+    // **見るのは配る予定の `dragItem`**（手はもう空かもしれない）。
+    if (!this.accepts(area, index, this.dragItem)) return released;
     this.dragSlots.push({ area, index });
     return CHANGED;
   }
@@ -504,6 +514,16 @@ export class CraftScreen {
           : null;
       if (target) return moveInto(target, slot);
     }
+    // 防具は合う部位の枠へ着る。**器（チェスト・かまど）より後に見ること** ——
+    // 先に見ると、チェストを開いて防具をしまう経路が消える。
+    // どの枠が合うかは `accepts()` に聞く（部位の表をここへ写さない）。
+    const wearAt = ARMOR_SLOTS.findIndex((_, i) => this.accepts("armor", i, slot.item));
+    if (wearAt >= 0) {
+      const left = moveInto(this.inventory.armor[wearAt], slot);
+      // 既に同じ物を着ていると 1 個も入らない（`stack: 1`）。そのときは今までどおり
+      // ホットバー ↔ 収納へ落とす（黙って「動かなかった」で終わらせない）。
+      if (left < slot.count) return left;
+    }
     // **どの行き先も傷ごと動かす。** かまど・チェストへ入れる上の 2 本も
     // 傷を運ぶようになった（`addToChest()` の第 4 引数と `moveInto()`。`TUNING.md`）。
     const damage = damageOf(slot);
@@ -567,6 +587,9 @@ export class CraftScreen {
     const target = this.inventory.slots[hotbarIndex];
     if (!slot) return NOTHING;
     if (isEmpty(slot) && isEmpty(target)) return NOTHING;
+    // 入れ替えは「置く」でもあるので、防具枠には**ホットバー側の物**が入れられるときだけ通す
+    // （空のホットバー枠は `NO_ITEM` なので、数字キーで脱ぐ経路は残る）。
+    if (!this.accepts(at.area, at.index, target.item)) return NOTHING;
 
     const item = slot.item;
     const count = slot.count;
@@ -856,6 +879,8 @@ export class CraftScreen {
     // 本物として返すと、掴む・配る・入れ替えがそのまま効いて一覧の中身が動く。
     if (area === "creative") return null;
     if (area === "inv") return this.inventory.slots[index] ?? null;
+    // 防具枠は**いつも触れる**（器と違って「開いている」という状態が無い）。
+    if (area === "armor") return this.inventory.armor[index] ?? null;
     if (area === "chest") return this.chestState?.slots[index] ?? null;
     const furnace = this.furnaceState;
     if (!furnace) return null;
@@ -873,6 +898,25 @@ export class CraftScreen {
     // クリエイティブの一覧も置けない側（押したときの捨てるは `pressCreative()` の仕事で、
     // ドラッグの撫でた集合や数字キーの行き先にしてはいけない）。
     return area !== "output" && area !== "creative";
+  }
+
+  /**
+   * **その枠にそのアイテムを入れてよいか。** 枠ごとに中身を選ぶのは防具枠だけなので、
+   * 他の枠はいつも true（`canPlaceInto()` が「置ける枠か」を別に見ている）。
+   *
+   * **部位の表は `items.ts` の `ARMORS`、枠の並びは `inventory.ts` の `ARMOR_SLOTS`。**
+   * どちらもここへ写さないこと —— 写した瞬間、防具を足すたびに直す場所が 1 つ増える。
+   *
+   * **`NO_ITEM` は必ず true。** 空の山と入れ替える経路（着ている物を外す）が、
+   * ここで弾かれると通らなくなる。
+   *
+   * 呼ぶのは**置く側の 4 か所だけ**（`press()` / `hover()` / `swapHotbar()` /
+   * `quickMoveFromInventory()`）。**`transfer()` の中で見ないこと** —— あれは掴む側も
+   * 通るので、着ている物が二度と外せなくなる。
+   */
+  private accepts(area: SlotArea, index: number, item: number): boolean {
+    if (area !== "armor" || item === NO_ITEM) return true;
+    return armorOf(item)?.slot === ARMOR_SLOTS[index];
   }
 
   private slotsOf(refs: readonly SlotRef[]): Slot[] {

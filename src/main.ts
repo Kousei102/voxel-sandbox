@@ -1149,6 +1149,7 @@ function frame(now: number): void {
 
   // 走れるかどうかの判断は vitals.ts。player.ts は結果を受け取るだけ。
   player.canSprint = creative || vitals.canSprint;
+  vitals.armor = inventory.armorPoints;
 
   if (playing) {
     player.update(dt, world);

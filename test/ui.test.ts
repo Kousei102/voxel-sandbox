@@ -223,6 +223,10 @@ function mainStaysWiring(): void {
     // 食べ切ったあとに何が戻るか（器つきの食べ物）。**`main.ts` が
     // 「シチューならボウル」と書き始めると、器つきが増えるたびに分岐が 1 本ずつ生える。**
     ["食べ終わって戻る器", "emptyAfterEating("],
+    // 着ている物の点を `vitals` へ貼る 1 行。**`main.ts` が点数を足し始めると、
+    // 部位の表（`items.ts` の `ARMORS`）と合計の出し方（`inventory.armorPoints`）が
+    // 2 か所に分かれる。** 外すと着ても固くならず、殴られてみるまで気付けない。
+    ["防具点を貼る", "armorPoints"],
   ];
   const inlined = routed.filter(([, call]) => !source.includes(call));
   check(

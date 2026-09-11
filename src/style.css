@@ -459,6 +459,14 @@ body {
   padding-right: 6px;
 }
 
+/*
+ * 防具の 4 枠。**いつも出している**ので、下の収納と桁が寄らないよう間隔だけ詰める
+ * （並びそのものは `.craft` を借りる）。入れてよい物の規則は `craftscreen.ts`。
+ */
+#inventory #armorrow {
+  gap: 8px;
+}
+
 .invhotbar {
   margin-top: 4px;
   padding-top: 10px;

@@ -35,6 +35,7 @@ export class InventoryScreen {
   private readonly creativeRow = document.getElementById("creativerow") as HTMLElement;
   private readonly creativeEl = document.getElementById("creative") as HTMLElement;
   private readonly storageEl = document.getElementById("storage") as HTMLElement;
+  private readonly armorEls: HTMLElement[] = [];
   private readonly hotbarEl = document.getElementById("invhotbar") as HTMLElement;
   private readonly heldEl = document.getElementById("held") as HTMLElement;
   private readonly titleEl = document.getElementById("invtitle") as HTMLElement;
@@ -89,6 +90,20 @@ export class InventoryScreen {
     // クリエイティブの一覧。チェストと同じ作り方で、違うのは中身が湧き口だということ
     // （中身の出どころも、押したときに何が起きるかも craftscreen.ts が持っている）。
     this.build(this.creativeEl, this.creativeSlots, CREATIVE_SIZE, "creative", 0);
+
+    // 防具の 4 枠。かまどの 3 枠と同じで index.html に書いてあるので、配線だけ入れる。
+    // **id は文字列のまま並べること**（`test/ui.test.ts` が綴りを突き合わせている）。
+    // 何を入れてよいかも、どの枠が何の部位かも `craftscreen.ts` が持っている。
+    this.armorEls.push(
+      document.getElementById("armorhead") as HTMLElement,
+      document.getElementById("armorchest") as HTMLElement,
+      document.getElementById("armorlegs") as HTMLElement,
+      document.getElementById("armorfeet") as HTMLElement,
+    );
+    this.armorEls.forEach((el, i) => {
+      el.innerHTML = slotMarkup();
+      this.wire(el, "armor", i);
+    });
 
     this.build(this.storageEl, this.storageSlots, STORAGE_SIZE, "inv", HOTBAR_SIZE);
     this.build(this.hotbarEl, this.hotbarSlots, HOTBAR_SIZE, "inv", 0);
@@ -281,6 +296,11 @@ export class InventoryScreen {
     for (let i = 0; i < this.creativeSlots.length; i++) {
       const slot = mode === "creative" ? this.craft.slotFor("creative", i) : null;
       paintSlot(this.creativeSlots[i], slot, false);
+    }
+    // 防具枠は器と違って**いつも出す**（`#storage` と `#invhotbar` と同じ扱い）。
+    // かまど・チェストで隠す分岐を足すと、この `refresh()` に 5 つ目の `mode !==` が増える。
+    for (let i = 0; i < this.armorEls.length; i++) {
+      this.paint(this.armorEls[i], this.craft.slotFor("armor", i), "armor", i);
     }
     for (let i = 0; i < this.storageSlots.length; i++) {
       this.paint(this.storageSlots[i], this.craft.inventory.slots[i + HOTBAR_SIZE], "inv", i + HOTBAR_SIZE);

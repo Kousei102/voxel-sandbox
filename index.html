@@ -91,6 +91,30 @@
             掴んだまま一覧をクリックすると捨てます（地面には落ちません）
           </span>
         </div>
+        <!--
+          防具の 4 枠（頭・胴・脚・足）。**いつも出す** —— #storage と #invhotbar と
+          同じ扱いで、かまど・チェスト・クリエイティブでも隠さない（隠すと
+          inventoryui.ts の refresh() に 5 つ目の mode !== が増え、UI に判断が 1 つ戻る）。
+          どの枠に何を入れてよいかは craftscreen.ts の accepts()。
+        -->
+        <div id="armorrow" class="craft">
+          <div class="slotwrap">
+            <div id="armorhead" class="slot"></div>
+            <span class="hint">頭</span>
+          </div>
+          <div class="slotwrap">
+            <div id="armorchest" class="slot"></div>
+            <span class="hint">胴</span>
+          </div>
+          <div class="slotwrap">
+            <div id="armorlegs" class="slot"></div>
+            <span class="hint">脚</span>
+          </div>
+          <div class="slotwrap">
+            <div id="armorfeet" class="slot"></div>
+            <span class="hint">足</span>
+          </div>
+        </div>
         <div id="storage" class="grid storage"></div>
         <div id="invhotbar" class="grid storage invhotbar"></div>
         <p class="lead">

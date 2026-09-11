@@ -14,6 +14,10 @@ import { HOTBAR_SIZE, Inventory, isEmpty, type Slot } from "../src/inventory";
 import {
   BUCKET,
   DIAMOND_PICKAXE,
+  LEATHER_BOOTS,
+  LEATHER_CHESTPLATE,
+  LEATHER_HELMET,
+  LEATHER_LEGGINGS,
   MAX_STACK,
   NO_ITEM,
   STICK,
@@ -1042,5 +1046,176 @@ export function run(): void {
     "一覧を開いていなければ湧かない",
     !closedList.press("creative", at(STONE), 0).changed && closedList.held === null,
     `手 ${closedList.held?.count ?? 0} 個`,
+  );
+
+  // --- 防具枠（頭・胴・脚・足） ---
+  //
+  // **枠ごとに入れてよい物が違う唯一の側**なので、規則は `accepts()` の 1 か所だけが持つ。
+  // 置く経路は 4 本（掴んで置く・撫でて配る・数字キー・シフトクリック）あるので、
+  // **4 本とも弾けているか**をここで見る（1 本でも素通しだと、その経路だけ着られる）。
+  describe("インベントリ画面（防具枠）");
+
+  const helmetOn = holding(1, LEATHER_HELMET);
+  console.log(
+    `      着る前: 頭の枠 ${helmetOn.inventory.armor[0].item} / 防具点 ${helmetOn.inventory.armorPoints}`,
+  );
+  click(helmetOn, "armor", 0, 0);
+  console.log(
+    `      着たあと: 頭の枠 ${helmetOn.inventory.armor[0].item} / 防具点 ${helmetOn.inventory.armorPoints}`,
+  );
+  check(
+    "防具枠の中身が slotFor(\"armor\", i) で読める",
+    helmetOn.slotFor("armor", 0)?.item === LEATHER_HELMET &&
+      helmetOn.inventory.armor[0].item === LEATHER_HELMET,
+    `slotFor ${helmetOn.slotFor("armor", 0)?.item ?? 0} / 器 ${helmetOn.inventory.armor[0].item}`,
+  );
+
+  // **戻り（changed）と枠の中身の両方を見ること** —— 戻りだけ見ると
+  // 「弾いたのに入っている」を取り逃す。
+  const helmetOnFeet = holding(1, LEATHER_HELMET);
+  const feetPress = helmetOnFeet.press("armor", 3, 0);
+  helmetOnFeet.release();
+  check(
+    "革の帽子は足の枠に入らない",
+    !feetPress.changed &&
+      isEmpty(helmetOnFeet.inventory.armor[3]) &&
+      helmetOnFeet.held?.item === LEATHER_HELMET,
+    `戻り ${feetPress.changed} / 足の枠 ${helmetOnFeet.inventory.armor[3].item}`,
+  );
+
+  const bootsOnHead = holding(1, LEATHER_BOOTS);
+  const bootsPress = bootsOnHead.press("armor", 0, 0);
+  bootsOnHead.release();
+  check(
+    "革の靴は頭の枠に入らない",
+    !bootsPress.changed && isEmpty(bootsOnHead.inventory.armor[0]),
+    `戻り ${bootsPress.changed} / 頭の枠 ${bootsOnHead.inventory.armor[0].item}`,
+  );
+
+  const dirtOnHead = holding(3, DIRT);
+  const dirtPress = dirtOnHead.press("armor", 0, 0);
+  dirtOnHead.release();
+  check(
+    "土は頭の枠に入らない",
+    !dirtPress.changed && isEmpty(dirtOnHead.inventory.armor[0]) && dirtOnHead.held?.count === 3,
+    `戻り ${dirtPress.changed} / 頭の枠 ${dirtOnHead.inventory.armor[0].item}`,
+  );
+
+  // **空の山は必ず通すこと**（`NO_ITEM` は accepts が true）—— 弾くと、
+  // 着ている物を掴んで外す経路がそのまま消える。
+  const takeOff = holding(1, LEATHER_HELMET);
+  click(takeOff, "armor", 0, 0);
+  click(takeOff, "armor", 0, 0);
+  check(
+    "着ている物は掴んで外せる",
+    takeOff.held?.item === LEATHER_HELMET && isEmpty(takeOff.inventory.armor[0]),
+    `手 ${takeOff.held?.item ?? 0} / 頭の枠 ${takeOff.inventory.armor[0].item}`,
+  );
+
+  // シフトクリックで一式着る。**点は着る前後を出してから比べること。**
+  const suit = screen();
+  suit.inventory.add(LEATHER_HELMET, 1);
+  suit.inventory.add(LEATHER_CHESTPLATE, 1);
+  suit.inventory.add(LEATHER_LEGGINGS, 1);
+  suit.inventory.add(LEATHER_BOOTS, 1);
+  const before = suit.inventory.armorPoints;
+  for (let i = 0; i < 4; i++) suit.press("inv", i, 0, SHIFT);
+  const after = suit.inventory.armorPoints;
+  console.log(`      革一式: 防具点 ${before} → ${after}`);
+  check(
+    "シフトクリックで合う枠へ着る",
+    suit.inventory.armor[0].item === LEATHER_HELMET &&
+      suit.inventory.armor[1].item === LEATHER_CHESTPLATE &&
+      suit.inventory.armor[2].item === LEATHER_LEGGINGS &&
+      suit.inventory.armor[3].item === LEATHER_BOOTS,
+    suit.inventory.armor.map((slot) => slot.item).join(" "),
+  );
+  check("着ると防具点が 7 になる（革 4 部位）", before === 0 && after === 7, `${before} → ${after}`);
+  check(
+    "着たぶんはインベントリから消える",
+    suit.inventory.count(LEATHER_HELMET) === 0 && suit.inventory.count(LEATHER_BOOTS) === 0,
+    `帽子 ${suit.inventory.count(LEATHER_HELMET)} / 靴 ${suit.inventory.count(LEATHER_BOOTS)}`,
+  );
+
+  const stripped = suit.press("armor", 1, 0, SHIFT);
+  check(
+    "防具枠をシフトクリックすると脱いでインベントリへ戻る",
+    stripped.changed &&
+      isEmpty(suit.inventory.armor[1]) &&
+      suit.inventory.count(LEATHER_CHESTPLATE) === 1,
+    `胴の枠 ${suit.inventory.armor[1].item} / 持ち物 ${suit.inventory.count(LEATHER_CHESTPLATE)} 個`,
+  );
+  check(
+    "脱いだぶんの点が引かれる",
+    suit.inventory.armorPoints === 4,
+    `防具点 ${suit.inventory.armorPoints}`,
+  );
+
+  // **器より先に防具枠を見ていないこと**（退行の見張り）。先に見ると、
+  // チェストを開いて防具をしまう経路がそのまま消える。
+  const armorToChest = screen();
+  armorToChest.openChest(createChest());
+  armorToChest.inventory.add(LEATHER_CHESTPLATE, 1);
+  armorToChest.press("inv", 0, 0, SHIFT);
+  check(
+    "チェストを開いている間は防具もチェストへ入る",
+    armorToChest.chest?.slots[0].item === LEATHER_CHESTPLATE &&
+      isEmpty(armorToChest.inventory.armor[1]),
+    `チェスト ${armorToChest.chest?.slots[0].item ?? 0} / 胴の枠 ${armorToChest.inventory.armor[1].item}`,
+  );
+
+  const oreStillSmelts = screen();
+  const armorFurnace = createFurnace();
+  oreStillSmelts.openFurnace(armorFurnace);
+  oreStillSmelts.inventory.add(IRON_ORE, 2);
+  oreStillSmelts.press("inv", 0, 0, SHIFT);
+  check(
+    "かまどを開いている間のシフトクリックは今までどおり材料の枠へ",
+    armorFurnace.input.item === IRON_ORE && armorFurnace.input.count === 2,
+    `材料 ${armorFurnace.input.item} x${armorFurnace.input.count}`,
+  );
+
+  // 数字キーも「置く」側なので同じ規則で弾く。
+  const keyDirt = screen();
+  keyDirt.inventory.slots[0].item = DIRT;
+  keyDirt.inventory.slots[0].count = 4;
+  keyDirt.hover("armor", 0, false);
+  const keyResult = keyDirt.swapHotbar(0);
+  check(
+    "数字キーでも部位の合わない物は防具枠に入らない",
+    !keyResult.changed &&
+      isEmpty(keyDirt.inventory.armor[0]) &&
+      keyDirt.inventory.slots[0].count === 4,
+    `戻り ${keyResult.changed} / 頭の枠 ${keyDirt.inventory.armor[0].item}`,
+  );
+
+  const keyHelmet = screen();
+  keyHelmet.inventory.slots[0].item = LEATHER_HELMET;
+  keyHelmet.inventory.slots[0].count = 1;
+  keyHelmet.hover("armor", 0, false);
+  keyHelmet.swapHotbar(0);
+  check(
+    "数字キーで合う防具は着られる",
+    keyHelmet.inventory.armor[0].item === LEATHER_HELMET && isEmpty(keyHelmet.inventory.slots[0]),
+    `頭の枠 ${keyHelmet.inventory.armor[0].item} / ホットバー ${keyHelmet.inventory.slots[0].item}`,
+  );
+  keyHelmet.hover("armor", 0, false);
+  keyHelmet.swapHotbar(0);
+  check(
+    "空のホットバー枠となら数字キーで脱げる",
+    isEmpty(keyHelmet.inventory.armor[0]) && keyHelmet.inventory.slots[0].item === LEATHER_HELMET,
+    `頭の枠 ${keyHelmet.inventory.armor[0].item} / ホットバー ${keyHelmet.inventory.slots[0].item}`,
+  );
+
+  // 撫でて配る側も同じ（配る側だけ素通しにすると、撫でれば着られる）。
+  const sweepDirt = holding(4, DIRT);
+  sweepDirt.press("inv", 1, 0);
+  sweepDirt.hover("armor", 0, true);
+  check("撫でても防具枠には予定が出ない", sweepDirt.dragPlanFor("armor", 0) === 0);
+  sweepDirt.release();
+  check(
+    "撫でて配っても防具枠には入らない",
+    isEmpty(sweepDirt.inventory.armor[0]),
+    `頭の枠 ${sweepDirt.inventory.armor[0].item}`,
   );
 }
