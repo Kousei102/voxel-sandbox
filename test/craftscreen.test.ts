@@ -10,6 +10,7 @@ import {
   planDrag,
   type SlotArea,
 } from "../src/craftscreen";
+import { damageOf, repairedDamage } from "../src/durability";
 import { HOTBAR_SIZE, Inventory, isEmpty, type Slot } from "../src/inventory";
 import {
   BUCKET,
@@ -1218,4 +1219,81 @@ export function run(): void {
     isEmpty(sweepDirt.inventory.armor[0]),
     `頭の枠 ${sweepDirt.inventory.armor[0].item}`,
   );
+
+  // --- 修理した道具を受け取る（傷ごと動くこと） ---
+  describe("インベントリ画面（道具の修理を受け取る）");
+
+  /** 傷んだ道具を盤面に置く（`put()` は傷を持たない）。 */
+  const putWorn = (craft: CraftScreen, index: number, item: number, damage: number): void => {
+    put(craft, index, item, 1);
+    craft.grid[index].damage = damage;
+  };
+
+  const EXPECTED = repairedDamage(WOOD_PICKAXE, 40, 30);
+
+  // 1. 掴んで受け取る。**盤面は空になる**（道具は stack: 1 なので 2 枠とも消える）。
+  {
+    const fix = screen(2);
+    putWorn(fix, 0, WOOD_PICKAXE, 40);
+    putWorn(fix, 1, WOOD_PICKAXE, 30);
+    const preview = fix.result();
+    console.log(
+      `      受け取る前: 盤面 傷 ${damageOf(fix.grid[0])} + 傷 ${damageOf(fix.grid[1])}` +
+        ` / 見本 ${preview?.name ?? "無し"} 傷 ${preview?.damage ?? "-"}（期待 ${EXPECTED}）`,
+    );
+    check(
+      "出来上がりの見本に傷が載る（帯はこれで出る）",
+      preview?.item === WOOD_PICKAXE && preview.damage === EXPECTED,
+      `${preview?.damage ?? "無し"}`,
+    );
+    const took = fix.takeResult();
+    console.log(`      受け取った後: 手 ${fix.held?.item ?? 0} 傷 ${damageOf(fix.held)}`);
+    check("受け取ると手に傷ごと乗る", took.crafted && damageOf(fix.held) === EXPECTED, `傷 ${damageOf(fix.held)}`);
+    check("手に乗るのは 1 本だけ", fix.held?.count === 1, `${fix.held?.count ?? 0} 個`);
+    check(
+      "盤面の 2 枠が空になる",
+      isEmpty(fix.grid[0]) && isEmpty(fix.grid[1]),
+      `${fix.grid[0].item} / ${fix.grid[1].item}`,
+    );
+  }
+
+  // 2. シフトクリック（一括）でもインベントリへ傷ごと入る。
+  {
+    const quick = screen(2);
+    putWorn(quick, 0, WOOD_PICKAXE, 40);
+    putWorn(quick, 1, WOOD_PICKAXE, 30);
+    quick.takeResult(true);
+    const landed = quick.inventory.slots.find((s) => s.item === WOOD_PICKAXE);
+    console.log(`      シフトクリック後: インベントリ 傷 ${damageOf(landed)}（期待 ${EXPECTED}）`);
+    check(
+      "シフトクリックでも傷ごとインベントリへ入る",
+      damageOf(landed) === EXPECTED,
+      `傷 ${damageOf(landed)}`,
+    );
+    check("手は空のまま", quick.held === null, `${quick.held?.item ?? "空"}`);
+  }
+
+  // 3. 同じ道具を掴んでいると受け取れない（`stack: 1` なので積めない）。
+  {
+    const busy = screen(2);
+    putWorn(busy, 0, WOOD_PICKAXE, 40);
+    putWorn(busy, 1, WOOD_PICKAXE, 30);
+    busy.inventory.slots[0].item = WOOD_PICKAXE;
+    busy.inventory.slots[0].count = 1;
+    busy.inventory.slots[0].damage = 5;
+    click(busy, "inv", 0, 0);
+    const before = damageOf(busy.held);
+    const blocked = busy.takeResult();
+    console.log(`      同じ道具を掴んだまま: 受け取り前 傷 ${before} → 後 傷 ${damageOf(busy.held)}`);
+    check(
+      "同じ道具を掴んでいると受け取れない",
+      !blocked.changed && damageOf(busy.held) === before,
+      `${blocked.changed ? "受け取った" : "弾いた"} / 傷 ${damageOf(busy.held)}`,
+    );
+    check(
+      "弾いたときは盤面も減らない",
+      damageOf(busy.grid[0]) === 40 && damageOf(busy.grid[1]) === 30,
+      `${damageOf(busy.grid[0])} / ${damageOf(busy.grid[1])}`,
+    );
+  }
 }

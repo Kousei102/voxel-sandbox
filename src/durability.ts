@@ -75,6 +75,32 @@ export function wearable(item: number): boolean {
 }
 
 /**
+ * 修理で上乗せされるぶんの割合。**Minecraft のまま**（最大の 5%・切り捨て）。
+ * **別の値にしないこと** —— 変えたくなったら `TUNING.md` へ 1 行書いて人に聞くこと。
+ */
+export const REPAIR_BONUS = 0.05;
+
+/**
+ * **同じ道具 2 本を合わせたときに残る傷**（本家のクラフト修理）。
+ * 式は **残りA + 残りB + floor(最大 × 5%)** を**最大で頭打ち**にしたもの。
+ *
+ * **傷まない物は 0**（棒を 2 個並べても「修理」にはなりません。呼ばれても害が無いように、
+ * ここが 0 を返します）。**新品 2 本でも成立して、1 本まるごと損になります** ——
+ * 本家のまま。止めると「傷んでいるか」の判断が `crafting.ts` に増えます。
+ *
+ * **`Slot` を取らないこと。** 盤面を読むのは `crafting.ts` の仕事で、ここへ `Slot[]` を
+ * 持ち込むと `crafting.ts` → `durability.ts` の向きが逆流します（`crafting.ts` の
+ * `findCraft()` が「盤面が修理の形か」を、ここが「何回ぶん戻るか」を持ちます）。
+ */
+export function repairedDamage(item: number, a: number, b: number): number {
+  const max = maxUses(item);
+  if (max <= 0) return 0;
+  const left = (damage: number) => Math.max(0, max - Math.max(0, damage));
+  const remain = left(a) + left(b) + Math.floor(max * REPAIR_BONUS);
+  return max - Math.min(max, remain);
+}
+
+/**
  * ブロックを 1 個掘ったときに減る回数。**0 か 1 だけ**。
  *
  * 減らないのは 5 つ: クリエイティブ / 道具でないもの（素手を含む）/

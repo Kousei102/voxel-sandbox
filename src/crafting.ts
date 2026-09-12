@@ -31,6 +31,7 @@ import {
   WOOD,
   WOOL,
 } from "./blocks";
+import { damageOf, repairedDamage, wearable } from "./durability";
 import { clearSlot, isEmpty, type Slot } from "./inventory";
 import {
   APPLE,
@@ -88,6 +89,7 @@ import {
   WOOD_PICKAXE,
   WOOD_SHOVEL,
   WOOD_SWORD,
+  itemName,
   leftoverOf,
 } from "./items";
 
@@ -496,6 +498,72 @@ export function findRecipe(grid: readonly Slot[], size: number): Recipe | null {
     }
   }
   return null;
+}
+
+/**
+ * **盤面から作れるもの 1 つ。** `Recipe`（静的な表）と違って**その場ごとの値**を持ちます ——
+ * `damage` は出来上がりに載る傷で、**レシピから作ったものはいつも 0**（新品）です。
+ *
+ * **`Recipe` に `damage` の列を足さないこと** —— 表は「何から何が作れるか」しか持たず、
+ * 傷は盤面に置かれた物で決まります（ミルクバケツの残りかすを `Recipe` ではなく
+ * `items.ts` の `leftoverOf()` に持たせたのと同じ切り分け。`consumeGrid()` の上）。
+ */
+export interface Craft {
+  readonly name: string;
+  readonly out: number;
+  readonly count: number;
+  /** 出来上がりに載る傷。**修理以外は 0**。 */
+  readonly damage: number;
+}
+
+/**
+ * **盤面から作れるものを探す。レシピが先、修理は後。**
+ *
+ * **順番を逆にしないこと。** 2 枠で成立する既存レシピは棒（板 2 枚）とシアーズ
+ * （鉄 2 個）の 2 本だけで、どちらの材料も傷を持たないので**いまはぶつかりません**が、
+ * 修理を先に見ると、将来「傷が付く物 2 個」のレシピを足した日に静かに壊れます。
+ *
+ * **`findRecipe()` の振る舞いは変えません**（既存のテストが直に呼びます）。
+ * 画面（`craftscreen.ts`）が見るのはこちら 1 本だけです。
+ */
+export function findCraft(grid: readonly Slot[], size: number): Craft | null {
+  const recipe = findRecipe(grid, size);
+  if (recipe) return { name: recipe.name, out: recipe.out, count: recipe.count, damage: 0 };
+  return findRepair(grid, size);
+}
+
+/**
+ * **同じ道具を 2 つ並べると 1 つになる**（本家のクラフト修理）。2 枠しか使わないので
+ * **2x2 でも 3x3 でも成立します**（作業台が要りません）。
+ *
+ * 修理にならないのは 4 通り: 埋まっている枠が 2 つでない / 違う物 / **傷が付かない物**
+ * （棒を 2 個並べても何も出ません）/ —— **「傷んでいるか」は見ません。**
+ * 新品 2 本でも成立して 1 本が丸損になるのは本家のままで、ここに「傷んでいるか」を
+ * 足すと、戻る量を決める `durability.ts` と判断が 2 か所に分かれます。
+ *
+ * **何回ぶん戻るかはここに書かないこと**（`durability.ts` の `repairedDamage()`）。
+ */
+function findRepair(grid: readonly Slot[], size: number): Craft | null {
+  const filled: Slot[] = [];
+  for (let i = 0; i < size * size; i++) {
+    const slot = grid[i];
+    if (!slot || isEmpty(slot)) continue;
+    if (filled.length >= 2) return null;
+    filled.push(slot);
+  }
+  if (filled.length !== 2) return null;
+
+  const [a, b] = filled;
+  if (a.item !== b.item) return null;
+  if (!wearable(a.item)) return null;
+  // 名前は素の物のまま。**「（修理）」を付けないこと** —— 出来上がりの名前は
+  // スロットの真下に浮かせてあるので、伸ばすと盤面のスロットに重なります。
+  return {
+    name: itemName(a.item),
+    out: a.item,
+    count: 1,
+    damage: repairedDamage(a.item, damageOf(a), damageOf(b)),
+  };
 }
 
 /**

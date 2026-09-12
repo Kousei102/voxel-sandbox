@@ -24,8 +24,9 @@ import {
   WOOD,
   WOOL,
 } from "../src/blocks";
-import { RECIPES, consumeGrid, findRecipe } from "../src/crafting";
+import { RECIPES, type Recipe, consumeGrid, findCraft, findRecipe } from "../src/crafting";
 import { CraftScreen } from "../src/craftscreen";
+import { maxUses, repairedDamage } from "../src/durability";
 import { Inventory, isEmpty, type Slot } from "../src/inventory";
 import {
   APPLE,
@@ -77,6 +78,7 @@ import {
   WOOD_SWORD,
   allLeftoverIds,
   emptyAfterEating,
+  itemName,
   itemStackLimit,
   leftoverOf,
   rollDrops,
@@ -859,4 +861,112 @@ export function run(): void {
   );
   console.log(`      いちばん長いレシピ名は「${longest}」= 全角 ${hintWidth(longest)} 文字ぶん（上限 ${HINT_LIMIT}）`);
   check("レシピ名は盤面のスロットに届かない", hintWidth(longest) <= HINT_LIMIT, longest);
+
+  // --- 道具の修理（`findCraft()`。何回ぶん戻るかは `durability.ts`） ---
+  describe("道具の修理（盤面が修理の形か）");
+
+  // 退行の見張り: **既存 65 本が今までどおり返ること**を、`findRecipe()` と並べて測る。
+  // `findCraft()` はレシピを先に見るので、1 本でもずれたら順番か型が壊れた合図。
+  {
+    /** レシピ 1 本ぶんの盤面を組む（形ありは shape / key、形なしは ingredients を左上から）。 */
+    const gridOf = (recipe: Recipe, size: number): Slot[] => {
+      const slots: Slot[] = Array.from({ length: size * size }, () => ({ item: NO_ITEM, count: 0 }));
+      if (recipe.shape) {
+        recipe.shape.forEach((row, y) => {
+          for (let x = 0; x < row.length; x++) {
+            const ch = row[x];
+            if (ch === ".") continue;
+            slots[y * size + x] = { item: recipe.key?.[ch] ?? NO_ITEM, count: 1 };
+          }
+        });
+      } else {
+        (recipe.ingredients ?? []).forEach((item, i) => {
+          slots[i] = { item, count: 1 };
+        });
+      }
+      return slots;
+    };
+
+    let compared = 0;
+    const mismatched: string[] = [];
+    for (const recipe of RECIPES) {
+      const board = gridOf(recipe, 3);
+      const was = findRecipe(board, 3);
+      const now = findCraft(board, 3);
+      compared++;
+      if (!was || !now) {
+        mismatched.push(`${recipe.name}（片方が無し）`);
+        continue;
+      }
+      if (was.out !== now.out || was.count !== now.count || was.name !== now.name) {
+        mismatched.push(`${recipe.name}（${was.out}x${was.count} ≠ ${now.out}x${now.count}）`);
+        continue;
+      }
+      if (now.damage !== 0) mismatched.push(`${recipe.name}（傷 ${now.damage}）`);
+    }
+    console.log(`      findCraft と findRecipe を ${compared} 本で突き合わせ: 食い違い ${mismatched.length} 件`);
+    check(
+      `既存 ${RECIPES.length} 本は今までどおり返る（傷は 0）`,
+      compared === RECIPES.length && mismatched.length === 0,
+      mismatched.slice(0, 3).join(" / "),
+    );
+  }
+
+  // 修理の形は 6 通り。**null になる側も理由ごとに 1 件ずつ。**
+  {
+    const worn = (item: number, damage: number): Slot => ({ item, count: 1, damage });
+    const board = (size: number, cells: (Slot | null)[]): Slot[] => {
+      const slots: Slot[] = Array.from({ length: size * size }, () => ({ item: NO_ITEM, count: 0 }));
+      cells.forEach((cell, i) => {
+        if (cell) slots[i] = cell;
+      });
+      return slots;
+    };
+
+    const max = maxUses(WOOD_PICKAXE);
+    const expected = repairedDamage(WOOD_PICKAXE, 40, 30);
+    const repaired = findCraft(board(3, [worn(WOOD_PICKAXE, 40), worn(WOOD_PICKAXE, 30)]), 3);
+    console.log(
+      `      木のツルハシ（最大 ${max}）傷 40 + 傷 30 → ${repaired?.name ?? "無し"} x${repaired?.count ?? 0}` +
+        ` / 傷 ${repaired?.damage ?? "-"}（期待 ${expected}・残り ${max - expected}）`,
+    );
+    check(
+      "同じ傷んだ道具 2 つ → 1 本になって傷が減る",
+      repaired?.out === WOOD_PICKAXE && repaired.count === 1 && repaired.damage === expected,
+      `${repaired?.damage ?? "無し"}`,
+    );
+    check("修理の名前は素の道具のまま", repaired?.name === itemName(WOOD_PICKAXE), repaired?.name ?? "無し");
+
+    // 2x2（手持ち）でも成立する —— 2 枠しか使わないので作業台が要らない。
+    const inHand = findCraft(board(2, [worn(WOOD_PICKAXE, 40), worn(WOOD_PICKAXE, 30)]), 2);
+    console.log(`      2x2（手持ち）: ${inHand?.name ?? "無し"} / 傷 ${inHand?.damage ?? "-"}`);
+    check(
+      "2x2 でも 3x3 でも同じように修理できる",
+      inHand?.out === WOOD_PICKAXE && inHand.damage === expected,
+      `${inHand?.damage ?? "無し"}`,
+    );
+
+    const mixed = findCraft(board(3, [worn(WOOD_PICKAXE, 10), worn(STONE_AXE, 10)]), 3);
+    check("違う道具 2 つでは修理にならない", mixed === null, mixed?.name ?? "無し");
+
+    const sticks = findCraft(board(3, [worn(STICK, 0), worn(STICK, 0)]), 3);
+    check("傷まない物（棒 2 個）は修理にならない", sticks === null, sticks?.name ?? "無し");
+
+    const three = findCraft(
+      board(3, [worn(WOOD_PICKAXE, 10), worn(WOOD_PICKAXE, 10), worn(WOOD_PICKAXE, 10)]),
+      3,
+    );
+    check("同じ道具 3 つでは修理にならない", three === null, three?.name ?? "無し");
+
+    const alone = findCraft(board(3, [worn(WOOD_PICKAXE, 10)]), 3);
+    check("1 つだけでは修理にならない", alone === null, alone?.name ?? "無し");
+
+    // 棒（板 2 枚・縦）は 2 枠のレシピ。**レシピを先に見る**ので、修理に食われない。
+    const stickRecipe = findCraft(grid(2, ["P.", "P."], P), 2);
+    check(
+      "2 枠の既存レシピ（棒）はレシピのほうが勝つ",
+      stickRecipe?.out === STICK && stickRecipe.count === 4 && stickRecipe.damage === 0,
+      `${stickRecipe?.name ?? "無し"} x${stickRecipe?.count ?? 0}`,
+    );
+  }
 }

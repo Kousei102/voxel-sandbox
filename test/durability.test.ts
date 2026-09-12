@@ -9,6 +9,7 @@ import {
 import {
   BOW_USES,
   FIRE_STARTER_USES,
+  REPAIR_BONUS,
   SHEARS_USES,
   TOOL_USES,
   breakMessage,
@@ -16,6 +17,7 @@ import {
   damageOf,
   deserializeWear,
   maxUses,
+  repairedDamage,
   serializeWear,
   wearBar,
   wearForAttack,
@@ -970,4 +972,78 @@ export function run(): void {
   const hoeNames = [/\bWOOD_HOE\b/, /\bSTONE_HOE\b/, /\bIRON_HOE\b/, /\bDIAMOND_HOE\b/]
     .filter((re) => re.test(durabilitySource));
   check("durability.ts にクワのアイテム名が出てこない", hoeNames.length === 0, hoeNames.join(" / "));
+
+  // --- 修理で戻る量（`repairedDamage()`。「盤面が修理の形か」は `crafting.ts`） ---
+  describe("道具の修理（何回ぶん戻るか）");
+
+  // 傷を持てるもの 7 種類を、**新品 2 本 / 半分 2 本 / 満身創痍 2 本**の 3 通りで並べる。
+  // 本家の式は **残りA + 残りB + floor(最大 × 5%)** を最大で頭打ち。
+  {
+    const kinds: [string, number][] = [
+      ["木のツルハシ", WOOD_PICKAXE],
+      ["石のツルハシ", STONE_PICKAXE],
+      ["鉄のツルハシ", IRON_PICKAXE],
+      ["ダイヤのツルハシ", DIAMOND_PICKAXE],
+      ["弓", BOW],
+      ["シアーズ", SHEARS],
+      ["火打石と打ち金", FLINT_AND_STEEL],
+    ];
+    console.log(`      ボーナスの割合は ${REPAIR_BONUS}（最大の 5%・切り捨て）`);
+
+    let wrongBonus = 0;
+    let wrongFresh = 0;
+    let wrongHalf = 0;
+    let wrongWorn = 0;
+    for (const [name, item] of kinds) {
+      const max = maxUses(item);
+      const bonus = Math.floor(max * REPAIR_BONUS);
+      const fresh = repairedDamage(item, 0, 0);
+      const half = repairedDamage(item, Math.floor(max / 2), Math.floor(max / 2));
+      const worn = repairedDamage(item, max - 1, max - 1);
+      console.log(
+        `      ${name}: 最大 ${max} / ボーナス ${bonus} →` +
+          ` 新品 2 本 傷 ${fresh}（残り ${max - fresh}）/ 半分 2 本 傷 ${half}` +
+          ` / 満身創痍 2 本 傷 ${worn}（残り ${max - worn}）`,
+      );
+      // ボーナスの実数（木 2 / 石 6 / 鉄 12 / ダイヤ 78 / 弓 19 / シアーズ 11 / 火種 3）
+      if (bonus !== Math.floor(max * 0.05)) wrongBonus++;
+      // 新品 2 本は頭打ち = 1 本まるごと損（本家のまま。止めない）
+      if (fresh !== 0) wrongFresh++;
+      // 半分 2 本は合わせて最大を越えるので、やはり新品に戻る
+      if (half !== 0) wrongHalf++;
+      // 満身創痍（残り 1 ずつ）は 1 + 1 + ボーナスぶんだけ戻る
+      if (worn !== max - (2 + bonus)) wrongWorn++;
+    }
+    check("ボーナスは最大の 5% 切り捨て", wrongBonus === 0, `${wrongBonus} 件ずれ`);
+    check("新品 2 本を合わせても最大で頭打ち", wrongFresh === 0, `${wrongFresh} 件ずれ`);
+    check("半分 2 本でも新品に戻る", wrongHalf === 0, `${wrongHalf} 件ずれ`);
+    check("満身創痍 2 本は 2 + ボーナスぶんだけ戻る", wrongWorn === 0, `${wrongWorn} 件ずれ`);
+
+    // 表の 4 本ぶんは実数でも押さえる（式を書き換えたら、ここが先に落ちる）。
+    const bonuses = [WOOD_PICKAXE, STONE_PICKAXE, IRON_PICKAXE, DIAMOND_PICKAXE].map((item) =>
+      Math.floor(maxUses(item) * REPAIR_BONUS),
+    );
+    console.log(`      道具 4 階層のボーナス: ${bonuses.join(" / ")}（期待 2 / 6 / 12 / 78）`);
+    check(
+      "道具 4 階層のボーナスは 2 / 6 / 12 / 78",
+      bonuses.join(",") === "2,6,12,78",
+      bonuses.join(" / "),
+    );
+    const others = [BOW, SHEARS, FLINT_AND_STEEL].map((item) =>
+      Math.floor(maxUses(item) * REPAIR_BONUS),
+    );
+    console.log(`      弓 / シアーズ / 火種のボーナス: ${others.join(" / ")}（期待 19 / 11 / 3）`);
+    check("弓・シアーズ・火種のボーナスは 19 / 11 / 3", others.join(",") === "19,11,3", others.join(" / "));
+
+    // 傷まない物は 0（呼ばれても害が無い。「棒 2 個は修理ではない」の判断は `crafting.ts`）
+    const stick = repairedDamage(STICK, 0, 0);
+    const arrow = repairedDamage(ARROW, 3, 3);
+    console.log(`      傷まない物: 棒 ${stick} / 矢 ${arrow}`);
+    check("傷まない物は 0 を返す", stick === 0 && arrow === 0, `棒 ${stick} / 矢 ${arrow}`);
+
+    // 壊れかけ 1 本 + 新品 1 本は必ず新品に戻る（残りだけで最大を越える）
+    const mixed = repairedDamage(WOOD_PICKAXE, 58, 0);
+    console.log(`      木のツルハシ 残り 1 + 新品 → 傷 ${mixed}`);
+    check("片方が新品なら必ず新品に戻る", mixed === 0, `${mixed}`);
+  }
 }

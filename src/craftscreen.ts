@@ -1,5 +1,5 @@
 import { addToChest, type ChestState } from "./chests";
-import { consumeGrid, findRecipe } from "./crafting";
+import { consumeGrid, findCraft } from "./crafting";
 import { carryWear, damageOf, deserializeWear, serializeWear } from "./durability";
 import {
   ARMOR_SLOTS,
@@ -722,12 +722,16 @@ export class CraftScreen {
     // （かまどの焼き上がりは本物のスロットで、つまんで取る）
     if (!this.crafting) return NOTHING;
     if (all) return this.quickCraft();
-    const recipe = findRecipe(this.activeGrid(), this.craftSize);
+    const recipe = findCraft(this.activeGrid(), this.craftSize);
     if (!recipe) return NOTHING;
 
     if (isEmpty(this.heldSlot)) {
       this.heldSlot.item = recipe.out;
       this.heldSlot.count = recipe.count;
+      // 修理した道具は傷ごと手に載る（**`item` を入れたあとで呼ぶこと**）。
+      // 掴んでいる山に積む下の道は通りません —— 傷が付く物は全部 `stack: 1` なので、
+      // 同じ道具を掴んだままでは `count + 1 > 1` で弾かれます。
+      carryWear(this.heldSlot, recipe.damage);
     } else if (this.heldSlot.item === recipe.out) {
       if (this.heldSlot.count + recipe.count > itemStackLimit(recipe.out)) return NOTHING;
       this.heldSlot.count += recipe.count;
@@ -745,11 +749,11 @@ export class CraftScreen {
   private quickCraft(): ScreenResult {
     let made = 0;
     for (let n = 0; n < MAX_QUICK_CRAFT; n++) {
-      const recipe = findRecipe(this.activeGrid(), this.craftSize);
+      const recipe = findCraft(this.activeGrid(), this.craftSize);
       if (!recipe) break;
       if (this.inventory.roomFor(recipe.out) < recipe.count) break;
       consumeGrid(this.activeGrid());
-      this.inventory.add(recipe.out, recipe.count);
+      this.inventory.add(recipe.out, recipe.count, recipe.damage);
       made++;
     }
     return made > 0 ? CRAFTED : NOTHING;
@@ -808,11 +812,18 @@ export class CraftScreen {
     return { lit, text: "この燃料は燃えません" };
   }
 
-  /** 出来上がりの見本。無ければ null。文字の組み立ては UI 側でやる。 */
-  result(): { item: number; count: number; name: string } | null {
+  /**
+   * 出来上がりの見本。無ければ null。文字の組み立ては UI 側でやる。
+   *
+   * **`damage` まで返すこと。** これは `Slot` の形なので、`paintSlot()` がそのまま
+   * 受け取って**修理後の傷の帯を出します**（UI に 1 行も足さずに済む唯一の道）。
+   */
+  result(): { item: number; count: number; name: string; damage: number } | null {
     if (!this.crafting) return null;
-    const recipe = findRecipe(this.activeGrid(), this.craftSize);
-    return recipe ? { item: recipe.out, count: recipe.count, name: recipe.name } : null;
+    const recipe = findCraft(this.activeGrid(), this.craftSize);
+    return recipe
+      ? { item: recipe.out, count: recipe.count, name: recipe.name, damage: recipe.damage }
+      : null;
   }
 
   // --- セーブ ---
