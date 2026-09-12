@@ -456,6 +456,23 @@ export const LEATHER_LEGGINGS = 160;
 export const LEATHER_BOOTS = 161;
 
 /**
+ * 骨。**スケルトン（`mobs.ts` の `SKELETON`）を倒すと必ず 1 個**出ます
+ * （`MobDef.drop` の 1 山目。**2 山目は矢 1 本が半分の確率**で、そちらは
+ * `MobDrop.extra` です —— 弓の矢がここで初めて「稼げる」ようになります）。
+ *
+ * **使い道はまだありません** —— **骨粉は別の周**（`AUTODEV-QUEUE.md`）なので、
+ * `crafting.ts` にも `SMELTING` にも 1 行もありません。
+ * **置けず・道具でもなく・食べ物でもありません**（革・糸・羽根とまったく同じ扱い）。
+ * **`tool:` を持たせないこと**（種・パン・肉・羽根と同じ罠。`ToolKind` が増えると
+ * `mobs.ts` の `TOOL_ATTACK` に無い種類が入って **NaN** が黙って通ります）。
+ *
+ * **色 `0xcdc8b0` は測って選んだ値です。** 淡い暖色は一覧でいちばん混んでいる帯
+ * （矢・鉄インゴット・砂・羽根・羊毛）で、素直な `0xd8cfae` は砂と **20.9** しか
+ * 離れません（判定は 20）。この値でいちばん近いのは**砂で 24.6** です。
+ */
+export const BONE = 162;
+
+/**
  * 一覧を作るときに数え上げる上限（`allItemIds()`）。**アイテムの番号だけでなく、
  * ブロックが自動で作るアイテム（上の for）の番号も含みます。**
  *
@@ -464,14 +481,14 @@ export const LEATHER_BOOTS = 161;
  * （`craftscreen.ts` の `CREATIVE_ITEMS`）にだけ出てこないブロック**ができます
  * （置けるし掘れるので、型でも `typecheck` でも止まりません）。
  *
- * **いまは革の靴（アイテム 161）が上限です。** 直前が革のズボン 160・革の上着 159・
- * 革の帽子 158 で、その前がフェンス（ブロック 157）・氷（ブロック 156）。
+ * **いまは骨（アイテム 162）が上限です。** 直前が革の防具 4 部位（158..161）で、
+ * その前がフェンス（ブロック 157）・氷（ブロック 156）。
  * **共有帯ではブロックとアイテムが 1 本の番号列**なので、上限を持つのがどちら側かは
  * 決まりません（`items.ts` に 1 行も書いていないブロックが上限だったのは 8 度目まで）。
  * **上限をこちら側へ移したら、それまで指していたブロックの import を消すこと** ——
  * 残すと「使われていない」で `npm run typecheck` が落ちます（型で止まる安全な罠）。
  */
-export const MAX_ITEM_ID = LEATHER_BOOTS;
+export const MAX_ITEM_ID = BONE;
 
 export const MAX_STACK = 64;
 
@@ -718,6 +735,11 @@ item({ id: LEATHER_HELMET, name: "革の帽子", block: AIR, stack: 1, color: 0x
 item({ id: LEATHER_CHESTPLATE, name: "革の上着", block: AIR, stack: 1, color: 0xd88662, tool: null });
 item({ id: LEATHER_LEGGINGS, name: "革のズボン", block: AIR, stack: 1, color: 0xb16e51, tool: null });
 item({ id: LEATHER_BOOTS, name: "革の靴", block: AIR, stack: 1, color: 0x644122, tool: null });
+
+// 骨。**`block: AIR` / `tool: null`**（置けず・道具でもなく・`FOODS` にも `SMELTING` にも
+// 行が無い。革・糸・羽根とまったく同じ扱い）。**色は測って選んだ値**（上の `BONE` の説明。
+// 素直な 0xd8cfae は砂と 20.9 しか離れず、判定 20 のすぐ上だった）。
+item({ id: BONE, name: "骨", block: AIR, stack: MAX_STACK, color: 0xcdc8b0, tool: null });
 
 const EMPTY: ItemDef = ITEMS[NO_ITEM];
 

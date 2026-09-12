@@ -1,4 +1,5 @@
 import {
+  BONE,
   LEATHER,
   LEATHER_BOOTS,
   LEATHER_CHESTPLATE,
@@ -7,6 +8,7 @@ import {
   allArmorIds,
   allItemIds,
   armorOf,
+  foodOf,
   itemColor,
   itemName,
   itemStackLimit,
@@ -139,5 +141,41 @@ export function run(): void {
     "上ほど明るい（帽子 > 上着 > ズボン > 靴）",
     ladder[0] > ladder[1] && ladder[1] > ladder[2] && ladder[2] > ladder[3],
     ladder.map((v) => v.toFixed(0)).join(" / "),
+  );
+
+  describe("骨（スケルトンの落とし物）");
+
+  // **置けず・掘る道具でもなく・食べ物でもない**（革・糸・羽根とまったく同じ扱い）。
+  // `tool:` を付けると `mobs.ts` の `TOOL_ATTACK` に無い種類が入って
+  // `attackDamage()` が NaN を返す（`rules/items-survival.md`）。
+  console.log(
+    `      骨(${BONE}) ${itemName(BONE)} 0x${itemColor(BONE).toString(16)}  置ける ` +
+      `${placedBlock(BONE) !== 0} / 道具 ${toolOf(BONE) !== null} / 食べ物 ${foodOf(BONE) !== null}` +
+      ` / 1 枠 ${itemStackLimit(BONE)} 個`,
+  );
+  check(
+    "骨は置けず・道具でもなく・食べ物でもない",
+    placedBlock(BONE) === 0 && toolOf(BONE) === null && foodOf(BONE) === null &&
+      itemStackLimit(BONE) === 64,
+    `block ${placedBlock(BONE)} / tool ${toolOf(BONE)} / food ${foodOf(BONE)} / stack ${itemStackLimit(BONE)}`,
+  );
+  // **淡い暖色は一覧でいちばん混んでいる帯**（矢・鉄インゴット・砂・羽根・羊毛）。
+  // 素直な 0xd8cfae は砂と 20.9 しか離れず、判定 20 のすぐ上だった —— だから
+  // **いちばん近い相手と隔たりを出してから**判定する（`HANDOFF.md` の実測）。
+  let boneBest = Infinity;
+  let boneWho = "";
+  for (const other of ids) {
+    if (other === BONE) continue;
+    const gap = dist(itemColor(BONE), itemColor(other));
+    if (gap < boneBest) {
+      boneBest = gap;
+      boneWho = itemName(other);
+    }
+  }
+  console.log(`      骨の色のいちばん近い相手: ${boneWho} ${boneBest.toFixed(1)}`);
+  check(
+    "骨は既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）",
+    boneBest >= 20,
+    `いちばん近いのは${boneWho}で ${boneBest.toFixed(1)}`,
   );
 }

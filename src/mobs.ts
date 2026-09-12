@@ -13,7 +13,9 @@ import { Color, Vector3 } from "three";
 import { AIR, GRASS, NETHER_BRICK, WOOL, isHotLiquid, isLiquid, isSolid } from "./blocks";
 import { MAX_LIGHT, WORLD_HEIGHT, columnOf } from "./constants";
 import {
+  ARROW,
   BLAZE_ROD,
+  BONE,
   EGG,
   ENDER_PEARL,
   FEATHER,
@@ -49,6 +51,7 @@ export type MobKind =
   | "cow"
   | "zombie"
   | "spider"
+  | "skeleton"
   | "blaze"
   | "enderman"
   | "dragon";
@@ -880,6 +883,110 @@ const SPIDER: MobDef = {
   ],
 };
 
+const SKELETON_BONE = 0xcdc8b0;
+const SKELETON_EYE = 0x26211a;
+
+/**
+ * スケルトン。**3 種類目の地表の敵対モブで、初めて「地上から矢を撃ってくる」相手。**
+ * 表の作りはゾンビ・クモとまったく同じで、**新しい飛び方も新しい AI も 1 つも要らない**
+ * （`ranged` の仕掛けはブレイズの火球で全部通っている）。
+ *
+ * 当たり判定は本家と同じ 0.6 x 1.99。段差はゾンビと同じ 0.6 ——
+ * **プレイヤーが登れる所には付いてくる。**
+ *
+ * **⚠ `ranged.range` を 10 より伸ばさないこと。** 矢は**重力を受ける**
+ * （`projectiles.ts` の `arrow` は `gravityScale: 1`・速さ 40・`drag` 0.02）。
+ * 狙いは `PLAYER_AIM`(1.4) の高さへ**まっすぐ**なので、落ちたぶんがそのまま
+ * 当たる高さを下げる —— **実測で 10m 先 1.13m（足元から 0.27m に当たる）・
+ * 16m 先 2.70m（プレイヤーの下を 1.30m 抜ける）**（`test/mobs.test.ts` が
+ * 毎回測っています）。**ブレイズの 16 を写さないこと**（あちらの火球は
+ * `gravityScale: 0`）。伸ばすなら `fire()` に先読みか山なりが要るので、
+ * それは別の周の話（`rules/mobs.md` の「狙うのは、いまプレイヤーが居る所」）。
+ *
+ * **本家と違って間合いを取りません**（近づいて殴りもする）。下がりながら撃つのは
+ * `think` に新しい動き方を足す話なので、ここには入れていない（`TUNING.md`）。
+ *
+ * グループの並び: 0 = 胴（固定）、1 = 頭、2..3 = 腕、4..5 = 脚。
+ *
+ * **頭も胴も腕も同じ骨色なので、輪郭を出さないと「前から見ると 1 枚の板」になる**
+ * （牛の頭・鶏の翼で踏んだ罠。`rules/mobs.md`）。だから**胴を頭より細くして**
+ * （頭 ±4px に対して胴 ±2px）、**腕を胴から 0.6px 離してある**（腕 2.6..4.6px。
+ * **鶏の翼とまったく同じ逃げ方** —— 撮ったら胴と腕が 1 枚の板に見えたので離した）。
+ * 脚（1..3px）も胴より外に出る。顔には**前面から 0.1px 出した暗い目**を置く
+ * （同じ色の箱を中に置くと 1 画素も見えない）。
+ * 腕の外端 ±4.6px は判定の縁 ±4.8px に触れていない。
+ */
+const SKELETON: MobDef = {
+  kind: "skeleton",
+  name: "スケルトン",
+  // 本家と同じ 0.6 x 1.99。**`longBody` に足さない / 広げないこと** ——
+  // 収まらないときは形のほうを削る（`rules/mobs.md`）。
+  size: { half: 0.3, height: 1.99, step: 0.6 },
+  maxHealth: 20,
+  // ゾンビと同じ。**歩き 5.2 より遅い**ので、走らなくても振り切れる
+  // （代わりに矢が追ってくる、という手応え）。
+  speed: 4.6,
+  hostile: true,
+  // 近接はゾンビ並み。**本体は矢のほう**で、殴られるのは詰められたときだけ。
+  damage: 2,
+  // 矢。**飛び方は `projectiles.ts` の表**で、ここが持つのは手応えの数値だけ。
+  // `near` を 0 にしないこと —— 足元へ撃つ形になって、近接と二重取りになる。
+  ranged: {
+    kind: "arrow",
+    damage: 3,
+    // **10 より伸ばさないこと**（上の ⚠。矢は重力を受ける）。
+    range: 10,
+    near: 3,
+    cooldown: 2,
+    // 弓を構える高さ（当たり判定 1.99 の胸のあたり）。低すぎると自分の足場に当たる。
+    height: 1.5,
+  },
+  teleport: null,
+  // **ゾンビ・クモと同じ重み**（本家のまま）。夜の「どこでも」の敵対は 3 種類で
+  // ほぼ同数になり、エンダーマン（10）だけがその 1/10。
+  spawnWeight: 100,
+  flying: false,
+  hover: 0,
+  // **false のまま** —— そのまま「朝に燃える」になる（本家のスケルトンも燃える）。
+  fireproof: false,
+  spawnOn: null,
+  boss: false,
+  orbit: null,
+  phases: null,
+  regen: 0,
+  // 骨は必ず 1 個、矢は半分の確率で 2 山目。**個数の範囲は持たせない**
+  // （本家の 0〜2 本ではなく 1 本固定。羽根・革と同じ線引き。`TUNING.md`）。
+  drop: { item: BONE, count: 1, chance: 1, extra: { item: ARROW, count: 1, chance: 0.5 } },
+  shearing: null,
+  milkable: false,
+  laying: null,
+  // ゾンビ（0.7）より乾いた高さ。
+  voice: 1.3,
+  groups: [
+    { motion: "fixed", pivot: [0, 0, 0], phase: 0 },
+    { motion: "head", pivot: [0, px(22), 0], phase: 0 },
+    { motion: "swing", pivot: [px(-3.6), px(21), 0], phase: Math.PI },
+    { motion: "swing", pivot: [px(3.6), px(21), 0], phase: 0 },
+    { motion: "swing", pivot: [px(-2), px(11), 0], phase: 0 },
+    { motion: "swing", pivot: [px(2), px(11), 0], phase: Math.PI },
+  ],
+  boxes: [
+    // 胴。**頭（±4px）より細い ±2px**（同じ骨色なので、細くしないと輪郭が出ない）
+    { group: 0, box: [px(-2), px(11), px(-2), px(2), px(22), px(2)], color: SKELETON_BONE },
+    // 頭（軸は首。箱は軸からの相対）
+    { group: 1, box: [px(-4), 0, px(-4), px(4), px(8), px(4)], color: SKELETON_BONE },
+    // 目。**頭の前面から 0.1px 出す**（同じ色の箱を中に置くと 1 画素も見えない）
+    { group: 1, box: [px(-2.5), px(4), px(-4.1), px(-1), px(5.5), px(-4)], color: SKELETON_EYE },
+    { group: 1, box: [px(1), px(4), px(-4.1), px(2.5), px(5.5), px(-4)], color: SKELETON_EYE },
+    // 腕・脚（**軸からぶら下げる = y1 が 0**。0 でないと肘や足首で回る）。
+    // 腕は胴（±2px）から 0.6px 離した 2.6..4.6px で、判定の縁 ±4.8px に触れていない。
+    { group: 2, box: [px(-1), px(-10), px(-1), px(1), 0, px(1)], color: SKELETON_BONE },
+    { group: 3, box: [px(-1), px(-10), px(-1), px(1), 0, px(1)], color: SKELETON_BONE },
+    { group: 4, box: [px(-1), px(-11), px(-1), px(1), 0, px(1)], color: SKELETON_BONE },
+    { group: 5, box: [px(-1), px(-11), px(-1), px(1), 0, px(1)], color: SKELETON_BONE },
+  ],
+};
+
 const BLAZE_CORE = 0xd8890f;
 const BLAZE_ROD_COLOR = 0xffd83d;
 const BLAZE_EYE = 0x4a2408;
@@ -1168,6 +1275,7 @@ export const MOBS: Record<MobKind, MobDef> = {
   cow: COW,
   zombie: ZOMBIE,
   spider: SPIDER,
+  skeleton: SKELETON,
   blaze: BLAZE,
   enderman: ENDERMAN,
   dragon: DRAGON,
@@ -1179,6 +1287,7 @@ export const MOB_KINDS: readonly MobKind[] = [
   "cow",
   "zombie",
   "spider",
+  "skeleton",
   "blaze",
   "enderman",
   "dragon",
@@ -2741,8 +2850,12 @@ const playerFoot = new Vector3();
 /**
  * 撃つときと見るときに狙うプレイヤーの高さ（足元から）。**胸のあたり。**
  * 足元を狙うと、坂の下に居る人には必ず地面が先に当たる。
+ *
+ * **重力を受ける弾（矢）の `ranged.range` はこの高さから決まります** ——
+ * まっすぐ狙って落ちたぶんが 1.4 を超えると、プレイヤーの下を抜ける
+ * （`test/mobs.test.ts` が実測しています）。だから外へ出してある。
  */
-const PLAYER_AIM = 1.4;
+export const PLAYER_AIM = 1.4;
 
 /**
  * その向きに遮るものが無いか（撃ってよいか）。

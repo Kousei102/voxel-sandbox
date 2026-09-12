@@ -16,6 +16,8 @@ import {
 import { MAX_LIGHT, columnOf } from "../src/constants";
 import { DayNight } from "../src/daynight";
 import {
+  ARROW,
+  BONE,
   DIAMOND_AXE,
   DIAMOND_SWORD,
   EGG,
@@ -56,6 +58,7 @@ import {
   MOB_KINDS,
   Mobs,
   PASSIVE_SKY_MIN,
+  PLAYER_AIM,
   SPAWN_MIN_DISTANCE,
   WALK_SWING,
   canSpawnHostile,
@@ -79,7 +82,7 @@ import {
 } from "../src/mobs";
 import { DIMENSIONS, END, OVERWORLD } from "../src/dimensions";
 import { PLAYER_OWNER, Projectiles, type Shot } from "../src/projectiles";
-import { boxBlocked } from "../src/physics";
+import { PLAYER_SIZE, boxBlocked } from "../src/physics";
 import { raycastVoxels } from "../src/raycast";
 import type { Sfx } from "../src/sfx";
 import { BURN_SECONDS, MAX_HEALTH, MOB_HURT_COOLDOWN, Vitals } from "../src/vitals";
@@ -1265,31 +1268,36 @@ export function run(): void {
       anywhere.every((k) => (onStone[k] ?? 0) > 0) && Math.max(...off) < 0.03,
       `${anywhere.length} 種類 / ずれ ${(Math.max(...off) * 100).toFixed(1)} ポイント`,
     );
-    // **クモ（100）が入って表が 3 種類になった。** ゾンビとクモは同じ重みなので
-    // **ほぼ同数**になり、エンダーマン（10）だけがその 1/10 —— 「ゾンビがいちばん」は
-    // もう成り立たない。**ゆるめるのではなく、3 つの実測値を出してから数え直すこと。**
+    // **スケルトン（100）が入って表が 4 種類になった。** ゾンビ・クモ・スケルトンは
+    // 同じ重みなので **3 つともほぼ同数**になり、エンダーマン（10）だけがその 1/10 ——
+    // 「ゾンビとクモがほぼ同数」だけを見ていると、3 つ目が入った瞬間に
+    // **重みが割れたぶんが素通りする。ゆるめるのではなく、4 つの実測値を出してから
+    // 数え直すこと**（クモを足したときとまったく同じ話）。
     const zombies = onStone.zombie ?? 0;
     const spiders = onStone.spider ?? 0;
+    const skeletons = onStone.skeleton ?? 0;
     const endermen = onStone.enderman ?? 0;
+    const even = [zombies, spiders, skeletons];
+    const spread = Math.max(...even) - Math.min(...even);
     console.log(
-      `      ゾンビ ${zombies} / クモ ${spiders} / エンダーマン ${endermen}` +
-        `（ゾンビとクモの差 ${Math.abs(zombies - spiders)} 回）`,
+      `      ゾンビ ${zombies} / クモ ${spiders} / スケルトン ${skeletons} / エンダーマン ${endermen}` +
+        `（同じ重み 3 つのいちばんの差 ${spread} 回）`,
     );
     check(
-      "ゾンビとクモがほぼ同数で、エンダーマンはその 1/10",
-      Math.abs(zombies - spiders) < ROLLS * 0.05 &&
-        zombies > endermen * 5 && spiders > endermen * 5 && endermen > 0,
-      `ゾンビ ${zombies} / クモ ${spiders} / エンダーマン ${endermen}`,
+      "ゾンビ・クモ・スケルトンがほぼ同数で、エンダーマンはその 1/10",
+      spread < ROLLS * 0.05 &&
+        even.every((n) => n > endermen * 5) && endermen > 0,
+      `ゾンビ ${zombies} / クモ ${spiders} / スケルトン ${skeletons} / エンダーマン ${endermen}`,
     );
   }
-  // **「どこでも」の敵対が 3 種類・ボスを除く敵対が 4 種類**であること。
+  // **「どこでも」の敵対が 4 種類・ボスを除く敵対が 5 種類**であること。
   // 種類の数そのものを 1 件にしておくと、`MOB_KINDS` へ足し忘れた新しい敵対に気付ける。
   {
     const hostiles = MOB_KINDS.filter((k) => MOBS[k].hostile && !MOBS[k].boss);
     console.log(`      敵対（ボスを除く）: ${hostiles.map((k) => MOBS[k].name).join(" / ")}`);
     check(
-      "敵対はゾンビ・クモ・ブレイズ・エンダーマンの 4 種類",
-      hostiles.length === 4 && hostiles.includes("spider"),
+      "敵対はゾンビ・クモ・スケルトン・ブレイズ・エンダーマンの 5 種類",
+      hostiles.length === 5 && hostiles.includes("spider") && hostiles.includes("skeleton"),
       `${hostiles.length} 種類: ${hostiles.join(" ")}`,
     );
   }
@@ -1501,7 +1509,7 @@ export function run(): void {
     for (let f = 0; f < frames; f++) group.update(1 / 60, world, c);
     // **種類を足したらここにも 1 行足すこと。** 無い名前だと `counts[name]++` が
     // `NaN` になり、数えているつもりで何も見ていない状態で緑になる。
-    const counts: Record<string, number> = { 豚: 0, 羊: 0, 鶏: 0, 牛: 0, ゾンビ: 0, クモ: 0 };
+    const counts: Record<string, number> = { 豚: 0, 羊: 0, 鶏: 0, 牛: 0, ゾンビ: 0, クモ: 0, スケルトン: 0 };
     for (const mob of group.list) counts[MOBS[mob.kind].name]++;
     return counts;
   }
@@ -1514,7 +1522,8 @@ export function run(): void {
   const torchlit = census((() => { const a = flatGrass(); a.block = 14; return a; })(), { brightness: midnight, random: seeded(41) });
   const inCave = census(stone, { brightness: noon, random: seeded(41) });
   const show = (c: Record<string, number>) =>
-    `豚 ${c.豚} / 羊 ${c.羊} / 鶏 ${c.鶏} / 牛 ${c.牛} / ゾンビ ${c.ゾンビ} / クモ ${c.クモ}`;
+    `豚 ${c.豚} / 羊 ${c.羊} / 鶏 ${c.鶏} / 牛 ${c.牛} / ゾンビ ${c.ゾンビ} / クモ ${c.クモ}` +
+    ` / スケルトン ${c.スケルトン}`;
   console.log(`      夜の草地      ${show(atNight)}`);
   console.log(`      昼の草地      ${show(atNoon)}`);
   console.log(`      夜+松明の草地 ${show(torchlit)}`);
@@ -1524,17 +1533,27 @@ export function run(): void {
   // **2 種類目の「どこでも」の敵対（クモ）も 1 件で見張る。** `MOB_KINDS` に足し忘れると、
   // 表にあるのに 1 体も湧かないモブが黙って残る（受動側の鶏・牛とまったく同じ話）。
   check("夜の草地にクモが湧く", atNight.クモ > 0, show(atNight));
-  // **上限は敵対の合計で見ること。** ゾンビだけを数えていると、重みが半々になったぶん
-  // （クモ 100 / ゾンビ 100）が素通りして、上限が 2 倍にゆるんでも緑のまま通る。
-  const hostileAtNight = atNight.ゾンビ + atNight.クモ;
+  // **3 種類目の「どこでも」の敵対（スケルトン）も 1 件で見張る。** `MOB_KINDS` に
+  // 足し忘れると、表にあるのに 1 体も湧かないモブが黙って残る（クモと同じ話）。
+  check("夜の草地にスケルトンが湧く", atNight.スケルトン > 0, show(atNight));
+  // **上限は敵対の合計で見ること。** ゾンビだけを数えていると、重みが 3 つに割れたぶん
+  // （ゾンビ 100 / クモ 100 / スケルトン 100）が素通りして、上限が 3 倍にゆるんでも
+  // 緑のまま通る。
+  const hostileAtNight = atNight.ゾンビ + atNight.クモ + atNight.スケルトン;
   check(
-    "敵対の上限を超えない（ゾンビ + クモ）",
+    "敵対の上限を超えない（ゾンビ + クモ + スケルトン）",
     hostileAtNight <= MAX_HOSTILE,
-    `ゾンビ ${atNight.ゾンビ} + クモ ${atNight.クモ} = ${hostileAtNight} / ${MAX_HOSTILE}`,
+    `ゾンビ ${atNight.ゾンビ} + クモ ${atNight.クモ} + スケルトン ${atNight.スケルトン}` +
+      ` = ${hostileAtNight} / ${MAX_HOSTILE}`,
   );
   check("昼の地表にはゾンビが湧かない", atNoon.ゾンビ === 0, show(atNoon));
   check("昼の草地にはクモも湧かない", atNoon.クモ === 0, show(atNoon));
-  check("松明を置いた所には湧かない", torchlit.ゾンビ + torchlit.クモ === 0, show(torchlit));
+  check("昼の草地にはスケルトンも湧かない", atNoon.スケルトン === 0, show(atNoon));
+  check(
+    "松明を置いた所には湧かない",
+    torchlit.ゾンビ + torchlit.クモ + torchlit.スケルトン === 0,
+    show(torchlit),
+  );
   check("昼でも暗い洞窟には湧く", inCave.ゾンビ > 0, show(inCave));
   // **受動が 3 種類目（鶏）になったので、湧く側も数えること。** `PASSIVE_KINDS` に
   // 足し忘れると、表にあるのに 1 体も湧かないモブが黙って残る。
@@ -2221,6 +2240,77 @@ export function run(): void {
       `${shot.length} 件: ${shot.map(itemName).join(" ")}`);
   }
   {
+    // --- スケルトンを倒すと骨 1 個（+ 矢 1 本が半分の確率）---
+    // **鶏・牛と同じ 2 山**だが、**2 山目に `chance` がある**のはこれが初めて
+    // （鶏の羽根も牛の革も `chance: 1`）。`MobDrop.extra.chance` が効いているかは
+    // **割合を数えないと分からない**ので、1 山目（必ず落ちる骨）と分けて測る。
+    const table = MOBS.skeleton.drop;
+    console.log(
+      `      スケルトンの表: ${itemName(table.item)} x${table.count}/${table.chance} + ` +
+        `2 山目 ${itemName(table.extra?.item ?? NO_ITEM)} x${table.extra?.count}/${table.extra?.chance}`,
+    );
+    check("表は骨 1 個（必ず）+ 矢 1 本（半分の確率）",
+      table.item === BONE && table.count === 1 && table.chance === 1 &&
+        table.extra?.item === ARROW && table.extra.count === 1 && table.extra.chance === 0.5,
+      `${itemName(table.item)} x${table.count}/${table.chance} / ` +
+        `${itemName(table.extra?.item ?? NO_ITEM)} x${table.extra?.count}/${table.extra?.chance}`);
+
+    // **殴った側と撃った側を並べて測ること**（`rules/mobs.md`）。片方だけ通っていると、
+    // **弓で撃ったときだけ矢が出ない**という形で静かに食い違う（刈った羊と同じ話）。
+    // **乱数は 1 本を回し続けること**（`rules/testing.md`。1 体ずつ種を作ると偏る）。
+    const punchRandom = seeded(337);
+    const punched: number[][] = [];
+    for (let i = 0; i < 200; i++) {
+      // クールダウンは `Mobs` が持つので、1 体ずつ新しい群れで殴る
+      // （フレームを回さずに済む。ゾンビの腐った肉と同じ測り方）。
+      const pack = new Mobs();
+      const got: number[] = [];
+      pack.onDrop = (item) => got.push(item);
+      const c = ctx({ random: punchRandom });
+      const bones = pack.spawn("skeleton", 0.5, 11, 2.5, 0, punchRandom);
+      bones.health = 1; // 1 発で倒れるようにしておく
+      pack.attack(bones, DIAMOND_SWORD, c, punchRandom);
+      punched.push(got);
+    }
+    const shotRandom = seeded(347);
+    const shot: number[][] = [];
+    for (let i = 0; i < 200; i++) {
+      const pack = new Mobs();
+      const flying = new Projectiles();
+      const got: number[] = [];
+      pack.onDrop = (item) => got.push(item);
+      const c = ctx({ random: shotRandom });
+      const bones = pack.spawn("skeleton", 3.5, 11, 0.5, 0, shotRandom);
+      bones.health = 1; // 1 本で倒れるようにしておく
+      const target = pack.projectileTargets(c).find((t) => t.owner === bones.id)!;
+      const arrow = flying.spawn("arrow", 0.5, 12, 0.5, 0, 0, -1, PLAYER_OWNER, 100);
+      pack.hitByProjectile(arrow!, target, c);
+      shot.push(got);
+    }
+    const rate = (rows: number[][], item: number): number =>
+      rows.filter((got) => got.includes(item)).length / rows.length;
+    console.log(
+      `      200 体ずつ: 殴って 骨 ${(rate(punched, BONE) * 100).toFixed(0)}% ・ ` +
+        `矢 ${(rate(punched, ARROW) * 100).toFixed(0)}% / ` +
+        `撃って 骨 ${(rate(shot, BONE) * 100).toFixed(0)}% ・ 矢 ${(rate(shot, ARROW) * 100).toFixed(0)}%` +
+        `（表は 100% / ${(table.extra?.chance ?? 0) * 100}%）`,
+    );
+    check("殴って倒すと骨は必ず 1 個",
+      rate(punched, BONE) === 1 && punched.every((got) => got[0] === BONE),
+      `${(rate(punched, BONE) * 100).toFixed(0)}%`);
+    check("矢で倒しても骨は必ず 1 個（同じ 1 本を通る）",
+      rate(shot, BONE) === 1 && shot.every((got) => got[0] === BONE),
+      `${(rate(shot, BONE) * 100).toFixed(0)}%`);
+    // **半分の確率が殴った側と撃った側で揃うこと。** 呼ぶ側に `chance` の比較が
+    // 残っていると、片側だけ 100%（または 0%）になる。
+    check("殴って倒すと矢が半分の確率で 2 山目",
+      Math.abs(rate(punched, ARROW) - (table.extra?.chance ?? 0)) < 0.1,
+      `${(rate(punched, ARROW) * 100).toFixed(0)}%`);
+    check("矢で倒しても矢が半分の確率で 2 山目（弓のときだけ消えない）",
+      Math.abs(rate(shot, ARROW) - (table.extra?.chance ?? 0)) < 0.1,
+      `${(rate(shot, ARROW) * 100).toFixed(0)}%`);
+  }
+  {
     // --- `dropsFor()` が返す山の数の表 ---
     // **豚 1 / 刈っていない羊 1 / 刈った羊 0 / 鶏 2。** 刈った羊の 0 は
     // `dropFor()` の抑えがそのまま生きていることの証拠（写していない）。
@@ -2770,8 +2860,9 @@ export function run(): void {
     // **撃つモブが増えたらここを書き換えること**（`TUNING.md` の表と対）。
     // ドラゴンはブレスを撃つが、**撃つのは「ブレス」の番だけ**（下の攻め方の節）。
     check(
-      "撃つのはブレイズとドラゴンだけ",
-      shooters.length === 2 && shooters.includes("blaze") && shooters.includes("dragon"),
+      "撃つのはスケルトン・ブレイズ・ドラゴンの 3 種類",
+      shooters.length === 3 && shooters.includes("skeleton") && shooters.includes("blaze") &&
+        shooters.includes("dragon"),
       shooters.join(" "),
     );
     // **重みを 1 つの定数で分け合わないこと。** 分け合っていた頃、ブレイズの一撃は
@@ -2813,16 +2904,22 @@ export function run(): void {
       wall?: boolean;
       invulnerable?: boolean;
       kind?: MobKind;
+      /**
+       * 湧かせる高さ。**既定の 13 は飛ぶモブ（ブレイズ）ぶん**で、
+       * 歩くモブ（スケルトン）は床（11）に置くこと —— 13 から落ちながら撃つと、
+       * 測っているのが「間合い」なのか「落ちている途中か」なのか分からなくなる。
+       */
+      y?: number;
     } = {},
   ) {
-    const { distance = 10, seconds = 1 / 60, wall = false, invulnerable = false, kind = "blaze" } = options;
+    const { distance = 10, seconds = 1 / 60, wall = false, invulnerable = false, kind = "blaze", y = 13 } = options;
     const arena = quiet(flatGrass());
     // プレイヤー（z = 0.5）とモブのあいだに立てる壁。
     if (wall) arena.fill(-6, 6, 11, 24, 5, 5, STONE);
     const pack = new Mobs();
     const shots: Shot[] = [];
     const c = ctx({ random: seeded(55), invulnerable, shoot: (shot) => shots.push(shot) });
-    const mob = pack.spawn(kind, 0.5, 13, 0.5 + distance, 0, seeded(56));
+    const mob = pack.spawn(kind, 0.5, y, 0.5 + distance, 0, seeded(56));
     mob.shootTimer = 0;
     const world = arena.asWorld();
     for (let f = 0; f < Math.round(seconds * 60); f++) pack.update(1 / 60, world, c);
@@ -2960,6 +3057,189 @@ export function run(): void {
     check("重みは表のとおり（火球 5）", taken[0]?.[0] === 5, `${taken[0]?.[0]}`);
     // **近接と同じ窓を共有すること。** 別の窓にすると、殴られながら火球を受けたときだけ
     // 倍の速さで減る。
+    check(
+      "死因も無敵時間も近接と同じ",
+      taken[0]?.[1] === "モンスター" && taken[0]?.[2] === MOB_HURT_COOLDOWN,
+      `${taken[0]?.[1]} / ${taken[0]?.[2]}`,
+    );
+  }
+
+  describe("スケルトンの矢（撃つ・当たる）");
+
+  {
+    // 表そのもの。**ブレイズの火球と並べて出すこと** —— 写して作ると、
+    // 重力を受ける矢に火球の間合い（16m）が入る（下の実測）。
+    const skel = MOBS.skeleton.ranged;
+    const blaze = MOBS.blaze.ranged;
+    console.log(
+      `      スケルトン: ${skel?.kind} 重み ${skel?.damage} / 間合い ${skel?.near}〜${skel?.range}m / ` +
+        `${skel?.cooldown} 秒ごと / 撃ち出す高さ ${skel?.height}`,
+    );
+    console.log(
+      `      ブレイズ  : ${blaze?.kind} 重み ${blaze?.damage} / 間合い ${blaze?.near}〜${blaze?.range}m / ` +
+        `${blaze?.cooldown} 秒ごと / 撃ち出す高さ ${blaze?.height}`,
+    );
+    check(
+      "スケルトンは矢を撃つ（重み 3・10m から・2 秒ごと）",
+      skel?.kind === "arrow" && skel.damage === 3 && skel.range === 10 &&
+        skel.near === 3 && skel.cooldown === 2,
+      `${skel?.kind} 重み ${skel?.damage} / ${skel?.near}〜${skel?.range}m / ${skel?.cooldown} 秒`,
+    );
+    check(
+      "スケルトンは敵対で、近接はゾンビ並み",
+      MOBS.skeleton.hostile && MOBS.skeleton.damage === MOBS.zombie.damage,
+      `敵対 ${MOBS.skeleton.hostile} / 近接 ${MOBS.skeleton.damage}`,
+    );
+    // ブレイズと同じ線。**自分から寄っていくので、見えた瞬間に撃たれないこと。**
+    check(
+      "撃ち始める間合いは追い始める距離より短い",
+      !!skel && skel.range < HOSTILE_SIGHT,
+      `${skel?.range} < ${HOSTILE_SIGHT}`,
+    );
+    // **朝に燃える**（`fireproof: false` がそのまま日光になる）。
+    check("スケルトンは日光で燃える（fireproof ではない）", !MOBS.skeleton.fireproof);
+  }
+
+  {
+    // **⚠ 矢は重力を受ける**（火球は `gravityScale: 0`）。だから間合いを伸ばすと、
+    // まっすぐ狙った矢がプレイヤーの下を抜ける。**公式ではなく実測で出すこと** ——
+    // 表の速さ（40）も重力も、いつか動く。
+    // 水平にまっすぐ撃って、何 m 先でどれだけ落ちているかを測る。
+    const air = new Arena();
+    const flying = new Projectiles();
+    const world = air.asWorld();
+    const startY = 60;
+    const arrow = flying.spawn("arrow", 0.5, startY, 0.5, 0, 0, -1, PLAYER_OWNER, 0)!;
+    const fell: Record<number, number> = {};
+    for (let f = 0; f < 120 && flying.count > 0; f++) {
+      flying.update(1 / 60, world, []);
+      const flown = 0.5 - arrow.position.z;
+      for (const mark of [MOBS.skeleton.ranged?.range ?? 10, 16]) {
+        if (fell[mark] === undefined && flown >= mark) fell[mark] = startY - arrow.position.y;
+      }
+    }
+    const near = fell[MOBS.skeleton.ranged?.range ?? 10] ?? Infinity;
+    const far = fell[16] ?? Infinity;
+    console.log(
+      `      水平に撃った矢の落ち: ${MOBS.skeleton.ranged?.range}m 先で ${near.toFixed(2)}m / ` +
+        `16m 先で ${far.toFixed(2)}m（プレイヤーの狙いは足元から ${PLAYER_AIM}m・背丈 ${PLAYER_SIZE.height}m）`,
+    );
+    // **先に「本当に飛んだ」ことを見ること**（`rules/testing.md`）。
+    check("矢が 16m 先まで飛んだ", Number.isFinite(far), `${far}`);
+    // 狙いの高さ（1.4）から落ちたぶんを引いても、足元（0）より上に残ること。
+    check(
+      "表の間合いなら、まっすぐ撃った矢がプレイヤーの背丈に残る",
+      PLAYER_AIM - near > 0,
+      `足元から ${(PLAYER_AIM - near).toFixed(2)}m`,
+    );
+    // **ブレイズの 16 を写すと下を抜ける** —— これが `range` を 10 に留める理由。
+    check(
+      "ブレイズと同じ 16m にすると、まっすぐ撃った矢はプレイヤーの下を抜ける",
+      PLAYER_AIM - far < 0,
+      `足元から ${(PLAYER_AIM - far).toFixed(2)}m`,
+    );
+  }
+
+  {
+    // 撃つところ。**ブレイズの火球とまったく同じ helper を通す**（`kind` を替えるだけ）。
+    const shot = blazeShots({ distance: 10, kind: "skeleton", y: 11 });
+    const first = shot.shots[0];
+    console.log(
+      `      10m から: ${shot.shots.length} 発  ${first?.kind} 重み ${first?.damage}  ` +
+        `撃ち手 ${first?.owner}（モブの id ${shot.mob.id}）  ` +
+        `向き (${first?.dx.toFixed(1)}, ${first?.dy.toFixed(1)}, ${first?.dz.toFixed(1)})`,
+    );
+    check("間合いに入ると撃つ", shot.shots.length === 1, `${shot.shots.length} 発`);
+    check("撃つのは表のもの（矢・重み 3）", first?.kind === "arrow" && first?.damage === 3);
+    check("撃った本人の印が乗る", first?.owner === shot.mob.id && first?.owner !== PLAYER_OWNER);
+    check("プレイヤーのほうへ向く", !!first && first.dz < 0 && Math.abs(first.dx) < 0.5);
+    check("撃ち出す高さが足元より上", !!first && first.y > shot.mob.position.y + 0.5);
+
+    const far = blazeShots({ distance: 17, kind: "skeleton", y: 11 });
+    const close = blazeShots({ distance: 2, kind: "skeleton", y: 11 });
+    const creative = blazeShots({ distance: 10, kind: "skeleton", y: 11, invulnerable: true });
+    // **壁越しに撃たないこと**（ブレイズと同じ `clearShot()` 1 本）。姿の見えない所から
+    // 矢が飛んでくると、どこから撃たれているのか分からないまま削られる。
+    const blocked = blazeShots({ distance: 10, kind: "skeleton", y: 11, wall: true });
+    console.log(
+      `      17m ${far.shots.length} 発 / 2m ${close.shots.length} 発 / ` +
+        `クリエイティブ ${creative.shots.length} 発 / 壁ごし ${blocked.shots.length} 発`,
+    );
+    check("間合いより遠いと撃たない", far.shots.length === 0);
+    check("近すぎると撃たない（殴る間合い）", close.shots.length === 0);
+    check("クリエイティブは狙われない", creative.shots.length === 0);
+    check("見えていなければ撃たない", blocked.shots.length === 0);
+  }
+
+  {
+    // **湧いた直後は 1 回ぶん待たせること**（`shootTimer` の初期値 = `cooldown`）。
+    // 目の前に湧いた瞬間の初弾は避けられない。
+    // **時計を 0 に戻した側と並べて測ること** —— 並べないと、1 発も撃たない壊れ方でも
+    // 「待っている」で緑になる。
+    const arena = quiet(flatGrass());
+    const world = arena.asWorld();
+    const fresh = (reset: boolean) => {
+      const pack = new Mobs();
+      const shots: Shot[] = [];
+      const c = ctx({ random: seeded(311), shoot: (s) => shots.push(s) });
+      const mob = pack.spawn("skeleton", 0.5, 11, 10.5, 0, seeded(313));
+      const timer = mob.shootTimer;
+      if (reset) mob.shootTimer = 0;
+      pack.update(1 / 60, world, c);
+      return { shots: shots.length, timer };
+    };
+    const waited = fresh(false);
+    const ready = fresh(true);
+    console.log(
+      `      湧いた直後の 1 フレーム: そのまま ${waited.shots} 発（時計 ${waited.timer} 秒）/ ` +
+        `時計を 0 にすると ${ready.shots} 発（表は ${MOBS.skeleton.ranged?.cooldown} 秒ごと）`,
+    );
+    check(
+      "湧いた直後の時計は間隔ぶん（0 から始めない）",
+      waited.timer === MOBS.skeleton.ranged?.cooldown,
+      `${waited.timer} 秒`,
+    );
+    check("湧いた直後の初弾は 1 回ぶん待つ", waited.shots === 0, `${waited.shots} 発`);
+    check("待ちが明けていれば同じ間合いで撃つ", ready.shots === 1, `${ready.shots} 発`);
+  }
+
+  {
+    // **通しで 1 本。** 撃つ（`mobs.ts`）→ 飛ぶ（`projectiles.ts`）→ 当たる（`mobs.ts`）。
+    // ブレイズの火球と同じ測り方で、**矢は重力を受ける**ぶんこちらのほうが厳しい
+    // （10m で 1.13m 落ちて、足元から 0.27m の所に当たる。上の実測）。
+    const arena = quiet(flatGrass());
+    const pack = new Mobs();
+    const flying = new Projectiles();
+    const taken: [number, string, number | undefined][] = [];
+    const vitals: MobTarget = {
+      damage: (amount, cause, cooldown) => {
+        taken.push([amount, cause, cooldown]);
+        return true;
+      },
+    };
+    const c = ctx({
+      random: seeded(317),
+      vitals,
+      shoot: (shot) => {
+        flying.fire(shot);
+      },
+    });
+    flying.onHitTarget = (shot, target) => pack.hitByProjectile(shot, target, c);
+    const skeleton = pack.spawn("skeleton", 0.5, 11, 10.5, 0, seeded(331));
+    skeleton.shootTimer = 0;
+    const world = arena.asWorld();
+    let flew = 0;
+    for (let f = 0; f < 60; f++) {
+      pack.update(1 / 60, world, c);
+      flying.update(1 / 60, world, pack.projectileTargets(c));
+      flew = Math.max(flew, flying.count);
+    }
+    console.log(
+      `      通し（1 秒）: 飛んだ ${flew} 本  当たり ${taken.length} 回 ${JSON.stringify(taken)}`,
+    );
+    check("矢が飛んだ", flew > 0, `${flew} 本`);
+    check("撃った矢がプレイヤーに当たる", taken.length > 0, `${taken.length} 回`);
+    check("重みは表のとおり（矢 3）", taken[0]?.[0] === 3, `${taken[0]?.[0]}`);
     check(
       "死因も無敵時間も近接と同じ",
       taken[0]?.[1] === "モンスター" && taken[0]?.[2] === MOB_HURT_COOLDOWN,
