@@ -11,7 +11,10 @@ import {
   LADDER_ZP,
   LAVA,
   OBSIDIAN,
+  PLANK,
   SAND,
+  SAPLING,
+  SPRUCE_SAPLING,
   STONE,
   STONE_SLAB,
   SUGAR_CANE,
@@ -331,6 +334,99 @@ export function run(): void {
       "壁を壊すとはしごも落ちる（合図が 1 回）",
       broke === 1 && world.getVoxel(x, ground, z) === AIR,
       `合図 ${broke} 回 / 残り ${world.getVoxel(x, ground, z)}`,
+    );
+    world.onAutoBreak = undefined;
+    world.dispose();
+  }
+
+  // --- 苗木は土・草・耕地の上にだけ立つ（30a） ------------------------------
+  // **`placing.ts` は 1 行も直していません** —— 落としているのは `blocks.ts` の
+  // `supportsBlock()` の 1 行（`needsSoil` の表）で、置く側（`canPlaceAt`）も
+  // 壊す側（`breakUnsupported`）も**同じそこ**を通ります。
+  {
+    // **9 通りを一覧で出してから判定する。** 土 3 種で置けて、それ以外では
+    // `blocked` になり、**マスが空のまま**であること（半端に置かれないこと）。
+    const floors: [string, number, boolean][] = [
+      ["土", DIRT, true],
+      ["草", GRASS, true],
+      ["耕地", FARMLAND, true],
+      ["石", STONE, false],
+      ["板", PLANK, false],
+      ["砂", SAND, false],
+    ];
+    const lines: string[] = [];
+    const wrong: string[] = [];
+    for (const [name, floor, want] of floors) {
+      const slab = new Slab();
+      slab.fill(-2, 2, 1, 10, -2, 2, floor);
+      const out = tryPlace(slab, nobody, aimAt(0, 10, 0, floor), 0, SAPLING);
+      const placed = out.kind === "placed";
+      lines.push(`${name} ${out.kind}${out.kind === "blocked" ? `「${out.message}」` : ""}`);
+      // **置けなかったマスは空のまま**（`blocked` を返しつつ書いていたら気付けない）。
+      if (placed !== want || slab.getVoxel(0, 11, 0) !== (want ? SAPLING : AIR)) {
+        wrong.push(`${name}(${out.kind}/${slab.getVoxel(0, 11, 0)})`);
+      }
+    }
+    console.log(`      苗木を置く: ${lines.join(" / ")}`);
+    check(
+      "苗木は土・草・耕地の上にだけ立つ（石・板・砂の上には立たず、マスも空のまま）",
+      wrong.length === 0,
+      wrong.join(" / ") || "6 通りとも表どおり",
+    );
+
+    // **置けない理由の文**。「床か壁」のままだと嘘になる（石の床を狙っても置けない）。
+    const stone = new Slab();
+    stone.fill(-2, 2, 1, 10, -2, 2, STONE);
+    const blocked = tryPlace(stone, nobody, aimAt(0, 10, 0, STONE), 0, SPRUCE_SAPLING);
+    console.log(`      石の上の文: ${blocked.kind === "blocked" ? blocked.message : blocked.kind}`);
+    check(
+      "石の上に置こうとすると「土か草の上にしか」と言う（「床か壁」ではない）",
+      blocked.kind === "blocked" && blocked.message.includes("土か草の上にしか") &&
+        blocked.message.includes(blockName(SPRUCE_SAPLING)),
+      blocked.kind === "blocked" ? blocked.message : blocked.kind,
+    );
+  }
+
+  {
+    // **真下の土を掘ると苗木も落ちる**（`onAutoBreak` が 1 回）。偽の試験場は
+    // `breakUnsupported()` を持たないので、ここだけ本物の `World` を通す
+    // （はしごの節とまったく同じ手本）。
+    const world = new World(new Scene(), new WorldGen(20260913));
+    const ground = 60;
+    const x = 6;
+    const z = 6;
+    for (let y = ground; y < ground + 4; y++) world.setVoxel(x, y, z, AIR);
+    world.setVoxel(x, ground - 1, z, DIRT);
+    const placed = tryPlace(world, nobody, aimAt(x, ground - 1, z, DIRT), 0, SAPLING);
+    console.log(
+      `      本物の World: ${placed.kind}  苗木 ${world.getVoxel(x, ground, z)} / 真下 ${world.getVoxel(x, ground - 1, z)}`,
+    );
+    check(
+      "本物の World でも土の上に立つ",
+      placed.kind === "placed" && world.getVoxel(x, ground, z) === SAPLING,
+      `${placed.kind} / ${world.getVoxel(x, ground, z)}`,
+    );
+
+    let broke = 0;
+    world.onAutoBreak = (_x, _y, _z, id) => { if (id === SAPLING) broke++; };
+    world.setVoxel(x, ground - 1, z, AIR); // 真下の土を掘る
+    check(
+      "真下の土を掘ると苗木が壊れて落ちる（合図が 1 回）",
+      broke === 1 && world.getVoxel(x, ground, z) === AIR,
+      `合図 ${broke} 回 / 残り ${world.getVoxel(x, ground, z)}`,
+    );
+
+    // **消したときだけではない。** 土を石に差し替えても、支えでなくなった瞬間に落ちる
+    // （置く側と壊す側が同じ `supportsBlock()` を通っている証拠）。
+    world.setVoxel(x, ground - 1, z, GRASS);
+    const again = tryPlace(world, nobody, aimAt(x, ground - 1, z, GRASS), 0, SAPLING);
+    let broke2 = 0;
+    world.onAutoBreak = (_x, _y, _z, id) => { if (id === SAPLING) broke2++; };
+    world.setVoxel(x, ground - 1, z, STONE);
+    check(
+      "真下を草から石に差し替えても落ちる（消したときだけではない）",
+      again.kind === "placed" && broke2 === 1 && world.getVoxel(x, ground, z) === AIR,
+      `置けたか ${again.kind} / 合図 ${broke2} 回 / 残り ${world.getVoxel(x, ground, z)}`,
     );
     world.onAutoBreak = undefined;
     world.dispose();

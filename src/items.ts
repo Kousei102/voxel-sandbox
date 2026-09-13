@@ -16,8 +16,10 @@ import {
   LEAVES,
   LOW_BAND_MAX,
   NETHER_PORTAL,
+  SAPLING,
   SNOW,
   SPRUCE_LEAVES,
+  SPRUCE_SAPLING,
   STONE,
   TALL_GRASS,
   TIER_DIAMOND,
@@ -501,14 +503,14 @@ export const CHARCOAL = 163;
  * （`craftscreen.ts` の `CREATIVE_ITEMS`）にだけ出てこないブロック**ができます
  * （置けるし掘れるので、型でも `typecheck` でも止まりません）。
  *
- * **いまは木炭（アイテム 163）が上限です。** 直前が骨（162）・革の防具 4 部位（158..161）で、
- * その前がフェンス（ブロック 157）・氷（ブロック 156）。
+ * **いまはトウヒの苗木（ブロック 165）が上限です。** 直前がオークの苗木（ブロック 164）・
+ * 木炭（アイテム 163）・骨（162）・革の防具 4 部位（158..161）。
  * **共有帯ではブロックとアイテムが 1 本の番号列**なので、上限を持つのがどちら側かは
  * 決まりません（`items.ts` に 1 行も書いていないブロックが上限だったのは 8 度目まで）。
  * **上限をこちら側へ移したら、それまで指していたブロックの import を消すこと** ——
  * 残すと「使われていない」で `npm run typecheck` が落ちます（型で止まる安全な罠）。
  */
-export const MAX_ITEM_ID = CHARCOAL;
+export const MAX_ITEM_ID = SPRUCE_SAPLING;
 
 export const MAX_STACK = 64;
 
@@ -997,18 +999,34 @@ export interface Drop {
    */
   readonly otherwise?: number;
   /**
-   * **1 山目とは別の山**（実った小麦の種と、葉のリンゴがこれ）。省略すると 1 山だけ。
+   * **1 山目とは別の山**（実った小麦の種と、葉のリンゴ・苗木がこれ）。省略すると 1 山だけ。
    *
    * **`chance` を省略すると必ず落ちます**（種がそれ）。付けたぶんは
    * **`roll` とは別の乱数（`extraRoll`）**で抽選するので、**1 山目の当たり外れとは
    * 相関しません** —— 棒が出た葉からだけリンゴが出る、にはなりません
    * （`test/blocks.test.ts` の「4 通りの山の数が 1,2,0,1」が見張り）。
    *
+   * **候補は 2 件まで並べられます**（オークの葉のリンゴと苗木）。**2 件は 3 本目の
+   * 乱数ではなく、`extraRoll` を上から順に帯で切って選びます** —— リンゴが
+   * `0..0.005`、苗木がその続きの `0.005..0.055`。**だから 1 度に出るのはどちらか
+   * 片方だけ**で（本家は独立。`TUNING.md`）、**山は今までどおり最大 2 つ**です。
+   * **乱数を 3 本目に増やさないこと** —— `BreakOrder` と `autoBreak()` の引数と
+   * `main.ts` に及びます。**帯の合計が 1 を超えないこと**（超えると後ろの候補が
+   * 永久に出ません。`test/blocks.test.ts` が見張り）。
+   *
    * **個数の範囲（min / max）はまだ持てません。** 本家の「小麦 1 + 種 0〜3」に
-   * 寄せたくなったら、**乱数をもう 1 本流す話が先**です（`extraRoll` を足したときと
-   * 同じで、`BreakOrder` と `autoBreak()` の引数と `main.ts` に及びます）。
+   * 寄せたくなったら、上と同じで**乱数をもう 1 本流す話が先**です。
    */
-  readonly extra?: ExtraDrop;
+  readonly extra?: ExtraDrop | readonly [ExtraDrop, ExtraDrop];
+}
+
+/**
+ * 2 山目の候補を必ず配列で。**`drop.extra.item` と直に書かないこと** ——
+ * 2 件並べた行（オークの葉）でだけ静かに壊れます。
+ */
+export function extraDrops(drop: Drop): readonly ExtraDrop[] {
+  if (!drop.extra) return [];
+  return Array.isArray(drop.extra) ? drop.extra : [drop.extra as ExtraDrop];
 }
 
 /**
@@ -1029,12 +1047,30 @@ const DROPS = new Map<number, Drop>([
   // そのままでは手に入らなくなる**ので、`crafting.ts` の「雪玉 4 個 → 雪ブロック 1 個」が
   // 必ず対で要る（無いと雪が二度と置けない）。
   [SNOW, { item: SNOWBALL, count: 4, chance: 1 }],
-  // 苗木がまだ無いので、葉から出るのは棒（10%）とリンゴ（0.5%）だけ。
+  // 葉から出るのは棒（10%）と、2 山目の**リンゴ（0.5%）か苗木（5%）**。
   // **オークの葉にだけリンゴが付きます**（本家はオークとダークオークだけ。針葉樹は無し）。
-  // **棒とリンゴは別々の乱数で当たります** —— `chance` を `extraRoll` が見るので、
+  // **棒と 2 山目は別々の乱数で当たります** —— `chance` を `extraRoll` が見るので、
   // 「棒が出た葉からだけリンゴが出る」形になりません。
-  [LEAVES, { item: STICK, count: 1, chance: 0.1, extra: { item: APPLE, count: 1, chance: 0.005 } }],
-  [SPRUCE_LEAVES, { item: STICK, count: 1, chance: 0.1 }],
+  // **リンゴと苗木は 3 本目の乱数ではなく `extraRoll` の帯で分けてあります**
+  // （リンゴ 0..0.005 → 苗木 0.005..0.055）。**だから同時には落ちません** ——
+  // 本家は独立だが、乱数を増やすと `breaking.ts` と `main.ts` に及ぶ（`TUNING.md`）。
+  [
+    LEAVES,
+    {
+      item: STICK,
+      count: 1,
+      chance: 0.1,
+      extra: [
+        { item: APPLE, count: 1, chance: 0.005 },
+        { item: SAPLING, count: 1, chance: 0.05 },
+      ],
+    },
+  ],
+  // トウヒの葉は**苗木だけ**（リンゴは付かない）。帯は 1 本なので 0..0.05。
+  [
+    SPRUCE_LEAVES,
+    { item: STICK, count: 1, chance: 0.1, extra: { item: SPRUCE_SAPLING, count: 1, chance: 0.05 } },
+  ],
   // 砂利は 10% で火打石、外したら砂利そのもの（Minecraft と同じ）。
   // **`otherwise` が無いと 90% で消えるブロックになる。**
   [GRAVEL, { item: FLINT, count: 1, chance: 0.1, otherwise: GRAVEL }],
@@ -1104,7 +1140,7 @@ export function rollDrop(blockId: number, roll: number): { item: number; count: 
 
 /**
  * **地面に出す山を全部**（0〜2 山）。2 山あるのは実った小麦（小麦 + 種）と
- * 当たったオークの葉（棒 + リンゴ）だけで、他は今までどおり 0 山か 1 山。
+ * 当たった葉（棒 + リンゴ／苗木）だけで、他は今までどおり 0 山か 1 山。
  *
  * **1 山目は `rollDrop()` に作らせること** —— `chance` と `otherwise` の判断をここへ
  * 写すと、**掘ったときと床を抜かれたときで落ちるものが違う**が戻ってきます
@@ -1116,6 +1152,10 @@ export function rollDrop(blockId: number, roll: number): { item: number; count: 
  *
  * **`extraRoll` は省略できません。** 省略できると `main.ts` が渡し忘れてもコンパイルが
  * 通り、**リンゴが永久に出ないのにテストは緑**になります。
+ *
+ * **2 山目の候補が 2 件あるときは、帯を上から順に切って 1 件だけ**選びます
+ * （オークの葉のリンゴ 0..0.005 → 苗木 0.005..0.055）。**乱数は 2 本のまま**で、
+ * **山は最大 2 つのまま**です。
  */
 export function rollDrops(
   blockId: number,
@@ -1126,10 +1166,18 @@ export function rollDrops(
   const first = rollDrop(blockId, roll);
   // 何も出ない目（ガラス・葉の外れ）は山にしない。
   if (first.item !== NO_ITEM && first.count > 0) stacks.push(first);
-  const { extra } = dropOf(blockId);
-  if (extra && extra.item !== NO_ITEM && extra.count > 0 && extraRoll < (extra.chance ?? 1)) {
+  // **帯を上から順に切って、当たった 1 件だけ**（`break` を落とすと、2 件並べた行で
+  // 山が 3 つになる）。外れた帯のぶんは `edge` に足して次の候補へ送る。
+  let edge = 0;
+  for (const extra of extraDrops(dropOf(blockId))) {
+    const width = extra.chance ?? 1;
+    if (extraRoll >= edge + width) {
+      edge += width;
+      continue;
+    }
     // **`chance` は地面に持ち出さない**（返るのは `DropStack` そのもの）。
-    stacks.push({ item: extra.item, count: extra.count });
+    if (extra.item !== NO_ITEM && extra.count > 0) stacks.push({ item: extra.item, count: extra.count });
+    break;
   }
   return stacks;
 }

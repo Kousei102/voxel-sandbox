@@ -33,9 +33,12 @@ import {
   LADDER_XN,
   LADDER_ZN,
   LADDER_ZP,
+  LEAVES,
   PLANK,
   PLANK_SLAB,
   RED_MUSHROOM,
+  SAPLING,
+  SPRUCE_SAPLING,
   STONE,
   SUGAR_CANE,
   TALL_GRASS,
@@ -636,6 +639,61 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
       camera: look(setup, new Vector3(3.4, y + 2.3, 6.0), new Vector3(-1.6, y + 0.6, 0.4)),
       dayNight: skyOf(OVERWORLD, setup.time),
       note: `直線 -2..2,${y},0 / 角 2,${y},1..2 / 1 本だけ -5,${y},3 / 石の上 -5,${y + 1},-3 / 石の横 -2,${y},2（石 -3,${y},2）/ 比べる板ハーフ -3,${y},-3`,
+    };
+  },
+
+  /**
+   * 苗木 2 種（164 / 165・30a）。**本棚・クモの巣・ケーキ・氷・フェンスと同じで
+   * 自然には 1 本も生えない**（葉から落ちて手で植えるものなので）ため、ここへ直に置く。
+   * 見るのは 4 つ:
+   * **十字の板 2 枚が「若い木」に見えるか**（`CROSS_BOX` の上端 0.8。草むら・小麦の苗と
+   * まったく同じ形なので、**違うのは色だけ**）/ **2 種の色（0x7fbf5f と 0x2f7f5a）が
+   * 並べて見分けられるか**（一覧の隔たりは 102.6 だが、絵では光と地面の色が乗る）/
+   * **草むら・小麦の苗と取り違えないか**（**3 つを並べてある**のがここの要 ——
+   * 1 本だけだと「苗木らしいか」が絵から読めない）/ **面の欠けと裏返りが無いか**。
+   *
+   * **土・草・耕地の 3 通りに 1 本ずつ**立ててある（`needsSoil` の 3 つ）。
+   * **石の上には 1 本も立たない**ので、そこは絵ではなく `npm test` の表で見ること。
+   */
+  sapling(setup) {
+    const { scene, world } = makeWorld(OVERWORLD, 3);
+    const pad = 7;
+    // **平らな台を作る**（`cake` / `ice` / `fence` と同じ理由。地形なりだと斜面に埋まる）。
+    let y = 0;
+    for (let dz = -pad; dz <= pad; dz++) {
+      for (let dx = -pad; dx <= pad; dx++) y = Math.max(y, world.surfaceY(dx, dz));
+    }
+    for (let dz = -pad; dz <= pad; dz++) {
+      for (let dx = -pad; dx <= pad; dx++) {
+        for (let h = y; h < y + 8; h++) world.setVoxel(dx, h, dz, AIR);
+        for (let h = y - 4; h < y; h++) world.setVoxel(dx, h, dz, DIRT);
+        world.setVoxel(dx, y - 1, dz, GRASS);
+      }
+    }
+    // **草・土・耕地の 3 通りに 1 本ずつ**（立つ床の 3 種類）。オークとトウヒを
+    // **隣り合わせに**して、色の差が 1 枚に出るようにする。
+    world.setVoxel(-2, y, 0, SAPLING); // 草の上
+    world.setVoxel(-1, y, 0, SPRUCE_SAPLING); // 草の上（並べて色を比べる）
+    world.setVoxel(1, y - 1, 0, DIRT);
+    world.setVoxel(1, y, 0, SAPLING); // 土の上
+    world.setVoxel(2, y - 1, 0, FARMLAND);
+    world.setVoxel(2, y, 0, SPRUCE_SAPLING); // 耕地の上
+    // **比べる草むらと小麦の苗を隣の列に。** 同じ `cross` の板なので、
+    // **並べないと「苗木らしいか」が絵から読めない**（氷とガラスを並べたのと同じ理由）。
+    world.setVoxel(-2, y, 2, TALL_GRASS);
+    world.setVoxel(-1, y - 1, 2, FARMLAND);
+    world.setVoxel(-1, y, 2, WHEAT_CROP);
+    // **葉を 1 枚、背にして置く。** 苗木の緑が葉の緑（0x3f7a3a）に沈まないかが出る。
+    world.setVoxel(4, y, 0, LEAVES);
+    // **書き換えたらメッシュ化をもう一度流すこと**（`cake` / `ice` / `fence` と同じ）。
+    world.primeAround(0.5, 0.5, 3);
+    return {
+      scene,
+      // **低い斜め上から寄る。** 板の高さは 0.8 しかないので、真上からだと
+      // 十字の 2 枚が 1 本の線に潰れる。
+      camera: look(setup, new Vector3(0.5, y + 2.6, 6.6), new Vector3(0, y + 0.3, 0.8)),
+      dayNight: skyOf(OVERWORLD, setup.time),
+      note: `草の上 -2..-1,${y},0（オーク/トウヒ）/ 土の上 1,${y},0 / 耕地の上 2,${y},0 / 比べる草むら -2,${y},2・小麦の苗 -1,${y},2 / 葉 4,${y},0`,
     };
   },
 

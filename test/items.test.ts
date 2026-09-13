@@ -1,4 +1,16 @@
-import { COBBLE, OBSIDIAN, STONE } from "../src/blocks";
+import {
+  CACTUS,
+  COBBLE,
+  GRASS,
+  LEAVES,
+  OBSIDIAN,
+  SAPLING,
+  SPRUCE_LEAVES,
+  SPRUCE_SAPLING,
+  STONE,
+  SUGAR_CANE,
+  TALL_GRASS,
+} from "../src/blocks";
 import {
   BONE,
   CHARCOAL,
@@ -9,6 +21,7 @@ import {
   LEATHER_CHESTPLATE,
   LEATHER_HELMET,
   LEATHER_LEGGINGS,
+  MAX_ITEM_ID,
   allArmorIds,
   allItemIds,
   armorOf,
@@ -234,5 +247,73 @@ export function run(): void {
       itemName(CHARCOAL) !== itemName(COAL) &&
       dist(itemColor(CHARCOAL), itemColor(COAL)) >= 20,
     `${itemName(CHARCOAL)} / ${itemName(COAL)}・色の隔たり ${dist(itemColor(CHARCOAL), itemColor(COAL)).toFixed(1)}`,
+  );
+
+  describe("苗木 2 種（一覧に出る色）");
+
+  // **ブロックなので `items.ts` には 1 行も無い** —— `variantOf` が `AIR` なので
+  // ブロック → アイテムの for が同じ番号のアイテムを作る。**手で足すと二重登録。**
+  // だから見るのは「**`MAX_ITEM_ID` を伸ばし忘れていないか**」の 1 点で、
+  // 伸ばし忘れると `ITEMS` には入っているのに**クリエイティブの一覧にだけ出ない**
+  // （置けるし掘れるので、型でも `typecheck` でも止まらない）。
+  const saplings = [SAPLING, SPRUCE_SAPLING];
+  console.log(
+    `      苗木: ${saplings.map((id) => `${itemName(id)}(${id}) 0x${itemColor(id).toString(16)} 置ける ${placedBlock(id) === id}`).join(" / ")}` +
+      `  MAX_ITEM_ID ${MAX_ITEM_ID}`,
+  );
+  check(
+    "苗木 2 種がクリエイティブの一覧に出る（MAX_ITEM_ID がトウヒの苗木まで届いている）",
+    MAX_ITEM_ID === SPRUCE_SAPLING && saplings.every((id) => ids.includes(id)),
+    `MAX_ITEM_ID ${MAX_ITEM_ID} / 一覧に ${saplings.filter((id) => ids.includes(id)).length} 個`,
+  );
+  // **置けるブロックとして戻ってくること**（`variantOf` を書くと 0 になる）。
+  check(
+    "苗木 2 種は持って置ける（掘っても戻る）",
+    saplings.every((id) => placedBlock(id) === id) &&
+      saplings.every((id) => toolOf(id) === null && foodOf(id) === null),
+    saplings.map((id) => `${itemName(id)} → ${placedBlock(id)}`).join(" / "),
+  );
+
+  // **緑は一覧でいちばん混んでいる帯**（草 0x6aa84f・葉 0x3f7a3a・トウヒの葉
+  // 0x2c5c3a・草むら 0x5e9c41・サボテン 0x5c9b47・サトウキビ 0x9ad14f・小麦の種
+  // 0x9aa85a・エンダーアイ 0x3fbf8c）。**いちばん近い相手と隔たりを出してから**判定する
+  // （骨・木炭と同じ形）。**2 種どうしも見ること** —— 一覧で隣り合って並ぶので、
+  // 近いと 2 つあることに気付けない。
+  let sapWorst = Infinity;
+  const sapLines: string[] = [];
+  for (const id of saplings) {
+    let best = Infinity;
+    let who = "";
+    for (const other of ids) {
+      if (saplings.includes(other)) continue;
+      const gap = dist(itemColor(id), itemColor(other));
+      if (gap < best) {
+        best = gap;
+        who = `${itemName(other)} 0x${itemColor(other).toString(16)}`;
+      }
+    }
+    sapWorst = Math.min(sapWorst, best);
+    sapLines.push(`${itemName(id)} 0x${itemColor(id).toString(16)} ↔ ${who} ${best.toFixed(1)}`);
+  }
+  // **緑の帯の相手を名指しで出しておくこと** —— 一番近い 1 人だけだと、色を触ったときに
+  // 「どちらへ寄せると詰まるか」が出力から読めない（木炭の暗い帯と同じ理由）。
+  for (const other of [GRASS, LEAVES, SPRUCE_LEAVES, TALL_GRASS, CACTUS, SUGAR_CANE])
+    console.log(
+      `      苗木 ↔ ${itemName(other)} 0x${itemColor(other).toString(16)}: ` +
+        `オーク ${dist(itemColor(SAPLING), itemColor(other)).toFixed(1)} / ` +
+        `トウヒ ${dist(itemColor(SPRUCE_SAPLING), itemColor(other)).toFixed(1)}`,
+    );
+  console.log(`      苗木の色のいちばん近い相手: ${sapLines.join(" / ")}`);
+  const sapPair = dist(itemColor(SAPLING), itemColor(SPRUCE_SAPLING));
+  console.log(`      2 種どうしの隔たり: ${sapPair.toFixed(1)}`);
+  check(
+    "苗木 2 種は既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）",
+    sapWorst >= 20,
+    `いちばん近くて ${sapWorst.toFixed(1)}`,
+  );
+  check(
+    "苗木 2 種は互いにも見分けられる（RGB で 20 以上）",
+    sapPair >= 20,
+    `${sapPair.toFixed(1)}`,
   );
 }

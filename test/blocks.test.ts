@@ -44,10 +44,12 @@ import {
   PLANK_STAIRS,
   RED_MUSHROOM,
   SAND,
+  SAPLING,
   SANDSTONE_SLAB,
   SHARED_ID_START,
   SNOW,
   SPRUCE_LEAVES,
+  SPRUCE_SAPLING,
   STONE,
   STONE_SLAB,
   STONE_SLAB_TOP,
@@ -82,17 +84,20 @@ import {
   isReplaceable,
   isBladed,
   isSlippery,
+  isSoil,
   isSpiky,
   isSticky,
   isTallCollision,
   isTranslucent,
   remainsAfterBreak,
   liquidFog,
+  needsSoil,
   placeSpot,
   placedVariant,
   shapeBoxes,
   shapeBounds,
   stacksOnSelf,
+  supportHint,
   supportsBlock,
   tilled,
   torchVariant,
@@ -152,6 +157,7 @@ import {
   emptyAfterEating,
   foodOf,
   isBlade,
+  extraDrops,
   isBucket,
   isHoe,
   isSeed,
@@ -235,8 +241,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭の 47 個（163 まで）",
-    sharedItems.length === 47 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種の 49 個（165 まで）",
+    sharedItems.length === 49 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -291,19 +297,23 @@ export function run(): void {
       // ブロックは 1 つも増えていない）。
       sharedItems[45] === BONE &&
       // **163 も `items.ts` に手で足したアイテム**（木炭。原木を焼くと出る燃料で、
-      // ブロックは 1 つも増えていない）。`MAX_ITEM_ID` の突き合わせもここで一緒に見る
-      // （伸ばし忘れは型では止まらない。**比べる相手を新しい番号に直すこと** ——
-      // 古い番号のまま残すと `tsc` が TS2367 で落ちます。`rules/testing.md`）。
+      // ブロックは 1 つも増えていない）。
       sharedItems[46] === CHARCOAL &&
-      MAX_ITEM_ID === CHARCOAL,
+      // **164..165 は `items.ts` に 1 行も書かずに増えたブロック 2 つ**（苗木 2 種。
+      // 157 フェンスと同じで `variantOf` が `AIR` なので for が同じ番号のアイテムを作る）。
+      // **上限を持つのがブロック側なのは 9 度目**なので、`MAX_ITEM_ID` の突き合わせも
+      // ここで一緒に見る（伸ばし忘れは型では止まらない。**比べる相手を新しい番号に
+      // 直すこと** —— 古い番号のまま残すと `tsc` が TS2367 で落ちます。`rules/testing.md`）。
+      sharedItems[47] === SAPLING && sharedItems[48] === SPRUCE_SAPLING &&
+      MAX_ITEM_ID === SPRUCE_SAPLING,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 92（木炭 163 で 1 個減った）",
-    sharedFree === 92,
+    "111..255 の空きは 90（苗木 164..165 で 2 個減った）",
+    sharedFree === 90,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1179,6 +1189,7 @@ export function run(): void {
   cakes();
   ices();
   fences();
+  saplings();
 
   world.dispose();
 }
@@ -2106,7 +2117,7 @@ function apples(): void {
     ["オークの葉・棒外し + リンゴ当たり", LEAVES, 0.5, 0.001],
     ["オークの葉・棒当たり + リンゴ外し", LEAVES, 0.05, 0.9],
     ["オークの葉・両方外し", LEAVES, 0.5, 0.9],
-    ["針葉樹の葉・棒当たり + リンゴ当たりの目", SPRUCE_LEAVES, 0.05, 0.001],
+    ["針葉樹の葉・棒当たり + リンゴの帯の目（0.001）", SPRUCE_LEAVES, 0.05, 0.001],
   ];
   for (const [label, id, roll, extraRoll] of cases) {
     const stacks = rollDrops(id, roll, extraRoll);
@@ -2135,10 +2146,13 @@ function apples(): void {
     stickOnly.length === 1 && stickOnly[0]?.item === STICK,
     stickOnly.map((s) => `${itemName(s.item)} x${s.count}`).join(" + ") || "なし",
   );
+  // **リンゴの帯（0..0.005）の目でも、針葉樹の葉からはリンゴが出ない。**
+  // 30a で 2 山目に苗木が入ったので「1 山だけ」では測れなくなった（苗木が出る）——
+  // **判定をゆるめるのではなく、「どの山もリンゴでない」に置き換えてある。**
   const spruce = rollDrops(SPRUCE_LEAVES, 0.05, 0.001);
   check(
     "針葉樹の葉からはリンゴが出ない（本家はオークとダークオークだけ）",
-    spruce.length === 1 && spruce[0]?.item === STICK,
+    spruce.every((s) => s.item !== APPLE) && spruce[0]?.item === STICK,
     spruce.map((s) => `${itemName(s.item)} x${s.count}`).join(" + ") || "なし",
   );
 
@@ -2833,13 +2847,23 @@ function ripeWheat(): void {
     const withExtra: string[] = [];
     const sameItem: string[] = [];
     const tooMany: string[] = [];
+    const overOne: string[] = [];
     for (const { id } of BLOCKS) {
       const drop = dropOf(id);
-      if (drop.extra) {
-        withExtra.push(`${blockName(id)}(${id})`);
+      // **`drop.extra.item` と直に書かないこと** —— 2 件並べた行（オークの葉）で
+      // 静かに壊れる。候補は必ず `extraDrops()` を通して配列で受ける。
+      const extras = extraDrops(drop);
+      if (extras.length > 0) {
+        withExtra.push(`${blockName(id)}(${id})×${extras.length}`);
         // **2 山目は 1 山目と別のアイテム**（同じなら 1 山にまとめるべきで、
         // 分かれていると拾う側で 2 枠を食う）。
-        if (drop.extra.item === drop.item) sameItem.push(`${blockName(id)}(${id})`);
+        for (const extra of extras) {
+          if (extra.item === drop.item) sameItem.push(`${blockName(id)}(${id})`);
+        }
+        // **帯の合計が 1 を超えていないこと。** 超えると、後ろの候補（苗木）が
+        // `extraRoll` のどの目でも切られて**永久に出ません**。
+        const total = extras.reduce((sum, extra) => sum + (extra.chance ?? 1), 0);
+        if (total > 1) overOne.push(`${blockName(id)}(${id}) 合計 ${total}`);
       }
       // 当たりの目と外れの目を**2 本の乱数それぞれで**見る（`chance` と `extra.chance` の
       // 組み合わせ。片方だけ振ると、2 山目の当たりが 1 度も試されない目が残る）。
@@ -2852,15 +2876,16 @@ function ripeWheat(): void {
       }
     }
     console.log(`      extra を持つブロック: ${withExtra.join(" / ") || "なし"}`);
-    // **数えて直すこと、ゆるめないこと。** 葉（リンゴ 0.5%）が 2 つ目で、
-    // 針葉樹の葉は持たない（本家がオークとダークオークだけなので）。
+    // **数えて直すこと、ゆるめないこと。** 実った小麦（種）・オークの葉（リンゴと
+    // 苗木の 2 件）・トウヒの葉（苗木だけ）の 3 つ。
     check(
-      "extra を持つのは実った小麦と（オークの）葉の 2 つ",
-      withExtra.length === 2,
+      "extra を持つのは実った小麦と葉 2 種の 3 つ（オークの葉だけ候補 2 件）",
+      withExtra.length === 3,
       withExtra.join(" / "),
     );
     check("extra は 1 山目と別のアイテム", sameItem.length === 0, sameItem.join(" / "));
     check("どのブロックでも山は 2 つまで", tooMany.length === 0, tooMany.join(" / "));
+    check("2 山目の帯の合計は 1 を超えない", overOne.length === 0, overOne.join(" / "));
   }
 
   // 苗と同じ形（通り抜けられる・支えにならない・上書きして置けない・素手ですぐ壊せる）。
@@ -3016,5 +3041,181 @@ function storedBlocks(): void {
     "3 つとも食べ物でも道具でもない",
     stored.every(([, block]) => foodOf(block) === null && toolOf(block) === null),
     stored.map(([name, block]) => `${name} ${foodOf(block) ? "食べ物" : "-"}${toolOf(block) ? "道具" : "-"}`).join(" / "),
+  );
+}
+
+/**
+ * 苗木 2 種（ブロック 164 / 165・30a）。**落ちて・土の上にだけ立って・掘れば戻る**
+ * ところまでで、**育ちません**（木になるのは 30b）。
+ *
+ * ここで守りたいのは 3 点です:
+ *
+ * - **葉の 2 山目が `extraRoll` の帯で分かれていること**（リンゴ 0..0.005 →
+ *   苗木 0.005..0.055）。**乱数は 2 本のまま**で、リンゴと苗木は同時に落ちない
+ * - **真下が土・草・耕地のときだけ立つこと**（`needsSoil` の表 1 本）。
+ *   **`canSupport()` はゆるめていない** —— あれは壁掛けの松明とベッドの足場
+ * - **置く側と壊す側が同じ `supportsBlock()` を通ること** —— 片方だけだと
+ *   「置けないのに下を掘っても残る」「置けるのに勝手に消える」ができる
+ */
+function saplings(): void {
+  describe("苗木 2 種（葉から落ちて、土の上に立つ）");
+
+  const kinds: [string, number][] = [
+    ["オークの苗木", SAPLING],
+    ["トウヒの苗木", SPRUCE_SAPLING],
+  ];
+
+  // --- 形と性質（小麦の苗の写し。違うのは色・`variantOf`・`needsSoil` の 3 つ）---
+  for (const [name, id] of kinds) {
+    const d = blockDef(id);
+    const dropped = rollDrop(id, 0.5);
+    console.log(
+      `      ${name}(${id}): model ${d.model} / variantOf ${d.variantOf} / 硬さ ${d.hardness} / ` +
+        `色 0x${d.top.toString(16)} / 通り抜け ${!d.solid} / 上書きされる ${isReplaceable(id)} / ` +
+        `支え ${d.supportFace} / needsSoil ${needsSoil(id)} / 積める ${stacksOnSelf(id)} / ` +
+        `掘ると ${itemName(dropped.item)} x${dropped.count}`,
+    );
+    // **苗（`WHEAT_CROP`）とまったく同じ 5 点。** `variantOf` だけは逆側で、
+    // 書くとアイテムが作られず**掘っても戻らない**（一覧にも持ち物にも出ない）。
+    check(
+      `${name}は十字・通り抜けられる・硬さ 0・草の音・向き違いではない`,
+      d.model === "cross" && !d.solid && !d.opaque && d.hardness === 0 &&
+        d.sound === "grass" && d.variantOf === AIR,
+      `model ${d.model} / solid ${d.solid} / opaque ${d.opaque} / 硬さ ${d.hardness} / ` +
+        `sound ${d.sound} / variantOf ${d.variantOf}`,
+    );
+    // **`replaceable` を付けると、植えた苗木の上にブロックを置いた拍子に消える**
+    // （`placeSpot()` が狙ったマス自身を返すため）。苗と同じ側・草むらとは逆。
+    // **`stacksOnSelf` も付けない**（苗木の上に苗木は立たない。サトウキビとは逆）。
+    check(
+      `${name}は上書きされず・積めない（苗と同じ側。草むら／サトウキビとは逆）`,
+      !isReplaceable(id) && !stacksOnSelf(id) && isReplaceable(TALL_GRASS) && stacksOnSelf(SUGAR_CANE),
+      `上書き ${isReplaceable(id)} / 積める ${stacksOnSelf(id)}`,
+    );
+    check(
+      `${name}の支えは真下で、土が要る`,
+      d.supportFace === FACE_YN && needsSoil(id),
+      `supportFace ${d.supportFace} / needsSoil ${needsSoil(id)}`,
+    );
+    // **`DROPS` に 1 行も要らない** —— `variantOf` が `AIR` なので `dropOf()` の
+    // 既定（`baseBlock()`）が自分を 1 個落とす。**アイテムも自動で作られる。**
+    check(
+      `${name}は掘ると自分が 1 個落ちる（DROPS に 1 行も要らない）`,
+      dropped.item === id && dropped.count === 1 && rollDrops(id, 0.5, 0.9).length === 1 &&
+        itemName(id) === name && placedBlock(id) === id,
+      `${itemName(dropped.item)} x${dropped.count}（山 ${rollDrops(id, 0.5, 0.9).length} 個）/ ` +
+        `アイテム名「${itemName(id)}」/ 置ける ${placedBlock(id)}`,
+    );
+  }
+
+  // --- 葉から落ちる（帯を出してから判定する）---------------------------------
+  // **リンゴ 0..0.005 → 苗木 0.005..0.055 の順**。1 山目（棒 10%）は `roll` の側で、
+  // ここは `extraRoll` だけを振る。
+  const dropCases: [string, number, number, number][] = [
+    ["オークの葉・リンゴの帯（0.001）", LEAVES, 0.5, 0.001],
+    ["オークの葉・苗木の帯（0.03）", LEAVES, 0.5, 0.03],
+    ["オークの葉・棒当たり + 苗木", LEAVES, 0.05, 0.03],
+    ["オークの葉・帯の外（0.9）", LEAVES, 0.5, 0.9],
+    ["トウヒの葉・苗木の帯（0.03）", SPRUCE_LEAVES, 0.5, 0.03],
+    ["トウヒの葉・帯の外（0.9）", SPRUCE_LEAVES, 0.5, 0.9],
+  ];
+  for (const [label, id, roll, extraRoll] of dropCases) {
+    const stacks = rollDrops(id, roll, extraRoll);
+    console.log(
+      `      ${label}: ${stacks.map((s) => `${itemName(s.item)} x${s.count}`).join(" + ") || "なし"}`,
+    );
+  }
+  const appleBand = rollDrops(LEAVES, 0.5, 0.001);
+  const saplingBand = rollDrops(LEAVES, 0.5, 0.03);
+  const both = rollDrops(LEAVES, 0.05, 0.03);
+  const outside = rollDrops(LEAVES, 0.5, 0.9);
+  check(
+    "オークの葉: 0.001 はリンゴ 1 山・0.03 は苗木 1 山（帯が分かれている）",
+    appleBand.length === 1 && appleBand[0]?.item === APPLE &&
+      saplingBand.length === 1 && saplingBand[0]?.item === SAPLING,
+    `0.001 → ${appleBand.map((s) => itemName(s.item)).join("+") || "なし"} / ` +
+      `0.03 → ${saplingBand.map((s) => itemName(s.item)).join("+") || "なし"}`,
+  );
+  // **リンゴと苗木は同時に落ちない**（帯で分けたので、当たるのはどちらか片方）。
+  // 本家は独立だが、乱数を 3 本目に増やすと `breaking.ts` と `main.ts` に及ぶ（`TUNING.md`）。
+  check(
+    "リンゴと苗木は同時に落ちない（帯なので片方だけ）",
+    !appleBand.some((s) => s.item === SAPLING) && !saplingBand.some((s) => s.item === APPLE),
+    `${appleBand.map((s) => itemName(s.item)).join("+")} / ${saplingBand.map((s) => itemName(s.item)).join("+")}`,
+  );
+  check(
+    "棒も当たると 2 山（棒 + 苗木）・帯の外は 0 山",
+    both.length === 2 && both[0]?.item === STICK && both[1]?.item === SAPLING &&
+      outside.length === 0,
+    `${both.map((s) => itemName(s.item)).join(" + ")} / 外 ${outside.length} 山`,
+  );
+  const spruceBand = rollDrops(SPRUCE_LEAVES, 0.5, 0.03);
+  check(
+    "トウヒの葉からはトウヒの苗木（オークの苗木ではない）",
+    spruceBand.length === 1 && spruceBand[0]?.item === SPRUCE_SAPLING,
+    spruceBand.map((s) => `${itemName(s.item)} x${s.count}`).join(" + ") || "なし",
+  );
+
+  // --- 土の上にだけ立つ（表を一覧で出してから判定する）------------------------
+  // **`canSupport()` はゆるめていない** —— 石の上でも `canSupport` は true のままで、
+  // 落としているのは `supportsBlock()` の 1 行だけ。**ここを混ぜると松明が草むらに刺さる。**
+  const soilCases: [string, number, boolean][] = [
+    ["土", DIRT, true],
+    ["草", GRASS, true],
+    ["耕地", FARMLAND, true],
+    ["石", STONE, false],
+    ["板", PLANK, false],
+    ["砂", SAND, false],
+    ["ガラス", GLASS, false],
+    ["葉", LEAVES, false],
+    ["空気", AIR, false],
+  ];
+  console.log(
+    `      supportsBlock(真下, FACE_YP, 苗木): ` +
+      soilCases.map(([n, s]) => `${n} ${supportsBlock(s, FACE_YP, SAPLING)}`).join(" / "),
+  );
+  console.log(
+    `      canSupport(真下, FACE_YP) は変わらない: ` +
+      soilCases.map(([n, s]) => `${n} ${canSupport(s, FACE_YP)}`).join(" / "),
+  );
+  const wrong = soilCases.filter(([, s, want]) => supportsBlock(s, FACE_YP, SAPLING) !== want);
+  check(
+    "苗木が立つのは土・草・耕地の上だけ（石・板・砂・ガラス・葉の上には立たない）",
+    wrong.length === 0,
+    wrong.map(([n]) => n).join(" / ") || "9 通りとも表どおり",
+  );
+  check(
+    "トウヒの苗木も同じ表（`id === SAPLING` と書いていない）",
+    soilCases.every(([, s, want]) => supportsBlock(s, FACE_YP, SPRUCE_SAPLING) === want),
+    soilCases.map(([n, s]) => `${n} ${supportsBlock(s, FACE_YP, SPRUCE_SAPLING)}`).join(" / "),
+  );
+  // **`canSupport()` をゆるめていないこと**（石は今までどおり支えで、松明は刺さる）。
+  check(
+    "canSupport はゆるめていない（石の上の松明は今までどおり置ける）",
+    canSupport(STONE, FACE_YP) && supportsBlock(STONE, FACE_YP, TORCH) &&
+      !supportsBlock(TALL_GRASS, FACE_YP, TORCH),
+    `石 ${canSupport(STONE, FACE_YP)} / 石の上の松明 ${supportsBlock(STONE, FACE_YP, TORCH)} / ` +
+      `草むらの上の松明 ${supportsBlock(TALL_GRASS, FACE_YP, TORCH)}`,
+  );
+  // **`isSoil()` は表 1 本**（土を増やしたときに片方だけ直し忘れない）。
+  console.log(
+    `      isSoil(): ${soilCases.map(([n, s]) => `${n} ${isSoil(s)}`).join(" / ")}`,
+  );
+  check(
+    "isSoil は土・草・耕地の 3 つだけ",
+    BLOCKS.filter((b) => isSoil(b.id)).length === 3 && isSoil(DIRT) && isSoil(GRASS) && isSoil(FARMLAND),
+    BLOCKS.filter((b) => isSoil(b.id)).map((b) => b.name).join(" / "),
+  );
+
+  // **置けない理由の文**（`supportHint()`）。「床か壁」のままだと嘘になる。
+  console.log(
+    `      supportHint: 苗木「${supportHint(SAPLING)}」/ はしご「${supportHint(LADDER)}」/ ` +
+      `松明「${supportHint(TORCH)}」`,
+  );
+  check(
+    "置けない理由は「土か草の上」（はしごの「壁」・松明の「床か壁」は変わらない）",
+    supportHint(SAPLING) === "土か草の上" && supportHint(SPRUCE_SAPLING) === "土か草の上" &&
+      supportHint(LADDER) === "壁" && supportHint(TORCH) === "床か壁",
+    `苗木「${supportHint(SAPLING)}」/ はしご「${supportHint(LADDER)}」/ 松明「${supportHint(TORCH)}」`,
   );
 }

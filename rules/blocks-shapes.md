@@ -235,6 +235,26 @@ export function supportsBlock(supporter: number, face: number, id: number): bool
 }
 ```
 
+**`supportsBlock()` は「広げる」だけの場所ではありません。狭める例外もここです**
+（2026-09-13 の苗木 = 30a）。苗木は `canSupport()` を通ったうえで、**真下が土
+（土・草・耕地）でなければ落とします**:
+
+```ts
+if (supporter === id && stacksOnSelf(id)) return true;        // 広げる（サトウキビ）
+if (needsSoil(id) && !isSoil(supporter)) return false;        // 狭める（苗木）
+return canSupport(supporter, face);
+```
+
+- **どちらも表 1 本に聞くこと**（`needsSoil()` / `isSoil()`。`id === SAPLING` や
+  `id === DIRT || id === GRASS` と書くと、苗木や土を増やしたときに必ず片方を忘れます）。
+  **`isSoil` は `BlockDef.soil` から立てた表**で、いま真なのは土・草・耕地の 3 つだけです
+- **狭めるほうも置く側と壊す側の両方に効きます** —— だから「土の上にしか置けない」と
+  「真下の土を掘ったら落ちる」が**1 行で両方**そろいます（サトウキビと同じ置き場所）
+- **`canSupport()` を触って済ませないこと**（松明が草むらに刺さります。下の項）
+- **置けない理由の文（`supportHint()`）も一緒に直すこと。** 「床か壁」のまま
+  残すと嘘になります（石の床を狙っても置けない）。**あそこも `needsSoil()` の表から
+  出すこと** —— `base === SAPLING` と書くと、苗木を増やしたときに文だけが嘘になります
+
 - **置く側（`World.canPlaceAt`）と壊す側（`World.breakUnsupported`）が同じこれを通すこと。**
   片方だけにすると、**積めるのに下を壊しても上が落ちない**形で静かに壊れます。
   **`test/arena.ts` の写しも同じ式にすること**（写しはあそこ 1 か所だけ）。

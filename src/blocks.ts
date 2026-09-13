@@ -529,6 +529,38 @@ export const ICE = 156;
  */
 export const FENCE = 157;
 
+/**
+ * 苗木 2 種（30a・落ちて植わるところまで）。**オークの葉から 5%・トウヒの葉から 5%**
+ * で落ち（`items.ts` の `DROPS`）、**土・草・耕地の上にだけ立ちます。**
+ *
+ * **まだ育ちません**（木になるのは 30b）。`crops.ts` にも `worldgen.ts` にも 0 行なので、
+ * 植えた苗木はそのまま残るだけです。
+ *
+ * **形は小麦の苗（`WHEAT_CROP`）とまったく同じ**（十字の板 2 枚・通り抜けられる・
+ * 硬さ 0・`sound: "grass"`・`supportFace: FACE_YN`）で、違うのは 2 つだけ:
+ *
+ * - **色**（一覧に出るのは `top` だけ。緑は一覧でいちばん混んでいる帯なので、
+ *   `test/items.test.ts` がいちばん近い相手との隔たりを出してから判定します）
+ * - **`variantOf` を書かない** —— 苗（121）は自分自身に向けているので**アイテムが
+ *   作られません**が、苗木は**掘ったら戻ってきてほしい**ので既定の `AIR` のまま。
+ *   `items.ts` の for が同じ番号のアイテムを作り、`dropOf()` の既定（`baseBlock()`）が
+ *   自分を 1 個落とします（**`DROPS` に 1 行も要りません**）。
+ *   **`items.ts` の `MAX_ITEM_ID` だけは伸ばすこと。**
+ *
+ * **`replaceable` は付けないこと**（苗と同じ理由 —— 植えた苗木の上にブロックを置いた
+ * 拍子に黙って消えます）。**`stacksOnSelf` も付けないこと**（苗木の上に苗木は立ちません）。
+ *
+ * **土の上だけ**は `needsSoil` の表 1 本で、効くのは `supportsBlock()` の 1 行だけです
+ * （上の `BlockDef.needsSoil`）。置けない理由の文も `supportHint()` が表から出すので、
+ * **「床か壁」のままにしないこと**（嘘になります）。
+ *
+ * **自然生成しません**（`worldgen.ts` にも `biomes.ts` にも 0 行）。だから
+ * **`npm run shot` の既存の場面には 1 枚も写りません** —— 本棚・クモの巣・ケーキ・氷・
+ * フェンスと同じ理由で `tools/shot.ts` に `sapling` の場面を持っています。
+ */
+export const SAPLING = 164;
+export const SPRUCE_SAPLING = 165;
+
 /** 上付きハーフ。見た目と当たり判定だけが違うので、大元は下付きのハーフ。 */
 export const STONE_SLAB_TOP = 64;
 export const COBBLE_SLAB_TOP = 65;
@@ -931,6 +963,23 @@ export interface BlockDef {
    */
   readonly stacksOnSelf: boolean;
   /**
+   * 真下が「土」でなければ立てないか（苗木）。**`stacksOnSelf` とまったく同じ場所
+   * （`supportsBlock()`）で効きます** —— `canSupport()` を通ったうえで、更に土かどうかで
+   * 落とすだけです。**`canSupport()` の側を触らないこと**（あれは壁掛けの松明と
+   * ベッドの足場で、ゆるめると松明が草むらに刺さります。`rules/blocks-shapes.md`）。
+   *
+   * `supportsBlock()` は置く側（`World.canPlaceAt`）と壊す側
+   * （`World.breakUnsupported`）の両方が通るので、**真下の土を掘れば苗木も勝手に
+   * 壊れて落ちます**（1 行で両方が済みます）。
+   */
+  readonly needsSoil: boolean;
+  /**
+   * 「土」の側か（土・草・耕地）。**`needsSoil` の相手**で、引くのは `isSoil()` だけ。
+   * **`id === DIRT || id === GRASS` と書かないこと** —— 土を増やしたときに
+   * 片方だけ直し忘れます（`isLiquid()` / `isSpiky()` と同じ表 1 本の形）。
+   */
+  readonly soil: boolean;
+  /**
    * 見た目だけが違う別置き版なら、その大元のブロック。0 なら大元そのもの。
    * アイテムもドロップも名前も大元に揃うので、置き方を増やしても
    * アイテム欄が増えない。
@@ -1058,6 +1107,8 @@ function def(
     collision: opts.collision ?? boxes,
     supportFace: opts.supportFace ?? NO_SUPPORT,
     stacksOnSelf: opts.stacksOnSelf ?? false,
+    needsSoil: opts.needsSoil ?? false,
+    soil: opts.soil ?? false,
     variantOf: opts.variantOf ?? AIR,
   };
 }
@@ -1302,8 +1353,10 @@ function portalPair(): BlockDef[] {
 
 export const BLOCKS: readonly BlockDef[] = [
   def(AIR, "Air", { top: 0x000000 }, { opaque: false, solid: false, alpha: 0, replaceable: true, sound: "none" }),
-  def(GRASS, "草", { top: 0x6aa84f, side: 0x7a6444, bottom: 0x6b533a }, { hardness: 0.6, tool: "shovel", sound: "grass" }),
-  def(DIRT, "土", { top: 0x6b533a }, { hardness: 0.5, tool: "shovel", sound: "dirt" }),
+  // **`soil: true` の 3 つ**（草・土と、下の耕地）。苗木がこの上にだけ立つ
+  // （`needsSoil` の相手。`isSoil()` が引く表 1 本）。
+  def(GRASS, "草", { top: 0x6aa84f, side: 0x7a6444, bottom: 0x6b533a }, { hardness: 0.6, tool: "shovel", sound: "grass", soil: true }),
+  def(DIRT, "土", { top: 0x6b533a }, { hardness: 0.5, tool: "shovel", sound: "dirt", soil: true }),
   def(STONE, "石", { top: 0x8a8f96 }, { hardness: 1.5, tool: "pickaxe", minTier: TIER_WOOD }),
   def(COBBLE, "丸石", { top: 0x767b82 }, { hardness: 2, tool: "pickaxe", minTier: TIER_WOOD }),
   def(SAND, "砂", { top: 0xd8c99a }, { hardness: 0.5, tool: "shovel", sound: "sand", falls: true }),
@@ -1642,7 +1695,7 @@ export const BLOCKS: readonly BlockDef[] = [
     FARMLAND,
     "耕地",
     { top: 0x59422d, side: 0x6b533a, bottom: 0x6b533a },
-    { hardness: 0.6, tool: "shovel", sound: "dirt", variantOf: DIRT },
+    { hardness: 0.6, tool: "shovel", sound: "dirt", variantOf: DIRT, soil: true },
   ),
 
   // 小麦の苗。草むらとまったく同じ形（十字の板 2 枚・通り抜けられる・空の光も止めない）で、
@@ -1845,6 +1898,35 @@ export const BLOCKS: readonly BlockDef[] = [
     boxes: FENCE_BOXES,
     collision: FENCE_COLLISION_BOX,
   }),
+
+  // 苗木 2 種（上のコメント）。**小麦の苗（`WHEAT_CROP`）の定義をそのまま写したもの**で、
+  // 違うのは 3 つだけ: **色** / **`variantOf` を書かない**（書くとアイテムが作られず、
+  // 掘っても戻らない）/ **`needsSoil: true`**（土・草・耕地の上にだけ立つ）。
+  // **`replaceable` も `stacksOnSelf` も付けないこと**（置いた苗木が黙って消える／
+  // 苗木の上に苗木が立つ）。**色**: 緑は一覧でいちばん混んでいる帯
+  // （草 0x6aa84f・葉 0x3f7a3a・トウヒの葉 0x2c5c3a・草むら 0x5e9c41・サボテン 0x5c9b47・
+  // サトウキビ 0x9ad14f）なので、**明るい黄緑**と**暗い青緑**に振り分けてある
+  // （オークはいちばん近い草から 35.0、トウヒは葉から 36.1。互いは 102.6。`TUNING.md`）。
+  def(SAPLING, "オークの苗木", { top: 0x7fbf5f }, {
+    opaque: false,
+    solid: false,
+    hardness: 0,
+    sound: "grass",
+    model: "cross",
+    boxes: CROSS_BOX,
+    supportFace: FACE_YN,
+    needsSoil: true,
+  }),
+  def(SPRUCE_SAPLING, "トウヒの苗木", { top: 0x2f7f5a }, {
+    opaque: false,
+    solid: false,
+    hardness: 0,
+    sound: "grass",
+    model: "cross",
+    boxes: CROSS_BOX,
+    supportFace: FACE_YN,
+    needsSoil: true,
+  }),
 ];
 
 
@@ -1932,6 +2014,10 @@ const SLIPPERY = new Uint8Array(ID_LIMIT);
 const BREAKS_INTO = new Uint8Array(ID_LIMIT);
 /** 1 = 自分の上に自分を積める（サトウキビ）。引くのは `supportsBlock()` だけ。 */
 const STACKS_ON_SELF = new Uint8Array(ID_LIMIT);
+/** 1 = 真下が土でないと立てない（苗木）。引くのは `supportsBlock()` と `supportHint()`。 */
+const NEEDS_SOIL = new Uint8Array(ID_LIMIT);
+/** 1 = 「土」の側（土・草・耕地）。`NEEDS_SOIL` の相手で、引くのは `isSoil()` だけ。 */
+const SOIL = new Uint8Array(ID_LIMIT);
 /**
  * 1 = 当たり判定が 1 マスより高い（フェンス）。**手で旗を書かず、`collision` の
  * 最大 y > 1 から立てる**（2 か所に書くと必ず食い違う）。引くのは `physics.ts` の
@@ -1961,6 +2047,8 @@ for (const block of BLOCKS) {
   SLIPPERY[block.id] = block.slippery ? 1 : 0;
   BREAKS_INTO[block.id] = block.breaksInto;
   STACKS_ON_SELF[block.id] = block.stacksOnSelf ? 1 : 0;
+  NEEDS_SOIL[block.id] = block.needsSoil ? 1 : 0;
+  SOIL[block.id] = block.soil ? 1 : 0;
   // **`solid` なブロックだけ**（通り抜けられるブロックの箱は当たり判定に使われない）。
   TALL_COLLISION[block.id] =
     block.solid && block.collision.some((b) => b[4] > 1) ? 1 : 0;
@@ -2284,8 +2372,12 @@ export function ladderVariant(face: number): number {
  *
  * 見るのは**真下を支えにしたときに置けるか**の 1 点だけ。床に置けないもの
  * （はしご）は「壁」、置けるもの（松明）は今までどおり「床か壁」。
+ *
+ * **床の種類まで選ぶもの（苗木）は「土か草の上」。** 「床か壁」のままにすると
+ * 嘘になる（石の床を狙っても置けない）ので、**ここも表（`needsSoil()`）から出す。**
  */
 export function supportHint(base: number): string {
+  if (needsSoil(base)) return "土か草の上";
   const onFloor = placedVariant(base, { support: FACE_YN, hitY: 0, facing: FACE_XP });
   return onFloor === AIR ? "壁" : "床か壁";
 }
@@ -2326,6 +2418,19 @@ export function stacksOnSelf(id: number): boolean {
 }
 
 /**
+ * 真下が土でないと立てないブロックか（苗木）。**`id === SAPLING` と書かないこと** ——
+ * `stacksOnSelf()` と同じで、表 1 本に聞く（苗木を増やしても分岐が増えない）。
+ */
+export function needsSoil(id: number): boolean {
+  return NEEDS_SOIL[id] === 1;
+}
+
+/** 苗木が立てる「土」か（土・草・耕地）。**表 1 本**（`needsSoil()` の相手）。 */
+export function isSoil(id: number): boolean {
+  return SOIL[id] === 1;
+}
+
+/**
  * `supporter` は、`face` の側に `id` を置くだけの支えになれるか。
  * **置く側（`World.canPlaceAt`）と壊す側（`World.breakUnsupported`）は必ずこれを通すこと。**
  *
@@ -2336,6 +2441,10 @@ export function stacksOnSelf(id: number): boolean {
  */
 export function supportsBlock(supporter: number, face: number, id: number): boolean {
   if (supporter === id && stacksOnSelf(id)) return true;
+  // **狭めるほうの例外がもう 1 つ**（苗木）。`canSupport()` を通ったうえで、
+  // 土（土・草・耕地）でなければ落とす —— 石でも板でも立ってしまうのを止める。
+  // **壊す側もここを通る**ので、真下の土を掘れば苗木も一緒に壊れて落ちる。
+  if (needsSoil(id) && !isSoil(supporter)) return false;
   return canSupport(supporter, face);
 }
 
