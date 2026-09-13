@@ -23,6 +23,7 @@ import {
 import { deserializeWear, serializeWear } from "./durability";
 import { clearSlot, isEmpty, type Slot } from "./inventory";
 import {
+  CHARCOAL,
   COAL,
   COOKED_CHICKEN,
   COOKED_PORK,
@@ -63,6 +64,13 @@ export const SMELTING: ReadonlyMap<number, SmeltResult> = new Map([
   // 牛。**豚・鶏とまったく同じ形の 1 行**（焼く見返りは `items.ts` の `FOODS` が持つ）。
   // **`FUEL` には 1 行も足していない**（革は燃料ではありません）。
   [RAW_BEEF, { out: STEAK, count: 1 }],
+  // 木炭。**原木は「焼けるもの」と「燃料」の両方に居る初めての行**（本家と同じ）。
+  // 原木 1 個を原木 1.5 個ぶんの火で焼くと、8 個ぶん燃える木炭が 1 個返る —— つまり
+  // **石炭が 1 つも無くても、木だけで火を回し続けられる**ようになる。
+  // **`FUEL` の行は書き換えないこと**（原木が燃料でなくなると、その入口が閉じます）。
+  [WOOD, { out: CHARCOAL, count: 1 }],
+  // トウヒの原木も同じ 1 行（板が 2 行あるのと同じで、針葉樹林から始めても詰まない）。
+  [SPRUCE_WOOD, { out: CHARCOAL, count: 1 }],
 ]);
 
 /**
@@ -74,6 +82,10 @@ export const SMELTING: ReadonlyMap<number, SmeltResult> = new Map([
  */
 export const FUEL: ReadonlyMap<number, number> = new Map([
   [COAL, SMELT_TIME * 8],
+  // 木炭は**石炭とまったく同じ 8 個ぶん**（本家と同じ）。並べて書いてあるのは、
+  // 片方だけ伸ばすと「どちらを使うべきか」が生まれてしまうため —— 本家でも同じ長さで、
+  // 違いは**手に入る道**（掘る / 木を焼く）だけ。**`Math.max(...FUEL.values())` は 80 のまま。**
+  [CHARCOAL, SMELT_TIME * 8],
   [WOOD, SMELT_TIME * 1.5],
   [SPRUCE_WOOD, SMELT_TIME * 1.5],
   [PLANK, SMELT_TIME * 1.5],

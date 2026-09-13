@@ -464,3 +464,20 @@ JS で偽装しているため）。**`document.getElementById("mode").click()` 
 収納に入ることがあります** —— クリエイティブで始めるとホットバー 9 枠が最初から
 埋まっているためです。**`#invhotbar` だけを探すと空振りします**（ここでも 1 回撮り直した）。
 `#invhotbar .slot` と `#storage .slot` を**両方つないでから名前で探すこと**。
+
+### `creative-charcoal.png`（木炭の周・2026-09-13・AUTODEV 77）
+
+**一覧に色が 1 つ増えるだけの周でも撮ります**（`AUTODEV.md` の C-3）。使い捨ての
+スクリプトで、`browsershot.mjs` は書き換えていません。**手順は上の
+`creative-stored.png` とまったく同じ**（`#mode` を `click()` → `E` →
+`#creative` の `scrollTop = scrollHeight`）。
+
+| 見たこと | 値 |
+| --- | --- |
+| 一覧に並んだか | **末尾に「木炭」が 1 枠**（骨の隣・`.label` から読んだ）。`title` は `木炭 x64` |
+| 色 | `.swatch` の `backgroundColor` が **`rgb(86,71,63)` = `0x56473f`**（指定どおり） |
+| 石炭と並ぶか | **同じ画面には入りません**（石炭は 65 なのでずっと上。`rect` の y が −136）。**色の隔たり 64.0 は `test/items.test.ts` が数で見ています** |
+| console のエラー | **0 件**（`GL Driver Message` の警告だけ） |
+
+**⚠ 写った既知の件: 「革のズボン」の名前が 2 行に折れて枠の絵に被ります**（`style.css` の
+`.slot .label`。**5 文字の名前で出ます**）。**この周の持ち物ではないので直していません。**

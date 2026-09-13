@@ -1,5 +1,9 @@
+import { COBBLE, OBSIDIAN, STONE } from "../src/blocks";
 import {
   BONE,
+  CHARCOAL,
+  COAL,
+  FLINT,
   LEATHER,
   LEATHER_BOOTS,
   LEATHER_CHESTPLATE,
@@ -177,5 +181,58 @@ export function run(): void {
     "骨は既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）",
     boneBest >= 20,
     `いちばん近いのは${boneWho}で ${boneBest.toFixed(1)}`,
+  );
+
+  describe("木炭（原木を焼くと出る燃料）");
+
+  // **置けず・道具でもなく・食べ物でもない**（骨・革・糸・羽根とまったく同じ扱い）。
+  // `tool:` を付けると `mobs.ts` の `TOOL_ATTACK` に無い種類が入って
+  // `attackDamage()` が NaN を返す（`rules/items-survival.md`）。
+  console.log(
+    `      木炭(${CHARCOAL}) ${itemName(CHARCOAL)} 0x${itemColor(CHARCOAL).toString(16)}  置ける ` +
+      `${placedBlock(CHARCOAL) !== 0} / 道具 ${toolOf(CHARCOAL) !== null} / 食べ物 ${foodOf(CHARCOAL) !== null}` +
+      ` / 1 枠 ${itemStackLimit(CHARCOAL)} 個`,
+  );
+  check(
+    "木炭は置けず・道具でもなく・食べ物でもない（1 枠 64 個）",
+    placedBlock(CHARCOAL) === 0 && toolOf(CHARCOAL) === null && foodOf(CHARCOAL) === null &&
+      itemStackLimit(CHARCOAL) === 64,
+    `block ${placedBlock(CHARCOAL)} / tool ${toolOf(CHARCOAL)} / food ${foodOf(CHARCOAL)} / stack ${itemStackLimit(CHARCOAL)}`,
+  );
+  // **炭の暗い暖色は一覧でいちばん混んでいる帯**（火打石・ソウルサンド・ネザーレンガ・
+  // 岩盤・石炭がここに居る）。素直な 0x403a36 は**火打石と 5.8 しか離れません** ——
+  // だから**いちばん近い相手と隔たりを出してから**判定する（骨と同じ形）。
+  let charcoalBest = Infinity;
+  let charcoalWho = "";
+  for (const other of ids) {
+    if (other === CHARCOAL) continue;
+    const gap = dist(itemColor(CHARCOAL), itemColor(other));
+    if (gap < charcoalBest) {
+      charcoalBest = gap;
+      charcoalWho = itemName(other);
+    }
+  }
+  // **暗い帯の相手を名指しで出しておくこと** —— 一番近い 1 人だけだと、色を触ったときに
+  // 「どちらへ寄せると詰まるか」が出力から読めない。
+  for (const other of [COAL, OBSIDIAN, STONE, COBBLE, FLINT])
+    console.log(
+      `      木炭 ↔ ${itemName(other)} 0x${itemColor(other).toString(16)}: ` +
+        `${dist(itemColor(CHARCOAL), itemColor(other)).toFixed(1)}`,
+    );
+  console.log(`      木炭の色のいちばん近い相手: ${charcoalWho} ${charcoalBest.toFixed(1)}`);
+  check(
+    "木炭は既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）",
+    charcoalBest >= 20,
+    `いちばん近いのは${charcoalWho}で ${charcoalBest.toFixed(1)}`,
+  );
+  // **石炭とは別の番号**（本家と同じ。同じ枠には積めない）。**`CHARCOAL !== COAL` とは
+  // 書かないこと** —— ID は数値リテラル型なので `tsc` が TS2367 で落ちます
+  // （`rules/testing.md`）。**両方が一覧に並んでいて名前も色も別**、を見るのが正しい形。
+  check(
+    "木炭と石炭は一覧に 2 つ並ぶ（名前も色も別）",
+    ids.includes(CHARCOAL) && ids.includes(COAL) &&
+      itemName(CHARCOAL) !== itemName(COAL) &&
+      dist(itemColor(CHARCOAL), itemColor(COAL)) >= 20,
+    `${itemName(CHARCOAL)} / ${itemName(COAL)}・色の隔たり ${dist(itemColor(CHARCOAL), itemColor(COAL)).toFixed(1)}`,
   );
 }

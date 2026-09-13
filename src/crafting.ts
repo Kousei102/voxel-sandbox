@@ -43,6 +43,7 @@ import {
   BOWL,
   BREAD,
   BUCKET,
+  CHARCOAL,
   COAL,
   DIAMOND,
   DIAMOND_AXE,
@@ -125,6 +126,11 @@ export const RECIPES: readonly Recipe[] = [
   },
   // 石炭を棒の上に。1 列なので 2x2 でも作れる（Minecraft と同じ）。
   { name: "松明", out: TORCH, count: 4, shape: ["C", "S"], key: { C: COAL, S: STICK } },
+  // **木炭でも同じ 4 本**（Minecraft と同じ）。**`Recipe` に「どちらでもよい」列を
+  // 足さずに、材料違いをもう 1 本で表す** —— 板が原木とトウヒの原木で 2 行あるのと同じ形
+  // （`rules/inventory-screen.md`）。形は同じでも材料が違うので、
+  // `test/crafting.test.ts` の「同じ形のレシピが重複していない」は緑のまま。
+  { name: "松明", out: TORCH, count: 4, shape: ["C", "S"], key: { C: CHARCOAL, S: STICK } },
 
   // かまどは丸石 8 個の輪（Minecraft と同じ）。3x3 なので作業台が要る。
   { name: "かまど", out: FURNACE, count: 1, shape: ["CCC", "C.C", "CCC"], key: { C: COBBLE } },

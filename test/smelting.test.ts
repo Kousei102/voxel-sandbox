@@ -8,7 +8,9 @@ import {
   IRON_ORE,
   PLANK,
   SAND,
+  SPRUCE_WOOD,
   STONE,
+  WOOD,
   baseBlock,
   blockName,
 } from "../src/blocks";
@@ -17,6 +19,7 @@ import { CraftScreen } from "../src/craftscreen";
 import { Furnaces, litVoxel } from "../src/furnaces";
 import { INVENTORY_SIZE, Inventory, isEmpty, type Slot } from "../src/inventory";
 import {
+  CHARCOAL,
   COAL,
   COOKED_CHICKEN,
   COOKED_PORK,
@@ -119,9 +122,49 @@ export function run(): void {
     SMELTING.get(RAW_BEEF)?.out === STEAK && SMELTING.get(RAW_BEEF)?.count === 1,
     `${itemName(SMELTING.get(RAW_BEEF)?.out ?? NO_ITEM)} x${SMELTING.get(RAW_BEEF)?.count}`,
   );
-  // **`FUEL` は 1 行も増えていないこと**（革を燃料にすると、牛が薪になる）。
+  // --- 木炭（原木を焼く）-----------------------------------------------------
+  // **原木は「焼けるもの」と「燃料」の両方に居る初めての行**（本家と同じ）。
+  // **`>= 1` のような数え方をしないこと** —— 個数まで出して突き合わせる。
+  console.log(
+    `      原木 → ${itemName(SMELTING.get(WOOD)?.out ?? NO_ITEM)} x${SMELTING.get(WOOD)?.count}` +
+      ` / トウヒの原木 → ${itemName(SMELTING.get(SPRUCE_WOOD)?.out ?? NO_ITEM)} x${SMELTING.get(SPRUCE_WOOD)?.count}`,
+  );
+  check(
+    "原木 → 木炭 1 個",
+    SMELTING.get(WOOD)?.out === CHARCOAL && SMELTING.get(WOOD)?.count === 1,
+    `${itemName(SMELTING.get(WOOD)?.out ?? NO_ITEM)} x${SMELTING.get(WOOD)?.count}`,
+  );
+  check(
+    "トウヒの原木 → 木炭 1 個",
+    SMELTING.get(SPRUCE_WOOD)?.out === CHARCOAL && SMELTING.get(SPRUCE_WOOD)?.count === 1,
+    `${itemName(SMELTING.get(SPRUCE_WOOD)?.out ?? NO_ITEM)} x${SMELTING.get(SPRUCE_WOOD)?.count}`,
+  );
+  // **原木が燃料の表から落ちていないこと。** `SMELTING` に足したときに `FUEL` の行を
+  // 消すと、「石炭が無くても木だけで火を回せる」入口がそのまま閉じる。
+  console.log(
+    `      原木は燃料でもある: ${fuelTimeOf(WOOD)} 秒 / トウヒの原木 ${fuelTimeOf(SPRUCE_WOOD)} 秒` +
+      `（焼ける: ${isSmeltable(WOOD)} / ${isSmeltable(SPRUCE_WOOD)}）`,
+  );
+  check(
+    "原木は燃料でもあり、焼けるものでもある",
+    isFuel(WOOD) && isSmeltable(WOOD) && isFuel(SPRUCE_WOOD) && isSmeltable(SPRUCE_WOOD),
+    `燃料 ${isFuel(WOOD)} / ${isFuel(SPRUCE_WOOD)}・焼ける ${isSmeltable(WOOD)} / ${isSmeltable(SPRUCE_WOOD)}`,
+  );
+  // **秒ではなく「何個焼けるか」で見ること** —— `SMELT_TIME` を触ったときに
+  // 「8 個ぶん」のほうが崩れたと分かる。
+  console.log(
+    `      木炭 ${fuelTimeOf(CHARCOAL)} 秒 = ${fuelTimeOf(CHARCOAL) / SMELT_TIME} 個` +
+      `（石炭 ${fuelTimeOf(COAL)} 秒 = ${fuelTimeOf(COAL) / SMELT_TIME} 個）`,
+  );
+  check(
+    "木炭 1 個で 8 個焼ける（石炭と同じ 80 秒）",
+    fuelTimeOf(CHARCOAL) / SMELT_TIME === 8 && fuelTimeOf(CHARCOAL) === fuelTimeOf(COAL),
+    `木炭 ${fuelTimeOf(CHARCOAL)} 秒 / 石炭 ${fuelTimeOf(COAL)} 秒`,
+  );
+  // **`FUEL` に紛れ込んでいないこと**（革を燃料にすると、牛が薪になる）。
   // 表そのものを数える —— 「革が燃料でない」だけだと、別のものが紛れても緑になる。
-  check("燃料の表は 8 行のまま（牛では 1 行も増えていない）", FUEL.size === 8, `${FUEL.size} 行`);
+  // **数え直すのは可・ゆるめるのは禁じ手**（`>= 8` にしない）。木炭で 1 行増えて 9 行。
+  check("燃料の表は 9 行（木炭で 1 行増えた）", FUEL.size === 9, `${FUEL.size} 行`);
 
   // **木から作れる燃料を必ず残すこと。** 石炭が見つかる前に鉄を焼けないと、
   // かまどを作った意味が最初の数十分ぶん遅れる。

@@ -38,6 +38,7 @@ import {
   BOWL,
   BREAD,
   BUCKET,
+  CHARCOAL,
   COAL,
   DIAMOND,
   DIAMOND_HOE,
@@ -104,7 +105,7 @@ export function run(): void {
   const P = {
     P: PLANK, S: STICK, W: WOOD, C: COBBLE, D: DIAMOND, A: SAND, O: COAL, T: STONE,
     I: IRON_INGOT, F: FLINT, L: WOOL, H: WHEAT, N: FEATHER, G: STRING, K: SNOWBALL,
-    R: BLAZE_ROD, B: BLAZE_POWDER, E: ENDER_PEARL, Y: ENDER_EYE,
+    R: BLAZE_ROD, B: BLAZE_POWDER, E: ENDER_PEARL, Y: ENDER_EYE, Z: CHARCOAL,
   };
 
   // --- 形なし ---
@@ -132,6 +133,24 @@ export function run(): void {
   check("石炭 + 棒 → 松明 4 本", torch?.out === TORCH && torch.count === 4, torch?.name ?? "無し");
   const torchUpsideDown = findRecipe(grid(2, ["S.", "O."], P), 2);
   check("上下を逆にすると松明にならない", torchUpsideDown === null, torchUpsideDown?.name ?? "無し");
+  // **材料違いはレシピをもう 1 本で表す**（`Recipe` に「どちらでもよい」列は足さない）。
+  // **石炭の側も同じ形で残すこと** —— 片方だけ緑にすると、材料を差し替えただけの
+  // 壊し方（石炭で作れなくなる）に誰も気付けない。
+  const torchFromCharcoal = findRecipe(grid(2, ["Z.", "S."], P), 2);
+  console.log(
+    `      松明: 石炭 ${torch?.name ?? "無し"} x${torch?.count ?? 0} / ` +
+      `木炭 ${torchFromCharcoal?.name ?? "無し"} x${torchFromCharcoal?.count ?? 0}`,
+  );
+  check(
+    "松明は木炭でも作れる（4 本）",
+    torchFromCharcoal?.out === TORCH && torchFromCharcoal.count === 4,
+    torchFromCharcoal?.name ?? "無し",
+  );
+  check(
+    "松明は石炭でも今までどおり作れる（4 本）",
+    torch?.out === TORCH && torch.count === 4,
+    `${torch?.name ?? "無し"} x${torch?.count ?? 0}`,
+  );
 
   // --- バケツ ---
   // **黒曜石への入口。** 水と溶岩が触れる場所は生成では作られないので、
@@ -710,7 +729,7 @@ export function run(): void {
   check("2x2 ではケーキは作れない（3x3 なので作業台が要る）", cakeIn2 === null, cakeIn2?.name ?? "無し");
   // **本数も 1 件として見張る** —— レシピを足したのに表から漏れていたら、
   // 上の `findRecipe` だけでは「揃わないのが正しい」と読めてしまう。
-  check("レシピは 65 本（革の防具 4 部位で 4 本増えた）", RECIPES.length === 65, `${RECIPES.length} 本`);
+  check("レシピは 66 本（木炭の松明で 1 本増えた）", RECIPES.length === 66, `${RECIPES.length} 本`);
 
   // --- 残りかす（`consumeGrid()` の前後の盤面を 9 枠ぶん並べて見る） ---
   const cakeGrid = grid(3, cakeRows, CK);
