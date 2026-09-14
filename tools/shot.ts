@@ -46,6 +46,7 @@ import {
   WHEAT_CROP,
   WHEAT_CROP_RIPE,
 } from "../src/blocks";
+import { Crops, SAPLING_GROW_SECONDS } from "../src/crops";
 import { DayNight } from "../src/daynight";
 import { DIMENSIONS, END, NETHER, OVERWORLD, type DimensionId } from "../src/dimensions";
 import { MOB_KINDS, Mobs } from "../src/mobs";
@@ -694,6 +695,48 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
       camera: look(setup, new Vector3(0.5, y + 2.6, 6.6), new Vector3(0, y + 0.3, 0.8)),
       dayNight: skyOf(OVERWORLD, setup.time),
       note: `草の上 -2..-1,${y},0（オーク/トウヒ）/ 土の上 1,${y},0 / 耕地の上 2,${y},0 / 比べる草むら -2,${y},2・小麦の苗 -1,${y},2 / 葉 4,${y},0`,
+    };
+  },
+
+  /**
+   * **苗木から育った木**（30b）。`sapling` と対で見る画で、
+   * **`Crops.update()` を実際に回して生やします** —— 手で幹と葉を並べると、
+   * 「育つ道が実際に木を作れるか」を 1 つも確かめないまま緑の絵になります。
+   */
+  grown(setup) {
+    const { scene, world } = makeWorld(OVERWORLD, 3);
+    const pad = 9;
+    // **平らな台**（`sapling` とまったく同じ作り。地形なりだと斜面に埋まる）。
+    let y = 0;
+    for (let dz = -pad; dz <= pad; dz++) {
+      for (let dx = -pad; dx <= pad; dx++) y = Math.max(y, world.surfaceY(dx, dz));
+    }
+    for (let dz = -pad; dz <= pad; dz++) {
+      for (let dx = -pad; dx <= pad; dx++) {
+        for (let h = y; h < y + 14; h++) world.setVoxel(dx, h, dz, AIR);
+        for (let h = y - 4; h < y; h++) world.setVoxel(dx, h, dz, DIRT);
+        world.setVoxel(dx, y - 1, dz, GRASS);
+      }
+    }
+    // **オークとトウヒを隣り合わせに**（高さと葉の形の差が 1 枚に出る）。
+    const crops = new Crops();
+    for (const [x, z, id] of [
+      [-4, 0, SAPLING],
+      [3, 0, SPRUCE_SAPLING],
+    ] as const) {
+      world.setVoxel(x, y, z, id);
+      crops.notePlaced({ x, y, z }, id, world);
+    }
+    // **手前に苗木を 1 本、覚えさせずに**置く（＝育たない）。同じ 1 枚に
+    // 「植えたとき」と「育ったあと」が並ぶので、大きさの差がそのまま読める。
+    world.setVoxel(0, y, 6, SAPLING);
+    crops.update(SAPLING_GROW_SECONDS, world);
+    world.primeAround(0.5, 0.5, 3);
+    return {
+      scene,
+      camera: look(setup, new Vector3(0, y + 6, 13), new Vector3(0, y + 3.5, 0)),
+      dayNight: skyOf(OVERWORLD, setup.time),
+      note: `育ったオーク -4,${y},0 / 育ったトウヒ 3,${y},0 / 育てていない苗木 0,${y},6 / 覚えている ${crops.count} 本`,
     };
   },
 

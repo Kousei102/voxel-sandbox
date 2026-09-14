@@ -2,7 +2,6 @@ import {
   AIR,
   BEDROCK,
   BROWN_MUSHROOM,
-  CACTUS,
   CANE_HEIGHT_MAX,
   COAL_ORE,
   DIAMOND_ORE,
@@ -10,15 +9,11 @@ import {
   GRAVEL,
   IRON_ORE,
   LAVA,
-  LEAVES,
   RED_MUSHROOM,
-  SPRUCE_LEAVES,
-  SPRUCE_WOOD,
   STONE,
   SUGAR_CANE,
   TALL_GRASS,
   WATER,
-  WOOD,
   isReplaceable,
 } from "./blocks";
 import { biomeDef, classify, resolve, type TreeKind } from "./biomes";
@@ -26,6 +21,7 @@ import { CHUNK_SIZE, SEA_LEVEL, WORLD_HEIGHT } from "./constants";
 import { Noise } from "./noise";
 import { STRONGHOLD } from "./stronghold";
 import { placementsFor, stampPlacements, type Placement, type StructureDef } from "./structures";
+import { TREE_RADIUS, treeCells } from "./treeshape";
 
 interface Tree {
   x: number;
@@ -49,7 +45,6 @@ interface ColumnData {
   readonly structures: Placement[];
 }
 
-const TREE_RADIUS = 2;
 const COLUMN_CACHE_LIMIT = 2048;
 
 function smoothstep(edge0: number, edge1: number, x: number): number {
@@ -409,34 +404,11 @@ export class WorldGen {
       data[index] = id;
     };
 
-    // サボテンは幹だけ。葉も枝も無いので、隣の列にはみ出すこともない。
-    if (tree.kind === "cactus") {
-      for (let i = 0; i < tree.height; i++) {
-        put(tree.x, tree.y + i, tree.z, CACTUS, true);
-      }
-      return;
-    }
-
-    const spruce = tree.kind === "spruce";
-    const wood = spruce ? SPRUCE_WOOD : WOOD;
-    const leaf = spruce ? SPRUCE_LEAVES : LEAVES;
-    const top = tree.y + tree.height - 1;
-
-    // 葉: 幹の先端 (top) を含む段。top + 1 にも置かないと幹が空に突き出したままになる。
-    // トウヒは下ほど広い円錐、オークは丸い塊。**半径は TREE_RADIUS を超えないこと**
-    // （超えると隣の列の生成時に切り落とされて、葉が欠ける）。
-    const lowest = spruce ? -4 : -2;
-    for (let dy = lowest; dy <= 1; dy++) {
-      const r = spruce ? (dy <= -3 ? 2 : dy <= -1 ? 1 : 0) : dy >= 1 ? 1 : 2;
-      for (let dz = -r; dz <= r; dz++) {
-        for (let dx = -r; dx <= r; dx++) {
-          if (r === 2 && Math.abs(dx) === r && Math.abs(dz) === r) continue;
-          put(tree.x + dx, top + dy, tree.z + dz, leaf, false);
-        }
-      }
-    }
-    for (let i = 0; i < tree.height; i++) {
-      put(tree.x, tree.y + i, tree.z, wood, true);
+    // **形は `treeshape.ts` の 1 本だけが持つ**（`rules/worldgen.md`）。苗木から育つ側
+    // （`crops.ts`）も同じこれを引くので、自然の木と植えた木が別物になりません。
+    // **出す順（葉 → 幹）も `overwrite` の真偽もあちらが並べたままにすること。**
+    for (const cell of treeCells(tree.kind, tree.height)) {
+      put(tree.x + cell.dx, tree.y + cell.dy, tree.z + cell.dz, cell.id, cell.overwrite);
     }
   }
 }

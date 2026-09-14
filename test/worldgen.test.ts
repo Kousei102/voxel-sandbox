@@ -44,6 +44,7 @@ import {
   resolve,
 } from "../src/biomes";
 import { CHUNK_VOLUME, SEA_LEVEL } from "../src/constants";
+import { TREE_RADIUS, grownTreeHeight, treeCells } from "../src/treeshape";
 import { LAVA_LEVEL, WorldGen } from "../src/worldgen";
 import { check, describe } from "./harness";
 
@@ -272,6 +273,67 @@ export function run(): void {
     trunks > 3,
     `${trunks} 本 / 128x128 ブロック（${[...kinds].map(([id, c]) => `${blockName(id)} ${c}`).join(" / ")}）`,
   );
+
+  // --- 木の形（`treeshape.ts`） ---
+  // **生成（`worldgen.ts`）と育ち（`crops.ts`）が引く 1 本**。半径がここを超えると、
+  // 隣の列の生成時に切り落とされて**葉が黙って欠ける**（`rules/worldgen.md`）。
+  for (const [kind, height, wood, leaf] of [
+    ["oak", 4, WOOD, LEAVES],
+    ["oak", 6, WOOD, LEAVES],
+    ["spruce", 6, SPRUCE_WOOD, SPRUCE_LEAVES],
+    ["spruce", 9, SPRUCE_WOOD, SPRUCE_LEAVES],
+  ] as const) {
+    const cells = treeCells(kind, height);
+    const reach = Math.max(...cells.map((c) => Math.max(Math.abs(c.dx), Math.abs(c.dz))));
+    const trunkCells = cells.filter((c) => c.id === wood);
+    const leafCells = cells.filter((c) => c.id === leaf);
+    const lows = cells.filter((c) => c.dy < 0).length;
+    console.log(
+      `      ${kind} 高さ ${height}: ${cells.length} マス（幹 ${trunkCells.length} / 葉 ${leafCells.length}）` +
+        ` / 半径 ${reach}（上限 ${TREE_RADIUS}）/ 根元より下 ${lows} マス`,
+    );
+    check(`${kind} ${height}: 葉が TREE_RADIUS を超えない`, reach <= TREE_RADIUS, `半径 ${reach}`);
+    check(`${kind} ${height}: 幹が ${height} 本`, trunkCells.length === height, `${trunkCells.length} 本`);
+    check(`${kind} ${height}: 葉が 1 枚以上`, leafCells.length > 0, `${leafCells.length} 枚`);
+    // **根元より下へ書かないこと** —— 苗木から育つ側は地面の上に立っている。
+    check(`${kind} ${height}: 根元より下に書かない`, lows === 0, `${lows} マス`);
+    // 幹は全部押しのけ、葉は草むらだけ押しのける（生成側の `put()` と同じ真偽）。
+    check(
+      `${kind} ${height}: 幹は overwrite・葉はそうでない`,
+      trunkCells.every((c) => c.overwrite) && leafCells.every((c) => !c.overwrite),
+    );
+    // **順番（葉 → 幹）を変えないこと** —— 変えると既存のワールドの木が動く。
+    const firstTrunk = cells.findIndex((c) => c.id === wood);
+    const lastLeaf = cells.map((c) => c.id).lastIndexOf(leaf);
+    check(`${kind} ${height}: 葉をぜんぶ出してから幹`, lastLeaf < firstTrunk, `葉 ${lastLeaf} / 幹 ${firstTrunk}`);
+  }
+
+  // **サボテンは幹だけ**（葉も枝も無いので隣の列にはみ出さない）。
+  {
+    const cells = treeCells("cactus", 3);
+    console.log(`      cactus 高さ 3: ${cells.length} マス / すべて ${blockName(cells[0].id)}`);
+    check("サボテンは 3 マスだけ", cells.length === 3 && cells.every((c) => c.id === CACTUS));
+    check("サボテンは横へ広がらない", cells.every((c) => c.dx === 0 && c.dz === 0));
+  }
+
+  // 苗木から育つ木の高さ。**範囲は生成側と同じ**（オーク 4..6 / トウヒ 6..9）。
+  {
+    const oaks = new Set<number>();
+    const spruces = new Set<number>();
+    for (let x = -40; x < 40; x++) {
+      for (let z = -40; z < 40; z++) {
+        oaks.add(grownTreeHeight("oak", x, z));
+        spruces.add(grownTreeHeight("spruce", x, z));
+      }
+    }
+    const oakList = [...oaks].sort((a, b) => a - b);
+    const spruceList = [...spruces].sort((a, b) => a - b);
+    console.log(`      育った木の高さ: オーク ${oakList.join(",")} / トウヒ ${spruceList.join(",")}`);
+    check("オークは 4..6", oakList.join(",") === "4,5,6", oakList.join(","));
+    check("トウヒは 6..9", spruceList.join(",") === "6,7,8,9", spruceList.join(","));
+    // **同じ場所は必ず同じ木**（純関数。植え直しても形が踊らない）。
+    check("同じ座標なら同じ高さ", grownTreeHeight("oak", 7, -3) === grownTreeHeight("oak", 7, -3));
+  }
 
   // --- 草むら ---
   // 地表のすぐ上に生え、生えやすさはバイオームの表どおり。浮いていたり

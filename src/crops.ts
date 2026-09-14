@@ -21,8 +21,20 @@
  * だから偽物のワールドを 3 行書けばテストになります。
  */
 
-import { AIR, CANE_HEIGHT_MAX, FARMLAND, SUGAR_CANE, WHEAT_CROP, WHEAT_CROP_RIPE } from "./blocks";
+import {
+  AIR,
+  CANE_HEIGHT_MAX,
+  FARMLAND,
+  SAPLING,
+  SPRUCE_SAPLING,
+  SUGAR_CANE,
+  WHEAT_CROP,
+  WHEAT_CROP_RIPE,
+  isReplaceable,
+} from "./blocks";
+import type { TreeKind } from "./biomes";
 import { columnOf } from "./constants";
+import { TREE_RADIUS, grownTreeHeight, treeCells } from "./treeshape";
 import type { UseSpot } from "./use";
 
 /**
@@ -42,6 +54,21 @@ export const GROW_SECONDS = 180;
  * 書かないこと** —— `test/crops.test.ts` の見張りがそのまま効きます。
  */
 export const CANE_GROW_SECONDS = 180;
+
+/**
+ * 植えた苗木が**木になる**までの秒数。**暫定**（`TUNING.md`）。
+ *
+ * 本家は乱数ティックで平均 20 分前後なので、**小麦・サトウキビと同じ縮尺**の
+ * 180 秒にしてあります。**`main.ts` にこの数値を書かないこと。**
+ */
+export const SAPLING_GROW_SECONDS = 180;
+
+/** その苗木がどの木になるか。苗木でなければ null。 */
+function saplingKind(id: number): TreeKind | null {
+  if (id === SAPLING) return "oak";
+  if (id === SPRUCE_SAPLING) return "spruce";
+  return null;
+}
 
 /**
  * `World` のうち、育つ苗が使う入口だけ。**丸ごと受け取らないこと**
@@ -81,15 +108,21 @@ export class Crops {
    * ブロックを置いた、と伝える。**`placeHeld()` は全部のブロックで呼ぶ**ので、
    * **何を覚えるかを決めるのはここです**（`main.ts` は何が伸びるかも何秒かも知りません）。
    *
-   * いまのところ覚えるのは**サトウキビだけ**。覚えるのは**置いたマスではなく、
-   * その列のいちばん下のサトウキビ**です —— **上を覚えると、刈った瞬間に印が消えて
+   * 覚えるのは**サトウキビと苗木 2 種**。サトウキビだけは**置いたマスではなく、
+   * その列のいちばん下**を覚えます —— **上を覚えると、刈った瞬間に印が消えて
    * 二度と伸びません。** 同じ列に 2 本置いてもキーは 1 つに畳まれます。
+   * **苗木は 1 マスきりなので、置いたマスをそのまま覚えます。**
    *
    * **自然に生えたサトウキビは伸びません**（誰も置いていないので印が無い）。
    * 上に 1 本置けば、そこから下へ舐めて列ごと覚えます。
    */
   notePlaced(at: UseSpot | undefined, id: number, world: CropWorld): void {
-    if (!at || id !== SUGAR_CANE) return;
+    if (!at) return;
+    if (saplingKind(id) !== null) {
+      this.map.set(cropKey(at.x, at.y, at.z), 0);
+      return;
+    }
+    if (id !== SUGAR_CANE) return;
     const { x, z } = at;
     let y = at.y;
     while (world.getVoxel(x, y - 1, z) === SUGAR_CANE) y--;
@@ -114,10 +147,10 @@ export class Crops {
    * **`world.update()` の中で回さないこと**（かまど・モブ・落とし物と同じ理由。
    * `test/world.test.ts` の p99 にストリーミングの退行と混ざります）。
    *
-   * **表は 1 つで、道が 2 つあります**（18c）。列を確かめたあと、**素の
-   * `getVoxel(x,y,z)` で `WHEAT_CROP` / `SUGAR_CANE` / それ以外に分けます** ——
-   * それ以外は「掘られた・上書きされた・もう実っている」なので忘れます。
-   * サトウキビの道は `growCane()`、苗の道は次の 4 つ（`growWheat()`）:
+   * **表は 1 つで、道が 3 つあります**（18c のサトウキビ・30b の苗木）。列を確かめたあと、
+   * **素の `getVoxel(x,y,z)` で `WHEAT_CROP` / `SUGAR_CANE` / 苗木 2 種 / それ以外に
+   * 分けます** —— それ以外は「掘られた・上書きされた・もう実っている」なので忘れます。
+   * サトウキビの道は `growCane()`、苗木の道は `growTree()`、苗の道は次の 4 つ（`growWheat()`）:
    *
    * 1. **列が読み込まれているか。** `getVoxel` は未読み込みで AIR を返すので、
    *    ここを飛ばすと**遠くの畑が丸ごと「掘られた」と読まれて忘れられます**
@@ -139,12 +172,15 @@ export class Crops {
       const [x, y, z] = key.split(",").map(Number);
       if (!world.hasColumn(columnOf(x), columnOf(z))) continue;
 
-      // **素の `getVoxel` で 3 つに分けること**（`baseBlock()` を使わない理由は上の 2.）。
+      // **素の `getVoxel` で 4 つに分けること**（`baseBlock()` を使わない理由は上の 2.）。
       const here = world.getVoxel(x, y, z);
+      const kind = saplingKind(here);
       if (here === WHEAT_CROP) {
         if (this.growWheat(key, age, dt, x, y, z, world)) changed = true;
       } else if (here === SUGAR_CANE) {
         if (this.growCane(key, age, dt, x, y, z, world)) changed = true;
+      } else if (kind !== null) {
+        if (this.growTree(key, age, dt, x, y, z, kind, world)) changed = true;
       } else {
         this.map.delete(key);
         changed = true;
@@ -218,6 +254,73 @@ export class Crops {
     }
     this.map.set(key, grown);
     return false;
+  }
+
+  /**
+   * 苗木 1 本を木にする。**形は 1 マスも持ちません** —— `treeshape.ts` の
+   * `treeCells()` / `grownTreeHeight()` を引くだけで、`worldgen.ts` の自然の木と
+   * **同じ 1 本**を見ます（写して持つと、植えた木だけ別の形になります）。
+   *
+   * 1. **木の掛かる 4 隅の列が全部読み込まれるまで、1 マスも書かないこと。**
+   *    「書けたところまで書く」で済ませると、**半分だけの木が残って二度と直りません**
+   *    （残りの列が読み込まれた頃には、もう印を忘れています）。秒数は持ち越します。
+   * 2. **上が塞がっていたら育たない。忘れもしない**（どけたらすぐ育ちます）。
+   *    見るのは幹の通り道だけで、葉は `overwrite: false` なので何も壊しません。
+   * 3. **根元が `setVoxel` できたときだけ忘れること**（`growWheat()` と同じ作法）。
+   */
+  private growTree(
+    key: string,
+    age: number,
+    dt: number,
+    x: number,
+    y: number,
+    z: number,
+    kind: TreeKind,
+    world: CropWorld,
+  ): boolean {
+    const grown = age + dt;
+    if (grown < SAPLING_GROW_SECONDS) {
+      this.map.set(key, grown);
+      return false;
+    }
+
+    // 1. 木の掛かる 4 隅の列。**`TREE_RADIUS` は `treeshape.ts` が持つ値**を引くこと
+    //    （写すと、葉を広げた日に列を 1 つ待ち損ねます）。
+    for (const dx of [-TREE_RADIUS, TREE_RADIUS]) {
+      for (const dz of [-TREE_RADIUS, TREE_RADIUS]) {
+        if (!world.hasColumn(columnOf(x + dx), columnOf(z + dz))) {
+          this.map.set(key, grown);
+          return false;
+        }
+      }
+    }
+
+    const height = grownTreeHeight(kind, x, z);
+    // 2. 幹の通り道。根元（自分自身）は苗木なので見ない。
+    for (let i = 1; i < height; i++) {
+      if (!isReplaceable(world.getVoxel(x, y + i, z))) {
+        this.map.set(key, grown);
+        return false;
+      }
+    }
+
+    // 3. **順番も `overwrite` の真偽も `treeCells()` が並べたまま**に書くこと。
+    let rooted = false;
+    for (const cell of treeCells(kind, height)) {
+      const wx = x + cell.dx;
+      const wy = y + cell.dy;
+      const wz = z + cell.dz;
+      // 葉は草むらだけ押しのける（生成側の `put()` とまったく同じ判定）。
+      if (!cell.overwrite && !isReplaceable(world.getVoxel(wx, wy, wz))) continue;
+      const ok = world.setVoxel(wx, wy, wz, cell.id);
+      if (cell.dx === 0 && cell.dy === 0 && cell.dz === 0) rooted = ok;
+    }
+    if (!rooted) {
+      this.map.set(key, grown);
+      return false;
+    }
+    this.map.delete(key);
+    return true;
   }
 
   /**

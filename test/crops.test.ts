@@ -11,14 +11,29 @@ import {
   CANE_HEIGHT_MAX,
   DIRT,
   FARMLAND,
+  LEAVES,
   SAND,
+  SAPLING,
+  SPRUCE_LEAVES,
+  SPRUCE_SAPLING,
+  SPRUCE_WOOD,
   STONE,
   SUGAR_CANE,
   WHEAT_CROP,
   WHEAT_CROP_RIPE,
+  WOOD,
+  blockName,
 } from "../src/blocks";
 import { CHUNK_SIZE } from "../src/constants";
-import { CANE_GROW_SECONDS, Crops, GROW_SECONDS, cropKey, type CropWorld } from "../src/crops";
+import {
+  CANE_GROW_SECONDS,
+  Crops,
+  GROW_SECONDS,
+  SAPLING_GROW_SECONDS,
+  cropKey,
+  type CropWorld,
+} from "../src/crops";
+import { grownTreeHeight } from "../src/treeshape";
 import { sourceOf } from "./arena";
 import { check, describe } from "./harness";
 
@@ -410,6 +425,159 @@ export function run(): void {
     check("サトウキビは 1 段伸びる", caneHeight(field, 5, 40, 5) === 2, `${caneHeight(field, 5, 40, 5)} 段`);
     // 小麦は実って忘れ、サトウキビは残る。
     check("実った小麦だけが消える", crops.peek(5, 40, 5) === 0 && crops.count === 1, `${crops.count} 本`);
+  }
+
+  // --- 苗木が木に育つ（30b） --------------------------------------------------
+
+  /** その列に立っている幹の本数（下から上へ舐める）。 */
+  const trunkHeight = (field: Field, x: number, y: number, z: number, wood: number): number => {
+    let n = 0;
+    while (field.getVoxel(x, y + n, z) === wood) n++;
+    return n;
+  };
+  /** 根元のまわり（±3 マス・上へ 14 マス）にある葉の枚数。 */
+  const leafCount = (field: Field, x: number, y: number, z: number, leaf: number): number => {
+    let n = 0;
+    for (let dx = -3; dx <= 3; dx++) {
+      for (let dz = -3; dz <= 3; dz++) {
+        for (let dy = -1; dy <= 14; dy++) {
+          if (field.getVoxel(x + dx, y + dy, z + dz) === leaf) n++;
+        }
+      }
+    }
+    return n;
+  };
+  /** 土の上に立てた苗木 1 本。**置いたマスをそのまま覚える**（サトウキビと違う点）。 */
+  const sapled = (field: Field, crops: Crops, id: number, x = 0, y = 40, z = 0): void => {
+    field.set(x, y - 1, z, DIRT);
+    field.set(x, y, z, id);
+    crops.notePlaced({ x, y, z }, id, field);
+  };
+
+  console.log(`      SAPLING_GROW_SECONDS ${SAPLING_GROW_SECONDS} 秒`);
+
+  {
+    const field = new Field();
+    const crops = new Crops();
+    sapled(field, crops, SAPLING);
+    check("苗木を置いたら 1 本覚える", crops.count === 1, `${crops.count} 本`);
+
+    crops.update(SAPLING_GROW_SECONDS - 1, field);
+    console.log(
+      `      ${SAPLING_GROW_SECONDS - 1} 秒: その場は ${blockName(field.getVoxel(0, 40, 0))}` +
+        ` / 書き込み ${field.writes} 回`,
+    );
+    check(
+      `${SAPLING_GROW_SECONDS - 1} 秒では苗木のまま`,
+      field.getVoxel(0, 40, 0) === SAPLING && field.writes === 0,
+      `${blockName(field.getVoxel(0, 40, 0))} / ${field.writes} 回`,
+    );
+
+    const changed = crops.update(1, field);
+    const height = grownTreeHeight("oak", 0, 0);
+    const trunk = trunkHeight(field, 0, 40, 0, WOOD);
+    const leaves = leafCount(field, 0, 40, 0, LEAVES);
+    console.log(
+      `      ${SAPLING_GROW_SECONDS} 秒: 幹 ${trunk} 本（高さ ${height}）/ 葉 ${leaves} 枚 / ` +
+        `覚えている ${crops.count} 本 / 合図 ${changed}`,
+    );
+    check("180 秒でその場が幹になる", field.getVoxel(0, 40, 0) === WOOD, blockName(field.getVoxel(0, 40, 0)));
+    check("幹が高さのぶんだけ立つ", trunk === height, `${trunk} 本 / ${height}`);
+    check("葉が 1 枚以上つく", leaves > 0, `${leaves} 枚`);
+    check("育ったら忘れる", crops.count === 0 && changed === true, `${crops.count} 本 / ${changed}`);
+    // **真下の土は残る**（幹は苗木のあったマスから上へ立つ）。
+    check("真下の土は残る", field.getVoxel(0, 39, 0) === DIRT, blockName(field.getVoxel(0, 39, 0)));
+  }
+
+  {
+    // **種類を取り違えないこと** —— 幹も葉も高さもトウヒのものになる。
+    const oakField = new Field();
+    const oak = new Crops();
+    sapled(oakField, oak, SAPLING);
+    oak.update(SAPLING_GROW_SECONDS, oakField);
+
+    const spruceField = new Field();
+    const spruce = new Crops();
+    sapled(spruceField, spruce, SPRUCE_SAPLING);
+    spruce.update(SAPLING_GROW_SECONDS, spruceField);
+
+    const oakTrunk = trunkHeight(oakField, 0, 40, 0, WOOD);
+    const spruceTrunk = trunkHeight(spruceField, 0, 40, 0, SPRUCE_WOOD);
+    console.log(
+      `      オーク: 幹 ${blockName(oakField.getVoxel(0, 40, 0))} ${oakTrunk} 本 / ` +
+        `葉 ${leafCount(oakField, 0, 40, 0, LEAVES)} 枚`,
+    );
+    console.log(
+      `      トウヒ: 幹 ${blockName(spruceField.getVoxel(0, 40, 0))} ${spruceTrunk} 本 / ` +
+        `葉 ${leafCount(spruceField, 0, 40, 0, SPRUCE_LEAVES)} 枚`,
+    );
+    check("トウヒの苗木はトウヒの幹になる", spruceField.getVoxel(0, 40, 0) === SPRUCE_WOOD);
+    check("トウヒの葉がつく", leafCount(spruceField, 0, 40, 0, SPRUCE_LEAVES) > 0);
+    check("トウヒにオークの葉は混ざらない", leafCount(spruceField, 0, 40, 0, LEAVES) === 0);
+    check("オークにトウヒの葉は混ざらない", leafCount(oakField, 0, 40, 0, SPRUCE_LEAVES) === 0);
+    check(
+      "トウヒのほうが高い（6..9 対 4..6）",
+      spruceTrunk > oakTrunk,
+      `トウヒ ${spruceTrunk} / オーク ${oakTrunk}`,
+    );
+  }
+
+  {
+    // **上が塞がっていたら育たない。忘れもしない**（どけたらすぐ育つ）。
+    const field = new Field();
+    const crops = new Crops();
+    sapled(field, crops, SAPLING);
+    field.set(0, 41, 0, STONE);
+
+    crops.update(SAPLING_GROW_SECONDS, field);
+    console.log(
+      `      石で塞いだまま ${SAPLING_GROW_SECONDS} 秒: その場は ${blockName(field.getVoxel(0, 40, 0))}` +
+        ` / 覚えている ${crops.count} 本 / 書き込み ${field.writes} 回`,
+    );
+    check("塞がっていたら育たない", field.getVoxel(0, 40, 0) === SAPLING, blockName(field.getVoxel(0, 40, 0)));
+    check("塞がっていても忘れない", crops.count === 1, `${crops.count} 本`);
+    check("塞がっている間は 1 マスも書かない", field.writes === 0, `${field.writes} 回`);
+
+    field.set(0, 41, 0, AIR);
+    crops.update(0.1, field);
+    console.log(`      石をどけて 0.1 秒: その場は ${blockName(field.getVoxel(0, 40, 0))}`);
+    check("どけたら育つ（秒数を持ち越している）", field.getVoxel(0, 40, 0) === WOOD, blockName(field.getVoxel(0, 40, 0)));
+  }
+
+  {
+    // **木の掛かる 4 隅の列が全部そろうまで 1 マスも書かないこと** ——
+    // 「書けたところまで書く」で済ませると、半分だけの木が残って二度と直らない。
+    const field = new Field();
+    const crops = new Crops();
+    // x=15 は列 0 の東端。葉は x=17（列 1）まで届く。
+    sapled(field, crops, SAPLING, 15, 40, 0);
+    field.unloaded.add("1,0");
+
+    const changed = crops.update(SAPLING_GROW_SECONDS * 2, field);
+    console.log(
+      `      隣の列（1,0）が未読み込み: 書き込み ${field.writes} 回 / ` +
+        `覚えている ${crops.count} 本 / 育ち ${crops.peek(15, 40, 0)} 秒 / 合図 ${changed}`,
+    );
+    check("列がそろうまで 1 マスも書かない", field.writes === 0, `${field.writes} 回`);
+    check("列がそろうまで忘れない", crops.count === 1 && changed === false, `${crops.count} 本`);
+
+    field.unloaded.delete("1,0");
+    crops.update(0.1, field);
+    const trunk = trunkHeight(field, 15, 40, 0, WOOD);
+    console.log(`      列がそろったあと: 幹 ${trunk} 本 / 覚えている ${crops.count} 本`);
+    check("列がそろえば次の update で育つ", trunk === grownTreeHeight("oak", 15, 0), `${trunk} 本`);
+  }
+
+  {
+    // 掘られたら忘れる（**それ以外**の枝がそのまま効く）。
+    const field = new Field();
+    const crops = new Crops();
+    sapled(field, crops, SPRUCE_SAPLING);
+    field.set(0, 40, 0, AIR);
+
+    const changed = crops.update(1, field);
+    console.log(`      苗木を掘ったあと: 覚えている ${crops.count} 本 / 合図 ${changed}`);
+    check("掘った苗木は忘れる", crops.count === 0 && changed === true, `${crops.count} 本`);
   }
 
   // --- セーブ ---------------------------------------------------------------
