@@ -37,6 +37,9 @@ import {
   LAVA,
   LOW_BAND_MAX,
   MAX_BLOCK_ID,
+  NETHER_BRICK,
+  NETHER_BRICK_SLAB,
+  NETHER_BRICK_SLAB_TOP,
   NO_SUPPORT,
   PLANK,
   PLANK_SLAB,
@@ -51,6 +54,9 @@ import {
   SPRUCE_LEAVES,
   SPRUCE_SAPLING,
   STONE,
+  STONE_BRICK,
+  STONE_BRICK_SLAB,
+  STONE_BRICK_SLAB_TOP,
   STONE_SLAB,
   STONE_SLAB_TOP,
   STONE_STAIRS,
@@ -69,6 +75,7 @@ import {
   blockDef,
   blockName,
   blockTool,
+  blocksSky,
   canSupport,
   collisionBoxes,
   endPortalFrame,
@@ -77,6 +84,7 @@ import {
   frameHasEye,
   isEndPortalFrame,
   isClimbable,
+  isOpaque,
   isProp,
   isHotLiquid,
   ladderVariant,
@@ -312,8 +320,8 @@ export function run(): void {
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 90（苗木 164..165 で 2 個減った）",
-    sharedFree === 90,
+    "111..255 の空きは 88（上付きハーフ 166..167 で 2 個減った）",
+    sharedFree === 88,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -507,6 +515,126 @@ export function run(): void {
   check(
     "向きを持たないブロックはそのまま",
     placedVariant(STONE, aim(FACE_YP, 0.9)) === STONE,
+  );
+
+  describe("ネザーレンガと石レンガのハーフ");
+
+  // **大元は 1..63 の凍結した帯の残り**（アイテムとして持てるので、アイテム ID と
+  // 同じ番号でないと置けない）で、**上付きは共有帯**（64..110 は満杯で凍結）。
+  // 4 つの番号と `variantOf` と `itemName()` を**並べて出してから**判定する。
+  const brickSlabs = [
+    NETHER_BRICK_SLAB,
+    STONE_BRICK_SLAB,
+    NETHER_BRICK_SLAB_TOP,
+    STONE_BRICK_SLAB_TOP,
+  ];
+  console.log(
+    `      ${brickSlabs
+      .map(
+        (id) =>
+          `${id}:${blockName(id)} variantOf=${blockDef(id).variantOf} ` +
+          `アイテム「${itemName(id)}」`,
+      )
+      .join("  ")}`,
+  );
+  check(
+    "大元 2 つは 55 / 56（1..63）でアイテムになる",
+    NETHER_BRICK_SLAB === 55 && STONE_BRICK_SLAB === 56 &&
+      NETHER_BRICK_SLAB <= LOW_BAND_MAX && STONE_BRICK_SLAB <= LOW_BAND_MAX &&
+      blockDef(NETHER_BRICK_SLAB).variantOf === AIR &&
+      blockDef(STONE_BRICK_SLAB).variantOf === AIR &&
+      itemName(NETHER_BRICK_SLAB) === "ネザーレンガハーフ" &&
+      itemName(STONE_BRICK_SLAB) === "石レンガハーフ",
+    `${NETHER_BRICK_SLAB} ${itemName(NETHER_BRICK_SLAB)} / ${STONE_BRICK_SLAB} ${itemName(STONE_BRICK_SLAB)}`,
+  );
+  // **上付きは共有帯なので、アイテムを作らせてはいけない** —— 作ると同じ番号の
+  // アイテムと衝突する（置いて壊すと別のものが手に入る形）。
+  check(
+    "上付き 2 つは 166 / 167（共有帯）でアイテムにならない",
+    NETHER_BRICK_SLAB_TOP === 166 && STONE_BRICK_SLAB_TOP === 167 &&
+      NETHER_BRICK_SLAB_TOP >= SHARED_ID_START && STONE_BRICK_SLAB_TOP >= SHARED_ID_START &&
+      blockDef(NETHER_BRICK_SLAB_TOP).variantOf === NETHER_BRICK_SLAB &&
+      blockDef(STONE_BRICK_SLAB_TOP).variantOf === STONE_BRICK_SLAB &&
+      itemName(NETHER_BRICK_SLAB_TOP) === "" && itemName(STONE_BRICK_SLAB_TOP) === "",
+    `${NETHER_BRICK_SLAB_TOP}「${itemName(NETHER_BRICK_SLAB_TOP)}」 / ` +
+      `${STONE_BRICK_SLAB_TOP}「${itemName(STONE_BRICK_SLAB_TOP)}」`,
+  );
+  // **空きの数も出すこと**（`AUTODEV.md` の 2 の予算）。低帯は 55 / 56 で 2 個・
+  // 共有帯は上付き 2 つで 2 個減る。
+  check(
+    "1..63 の空きは 7（55 / 56 を取って 2 個減った）",
+    lowFree === 7,
+    `${lowFree} 個`,
+  );
+
+  // **箱を出力してから判定する。** 下付きは下半分・上付きは上半分で、
+  // 既存 4 材質とまったく同じ形（`slabPair()` が対で定義するので、ずれようがない）。
+  const brickBoxes = brickSlabs.map((id) => `${id}:[${collisionBoxes(id)[0].join(",")}]`);
+  console.log(`      ${brickBoxes.join("  ")}`);
+  check(
+    "下付きは下半分・上付きは上半分",
+    collisionBoxes(NETHER_BRICK_SLAB)[0].join() === "0,0,0,1,0.5,1" &&
+      collisionBoxes(STONE_BRICK_SLAB)[0].join() === "0,0,0,1,0.5,1" &&
+      collisionBoxes(NETHER_BRICK_SLAB_TOP)[0].join() === "0,0.5,0,1,1,1" &&
+      collisionBoxes(STONE_BRICK_SLAB_TOP)[0].join() === "0,0.5,0,1,1,1",
+    brickBoxes.join(" "),
+  );
+  check(
+    "上付きと下付きは同じ名前で、大元は下付き",
+    blockName(NETHER_BRICK_SLAB_TOP) === blockName(NETHER_BRICK_SLAB) &&
+      blockName(STONE_BRICK_SLAB_TOP) === blockName(STONE_BRICK_SLAB) &&
+      baseBlock(NETHER_BRICK_SLAB_TOP) === NETHER_BRICK_SLAB &&
+      baseBlock(STONE_BRICK_SLAB_TOP) === STONE_BRICK_SLAB,
+    `${blockName(NETHER_BRICK_SLAB_TOP)} / ${blockName(STONE_BRICK_SLAB_TOP)}`,
+  );
+  // 立方体でないので `opaque: false`。ただし**屋根として光は止める**
+  // （でないとハーフで葺いた屋根の下が昼のまま明るくなる。`rules/blocks-shapes.md`）。
+  check(
+    "opaque でないが空は塞ぐ（屋根に葺ける）",
+    brickSlabs.every((id) => !isOpaque(id) && blocksSky(id)),
+    brickSlabs.map((id) => `${id}:opaque=${isOpaque(id)} sky=${blocksSky(id)}`).join(" "),
+  );
+  // **色は元の材質の写し**（ずらすと同じ材質の壁と屋根で色が食い違う）。
+  check(
+    "色は元のレンガと 1 の位まで同じ",
+    blockDef(NETHER_BRICK_SLAB).top === blockDef(NETHER_BRICK).top &&
+      blockDef(NETHER_BRICK_SLAB).side === blockDef(NETHER_BRICK).side &&
+      blockDef(NETHER_BRICK_SLAB).bottom === blockDef(NETHER_BRICK).bottom &&
+      blockDef(STONE_BRICK_SLAB).top === blockDef(STONE_BRICK).top &&
+      blockDef(STONE_BRICK_SLAB).side === blockDef(STONE_BRICK).side &&
+      blockDef(STONE_BRICK_SLAB).bottom === blockDef(STONE_BRICK).bottom,
+    `ネザー 0x${blockDef(NETHER_BRICK_SLAB).top.toString(16)} / ` +
+      `石 0x${blockDef(STONE_BRICK_SLAB).top.toString(16)}`,
+  );
+
+  // 置く向き。**表（`SLAB_TOP_BY_BOTTOM`）は `boxes === SLAB_TOP_BOX` から自動で立つ**ので、
+  // 手で 1 行も書かずにこうなる。**他の材質の上付きにならない**ことも並べて見る。
+  check(
+    "上の面を狙うと上付き・下の面を狙うと下付き",
+    placedVariant(NETHER_BRICK_SLAB, aim(FACE_YP, 1.0)) === NETHER_BRICK_SLAB_TOP &&
+      placedVariant(NETHER_BRICK_SLAB, aim(FACE_YN, 0.0)) === NETHER_BRICK_SLAB &&
+      placedVariant(STONE_BRICK_SLAB, aim(FACE_YP, 1.0)) === STONE_BRICK_SLAB_TOP &&
+      placedVariant(STONE_BRICK_SLAB, aim(FACE_YN, 0.0)) === STONE_BRICK_SLAB,
+    `ネザー上 ${placedVariant(NETHER_BRICK_SLAB, aim(FACE_YP, 1.0))} / ` +
+      `石レンガ上 ${placedVariant(STONE_BRICK_SLAB, aim(FACE_YP, 1.0))}`,
+  );
+  check(
+    "他の材質の上付きにはならない",
+    placedVariant(NETHER_BRICK_SLAB, aim(FACE_YP, 1)) !== STONE_BRICK_SLAB_TOP &&
+      placedVariant(STONE_BRICK_SLAB, aim(FACE_YP, 1)) !== NETHER_BRICK_SLAB_TOP &&
+      placedVariant(STONE_SLAB, aim(FACE_YP, 1)) !== NETHER_BRICK_SLAB_TOP &&
+      placedVariant(NETHER_BRICK_SLAB, aim(FACE_YP, 1)) !== STONE_SLAB_TOP,
+  );
+  // **`items.ts` の `DROPS` に 1 行も書いていない** —— `dropOf()` の既定が
+  // `baseBlock()` なので、`variantOf` を向けただけで大元が落ちる。
+  check(
+    "上付きを掘ると大元が 1 個落ちる",
+    dropOf(NETHER_BRICK_SLAB_TOP).item === NETHER_BRICK_SLAB &&
+      dropOf(NETHER_BRICK_SLAB_TOP).count === 1 &&
+      dropOf(STONE_BRICK_SLAB_TOP).item === STONE_BRICK_SLAB &&
+      dropOf(STONE_BRICK_SLAB_TOP).count === 1,
+    `${dropOf(NETHER_BRICK_SLAB_TOP).item} x${dropOf(NETHER_BRICK_SLAB_TOP).count} / ` +
+      `${dropOf(STONE_BRICK_SLAB_TOP).item} x${dropOf(STONE_BRICK_SLAB_TOP).count}`,
   );
 
   describe("ハーフブロックの上に立つ・狙う");

@@ -14,6 +14,8 @@ import {
   GOLD_BLOCK,
   IRON_BLOCK,
   LADDER,
+  NETHER_BRICK,
+  NETHER_BRICK_SLAB,
   PLANK,
   PLANK_SLAB,
   PLANK_STAIRS,
@@ -24,6 +26,8 @@ import {
   SNOW,
   SPRUCE_WOOD,
   STONE,
+  STONE_BRICK,
+  STONE_BRICK_SLAB,
   STONE_SLAB,
   STONE_STAIRS,
   SUGAR_CANE,
@@ -147,6 +151,10 @@ export const RECIPES: readonly Recipe[] = [
   slabRecipe("丸石", COBBLE, COBBLE_SLAB),
   slabRecipe("板", PLANK, PLANK_SLAB),
   slabRecipe("砂岩", SANDSTONE, SANDSTONE_SLAB),
+  // **ネザーレンガと石レンガそのものは要塞と遺跡からしか手に入らない**（作るレシピは無い）。
+  // ハーフにできるだけで、持ち帰った量が増えるわけではない。
+  slabRecipe("ネザーレンガ", NETHER_BRICK, NETHER_BRICK_SLAB),
+  slabRecipe("石レンガ", STONE_BRICK, STONE_BRICK_SLAB),
 
   // 階段は 6 個から 4 個（Minecraft と同じで、少し目減りする）。
   stairRecipe("石", STONE, STONE_STAIRS),

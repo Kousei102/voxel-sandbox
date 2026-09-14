@@ -240,6 +240,17 @@ export const STONE_BRICK = 53;
 export const END_CRYSTAL = 54;
 
 /**
+ * ネザーレンガと石レンガのハーフ。**大元（下付き）だけが 1..63 の凍結した帯の残りを取る**
+ * ——「アイテムとして持てるブロック」なので、アイテム ID と同じ番号でないと置けない。
+ *
+ * **上付きは 64..110 ではなく共有帯（166 / 167）** —— あの帯はもう満杯で凍結してある
+ * （下の「ブロック ID の枠」）。`variantOf` があるのでアイテムは作られず、
+ * 共有帯でもアイテムの番号と衝突しない。
+ */
+export const NETHER_BRICK_SLAB = 55;
+export const STONE_BRICK_SLAB = 56;
+
+/**
  * ブロック ID の枠は 3 帯に分かれている。**既存の ID は動かせない**（`localStorage` の
  * `edits` にブロック ID がそのまま入っているので、振り直すと保存済みの世界で
  * 別のブロックに化ける）ので、下の 2 帯は**歴史的な区切りとして凍結**してある。
@@ -566,6 +577,14 @@ export const STONE_SLAB_TOP = 64;
 export const COBBLE_SLAB_TOP = 65;
 export const PLANK_SLAB_TOP = 66;
 export const SANDSTONE_SLAB_TOP = 67;
+
+/**
+ * ネザーレンガと石レンガの上付きハーフ。**64..110 が満杯で凍結したあとに足した材質**なので、
+ * 上の 4 つと違って共有帯から取っている（大元は 55 / 56）。
+ * **`variantOf` があるのでアイテムは作られない** —— だから共有帯でも番号は衝突しない。
+ */
+export const NETHER_BRICK_SLAB_TOP = 166;
+export const STONE_BRICK_SLAB_TOP = 167;
 
 /**
  * 階段の向き違い。材質ごとに 7 個ずつ連番で取る（大元は 1..63 側）。
@@ -1524,6 +1543,22 @@ export const BLOCKS: readonly BlockDef[] = [
     "砂岩ハーフ",
     { top: 0xd3c193, side: 0xc9b487, bottom: 0xbca877 },
     { hardness: 0.8, tool: "pickaxe", minTier: TIER_WOOD },
+  ),
+  // **色も硬さも道具も元の材質の写し**（ネザーレンガ 48 / 石レンガ 53）。
+  // ずらすと、同じ材質で建てた壁と屋根で色が食い違う。
+  ...slabPair(
+    NETHER_BRICK_SLAB,
+    NETHER_BRICK_SLAB_TOP,
+    "ネザーレンガハーフ",
+    { top: 0x392229, side: 0x2f1c22, bottom: 0x27171d },
+    { hardness: 2, tool: "pickaxe", minTier: TIER_WOOD },
+  ),
+  ...slabPair(
+    STONE_BRICK_SLAB,
+    STONE_BRICK_SLAB_TOP,
+    "石レンガハーフ",
+    { top: 0x7d8288, side: 0x757a80, bottom: 0x6d7278 },
+    { hardness: 2, tool: "pickaxe", minTier: TIER_WOOD },
   ),
 
   // 階段。硬さと道具はハーフと同じで元の材質に合わせる。

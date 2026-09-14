@@ -10,6 +10,8 @@ import {
   GOLD_BLOCK,
   IRON_BLOCK,
   LADDER,
+  NETHER_BRICK,
+  NETHER_BRICK_SLAB,
   PLANK,
   PLANK_SLAB,
   PLANK_STAIRS,
@@ -17,6 +19,8 @@ import {
   SAND,
   SNOW,
   STONE,
+  STONE_BRICK,
+  STONE_BRICK_SLAB,
   STONE_SLAB,
   STONE_STAIRS,
   SUGAR_CANE,
@@ -106,6 +110,7 @@ export function run(): void {
     P: PLANK, S: STICK, W: WOOD, C: COBBLE, D: DIAMOND, A: SAND, O: COAL, T: STONE,
     I: IRON_INGOT, F: FLINT, L: WOOL, H: WHEAT, N: FEATHER, G: STRING, K: SNOWBALL,
     R: BLAZE_ROD, B: BLAZE_POWDER, E: ENDER_PEARL, Y: ENDER_EYE, Z: CHARCOAL,
+    J: NETHER_BRICK, M: STONE_BRICK,
   };
 
   // --- 形なし ---
@@ -411,6 +416,42 @@ export function run(): void {
     "材質を変えるとハーフも変わる",
     plankSlab?.out === PLANK_SLAB,
     plankSlab?.name ?? "無し",
+  );
+
+  // --- ネザーレンガと石レンガのハーフ（材質 5 / 6 番目）---
+  // **出目と個数を出力してから判定する。** どちらも既存 4 材質と同じ `["MMM"]` で、
+  // `crafting.ts` は `slabRecipe()` を 2 行呼ぶだけ。
+  const netherSlab = findRecipe(grid(3, ["JJJ"], P), 3);
+  const brickSlab = findRecipe(grid(3, ["MMM"], P), 3);
+  console.log(
+    `      ネザーレンガ 3 → ${netherSlab?.out} x${netherSlab?.count}「${netherSlab?.name}」  ` +
+      `石レンガ 3 → ${brickSlab?.out} x${brickSlab?.count}「${brickSlab?.name}」`,
+  );
+  check(
+    "ネザーレンガ 3 個（横）→ ネザーレンガハーフ 6 個",
+    netherSlab?.out === NETHER_BRICK_SLAB && netherSlab.count === 6,
+    netherSlab?.name ?? "無し",
+  );
+  check(
+    "石レンガ 3 個（横）→ 石レンガハーフ 6 個",
+    brickSlab?.out === STONE_BRICK_SLAB && brickSlab.count === 6,
+    brickSlab?.name ?? "無し",
+  );
+  // **3 幅なので 2x2 では作れない**（他の 4 材質と同じで作業台が要る）。
+  const netherSlabIn2 = findRecipe(grid(2, ["JJ"], P), 2);
+  const brickSlabIn2 = findRecipe(grid(2, ["MM"], P), 2);
+  check(
+    "どちらも 2x2 では作れない（3 列なので作業台が要る）",
+    netherSlabIn2 === null && brickSlabIn2 === null,
+    `${netherSlabIn2?.name ?? "無し"} / ${brickSlabIn2?.name ?? "無し"}`,
+  );
+  // **レンガそのものを作るレシピは足していない** —— 手に入るのは要塞と遺跡からだけ。
+  const netherBrickBack = findRecipe(grid(2, ["JJ", "JJ"], P), 2);
+  const stoneBrickBack = findRecipe(grid(2, ["MM", "MM"], P), 2);
+  check(
+    "レンガ 4 個を並べても何にもならない（作るレシピは無いまま）",
+    netherBrickBack === null && stoneBrickBack === null,
+    `${netherBrickBack?.name ?? "無し"} / ${stoneBrickBack?.name ?? "無し"}`,
   );
 
   // --- 階段 ---
@@ -729,7 +770,11 @@ export function run(): void {
   check("2x2 ではケーキは作れない（3x3 なので作業台が要る）", cakeIn2 === null, cakeIn2?.name ?? "無し");
   // **本数も 1 件として見張る** —— レシピを足したのに表から漏れていたら、
   // 上の `findRecipe` だけでは「揃わないのが正しい」と読めてしまう。
-  check("レシピは 66 本（木炭の松明で 1 本増えた）", RECIPES.length === 66, `${RECIPES.length} 本`);
+  check(
+    "レシピは 68 本（ネザーレンガと石レンガのハーフで 2 本増えた）",
+    RECIPES.length === 68,
+    `${RECIPES.length} 本`,
+  );
 
   // --- 残りかす（`consumeGrid()` の前後の盤面を 9 枠ぶん並べて見る） ---
   const cakeGrid = grid(3, cakeRows, CK);

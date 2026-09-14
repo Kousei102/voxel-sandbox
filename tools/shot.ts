@@ -22,6 +22,8 @@ import {
   BOOKSHELF,
   BROWN_MUSHROOM,
   CAKE,
+  COBBLE_SLAB,
+  COBBLE_SLAB_TOP,
   COBWEB,
   DIRT,
   FARMLAND,
@@ -34,12 +36,23 @@ import {
   LADDER_ZN,
   LADDER_ZP,
   LEAVES,
+  NETHER_BRICK,
+  NETHER_BRICK_SLAB,
+  NETHER_BRICK_SLAB_TOP,
   PLANK,
   PLANK_SLAB,
+  PLANK_SLAB_TOP,
   RED_MUSHROOM,
+  SANDSTONE_SLAB,
+  SANDSTONE_SLAB_TOP,
   SAPLING,
   SPRUCE_SAPLING,
   STONE,
+  STONE_BRICK,
+  STONE_BRICK_SLAB,
+  STONE_BRICK_SLAB_TOP,
+  STONE_SLAB,
+  STONE_SLAB_TOP,
   SUGAR_CANE,
   TALL_GRASS,
   WATER,
@@ -737,6 +750,66 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
       camera: look(setup, new Vector3(0, y + 6, 13), new Vector3(0, y + 3.5, 0)),
       dayNight: skyOf(OVERWORLD, setup.time),
       note: `育ったオーク -4,${y},0 / 育ったトウヒ 3,${y},0 / 育てていない苗木 0,${y},6 / 覚えている ${crops.count} 本`,
+    };
+  },
+
+  /**
+   * ハーフブロック 6 材質（31）。**自然には 1 マスも湧かない**ので、本棚・クモの巣・
+   * ケーキ・氷・フェンス・苗木と同じくここへ直に置く（既存の絵には 1 枚も写らない）。
+   *
+   * 見るのは 4 つ:
+   * **下付きと上付きが本当に上下半分か**（並べた列の下段と上段）/
+   * **面の欠けと裏返りが無いか**（`slabPair()` に 1 文字も手を入れていないので、
+   * 崩れていたら既存 4 材質も一緒に崩れている —— **だから 6 材質ぜんぶ並べる**）/
+   * **足した 2 材質の色が元のレンガと同じか**（背の立方体と並べてある）/
+   * **石ハーフ・丸石ハーフと見分けが付くか**（石レンガ 0x7d8288 は丸石 0x767b82 と近い）。
+   */
+  slabs(setup) {
+    const { scene, world } = makeWorld(OVERWORLD, 3);
+    const pad = 9;
+    // **平らな台**（`sapling` / `cake` / `ice` / `fence` と同じ作り。地形なりだと斜面に埋まる）。
+    let y = 0;
+    for (let dz = -pad; dz <= pad; dz++) {
+      for (let dx = -pad; dx <= pad; dx++) y = Math.max(y, world.surfaceY(dx, dz));
+    }
+    for (let dz = -pad; dz <= pad; dz++) {
+      for (let dx = -pad; dx <= pad; dx++) {
+        for (let h = y; h < y + 8; h++) world.setVoxel(dx, h, dz, AIR);
+        for (let h = y - 4; h < y; h++) world.setVoxel(dx, h, dz, DIRT);
+        world.setVoxel(dx, y - 1, dz, GRASS);
+      }
+    }
+    // 6 材質を x に並べる。**同じ列で下付き（手前）と上付き（奥）を撮る**ので、
+    // 半分の位置が入れ替わっていれば 1 枚で分かる。
+    const materials = [
+      [STONE_SLAB, STONE_SLAB_TOP, STONE],
+      [COBBLE_SLAB, COBBLE_SLAB_TOP, AIR],
+      [PLANK_SLAB, PLANK_SLAB_TOP, PLANK],
+      [SANDSTONE_SLAB, SANDSTONE_SLAB_TOP, AIR],
+      [NETHER_BRICK_SLAB, NETHER_BRICK_SLAB_TOP, NETHER_BRICK],
+      [STONE_BRICK_SLAB, STONE_BRICK_SLAB_TOP, STONE_BRICK],
+    ] as const;
+    materials.forEach(([bottom, top, solid], i) => {
+      const x = i * 2 - 5;
+      world.setVoxel(x, y, 2, bottom); // 手前の列は下付き
+      world.setVoxel(x, y, -1, top); // 奥の列は上付き
+      // **元の立方体を背に置く**（足した 2 材質の色が写しになっているかが 1 枚で出る）。
+      // 石レンガとネザーレンガは要塞・遺跡の材料なので、地形には並んでいない。
+      if (solid !== AIR) world.setVoxel(x, y, -4, solid);
+    });
+    // **2 段には積まない。** ハーフ 2 つを継ぎ目なく 1 マスにする（本家の「重ね置き」）は
+    // まだ無いので、下付きの上に上付きを重ねると 0.5 の隙間が空いた絵になるだけ。
+    // **書き換えたらメッシュ化をもう一度流すこと**（`sapling` / `cake` と同じ）。
+    world.primeAround(0.5, 0.5, 3);
+    return {
+      scene,
+      // 低い斜め上から。**真上からだと下付きと上付きの差が潰れる**（どちらも上面が見える）。
+      camera: look(setup, new Vector3(0.5, y + 2.4, 7.0), new Vector3(0, y + 0.55, -1.6)),
+      dayNight: skyOf(OVERWORLD, setup.time),
+      note:
+        `下付き 6 材質 -5..5,${y},2（石/丸石/板/砂岩/ネザーレンガ/石レンガ）/ ` +
+        `上付き 6 材質 -5..5,${y},-1 / ` +
+        `元の立方体 ${y},-4 の列（石 -5 / 板 -1 / ネザーレンガ 3 / 石レンガ 5）`,
     };
   },
 
