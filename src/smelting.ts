@@ -23,7 +23,9 @@ import {
 import { deserializeWear, serializeWear } from "./durability";
 import { clearSlot, isEmpty, type Slot } from "./inventory";
 import {
+  BRICK_ITEM,
   CHARCOAL,
+  CLAY_BALL,
   COAL,
   COOKED_CHICKEN,
   COOKED_PORK,
@@ -71,6 +73,11 @@ export const SMELTING: ReadonlyMap<number, SmeltResult> = new Map([
   [WOOD, { out: CHARCOAL, count: 1 }],
   // トウヒの原木も同じ 1 行（板が 2 行あるのと同じで、針葉樹林から始めても詰まない）。
   [SPRUCE_WOOD, { out: CHARCOAL, count: 1 }],
+  // 粘土玉 → レンガ（本家と同じ）。**`FUEL` には 1 行も足していない** ——
+  // 粘土玉もレンガも燃料ではない（革・粘土と同じ）。焼いたレンガ 4 個を 2x2 で
+  // 組むと `blocks.ts` の `BRICK`(12) になる（`crafting.ts`）ので、
+  // **この 1 行が、置けるのに作れなかったレンガブロックへの入口**。
+  [CLAY_BALL, { out: BRICK_ITEM, count: 1 }],
 ]);
 
 /**

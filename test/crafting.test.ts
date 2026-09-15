@@ -1,6 +1,7 @@
 import {
   BED,
   BOOKSHELF,
+  BRICK,
   BROWN_MUSHROOM,
   CAKE,
   CLAY,
@@ -42,6 +43,7 @@ import {
   BOW,
   BOWL,
   BREAD,
+  BRICK_ITEM,
   BUCKET,
   CHARCOAL,
   CLAY_BALL,
@@ -88,8 +90,10 @@ import {
   itemName,
   itemStackLimit,
   leftoverOf,
+  rollDrop,
   rollDrops,
 } from "../src/items";
+import { smeltResultOf } from "../src/smelting";
 import { check, describe } from "./harness";
 
 /** "P.S" のような文字列から盤面を作る。"." は空。 */
@@ -112,7 +116,7 @@ export function run(): void {
     P: PLANK, S: STICK, W: WOOD, C: COBBLE, D: DIAMOND, A: SAND, O: COAL, T: STONE,
     I: IRON_INGOT, F: FLINT, L: WOOL, H: WHEAT, N: FEATHER, G: STRING, K: SNOWBALL,
     R: BLAZE_ROD, B: BLAZE_POWDER, E: ENDER_PEARL, Y: ENDER_EYE, Z: CHARCOAL,
-    J: NETHER_BRICK, M: STONE_BRICK, Q: CLAY_BALL,
+    J: NETHER_BRICK, M: STONE_BRICK, Q: CLAY_BALL, V: BRICK_ITEM,
   };
 
   // --- 形なし ---
@@ -223,6 +227,46 @@ export function run(): void {
   check("粘土玉 3 個では作れない", clayThree === null, clayThree?.name ?? "無し");
   const clayDiagonal = findRecipe(grid(2, ["Q.", ".Q"], P), 2);
   check("粘土玉 2 個の斜めでは作れない", clayDiagonal?.out !== CLAY, clayDiagonal?.name ?? "無し");
+
+  // --- レンガブロック（焼いたレンガを組む・32b） ---
+  // **置けるのに作れなかった `BRICK`(12) への唯一の入口。** 粘土玉を焼いたレンガ 4 個を
+  // 2x2 で組む（作業台が要らない —— 雪・粘土と同じ形）。**出目と個数を出力してから判定する。**
+  const brickBlock = findRecipe(grid(2, ["VV", "VV"], P), 2);
+  console.log(
+    `      レンガ 2x2 → ${brickBlock?.name ?? "無し"} x${brickBlock?.count ?? 0}` +
+      `（3 個: ${findRecipe(grid(2, ["VV", "V."], P), 2)?.name ?? "無し"} / ` +
+      `斜め 2 個: ${findRecipe(grid(2, ["V.", ".V"], P), 2)?.name ?? "無し"}）`,
+  );
+  check(
+    "レンガ 4 個（2x2）→ レンガブロック 1 個（作業台が要らない）",
+    brickBlock?.out === BRICK && brickBlock.count === 1,
+    `${brickBlock?.name ?? "無し"} x${brickBlock?.count ?? 0}`,
+  );
+  // **3 個でも斜めでも出来ないこと**（雪・粘土と同じ。出来ると 4 → 1 の交換比が崩れる）。
+  const brickThree = findRecipe(grid(2, ["VV", "V."], P), 2);
+  check("レンガ 3 個では作れない", brickThree === null, brickThree?.name ?? "無し");
+  const brickDiagonal = findRecipe(grid(2, ["V.", ".V"], P), 2);
+  check("レンガ 2 個の斜めでは作れない", brickDiagonal?.out !== BRICK, brickDiagonal?.name ?? "無し");
+
+  // **粘土 1 個 → 粘土玉 4 → レンガ 4 → レンガブロック 1 個の道が通っていること。**
+  // ここが 32b の完成の判定 —— どこか 1 段が欠けても、上の 3 件はそれぞれ緑のままになる
+  // （掘れても焼けないなら材料が手に入らない）。**1 本の道として出力してから**判定する。
+  const clayDug = rollDrop(CLAY, 0.5);
+  const smelted = smeltResultOf(clayDug.item);
+  const bricksMade = clayDug.count * (smelted?.count ?? 0);
+  const fromBricks = findRecipe(grid(2, ["VV", "VV"], P), 2);
+  console.log(
+    `      サバイバルの道: 粘土(${CLAY}) を掘る → ${itemName(clayDug.item)} x${clayDug.count}` +
+      ` → 焼く → ${itemName(smelted?.out ?? NO_ITEM)} x${smelted?.count ?? 0}（合計 ${bricksMade} 個）` +
+      ` → 2x2 → 「${fromBricks?.name ?? "無し"}」 x${fromBricks?.count ?? 0}`,
+  );
+  check(
+    "粘土 1 個 → 粘土玉 4 → レンガ 4 → レンガブロック 1 個（サバイバルで 12 に届く）",
+    clayDug.item === CLAY_BALL && clayDug.count === 4 &&
+      smelted?.out === BRICK_ITEM && smelted.count === 1 && bricksMade === 4 &&
+      fromBricks?.out === BRICK && fromBricks.count === 1,
+    `粘土玉 ${clayDug.count} / レンガ ${bricksMade} / ${fromBricks?.name ?? "無し"} x${fromBricks?.count ?? 0}`,
+  );
 
   // --- 火打石と打ち金 ---
   // **ネザーポータルの点火手段。** 形なしなので 2x2（手持ち）でも作れる ——
@@ -794,8 +838,8 @@ export function run(): void {
   // **本数も 1 件として見張る** —— レシピを足したのに表から漏れていたら、
   // 上の `findRecipe` だけでは「揃わないのが正しい」と読めてしまう。
   check(
-    "レシピは 69 本（粘土玉 4 個 → 粘土で 1 本増えた）",
-    RECIPES.length === 69,
+    "レシピは 70 本（レンガ 4 個 → レンガブロックで 1 本増えた）",
+    RECIPES.length === 70,
     `${RECIPES.length} 本`,
   );
 

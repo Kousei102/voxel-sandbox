@@ -1424,7 +1424,11 @@ export const BLOCKS: readonly BlockDef[] = [
     { top: 0xa9d8e8 },
     { opaque: false, translucent: true, alpha: 0.3, hardness: 0.3, sound: "glass" },
   ),
-  def(BRICK, "レンガ", { top: 0xa4553f }, { hardness: 2, tool: "pickaxe", minTier: TIER_WOOD }),
+  // **表示名は「レンガブロック」**（32b）。アイテムの「レンガ」（`items.ts` の
+  // `BRICK_ITEM` = 170）と一覧で並んで出るので、同じ名前だと 2 つあることが分からない
+  // （本家の日本語も「レンガ」と「レンガブロック」で分けてある）。
+  // **ID は 12 のまま** —— セーブに入るのは番号なので、名前を変えても既存のセーブは動かない。
+  def(BRICK, "レンガブロック", { top: 0xa4553f }, { hardness: 2, tool: "pickaxe", minTier: TIER_WOOD }),
   def(BEDROCK, "岩盤", { top: 0x2b2f35 }, { hardness: UNBREAKABLE }),
   // 鉱石は面ごとに 1 色しか持てないので、石の灰色に鉱石の色を寄せた 1 色で表している
   def(COAL_ORE, "石炭鉱石", { top: 0x4a4d53 }, { hardness: 3, tool: "pickaxe", minTier: TIER_WOOD }),

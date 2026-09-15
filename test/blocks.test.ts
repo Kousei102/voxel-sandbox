@@ -5,6 +5,7 @@ import {
   BED,
   BLOCKS,
   BOOKSHELF,
+  BRICK,
   BROWN_MUSHROOM,
   CACTUS,
   CAKE,
@@ -122,6 +123,7 @@ import {
   BOW,
   BOWL,
   BREAD,
+  BRICK_ITEM,
   BUCKET,
   CHARCOAL,
   CLAY_BALL,
@@ -252,8 +254,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉の 51 個（169 まで）",
-    sharedItems.length === 51 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガの 52 個（170 まで。レンガで 1 個増えた）",
+    sharedItems.length === 52 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -319,19 +321,22 @@ export function run(): void {
       // **168 は `items.ts` に 1 行も書かずに増えたブロック**（粘土。164..165 の苗木と
       // 同じで `variantOf` が `AIR` なので for が同じ番号のアイテムを作る）で、
       // **169 は手で足したアイテム**（粘土玉。掘ると 4 個落ちる）。
-      // **上限を持つのがアイテム側に戻った**ので、`MAX_ITEM_ID` の突き合わせも
+      sharedItems[49] === CLAY && sharedItems[50] === CLAY_BALL &&
+      // **170 も手で足したアイテム**（レンガ。粘土玉を焼くと出る。ブロックは 1 つも
+      // 増えていない —— 組み上がる先は低帯の `BRICK`(12) なので）。
+      // **上限を持つのはアイテム側のまま**なので、`MAX_ITEM_ID` の突き合わせも
       // ここで一緒に見る（伸ばし忘れは型では止まらない。**比べる相手を新しい番号に
       // 直すこと** —— 古い番号のまま残すと `tsc` が TS2367 で落ちます。`rules/testing.md`）。
-      sharedItems[49] === CLAY && sharedItems[50] === CLAY_BALL &&
-      MAX_ITEM_ID === CLAY_BALL,
+      sharedItems[51] === BRICK_ITEM &&
+      MAX_ITEM_ID === BRICK_ITEM,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 86（粘土 168 と粘土玉 169 で 2 個減った）",
-    sharedFree === 86,
+    "111..255 の空きは 85（レンガ 170 で 1 個減った）",
+    sharedFree === 85,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1329,8 +1334,50 @@ export function run(): void {
   fences();
   saplings();
   clay();
+  brickNames();
 
   world.dispose();
+}
+
+/**
+ * レンガの名前の対（32b）。**ブロックの `BRICK`(12) と、アイテムの
+ * `BRICK_ITEM`(170) が一覧に並んで出ます** —— 同じ名前だと 2 つあることが
+ * 画面から読めないので、**名前が別の文字列であること**をここで見張ります。
+ *
+ * **`BRICK` の ID は 12 のまま**（変えたのは `def()` の表示名 1 つだけ）。
+ * セーブに入るのは番号なので、既存のセーブは 1 バイトも動きません。
+ */
+function brickNames(): void {
+  describe("レンガ（ブロック 12 とアイテム 170 の名前の対）");
+
+  // **並べて出力してから判定すること** —— どちらが「レンガ」でどちらが
+  // 「レンガブロック」かを、落ちたときに出力だけで読めるようにしておく。
+  console.log(
+    `      ブロック BRICK(${BRICK}) 「${blockName(BRICK)}」 ／ ` +
+      `アイテム BRICK_ITEM(${BRICK_ITEM}) 「${itemName(BRICK_ITEM)}」`,
+  );
+  check(
+    "ブロックは「レンガブロック」・アイテムは「レンガ」（本家の日本語と同じ）",
+    blockName(BRICK) === "レンガブロック" && itemName(BRICK_ITEM) === "レンガ",
+    `${blockName(BRICK)} / ${itemName(BRICK_ITEM)}`,
+  );
+  // **2 つが別の文字列であること。** ここが崩れると、一覧に「レンガ」が 2 つ並ぶ。
+  check(
+    "一覧に同じ名前が 2 つ並ばない（ブロックとアイテムで名前が別）",
+    blockName(BRICK) !== itemName(BRICK_ITEM),
+    `${blockName(BRICK)} ↔ ${itemName(BRICK_ITEM)}`,
+  );
+  // **ブロック側の ID は 12 のまま**（振り直すとセーブの差分が別のブロックに化ける）。
+  // **アイテムのほうは置けない**（置けるのは 12 のほうで、レンガは 2x2 で組む材料）。
+  console.log(
+    `      BRICK(${BRICK}) を持って置くと ${placedBlock(BRICK)} ／ ` +
+      `BRICK_ITEM(${BRICK_ITEM}) を持って置くと ${placedBlock(BRICK_ITEM)}`,
+  );
+  check(
+    "レンガブロックは番号 12 のまま持てて置ける・レンガ（170）は置けない",
+    BRICK === 12 && placedBlock(BRICK) === BRICK && placedBlock(BRICK_ITEM) === 0,
+    `${placedBlock(BRICK)} / ${placedBlock(BRICK_ITEM)}`,
+  );
 }
 
 /**

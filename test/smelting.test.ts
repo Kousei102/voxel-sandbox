@@ -19,7 +19,9 @@ import { CraftScreen } from "../src/craftscreen";
 import { Furnaces, litVoxel } from "../src/furnaces";
 import { INVENTORY_SIZE, Inventory, isEmpty, type Slot } from "../src/inventory";
 import {
+  BRICK_ITEM,
   CHARCOAL,
+  CLAY_BALL,
   COAL,
   COOKED_CHICKEN,
   COOKED_PORK,
@@ -161,6 +163,41 @@ export function run(): void {
     fuelTimeOf(CHARCOAL) / SMELT_TIME === 8 && fuelTimeOf(CHARCOAL) === fuelTimeOf(COAL),
     `木炭 ${fuelTimeOf(CHARCOAL)} 秒 / 石炭 ${fuelTimeOf(COAL)} 秒`,
   );
+  // --- レンガ（粘土玉を焼く・32b）---------------------------------------------
+  // **木炭とまったく同じ形の 1 行。** 焼いたレンガ 4 個を 2x2 で組むと
+  // `blocks.ts` の `BRICK`(12) になる（`test/crafting.test.ts` が道を通します）。
+  // **`>= 1` のような数え方をしないこと** —— 出目と個数まで出して突き合わせる。
+  console.log(
+    `      粘土玉 → ${itemName(SMELTING.get(CLAY_BALL)?.out ?? NO_ITEM)} x${SMELTING.get(CLAY_BALL)?.count}`,
+  );
+  check(
+    "粘土玉 → レンガ 1 個",
+    SMELTING.get(CLAY_BALL)?.out === BRICK_ITEM && SMELTING.get(CLAY_BALL)?.count === 1,
+    `${itemName(SMELTING.get(CLAY_BALL)?.out ?? NO_ITEM)} x${SMELTING.get(CLAY_BALL)?.count}`,
+  );
+  // **どちらも燃料ではないこと**（革・粘土と同じ。`FUEL` に 1 行も足していない）。
+  // **`fuelTimeOf()` の値を出してから**判定する —— `isFuel()` だけだと、
+  // 0 でない秒数がどこから来たのかが出力から読めない。
+  console.log(
+    `      粘土玉は燃料か: ${fuelTimeOf(CLAY_BALL)} 秒（${isFuel(CLAY_BALL)}） / ` +
+      `レンガは燃料か: ${fuelTimeOf(BRICK_ITEM)} 秒（${isFuel(BRICK_ITEM)}）`,
+  );
+  check(
+    "粘土玉もレンガも燃料ではない（FUEL に 1 行も足していない）",
+    isFuel(CLAY_BALL) === false && isFuel(BRICK_ITEM) === false &&
+      fuelTimeOf(CLAY_BALL) === 0 && fuelTimeOf(BRICK_ITEM) === 0,
+    `粘土玉 ${fuelTimeOf(CLAY_BALL)} 秒 / レンガ ${fuelTimeOf(BRICK_ITEM)} 秒`,
+  );
+  // **レンガそのものは焼けないこと**（焼いた先が無いので、かまどに入れても動かない）。
+  check(
+    "レンガは焼けるものの表にも入っていない",
+    isSmeltable(BRICK_ITEM) === false && isSmeltable(CLAY_BALL) === true,
+    `レンガ ${isSmeltable(BRICK_ITEM)} / 粘土玉 ${isSmeltable(CLAY_BALL)}`,
+  );
+  // **表そのものを数える。** 「粘土玉が焼ける」だけだと、別の行が消えても緑になる。
+  // **数え直すのは可・ゆるめるのは禁じ手**（`>= 10` にしない）。レンガで 1 行増えて 10 行。
+  check("焼けるものの表は 10 行（レンガで 1 行増えた）", SMELTING.size === 10, `${SMELTING.size} 行`);
+
   // **`FUEL` に紛れ込んでいないこと**（革を燃料にすると、牛が薪になる）。
   // 表そのものを数える —— 「革が燃料でない」だけだと、別のものが紛れても緑になる。
   // **数え直すのは可・ゆるめるのは禁じ手**（`>= 8` にしない）。木炭で 1 行増えて 9 行。

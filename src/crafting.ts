@@ -1,6 +1,7 @@
 import {
   BED,
   BOOKSHELF,
+  BRICK,
   BROWN_MUSHROOM,
   CAKE,
   CHEST,
@@ -47,6 +48,7 @@ import {
   BOW,
   BOWL,
   BREAD,
+  BRICK_ITEM,
   BUCKET,
   CHARCOAL,
   CLAY_BALL,
@@ -223,6 +225,14 @@ export const RECIPES: readonly Recipe[] = [
   // 置けない（`items.ts` の `DROPS` の `CLAY` の行）。形は雪ブロック・作業台と同じだが
   // 材料が違うので、形の重複にはならない。
   { name: "粘土", out: CLAY, count: 1, shape: ["BB", "BB"], key: { B: CLAY_BALL } },
+
+  // レンガ 4 個 → レンガブロック 1 個（Minecraft と同じ）。2x2 に収まるので作業台が要らない。
+  // **`BRICK` は `blocks.ts` の 12・`BRICK_ITEM` は `items.ts` の 170** で別物
+  // （アイテムの定数名を `BRICK` にすると、この 1 行が両方 import した瞬間に
+  // `typecheck` が落ちる）。**この 1 本が、置けるのに作れなかったレンガブロックの
+  // 唯一の作り方**で、材料のレンガは粘土玉を焼いて手に入る（`smelting.ts`）。
+  // 形は雪ブロック・粘土・作業台と同じだが材料が違うので、形の重複にはならない。
+  { name: "レンガブロック", out: BRICK, count: 1, shape: ["BB", "BB"], key: { B: BRICK_ITEM } },
 
   // ボウルは板 3 個の V 字（Minecraft と同じ）。**3 幅なので作業台が要る。**
   // 形はバケツ `["I.I", ".I."]` と同じだが材料が違うので、形の重複にはならない（ハーフと同じ）。

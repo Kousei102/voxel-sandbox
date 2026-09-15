@@ -1,7 +1,9 @@
 import {
+  BRICK,
   CACTUS,
   CLAY,
   COBBLE,
+  CRAFTING_TABLE,
   GRASS,
   ICE,
   LEAVES,
@@ -15,6 +17,7 @@ import {
 } from "../src/blocks";
 import {
   BONE,
+  BRICK_ITEM,
   BUCKET,
   CHARCOAL,
   CLAY_BALL,
@@ -26,7 +29,10 @@ import {
   LEATHER_HELMET,
   LEATHER_LEGGINGS,
   MAX_ITEM_ID,
+  ROTTEN_FLESH,
   SHEARS,
+  STEAK,
+  STICK,
   STRING,
   allArmorIds,
   allItemIds,
@@ -350,12 +356,13 @@ export function run(): void {
       toolOf(CLAY) === null && foodOf(CLAY) === null,
     `${itemName(CLAY)} → ${placedBlock(CLAY)}`,
   );
-  // **`MAX_ITEM_ID` の突き合わせはここ**（苗木の節から移した。上限がアイテム側に戻り、
-  // いまは粘土玉 169 が上限）。伸ばし忘れると `ITEMS` には入っているのに
-  // **クリエイティブの一覧にだけ出ない**（置けるし掘れるので型では止まらない）。
+  // **上限そのものの突き合わせはレンガの節へ移した**（`MAX_ITEM_ID` が 170 に伸びたので、
+  // ここに `=== CLAY_BALL` を残すと `tsc` が TS2367 で落ちる。`rules/testing.md`）。
+  // ここで見るのは「**粘土 2 つが一覧に出ているか**」そのもの —— 上限を伸ばし忘れると
+  // ここが先に落ちるので、見張りとしては同じだけ効く。
   check(
-    "粘土と粘土玉がクリエイティブの一覧に出る（MAX_ITEM_ID が粘土玉まで届いている）",
-    MAX_ITEM_ID === CLAY_BALL && ids.includes(CLAY) && ids.includes(CLAY_BALL),
+    "粘土と粘土玉がクリエイティブの一覧に出る（MAX_ITEM_ID が粘土玉を越えている）",
+    ids.includes(CLAY) && ids.includes(CLAY_BALL),
     `MAX_ITEM_ID ${MAX_ITEM_ID} / 一覧に 粘土 ${ids.includes(CLAY)} 粘土玉 ${ids.includes(CLAY_BALL)}`,
   );
 
@@ -401,5 +408,74 @@ export function run(): void {
     "粘土と粘土玉は互いにも見分けられる（RGB で 20 以上）",
     clayPair >= 20,
     `${clayPair.toFixed(1)}`,
+  );
+
+  describe("レンガ（アイテム 170・粘土玉を焼くと出る）");
+
+  // **置けず・道具でもなく・食べ物でもない**（骨・木炭・粘土玉とまったく同じ扱い）。
+  // `tool:` を付けると `mobs.ts` の `TOOL_ATTACK` に無い種類が入って
+  // `attackDamage()` が NaN を返す（`rules/items-survival.md`）。
+  // **置けるのは `blocks.ts` の `BRICK`(12) のほう** —— レンガは 2x2 で組む材料。
+  console.log(
+    `      レンガ(${BRICK_ITEM}) ${itemName(BRICK_ITEM)} 0x${itemColor(BRICK_ITEM).toString(16)}  置ける ` +
+      `${placedBlock(BRICK_ITEM) !== 0} / 道具 ${toolOf(BRICK_ITEM) !== null} / 食べ物 ${foodOf(BRICK_ITEM) !== null}` +
+      ` / 1 枠 ${itemStackLimit(BRICK_ITEM)} 個`,
+  );
+  check(
+    "レンガは置けず・道具でもなく・食べ物でもない（1 枠 64 個）",
+    placedBlock(BRICK_ITEM) === 0 && toolOf(BRICK_ITEM) === null && foodOf(BRICK_ITEM) === null &&
+      itemStackLimit(BRICK_ITEM) === 64,
+    `block ${placedBlock(BRICK_ITEM)} / tool ${toolOf(BRICK_ITEM)} / food ${foodOf(BRICK_ITEM)} / stack ${itemStackLimit(BRICK_ITEM)}`,
+  );
+  // **`MAX_ITEM_ID` の突き合わせはここ**（粘土玉の節から移した。上限はアイテム側のままで、
+  // いまはレンガ 170 が上限）。伸ばし忘れると `ITEMS` には入っているのに
+  // **クリエイティブの一覧にだけ出ない**（持てるしレシピも通るので型では止まらない）。
+  check(
+    "レンガがクリエイティブの一覧に出る（MAX_ITEM_ID がレンガまで届いている）",
+    MAX_ITEM_ID === BRICK_ITEM && ids.includes(BRICK_ITEM),
+    `MAX_ITEM_ID ${MAX_ITEM_ID} / 一覧に レンガ ${ids.includes(BRICK_ITEM)}`,
+  );
+
+  // **赤茶は一覧でとても混んでいる帯**（革 0xa06a41・ステーキ 0x8f5230・作業台 0x9a6f3e・
+  // 棒 0x9a7549・腐った肉 0x8a6b4f・革のズボン 0xb16e51）。素直な 0x9c5a3c は
+  // **レンガブロック(12) の 0xa4553f と 9.9 しか離れません**（判定は 20）ので、
+  // **測ってからずらしてある**（`TUNING.md`）。**いちばん近い相手と隔たりを
+  // 出してから**判定する（骨・木炭・粘土と同じ形）。
+  let brickBest = Infinity;
+  let brickWho = "";
+  for (const other of ids) {
+    // **`BRICK`(12) は別の 1 件で見る**（下）—— 一覧で隣り合うのはこの 2 つなので、
+    // まとめると「どちらが詰まったのか」が出力から読めない。
+    if (other === BRICK_ITEM || other === BRICK) continue;
+    const gap = dist(itemColor(BRICK_ITEM), itemColor(other));
+    if (gap < brickBest) {
+      brickBest = gap;
+      brickWho = `${itemName(other)} 0x${itemColor(other).toString(16)}`;
+    }
+  }
+  // **赤茶の帯の相手を名指しで出しておくこと** —— 一番近い 1 人だけだと、色を触ったときに
+  // 「どちらへ寄せると詰まるか」が出力から読めない（木炭の暗い帯と同じ理由）。
+  for (const other of [LEATHER, STEAK, CRAFTING_TABLE, STICK, ROTTEN_FLESH, LEATHER_LEGGINGS])
+    console.log(
+      `      レンガ ↔ ${itemName(other)} 0x${itemColor(other).toString(16)}: ` +
+        `${dist(itemColor(BRICK_ITEM), itemColor(other)).toFixed(1)}`,
+    );
+  console.log(`      レンガの色のいちばん近い相手（12 を除く）: ${brickWho} ${brickBest.toFixed(1)}`);
+  check(
+    "レンガは既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）",
+    brickBest >= 20,
+    `いちばん近いのは${brickWho}で ${brickBest.toFixed(1)}`,
+  );
+  // **レンガブロック(12) との隔たりは別の 1 件。** 名前を分けても色が同じだと、
+  // 一覧に並んだ 2 つが見分けられない（名前の対は `test/blocks.test.ts`）。
+  const brickPair = dist(itemColor(BRICK_ITEM), itemColor(BRICK));
+  console.log(
+    `      レンガ 0x${itemColor(BRICK_ITEM).toString(16)} ↔ ` +
+      `レンガブロック(12) 0x${itemColor(BRICK).toString(16)}: ${brickPair.toFixed(1)}`,
+  );
+  check(
+    "レンガとレンガブロック(12) は一覧で見分けられる（RGB で 20 以上）",
+    brickPair >= 20,
+    `${brickPair.toFixed(1)}`,
   );
 }
