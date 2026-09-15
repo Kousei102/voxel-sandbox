@@ -1,7 +1,9 @@
 import {
   CACTUS,
+  CLAY,
   COBBLE,
   GRASS,
+  ICE,
   LEAVES,
   OBSIDIAN,
   SAPLING,
@@ -13,7 +15,9 @@ import {
 } from "../src/blocks";
 import {
   BONE,
+  BUCKET,
   CHARCOAL,
+  CLAY_BALL,
   COAL,
   FLINT,
   LEATHER,
@@ -22,6 +26,8 @@ import {
   LEATHER_HELMET,
   LEATHER_LEGGINGS,
   MAX_ITEM_ID,
+  SHEARS,
+  STRING,
   allArmorIds,
   allItemIds,
   armorOf,
@@ -261,9 +267,13 @@ export function run(): void {
     `      苗木: ${saplings.map((id) => `${itemName(id)}(${id}) 0x${itemColor(id).toString(16)} 置ける ${placedBlock(id) === id}`).join(" / ")}` +
       `  MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
+  // **上限そのものの突き合わせは粘土玉の節へ移した**（`MAX_ITEM_ID` が 169 に伸びたので、
+  // ここに `=== SPRUCE_SAPLING` を残すと `tsc` が TS2367 で落ちる。`rules/testing.md`）。
+  // ここで見るのは「**苗木 2 種が一覧に出ているか**」そのもの —— 上限を伸ばし忘れると
+  // ここが先に落ちるので、見張りとしては同じだけ効く。
   check(
-    "苗木 2 種がクリエイティブの一覧に出る（MAX_ITEM_ID がトウヒの苗木まで届いている）",
-    MAX_ITEM_ID === SPRUCE_SAPLING && saplings.every((id) => ids.includes(id)),
+    "苗木 2 種がクリエイティブの一覧に出る（MAX_ITEM_ID がトウヒの苗木を越えている）",
+    saplings.every((id) => ids.includes(id)),
     `MAX_ITEM_ID ${MAX_ITEM_ID} / 一覧に ${saplings.filter((id) => ids.includes(id)).length} 個`,
   );
   // **置けるブロックとして戻ってくること**（`variantOf` を書くと 0 になる）。
@@ -315,5 +325,81 @@ export function run(): void {
     "苗木 2 種は互いにも見分けられる（RGB で 20 以上）",
     sapPair >= 20,
     `${sapPair.toFixed(1)}`,
+  );
+
+  describe("粘土と粘土玉（一覧に出る色）");
+
+  // **粘土玉は置けず・道具でもなく・食べ物でもない**（骨・木炭とまったく同じ扱い）。
+  // `tool:` を付けると `mobs.ts` の `TOOL_ATTACK` に無い種類が入って
+  // `attackDamage()` が NaN を返す（`rules/items-survival.md`）。
+  console.log(
+    `      粘土玉(${CLAY_BALL}) ${itemName(CLAY_BALL)} 0x${itemColor(CLAY_BALL).toString(16)}  置ける ` +
+      `${placedBlock(CLAY_BALL) !== 0} / 道具 ${toolOf(CLAY_BALL) !== null} / 食べ物 ${foodOf(CLAY_BALL) !== null}` +
+      ` / 1 枠 ${itemStackLimit(CLAY_BALL)} 個`,
+  );
+  check(
+    "粘土玉は置けず・道具でもなく・食べ物でもない（1 枠 64 個）",
+    placedBlock(CLAY_BALL) === 0 && toolOf(CLAY_BALL) === null && foodOf(CLAY_BALL) === null &&
+      itemStackLimit(CLAY_BALL) === 64,
+    `block ${placedBlock(CLAY_BALL)} / tool ${toolOf(CLAY_BALL)} / food ${foodOf(CLAY_BALL)} / stack ${itemStackLimit(CLAY_BALL)}`,
+  );
+  // **粘土ブロックのほうは置ける**（掘ると粘土玉になるので、戻すには 2x2 が要る）。
+  check(
+    "粘土ブロックは持って置ける（アイテムはブロックの for が作る）",
+    ids.includes(CLAY) && placedBlock(CLAY) === CLAY &&
+      toolOf(CLAY) === null && foodOf(CLAY) === null,
+    `${itemName(CLAY)} → ${placedBlock(CLAY)}`,
+  );
+  // **`MAX_ITEM_ID` の突き合わせはここ**（苗木の節から移した。上限がアイテム側に戻り、
+  // いまは粘土玉 169 が上限）。伸ばし忘れると `ITEMS` には入っているのに
+  // **クリエイティブの一覧にだけ出ない**（置けるし掘れるので型では止まらない）。
+  check(
+    "粘土と粘土玉がクリエイティブの一覧に出る（MAX_ITEM_ID が粘土玉まで届いている）",
+    MAX_ITEM_ID === CLAY_BALL && ids.includes(CLAY) && ids.includes(CLAY_BALL),
+    `MAX_ITEM_ID ${MAX_ITEM_ID} / 一覧に 粘土 ${ids.includes(CLAY)} 粘土玉 ${ids.includes(CLAY_BALL)}`,
+  );
+
+  // **灰青は一覧でとても混んでいる帯**（糸 0xb8bcc8・バケツ 0xb0b4bb・シアーズ 0xa8b8c0・
+  // 石 0x8a8f96・氷 0x8fc4f2）。仕様書の見当（粘土 0xa4aab9 / 玉 0xb0b8cc）は
+  // **バケツと 15.7 / 糸と 9.8** しか離れていなかったので、**測ってからずらしてある**
+  // （`TUNING.md`）。**2 つとも、いちばん近い相手と隔たりを出してから**判定する
+  // （骨・木炭・苗木と同じ形）。**互いも見ること** —— 一覧で隣り合って並ぶ。
+  const clays = [CLAY, CLAY_BALL];
+  let clayWorst = Infinity;
+  const clayLines: string[] = [];
+  for (const id of clays) {
+    let best = Infinity;
+    let who = "";
+    for (const other of ids) {
+      if (clays.includes(other)) continue;
+      const gap = dist(itemColor(id), itemColor(other));
+      if (gap < best) {
+        best = gap;
+        who = `${itemName(other)} 0x${itemColor(other).toString(16)}`;
+      }
+    }
+    clayWorst = Math.min(clayWorst, best);
+    clayLines.push(`${itemName(id)} 0x${itemColor(id).toString(16)} ↔ ${who} ${best.toFixed(1)}`);
+  }
+  // **灰青の帯の相手を名指しで出しておくこと** —— 一番近い 1 人だけだと、色を触ったときに
+  // 「どちらへ寄せると詰まるか」が出力から読めない（木炭の暗い帯と同じ理由）。
+  for (const other of [STRING, BUCKET, SHEARS, STONE, ICE])
+    console.log(
+      `      粘土 ↔ ${itemName(other)} 0x${itemColor(other).toString(16)}: ` +
+        `ブロック ${dist(itemColor(CLAY), itemColor(other)).toFixed(1)} / ` +
+        `玉 ${dist(itemColor(CLAY_BALL), itemColor(other)).toFixed(1)}`,
+    );
+  console.log(`      粘土の色のいちばん近い相手: ${clayLines.join(" / ")}`);
+  const clayPair = dist(itemColor(CLAY), itemColor(CLAY_BALL));
+  console.log(`      2 つどうしの隔たり: ${clayPair.toFixed(1)}`);
+  check(
+    "粘土と粘土玉は既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）",
+    clayWorst >= 20,
+    `いちばん近くて ${clayWorst.toFixed(1)}`,
+  );
+  check(
+    "粘土と粘土玉は互いにも見分けられる（RGB で 20 以上）",
+    clayPair >= 20,
+    `${clayPair.toFixed(1)}`,
   );
 }

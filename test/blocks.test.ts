@@ -8,6 +8,7 @@ import {
   BROWN_MUSHROOM,
   CACTUS,
   CAKE,
+  CLAY,
   COBBLE_SLAB,
   COBWEB,
   DIAMOND_BLOCK,
@@ -27,6 +28,7 @@ import {
   GOLD_BLOCK,
   GLASS,
   GRASS,
+  GRAVEL,
   ICE,
   IRON_BLOCK,
   LADDER,
@@ -122,6 +124,7 @@ import {
   BREAD,
   BUCKET,
   CHARCOAL,
+  CLAY_BALL,
   COOKED_CHICKEN,
   DIAMOND,
   DIAMOND_SWORD,
@@ -249,8 +252,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種の 49 個（165 まで）",
-    sharedItems.length === 49 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉の 51 個（169 まで）",
+    sharedItems.length === 51 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -313,15 +316,22 @@ export function run(): void {
       // ここで一緒に見る（伸ばし忘れは型では止まらない。**比べる相手を新しい番号に
       // 直すこと** —— 古い番号のまま残すと `tsc` が TS2367 で落ちます。`rules/testing.md`）。
       sharedItems[47] === SAPLING && sharedItems[48] === SPRUCE_SAPLING &&
-      MAX_ITEM_ID === SPRUCE_SAPLING,
+      // **168 は `items.ts` に 1 行も書かずに増えたブロック**（粘土。164..165 の苗木と
+      // 同じで `variantOf` が `AIR` なので for が同じ番号のアイテムを作る）で、
+      // **169 は手で足したアイテム**（粘土玉。掘ると 4 個落ちる）。
+      // **上限を持つのがアイテム側に戻った**ので、`MAX_ITEM_ID` の突き合わせも
+      // ここで一緒に見る（伸ばし忘れは型では止まらない。**比べる相手を新しい番号に
+      // 直すこと** —— 古い番号のまま残すと `tsc` が TS2367 で落ちます。`rules/testing.md`）。
+      sharedItems[49] === CLAY && sharedItems[50] === CLAY_BALL &&
+      MAX_ITEM_ID === CLAY_BALL,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 88（上付きハーフ 166..167 で 2 個減った）",
-    sharedFree === 88,
+    "111..255 の空きは 86（粘土 168 と粘土玉 169 で 2 個減った）",
+    sharedFree === 86,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1318,8 +1328,93 @@ export function run(): void {
   ices();
   fences();
   saplings();
+  clay();
 
   world.dispose();
+}
+
+/**
+ * 粘土（ブロック 168・32a）。**普通の立方体で、特別なのは落とすものだけ**です
+ * （掘ると粘土玉 4 個。雪とまったく同じ対）。
+ *
+ * ここで守りたいのは 3 点:
+ *
+ * - **掘っても粘土ブロックそのものは返らないこと**（`DROPS` の 1 行が効いていること）。
+ *   素手でもシャベルでも同じ —— **道具で変わる落とし物を足していない**
+ * - **`variantOf` が既定の `AIR`** —— これで `items.ts` の for が同じ番号のアイテムを
+ *   作るので、**2x2 で戻した粘土は置ける**（手で `item()` を足すと二重登録）
+ * - **`falls` を付けていないこと**（砂・砂利との唯一の違い。本家の粘土は落ちません）
+ *
+ * **海底に湧くことは `test/worldgen.test.ts`**（あちらが `voxel()` を実際に引きます）。
+ * **2x2 で戻せることは `test/crafting.test.ts`**、**色は `test/items.test.ts`**。
+ */
+function clay(): void {
+  describe("粘土（海底に湧いて、掘ると粘土玉 4 個）");
+
+  const d = blockDef(CLAY);
+  // **素手とシャベルの 2 通りを並べて出すこと** —— 片方だけだと「道具で変わる
+  // 落とし物を足した」ときに気付けない（粘土は本家でもどちらでも 4 個）。
+  const byHand = rollDrop(CLAY, 0.5);
+  const stacks = rollDrops(CLAY, 0.5, 0.9);
+  console.log(
+    `      粘土(${CLAY}): model ${d.model} / 不透明 ${d.opaque} / variantOf ${d.variantOf} / ` +
+      `硬さ ${d.hardness} / 道具 ${d.tool} 階層 ${d.minTier} / 落ちる ${d.falls} / 音 ${d.sound} / ` +
+      `色 0x${d.top.toString(16)}`,
+  );
+  console.log(
+    `      掘ると: ${itemName(byHand.item)} x${byHand.count}（山 ${stacks.length} 個）  ` +
+      `アイテム名「${itemName(CLAY)}」→ 置くと ${placedBlock(CLAY)}`,
+  );
+  check(
+    "粘土は立方体で、向き違いではない（アイテムが自動で付く）",
+    d.model === "cube" && d.opaque === true && d.variantOf === AIR,
+    `${d.model} / 不透明 ${d.opaque} / variantOf ${d.variantOf}`,
+  );
+  check(
+    "粘土は硬さ 0.6 のシャベル掘り（階層は素手から）",
+    d.hardness === 0.6 && d.tool === "shovel" && d.minTier === TIER_HAND,
+    `硬さ ${d.hardness} / ${d.tool} / 階層 ${d.minTier}`,
+  );
+  // **砂・砂利との唯一の違い。** `falls: true` を足すと、海底を掘った拍子に
+  // 上の粘土が崩れて落ちてくる（本家の粘土は落ちない）。
+  check(
+    "粘土は落ちない（砂・砂利との違いはここだけ）",
+    d.falls === false && blockDef(SAND).falls === true && blockDef(GRAVEL).falls === true,
+    `粘土 ${d.falls} / 砂 ${blockDef(SAND).falls} / 砂利 ${blockDef(GRAVEL).falls}`,
+  );
+  check(
+    "粘土を掘ると粘土玉が 4 個落ちる（山は 1 つ）",
+    byHand.item === CLAY_BALL && byHand.count === 4 && stacks.length === 1 &&
+      stacks[0].item === CLAY_BALL && stacks[0].count === 4,
+    `${itemName(byHand.item)} x${byHand.count}（山 ${stacks.length} 個）`,
+  );
+  // **粘土ブロックそのものは落ちてこないこと。** ここが崩れると、雪と同じ対
+  // （`crafting.ts` の 2x2）が要らなくなってしまい、対の意味が消える。
+  check(
+    "粘土ブロックそのものは落ちない（だから 2x2 で戻す必要がある）",
+    stacks.every((s) => s.item !== CLAY),
+    stacks.map((s) => `${itemName(s.item)} x${s.count}`).join(" / "),
+  );
+  // **乱数が何であっても 4 個**（`chance: 1` なので当たり外れが無い）。
+  const rolls = [0.0, 0.25, 0.5, 0.75, 0.99].map((r) => rollDrop(CLAY, r));
+  console.log(`      乱数を振っても: ${rolls.map((x) => `${itemName(x.item)} x${x.count}`).join(" / ")}`);
+  check(
+    "乱数を振っても必ず粘土玉 4 個（chance は 1）",
+    rolls.every((x) => x.item === CLAY_BALL && x.count === 4),
+    rolls.map((x) => `${itemName(x.item)} x${x.count}`).join(" / "),
+  );
+  // **2x2 で戻した粘土は置ける**（`variantOf` が `AIR` なので for がアイテムを作る）。
+  check(
+    "粘土は同じ番号のアイテムとして持てて、置くと自分に戻る",
+    itemName(CLAY) === "粘土" && placedBlock(CLAY) === CLAY,
+    `「${itemName(CLAY)}」→ ${placedBlock(CLAY)}`,
+  );
+  // **音は砂利と同じ粒の音**（本家の粘土も砂利と同じ音のグループ）。
+  check(
+    "粘土の音は砂利と同じ粒の音",
+    d.sound === "sand" && d.sound === blockDef(GRAVEL).sound,
+    `粘土 ${d.sound} / 砂利 ${blockDef(GRAVEL).sound}`,
+  );
 }
 
 /**

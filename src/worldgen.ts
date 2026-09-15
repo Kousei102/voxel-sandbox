@@ -286,7 +286,19 @@ export class WorldGen {
         const at = lz * CHUNK_SIZE + lx;
         const h = height[at];
         // 内側の 16 段で毎回引かないよう、ここで取り出しておく
-        const { surface, filler, grass, mushroom, cane, seaSurface } = biomeDef(biome[at]);
+        const { surface, filler, grass, mushroom, cane, seaSurface, floorPatch } = biomeDef(biome[at]);
+        // 地表からの数マスをまだらに差し替える敷き物（いまは海底の粘土）。
+        // **塊 → 間引きの 2 段は `VEINS` とまったく同じ形**だが、あちらは
+        // `depth > 3`（石の中）にしか効かないので、海底の砂の下には 1 マスも出ない。
+        // **どのブロックを・どれだけ湧かせるかは `biomes.ts` の `FloorPatch` が持つ**
+        // （ここに `CLAY` を import しないこと。`rules/worldgen.md` の頭）。
+        //
+        // **引くのは `ly` のループの外**（列に 2 回だけ）—— 中に入れると
+        // チャンク 1 個で 8192 回になる。**塩は既存 5 本と重ねないこと。**
+        const patched =
+          floorPatch !== null &&
+          hash2(wx >> floorPatch.shift, wz >> floorPatch.shift, this.seed ^ 0x3d15) < floorPatch.chance &&
+          hash2(wx, wz, this.seed ^ 0x6e83) < floorPatch.fill;
         // 生えもの（サトウキビかキノコか草むら）は地表のすぐ上から上へ `tall` マス
         // （**サトウキビだけが 1〜3 で、あとは 1 マス**）。列ごとに 1 回引けば済む。
         //
@@ -356,7 +368,11 @@ export class WorldGen {
           }
 
           const depth = h - wy;
-          if (depth === 0) {
+          // 敷き物が先（地表も filler も押しのける）。`floorPatch` が null の列では
+          // `patched` が false のままなので、ここは今までどおり素通りする。
+          if (patched && floorPatch !== null && depth < floorPatch.depth) {
+            data[index] = floorPatch.block;
+          } else if (depth === 0) {
             data[index] = surface;
           } else if (depth <= 3) {
             data[index] = filler;

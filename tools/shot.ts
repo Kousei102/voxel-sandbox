@@ -22,6 +22,7 @@ import {
   BOOKSHELF,
   BROWN_MUSHROOM,
   CAKE,
+  CLAY,
   COBBLE_SLAB,
   COBBLE_SLAB_TOP,
   COBWEB,
@@ -59,12 +60,13 @@ import {
   WHEAT_CROP,
   WHEAT_CROP_RIPE,
 } from "../src/blocks";
+import { CHUNK_VOLUME, SEA_LEVEL } from "../src/constants";
 import { Crops, SAPLING_GROW_SECONDS } from "../src/crops";
 import { DayNight } from "../src/daynight";
 import { DIMENSIONS, END, NETHER, OVERWORLD, type DimensionId } from "../src/dimensions";
 import { MOB_KINDS, Mobs } from "../src/mobs";
 import { MobRenderer } from "../src/mobrender";
-import { World } from "../src/world";
+import { World, type ChunkSource } from "../src/world";
 import { encodePng, render, stats } from "./raster";
 
 const SEED = 4242;
@@ -82,11 +84,28 @@ interface Setup {
   readonly time: number;
 }
 
-function makeWorld(dimension: DimensionId, radius: number): { scene: Scene; world: World } {
+/**
+ * その次元の生成器だけを作る（`World` もメッシュも作らない）。
+ *
+ * **遠くを探すための足場。** `World` は用意した列をぜんぶメッシュ化するので、
+ * 「どこに湧いているか」を探すために広く primeAround するのは高くつく
+ * （±128 で 1209 メッシュ・2.4 秒）。ボクセルだけ見ればよい探し物は、
+ * ここでチャンクを直に作って舐めること（`test/worldgen.test.ts` と同じ形）。
+ */
+function sourceOf(dimension: DimensionId): ChunkSource {
   const def = DIMENSIONS.find((d) => d.id === dimension)!;
+  return def.create((SEED ^ def.salt) >>> 0);
+}
+
+/** `at` を中心に用意する（既定は原点）。**遠くの場面はここを動かすこと。** */
+function makeWorld(
+  dimension: DimensionId,
+  radius: number,
+  at: { x: number; z: number } = { x: 0.5, z: 0.5 },
+): { scene: Scene; world: World } {
   const scene = new Scene();
-  const world = new World(scene, def.create((SEED ^ def.salt) >>> 0));
-  world.primeAround(0.5, 0.5, radius);
+  const world = new World(scene, sourceOf(dimension));
+  world.primeAround(at.x, at.z, radius);
   return { scene, world };
 }
 
@@ -215,6 +234,93 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
       camera: look(setup, spot, new Vector3(spot.x + widest + 8, spot.y - 2.5, spot.z)),
       dayNight: skyOf(OVERWORLD, setup.time),
       note: `水面 ${Math.round(spot.x)},${Math.round(spot.y)},${Math.round(spot.z)}（幅 ${widest}）`,
+    };
+  },
+
+  /**
+   * 海底の粘土（168・32a）。**`terrain` にも `water` にも写らない** —— どちらも
+   * 水「面」を見る画で、粘土は海面の下にあるから（本棚・氷・苗木と同じ理由で
+   * 場面を 1 つ足してある。`HANDOFF.md`）。**地形は書き換えず、湧いている所を探して撮る**
+   * （`mushrooms` とまったく同じ形）。
+   *
+   * 見るのは 3 つ: **まだらの塊に見えるか**（1 粒ずつ散っていないか）/
+   * **海底の砂と見分けられるか**（粘土 0x9da3b5 対 砂 0xd8c99a）/
+   * **水越しでも色が分かるか**（半透明の経路を通るので、濃すぎると砂と同じ灰色に沈む）。
+   */
+  clay(setup) {
+    // **近くの海は凍っていることがある**（この種は ±128 の海が全部そう）。
+    // 氷の上から撮ると板がそのまま画を覆って**海底が 1 マスも読めない**ので、
+    // **凍っていない海を遠くまで探す。** 探すのはボクセルだけなので、
+    // `World` ではなく生成器を直に舐めること（`sourceOf` の説明）。
+    const gen = sourceOf(OVERWORLD);
+    const chunks = new Map<string, Uint8Array>();
+    const voxel = (x: number, y: number, z: number): number => {
+      const key = `${x >> 4},${y >> 4},${z >> 4}`;
+      let chunk = chunks.get(key);
+      if (!chunk) {
+        chunk = new Uint8Array(CHUNK_VOLUME);
+        gen.generateChunk(x >> 4, y >> 4, z >> 4, chunk);
+        chunks.set(key, chunk);
+      }
+      return chunk[(((y & 15) * 16) + (z & 15)) * 16 + (x & 15)];
+    };
+    // 海底（海面の 1 つ下から掘り下げて、最初に当たった固いもの）。
+    // **`surfaceY()` では取れない** —— あれは「一番上のブロックの 1 つ上」を返すので、
+    // 海の列では水面（か氷）の上を指す。
+    const seabed = (x: number, z: number): number => {
+      for (let y = SEA_LEVEL - 1; y > SEA_LEVEL - 12; y--) {
+        const id = voxel(x, y, z);
+        if (id !== WATER && id !== AIR) return y;
+      }
+      return SEA_LEVEL - 12;
+    };
+    let best: Vector3 | null = null;
+    let most = 0;
+    let bestNote = "";
+    // **外側へ広げながら探して、見つかった輪で打ち切ること。** ±400 を丸ごと
+    // 舐めるとチャンクを何千個も作る（撮る時間より探す時間のほうが長くなる）。
+    for (let ring = 32; ring <= 288 && !best; ring += 32) {
+      for (let x = -ring; x <= ring; x += 2) {
+        for (let z = -ring; z <= ring; z += 2) {
+          if (Math.max(Math.abs(x), Math.abs(z)) < ring - 32) continue;
+          // **凍っていない海の粘土だけ**（氷の下は撮れない）。
+          if (voxel(x, SEA_LEVEL, z) !== WATER) continue;
+          const y = seabed(x, z);
+          if (voxel(x, y, z) !== CLAY) continue;
+          // **いちばん大きい塊を選ぶこと。** 最初に見つけた 1 マスのそばに立つと、
+          // 「まだらの塊に見えるか」を確かめられない（`mushrooms` と同じ罠）。
+          // **砂も画に入る所を選ぶ**（粘土だけだと、砂と見分けられるかが分からない）。
+          let clay = 0;
+          let sand = 0;
+          for (let dx = -7; dx <= 7; dx++) {
+            for (let dz = -7; dz <= 7; dz++) {
+              const id = voxel(x + dx, seabed(x + dx, z + dz), z + dz);
+              if (id === CLAY) clay++;
+              else if (id !== AIR) sand++;
+            }
+          }
+          const score = clay * 10 + Math.min(sand, 60);
+          if (score > most) {
+            most = score;
+            best = new Vector3(x, y, z);
+            bestNote = `粘土 ${clay} / 砂 ${sand}（15x15 の海底）`;
+          }
+        }
+      }
+    }
+    const at = best ?? new Vector3(0, SEA_LEVEL - 1, 0);
+    // **見つけた所を中心に用意すること**（原点のままだと海が遠くて 1 マスも写らない）。
+    const { scene } = makeWorld(OVERWORLD, 4, { x: at.x, z: at.z });
+    return {
+      scene,
+      // **急な角度で見下ろすこと。** 浅い角度だと**海面の水の板が画を覆って**、
+      // 海底が数画素しか写らない（1 度そうなって撮り直した）。かといって真上からだと
+      // 水越しの色の沈み方が分からないので、45 度より少し急なくらいに置く。
+      camera: look(setup, new Vector3(at.x - 7, at.y + 15, at.z - 7), at),
+      dayNight: skyOf(OVERWORLD, setup.time),
+      note: best
+        ? `海底の粘土 ${at.x},${at.y},${at.z}（${bestNote}）`
+        : `±288 に凍っていない海の粘土が見つからなかった（原点 y=${SEA_LEVEL - 1}）`,
     };
   },
 

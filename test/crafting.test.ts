@@ -3,6 +3,7 @@ import {
   BOOKSHELF,
   BROWN_MUSHROOM,
   CAKE,
+  CLAY,
   COBBLE,
   CRAFTING_TABLE,
   DIAMOND_BLOCK,
@@ -43,6 +44,7 @@ import {
   BREAD,
   BUCKET,
   CHARCOAL,
+  CLAY_BALL,
   COAL,
   DIAMOND,
   DIAMOND_HOE,
@@ -110,7 +112,7 @@ export function run(): void {
     P: PLANK, S: STICK, W: WOOD, C: COBBLE, D: DIAMOND, A: SAND, O: COAL, T: STONE,
     I: IRON_INGOT, F: FLINT, L: WOOL, H: WHEAT, N: FEATHER, G: STRING, K: SNOWBALL,
     R: BLAZE_ROD, B: BLAZE_POWDER, E: ENDER_PEARL, Y: ENDER_EYE, Z: CHARCOAL,
-    J: NETHER_BRICK, M: STONE_BRICK,
+    J: NETHER_BRICK, M: STONE_BRICK, Q: CLAY_BALL,
   };
 
   // --- 形なし ---
@@ -200,6 +202,27 @@ export function run(): void {
   check("雪玉 3 個では作れない", snowThree === null, snowThree?.name ?? "無し");
   const snowDiagonal = findRecipe(grid(2, ["K.", ".K"], P), 2);
   check("雪玉 2 個の斜めでは作れない", snowDiagonal?.out !== SNOW, snowDiagonal?.name ?? "無し");
+
+  // --- 粘土（掘って出た粘土玉を戻す） ---
+  // **雪とまったく同じ対。** 粘土を掘ると粘土玉 4 個になるので、これが無いと
+  // 粘土ブロックが二度と置けない（`items.ts` の `DROPS` の `CLAY`）。
+  // **2x2 で作れる**こと（作業台が要らない）を、盤面を 3 通り並べてから判定する。
+  const clayBlock = findRecipe(grid(2, ["QQ", "QQ"], P), 2);
+  console.log(
+    `      粘土玉 2x2 → ${clayBlock?.name ?? "無し"} x${clayBlock?.count ?? 0}` +
+      `（3 個: ${findRecipe(grid(2, ["QQ", "Q."], P), 2)?.name ?? "無し"} / ` +
+      `斜め 2 個: ${findRecipe(grid(2, ["Q.", ".Q"], P), 2)?.name ?? "無し"}）`,
+  );
+  check(
+    "粘土玉 4 個（2x2）→ 粘土 1 個（作業台が要らない）",
+    clayBlock?.out === CLAY && clayBlock.count === 1,
+    `${clayBlock?.name ?? "無し"} x${clayBlock?.count ?? 0}`,
+  );
+  // **3 個でも斜めでも出来ないこと。** 出来ると 4 個 → 1 個の交換比が崩れる（雪と同じ）。
+  const clayThree = findRecipe(grid(2, ["QQ", "Q."], P), 2);
+  check("粘土玉 3 個では作れない", clayThree === null, clayThree?.name ?? "無し");
+  const clayDiagonal = findRecipe(grid(2, ["Q.", ".Q"], P), 2);
+  check("粘土玉 2 個の斜めでは作れない", clayDiagonal?.out !== CLAY, clayDiagonal?.name ?? "無し");
 
   // --- 火打石と打ち金 ---
   // **ネザーポータルの点火手段。** 形なしなので 2x2（手持ち）でも作れる ——
@@ -771,8 +794,8 @@ export function run(): void {
   // **本数も 1 件として見張る** —— レシピを足したのに表から漏れていたら、
   // 上の `findRecipe` だけでは「揃わないのが正しい」と読めてしまう。
   check(
-    "レシピは 68 本（ネザーレンガと石レンガのハーフで 2 本増えた）",
-    RECIPES.length === 68,
+    "レシピは 69 本（粘土玉 4 個 → 粘土で 1 本増えた）",
+    RECIPES.length === 69,
     `${RECIPES.length} 本`,
   );
 

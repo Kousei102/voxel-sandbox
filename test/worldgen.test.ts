@@ -4,6 +4,7 @@ import {
   BROWN_MUSHROOM,
   CACTUS,
   CANE_HEIGHT_MAX,
+  CLAY,
   COAL_ORE,
   DIAMOND_ORE,
   GOLD_ORE,
@@ -755,23 +756,114 @@ export function run(): void {
     `${openPlots.length} 列中 ${strayIce} 列`,
   );
 
+  // --- 海底の粘土（32a・`BiomeDef.floorPatch`）---
+  //
+  // **`VEINS` ではありません。** あの表が効くのは `depth > 3`（石の中）なので、
+  // 海底の砂の下には 1 マスも出ない —— 掘り当てられない粘土になる。
+  // だから `biomes.ts` の `floorPatch`（`{ block, chance, fill, shift, depth }`）で
+  // **地表から 3 マスをまだらに差し替えている**。
+  //
+  // 数え方は `rules/worldgen.md` の「**まとまった場所を先に探して、1 マスも飛ばさずに
+  // 数える**」ほう（キノコ・サボテンと同じ形）。**間引いた走査では塊の形が測れない**
+  // ——「4x4 の枡あたり何マスか」は隣り合う列が要る。**まとまった枡を舐めるほうが
+  // 散らばった列より安い**（`voxel()` の費用はチャンクの数で決まり、44x44 の枡は
+  // 3x3 列ぶんしか生成しない）ので、**1 枡 44x44 = 1936 列**に収めてある。
+  const CLAY_SIDE = 44;
+  const claySpots: [string, number, [number, number] | null][] = [
+    ["海", OCEAN, patchOf(OCEAN)],
+    ["凍った海", FROZEN_OCEAN, patchOf(FROZEN_OCEAN)],
+  ];
+  for (const [name, biome, spot] of claySpots) {
+    check(`まとまった${name}が見つかる（粘土を数える足場）`, spot !== null, spot ? `(${spot})` : "無し");
+    if (!spot) continue;
+    const [sx, sz] = spot;
+    let seabed = 0;            // 舐めた海底の列
+    let clayColumns = 0;       // そのうち地表が粘土だった列
+    let tooDeep = 0;           // 海底から 4 マス目以降に粘土があった列
+    let clayCells = 0;         // 粘土のマス（深さ 0..2）
+    const boxes = new Map<string, number>();
+    for (let dx = 0; dx < CLAY_SIDE; dx++) {
+      for (let dz = 0; dz < CLAY_SIDE; dz++) {
+        const x = sx + dx;
+        const z = sz + dz;
+        if (gen.biomeAt(x, z) !== biome) continue;
+        const h = gen.heightAt(x, z);
+        seabed++;
+        // **深さ 0..2 が差し替わる範囲**（`floorPatch.depth` が 3）。
+        // **4 マス目（深さ 3）に 1 マスも出ないこと**を一緒に見る —— 深さを
+        // 広げると砂の層（`filler` は深さ 3 まで）を食い破って石まで届く。
+        for (let d = 0; d < 3; d++) if (voxel(x, h - d, z) === CLAY) clayCells++;
+        if (voxel(x, h - 3, z) === CLAY) tooDeep++;
+        if (voxel(x, h, z) !== CLAY) continue;
+        clayColumns++;
+        // 塊になっているか（`shift: 2` なので 4x4 の枡）。1 粒ずつ散らばっていると
+        // 「海底に胡椒を撒いた」形になり、Minecraft の粘土だまりに見えない。
+        const box = `${x >> 2},${z >> 2}`;
+        boxes.set(box, (boxes.get(box) ?? 0) + 1);
+      }
+    }
+    const share = (clayColumns / Math.max(1, seabed)) * 100;
+    const inBoxes = [...boxes.values()];
+    const perBox = inBoxes.reduce((sum, n) => sum + n, 0) / Math.max(1, inBoxes.length);
+    console.log(
+      `      ${name}の枡 (${sx},${sz}) ${CLAY_SIDE}x${CLAY_SIDE}: 海底 ${seabed} 列 / ` +
+        `地表が粘土 ${clayColumns} 列 = ${share.toFixed(1)}% / 粘土のマス ${clayCells}（深さ 0..2）/ ` +
+        `4x4 の枡あたり ${perBox.toFixed(1)} 列（枡 ${inBoxes.length} 個）`,
+    );
+    check(
+      `${name}の海底に粘土がまだらに湧く（1〜12%）`,
+      share >= 1 && share <= 12,
+      `${clayColumns} / ${seabed} 列 = ${share.toFixed(1)}%`,
+    );
+    check(
+      `${name}の粘土は塊になっている（4x4 の枡あたり 1.5 列以上）`,
+      perBox >= 1.5,
+      `枡あたり ${perBox.toFixed(1)} 列（枡 ${inBoxes.length} 個）`,
+    );
+    // **上の割合だけだと「地表 1 マスだけ粘土」でも緑になる。** 深さ 3 マスぶん
+    // 差し替わっていること（マス数が列数のおおむね 3 倍）を別に見ておく。
+    check(
+      `${name}の粘土は海底から 3 マス（4 マス目には出ない）`,
+      tooDeep === 0 && clayCells >= clayColumns * 2.5,
+      `マス ${clayCells} / 列 ${clayColumns} / 4 マス目に出た列 ${tooDeep}`,
+    );
+  }
+
   // --- 地表がバイオームどおりか ---
   // 「森なのに砂」のような取り違えは、歩き回らないと気付けない。
   let surfaceWrong = 0;
   let surfaceChecked = 0;
+  // **陸に粘土が 1 マスも無いこと**（32a）。`floorPatch` を持つのは海と凍った海だけで、
+  // 足し忘れ（`?:` にする・陸の行に `OCEAN_CLAY` を写す）はここで出る。
+  let clayOnLand = 0;
+  let landColumns = 0;
   // voxel() は 1 点につきチャンクを 1 個生成するので、点数がそのまま実行時間になる
   for (let x = -420; x < 420; x += 29) {
     for (let z = -420; z < 420; z += 29) {
       const h = gen.heightAt(x, z);
       const def = biomeDef(gen.biomeAt(x, z));
       surfaceChecked++;
-      if (voxel(x, h, z) !== def.surface) surfaceWrong++;
+      // **`floorPatch` の湧いた列は地表が差し替わっている**（海底の粘土）。
+      // **「粘土でもよい」と全部にゆるめないこと** —— `floorPatch` を持たない
+      // バイオームで粘土が出たら、それは足し忘れなので落ちてほしい。
+      const allowed = voxel(x, h, z) === def.surface ||
+        (def.floorPatch !== null && voxel(x, h, z) === def.floorPatch.block);
+      if (!allowed) surfaceWrong++;
+      if (def.floorPatch === null) {
+        landColumns++;
+        for (let d = 0; d < 4; d++) if (voxel(x, h - d, z) === CLAY) clayOnLand++;
+      }
     }
   }
   check(
-    "地表のブロックがバイオームどおり",
+    "地表のブロックがバイオームどおり（海底の粘土だけが差し替わる）",
     surfaceWrong === 0,
     `${surfaceChecked} 点中 ${surfaceWrong} 点が不一致`,
+  );
+  check(
+    "floorPatch を持たないバイオーム（陸・浜・山）には粘土が 1 マスも無い",
+    clayOnLand === 0,
+    `${landColumns} 列（地表から 4 マス）中 ${clayOnLand} マス`,
   );
 
   // --- 砂漠 ---

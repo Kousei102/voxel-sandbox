@@ -572,6 +572,22 @@ export const FENCE = 157;
 export const SAPLING = 164;
 export const SPRUCE_SAPLING = 165;
 
+/**
+ * 粘土（32a）。**海の底にまだら（4x4 の塊）で湧く普通の立方体**で、特別なのは
+ * **落とすもの**だけです（`items.ts` の `DROPS` で**粘土玉 4 個**。雪とまったく同じ対）。
+ *
+ * **そのままでは手に入りません。** 掘ると粘土玉になるので、戻すには
+ * **粘土玉 4 個の 2x2**（`crafting.ts`）が必ず対で要ります —— 無いと二度と置けません。
+ *
+ * **どこに湧くかは `biomes.ts` の `BiomeDef.floorPatch`**（海と凍った海だけ非 null）。
+ * **`VEINS` には 1 行も足していません** —— あの表が効くのは `depth > 3`（石の中）で、
+ * 海底の砂の下には 1 マスも出ないので、掘り当てられない粘土になります。
+ *
+ * 音は砂利と同じ粒の音（本家の粘土も砂利と同じ音のグループ）。**`falls` は付けません**
+ * （本家の粘土は落ちません。砂・砂利との違いはここだけ）。
+ */
+export const CLAY = 168;
+
 /** 上付きハーフ。見た目と当たり判定だけが違うので、大元は下付きのハーフ。 */
 export const STONE_SLAB_TOP = 64;
 export const COBBLE_SLAB_TOP = 65;
@@ -1962,6 +1978,14 @@ export const BLOCKS: readonly BlockDef[] = [
     supportFace: FACE_YN,
     needsSoil: true,
   }),
+
+  // 粘土（上のコメント）。**砂利の定義をほぼそのまま写した普通の立方体**で、違うのは
+  // 2 つだけ: **色** / **`falls` を書かない**（本家の粘土は落ちません）。
+  // **色は測って選んだ値**（灰青の帯はシアーズ 0xa8b8c0・バケツ 0xb0b4bb・糸 0xb8bcc8・
+  // 石 0x8a8f96 で混んでいて、素直な 0xa4aab9 は**バケツと 15.7 しか離れません**。
+  // 判定は 20 で、この値でいちばん近いのは**シアーズで 26.1**。`test/items.test.ts`）。
+  // 落とすものは `items.ts` の `DROPS` の 1 行（粘土玉 4 個）。
+  def(CLAY, "粘土", { top: 0x9da3b5 }, { hardness: 0.6, tool: "shovel", sound: "sand" }),
 ];
 
 

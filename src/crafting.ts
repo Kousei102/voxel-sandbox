@@ -4,6 +4,7 @@ import {
   BROWN_MUSHROOM,
   CAKE,
   CHEST,
+  CLAY,
   COBBLE,
   COBBLE_SLAB,
   COBBLE_STAIRS,
@@ -48,6 +49,7 @@ import {
   BREAD,
   BUCKET,
   CHARCOAL,
+  CLAY_BALL,
   COAL,
   DIAMOND,
   DIAMOND_AXE,
@@ -215,6 +217,12 @@ export const RECIPES: readonly Recipe[] = [
   // **掘ると雪玉 4 個が落ちるようになった対の片割れ**で、これが無いと雪が二度と置けない
   // （`items.ts` の `DROPS` の `SNOW` の行）。形は作業台（板 4 枚）と同じだが材料が違う。
   { name: "雪ブロック", out: SNOW, count: 1, shape: ["BB", "BB"], key: { B: SNOWBALL } },
+
+  // 粘土玉 4 個 → 粘土 1 個（Minecraft と同じ）。2x2 に収まるので作業台が要らない。
+  // **掘ると粘土玉 4 個が落ちるようになった対の片割れ**で、これが無いと粘土が二度と
+  // 置けない（`items.ts` の `DROPS` の `CLAY` の行）。形は雪ブロック・作業台と同じだが
+  // 材料が違うので、形の重複にはならない。
+  { name: "粘土", out: CLAY, count: 1, shape: ["BB", "BB"], key: { B: CLAY_BALL } },
 
   // ボウルは板 3 個の V 字（Minecraft と同じ）。**3 幅なので作業台が要る。**
   // 形はバケツ `["I.I", ".I."]` と同じだが材料が違うので、形の重複にはならない（ハーフと同じ）。

@@ -3,6 +3,7 @@ import {
   BLOCKS,
   BOOKSHELF,
   CAKE,
+  CLAY,
   COAL_ORE,
   COBWEB,
   COBBLE,
@@ -495,6 +496,26 @@ export const BONE = 162;
 export const CHARCOAL = 163;
 
 /**
+ * 粘土玉（32a）。**粘土ブロック（168）を掘ると 4 個**落ちます（`DROPS`）。
+ * **雪玉 4 個 → 雪ブロックとまったく同じ対**で、`crafting.ts` の 2x2 で粘土に戻せます
+ * （その 1 本が無いと、掘った粘土は二度と置けません）。
+ *
+ * **置けず・道具でもなく・食べ物でもありません**（骨・木炭・革・糸・羽根と同じ扱い）。
+ * **`tool:` を持たせないこと**（`ToolKind` が増えると `mobs.ts` の `TOOL_ATTACK` に
+ * 無い種類が入って **NaN** が黙って通ります。`rules/items-survival.md`）。
+ *
+ * **積めるのは 64 個**（雪玉は 16 個ですが、あちらは投げられるからです。粘土玉は
+ * 投げられないので、普通のアイテムと同じ上限）。
+ *
+ * **色 `0xa7b4da` は測って選んだ値です。** 灰青の帯は一覧でとても混んでいて
+ * （**糸 `0xb8bcc8`・バケツ `0xb0b4bb`・シアーズ `0xa8b8c0`**・石 `0x8a8f96`・氷 `0x8fc4f2`）、
+ * 仕様書の見当だった `0xb0b8cc` は**糸と 9.8 しか離れません**（判定は 20）。
+ * この値でいちばん近いのは**糸で 26.0** です。**粘土ブロック（`0x9da3b5`）からは 41.9**
+ * 離れていて、一覧で並んでも 2 つあることが分かります（`TUNING.md`）。
+ */
+export const CLAY_BALL = 169;
+
+/**
  * 一覧を作るときに数え上げる上限（`allItemIds()`）。**アイテムの番号だけでなく、
  * ブロックが自動で作るアイテム（上の for）の番号も含みます。**
  *
@@ -503,14 +524,14 @@ export const CHARCOAL = 163;
  * （`craftscreen.ts` の `CREATIVE_ITEMS`）にだけ出てこないブロック**ができます
  * （置けるし掘れるので、型でも `typecheck` でも止まりません）。
  *
- * **いまはトウヒの苗木（ブロック 165）が上限です。** 直前がオークの苗木（ブロック 164）・
- * 木炭（アイテム 163）・骨（162）・革の防具 4 部位（158..161）。
+ * **いまは粘土玉（アイテム 169）が上限です。** 直前が粘土（ブロック 168）・
+ * トウヒの苗木（ブロック 165）・オークの苗木（ブロック 164）・木炭（アイテム 163）。
  * **共有帯ではブロックとアイテムが 1 本の番号列**なので、上限を持つのがどちら側かは
  * 決まりません（`items.ts` に 1 行も書いていないブロックが上限だったのは 8 度目まで）。
  * **上限をこちら側へ移したら、それまで指していたブロックの import を消すこと** ——
  * 残すと「使われていない」で `npm run typecheck` が落ちます（型で止まる安全な罠）。
  */
-export const MAX_ITEM_ID = SPRUCE_SAPLING;
+export const MAX_ITEM_ID = CLAY_BALL;
 
 export const MAX_STACK = 64;
 
@@ -769,6 +790,12 @@ item({ id: BONE, name: "骨", block: AIR, stack: MAX_STACK, color: 0xcdc8b0, too
 // 離れず、判定 20 に落ちた）。**石炭の色（0x23262b）を写さないこと** —— 一覧で
 // 石炭と木炭が見分けられなくなります。
 item({ id: CHARCOAL, name: "木炭", block: AIR, stack: MAX_STACK, color: 0x56473f, tool: null });
+
+// 粘土玉。**`block: AIR` / `tool: null`**（置けず・道具でもなく・`FOODS` にも
+// `SMELTING` にも行が無い。骨・木炭と同じ扱い）。**置けるようにしないこと** ——
+// 粘土に戻すのは `crafting.ts` の 2x2 の 1 本（雪玉と同じ対）。
+// **色は測って選んだ値**（上の `CLAY_BALL` の説明。粘土ブロックより明るい側へ振ってある）。
+item({ id: CLAY_BALL, name: "粘土玉", block: AIR, stack: MAX_STACK, color: 0xa7b4da, tool: null });
 
 const EMPTY: ItemDef = ITEMS[NO_ITEM];
 
@@ -1047,6 +1074,10 @@ const DROPS = new Map<number, Drop>([
   // そのままでは手に入らなくなる**ので、`crafting.ts` の「雪玉 4 個 → 雪ブロック 1 個」が
   // 必ず対で要る（無いと雪が二度と置けない）。
   [SNOW, { item: SNOWBALL, count: 4, chance: 1 }],
+  // 粘土は**粘土玉 4 個**になって落ちる（Minecraft と同じ個数）。**雪とまったく同じ対**で、
+  // この 1 行があると粘土ブロックがそのままでは手に入らなくなるので、
+  // `crafting.ts` の「粘土玉 4 個 → 粘土 1 個」が必ず対で要る（無いと二度と置けない）。
+  [CLAY, { item: CLAY_BALL, count: 4, chance: 1 }],
   // 葉から出るのは棒（10%）と、2 山目の**リンゴ（0.5%）か苗木（5%）**。
   // **オークの葉にだけリンゴが付きます**（本家はオークとダークオークだけ。針葉樹は無し）。
   // **棒と 2 山目は別々の乱数で当たります** —— `chance` を `extraRoll` が見るので、
