@@ -11,6 +11,7 @@ import {
   FENCE,
   GOLD_BLOCK,
   IRON_BLOCK,
+  IRON_ORE,
   LADDER,
   NETHER_BRICK,
   NETHER_BRICK_SLAB,
@@ -61,7 +62,11 @@ import {
   FLINT_AND_STEEL,
   GOLDEN_APPLE,
   GOLD_INGOT,
+  IRON_BOOTS,
+  IRON_CHESTPLATE,
+  IRON_HELMET,
   IRON_HOE,
+  IRON_LEGGINGS,
   IRON_SWORD,
   LEATHER,
   LEATHER_BOOTS,
@@ -838,8 +843,8 @@ export function run(): void {
   // **本数も 1 件として見張る** —— レシピを足したのに表から漏れていたら、
   // 上の `findRecipe` だけでは「揃わないのが正しい」と読めてしまう。
   check(
-    "レシピは 70 本（レンガ 4 個 → レンガブロックで 1 本増えた）",
-    RECIPES.length === 70,
+    "レシピは 74 本（鉄の防具 4 部位で 4 本増えた。革 4 本は書き方が変わっただけ）",
+    RECIPES.length === 74,
     `${RECIPES.length} 本`,
   );
 
@@ -931,34 +936,58 @@ export function run(): void {
       ` ｜ 器: シチュー → ${emptyAfterEating(MUSHROOM_STEW)} / ミルク → ${emptyAfterEating(MILK_BUCKET)}`,
   );
 
-  describe("革の防具");
+  describe("革と鉄の防具");
 
-  // **形も枚数も本家のまま**（5 / 8 / 7 / 4 枚）。**4 本とも 3 幅なので作業台が要る** ——
-  // 靴は 2 段だが真ん中の列が空くので幅 3 のまま（2x2 には収まらない）。
+  // **形も枚数も本家のまま**（5 / 8 / 7 / 4 枚）。**どちらの材質も 4 本とも 3 幅なので
+  // 作業台が要る** —— 靴は 2 段だが真ん中の列が空くので幅 3 のまま（2x2 には収まらない）。
   // **どの部位に着るか・何点かはここではなく `items.ts` の `ARMORS`**（`test/items.test.ts`）。
-  const LA = { L: LEATHER };
-  const armorRecipes: [string, number, string[], number][] = [
-    ["革の帽子", LEATHER_HELMET, ["LLL", "L.L"], 5],
-    ["革の上着", LEATHER_CHESTPLATE, ["L.L", "LLL", "LLL"], 8],
-    ["革のズボン", LEATHER_LEGGINGS, ["LLL", "L.L", "L.L"], 7],
-    ["革の靴", LEATHER_BOOTS, ["L.L", "L.L"], 4],
+  //
+  // **材質の列を 1 つ増やしただけ**（`crafting.ts` は `armorRecipes()` 1 本になったので、
+  // 形はどの材質でも同じところから出る）。**革 4 本は名前も形も枚数も出目も変わっていない。**
+  const armorTable: [string, number, number, string[], number][] = [
+    ["革の帽子", LEATHER, LEATHER_HELMET, ["MMM", "M.M"], 5],
+    ["革の上着", LEATHER, LEATHER_CHESTPLATE, ["M.M", "MMM", "MMM"], 8],
+    ["革のズボン", LEATHER, LEATHER_LEGGINGS, ["MMM", "M.M", "M.M"], 7],
+    ["革の靴", LEATHER, LEATHER_BOOTS, ["M.M", "M.M"], 4],
+    ["鉄の帽子", IRON_INGOT, IRON_HELMET, ["MMM", "M.M"], 5],
+    ["鉄の上着", IRON_INGOT, IRON_CHESTPLATE, ["M.M", "MMM", "MMM"], 8],
+    ["鉄のズボン", IRON_INGOT, IRON_LEGGINGS, ["MMM", "M.M", "M.M"], 7],
+    ["鉄の靴", IRON_INGOT, IRON_BOOTS, ["M.M", "M.M"], 4],
   ];
-  for (const [name, out, rows, leather] of armorRecipes) {
-    const found = findRecipe(grid(3, rows, LA), 3);
+  for (const [name, material, out, rows, want] of armorTable) {
+    const MA = { M: material };
+    const found = findRecipe(grid(3, rows, MA), 3);
     // **2x2 では作れないこと。** 左上 4 マスだけを渡す（3 幅が要る形なので揃わない）。
-    const in2 = findRecipe(grid(2, rows.slice(0, 2).map((row) => row.slice(0, 2)), LA), 2);
-    const used = rows.join("").split("").filter((ch) => ch === "L").length;
+    const in2 = findRecipe(grid(2, rows.slice(0, 2).map((row) => row.slice(0, 2)), MA), 2);
+    const used = rows.join("").split("").filter((ch) => ch === "M").length;
     console.log(
-      `      ${rows.join(" / ")}（革 ${used} 枚） → ${found?.name ?? "無し"} x${found?.count ?? 0}` +
+      `      ${rows.join(" / ")}（材料 ${used} 枚） → ${found?.name ?? "無し"} x${found?.count ?? 0}` +
         `（2x2: ${in2?.name ?? "無し"}）`,
     );
     check(
-      `革 ${leather} 枚 → ${name} 1 個`,
-      found?.out === out && found.count === 1 && used === leather,
-      `${found?.name ?? "無し"} x${found?.count ?? 0} / 革 ${used} 枚`,
+      `材料 ${want} 枚 → ${name} 1 個`,
+      found?.out === out && found.count === 1 && used === want,
+      `${found?.name ?? "無し"} x${found?.count ?? 0} / 材料 ${used} 枚`,
     );
     check(`2x2 では${name}は作れない（3 幅なので作業台が要る）`, in2 === null, in2?.name ?? "無し");
   }
+
+  // **鉄一式は 5 + 8 + 7 + 4 = 24 枚。** サバイバルで届くこと（鉄鉱石 → 焼く →
+  // 鉄インゴット）を**道を 1 本として出力してから**判定する —— レシピだけ見ていると
+  // 「作れるが材料が手に入らない」に気付けない。**`SMELTING` の出目そのものは
+  // `test/smelting.test.ts`** で、ここでは「鉄鉱石を焼くと鉄インゴットが出る」ことだけ見る。
+  const ironSuit = armorTable.filter(([, m]) => m === IRON_INGOT).reduce((sum, row) => sum + row[4], 0);
+  const oreSmelt = smeltResultOf(IRON_ORE);
+  console.log(
+    `      鉄一式の道: 鉄鉱石(${IRON_ORE}) → 焼く → ` +
+      `${itemName(oreSmelt?.out ?? NO_ITEM)} x${oreSmelt?.count ?? 0}` +
+      ` → 鉄の帽子 5 + 上着 8 + ズボン 7 + 靴 4 = ${ironSuit} 枚（鉄鉱石 ${ironSuit} 個ぶん）`,
+  );
+  check(
+    `サバイバルで鉄一式に届く（鉄鉱石を焼いた鉄インゴット ${ironSuit} 枚）`,
+    oreSmelt?.out === IRON_INGOT && oreSmelt.count === 1 && ironSuit === 24,
+    `焼くと ${itemName(oreSmelt?.out ?? NO_ITEM)} x${oreSmelt?.count ?? 0} / 一式 ${ironSuit} 枚`,
+  );
 
   describe("クラフト");
 

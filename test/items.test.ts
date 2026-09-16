@@ -23,6 +23,11 @@ import {
   CLAY_BALL,
   COAL,
   FLINT,
+  IRON_BOOTS,
+  IRON_CHESTPLATE,
+  IRON_HELMET,
+  IRON_INGOT,
+  IRON_LEGGINGS,
   LEATHER,
   LEATHER_BOOTS,
   LEATHER_CHESTPLATE,
@@ -49,45 +54,76 @@ import { check, describe } from "./harness";
 export function run(): void {
   describe("防具の表（items.ts の ARMORS）");
 
-  // **着られるのは革の 4 部位だけ**（鉄・金・ダイヤは番号を取っていない）。
+  // **着られるのは革と鉄の 2 材質・8 種**（金・ダイヤは番号を取っていない）。
   // ここが増える周は、`inventory.ts` の `armorPoints` と
   // `test/vitals.test.ts` の点数の表も一緒に動く周。
+  //
+  // **⚠ 数え方をゆるめたのではない。** 2026-09-16 に鉄が入るまでは材質が 1 つ
+  // しか無かったので `armors.length === 4` と `new Set(slots).size === 4` で足りた
+  // が、**材質が 2 つになると同じ部位が 2 つ出る**（頭が革と鉄で 2 つ）。だから
+  // **「材質ごとに頭・胴・脚・足が 1 つずつ」へ数え直した** —— こちらのほうが
+  // 強い（材質が何個に増えても、部位の抜けと重複の両方で落ちる）。
   const armors = allArmorIds();
+  const MATERIALS: [string, number[]][] = [
+    ["革", [LEATHER_HELMET, LEATHER_CHESTPLATE, LEATHER_LEGGINGS, LEATHER_BOOTS]],
+    ["鉄", [IRON_HELMET, IRON_CHESTPLATE, IRON_LEGGINGS, IRON_BOOTS]],
+  ];
   console.log(
     `      着られるアイテム: ${armors.length} 種 [` +
       `${armors.map((id) => `${id} ${itemName(id)} ${armorOf(id)?.slot} ${armorOf(id)?.defense} 点`).join(" / ")}]`,
   );
-  check("着られるのは 4 種", armors.length === 4, `${armors.length} 種`);
-
-  // **部位が 4 つとも別**であること。同じ部位が 2 つあると、`armorPoints` が
-  // 「枠の並びと合っているか」で弾くので、片方が永久に 0 点になる。
-  const slots = armors.map((id) => armorOf(id)?.slot);
-  console.log(`      部位: ${slots.join(" / ")}`);
   check(
-    "頭・胴・脚・足が 1 つずつ（重複なし）",
-    new Set(slots).size === 4 &&
-      armorOf(LEATHER_HELMET)?.slot === "head" &&
-      armorOf(LEATHER_CHESTPLATE)?.slot === "chest" &&
-      armorOf(LEATHER_LEGGINGS)?.slot === "legs" &&
-      armorOf(LEATHER_BOOTS)?.slot === "feet",
-    slots.join(" / "),
+    "着られるのは 8 種（革 4 + 鉄 4。材質が 2 つになったので数え直した）",
+    armors.length === 8,
+    `${armors.length} 種`,
   );
 
-  // **点数は本家のまま 1 / 3 / 2 / 1 = 合計 7。** 合計だけを見ていると、
-  // 内訳を入れ替えても（帽子 3 / 上着 1 でも）緑になるので両方を出す。
-  const points = [LEATHER_HELMET, LEATHER_CHESTPLATE, LEATHER_LEGGINGS, LEATHER_BOOTS].map(
-    (id) => armorOf(id)?.defense ?? 0,
-  );
-  const total = points.reduce((sum, p) => sum + p, 0);
-  console.log(`      点数: 帽子 ${points[0]} / 上着 ${points[1]} / ズボン ${points[2]} / 靴 ${points[3]} = 合計 ${total}`);
+  // **材質の中で部位が 4 つとも別**であること。同じ材質に同じ部位が 2 つあると、
+  // `armorPoints` が「枠の並びと合っているか」で弾くので片方が永久に 0 点になる。
+  const WANT: string[] = ["head", "chest", "legs", "feet"];
+  for (const [material, pieces] of MATERIALS) {
+    const slots = pieces.map((id) => armorOf(id)?.slot);
+    console.log(`      ${material}の部位: ${pieces.map((id, i) => `${itemName(id)} ${slots[i]}`).join(" / ")}`);
+    check(
+      `${material}の 4 部位は頭・胴・脚・足が 1 つずつ`,
+      new Set(slots).size === 4 && slots.every((slot, i) => slot === WANT[i]),
+      slots.join(" / "),
+    );
+  }
+  // **材質をまたぐと部位は重なる**（頭が革と鉄で 2 つ）。**それが正しい** ——
+  // 8 種が 4 部位に 2 つずつ割れていることを、数のほうから 1 件で押さえる。
+  const bySlot = WANT.map((slot) => armors.filter((id) => armorOf(id)?.slot === slot).length);
+  console.log(`      部位ごとの種類数: ${WANT.map((slot, i) => `${slot} ${bySlot[i]}`).join(" / ")}`);
   check(
-    "点数は 1 / 3 / 2 / 1 で合計 7",
-    points[0] === 1 && points[1] === 3 && points[2] === 2 && points[3] === 1 && total === 7,
-    `${points.join(" / ")} = ${total}`,
+    "8 種は 4 部位に 2 つずつ（材質 2 つぶん）",
+    bySlot.every((n) => n === 2),
+    bySlot.join(" / "),
   );
 
-  // **材料の革（132）は着られないこと。** 表に入れると「革を頭の枠に置くと固くなる」。
+  // **点数は本家のまま**（革 1 / 3 / 2 / 1 = 7・**鉄 2 / 6 / 5 / 2 = 15**）。
+  // 合計だけを見ていると、内訳を入れ替えても（帽子 6 / 上着 2 でも）緑になるので両方を出す。
+  const TOTALS: Record<string, [number[], number]> = {
+    革: [[1, 3, 2, 1], 7],
+    鉄: [[2, 6, 5, 2], 15],
+  };
+  for (const [material, pieces] of MATERIALS) {
+    const points = pieces.map((id) => armorOf(id)?.defense ?? 0);
+    const total = points.reduce((sum, p) => sum + p, 0);
+    const [want, wantTotal] = TOTALS[material];
+    console.log(
+      `      ${material}の点数: 帽子 ${points[0]} / 上着 ${points[1]} / ズボン ${points[2]}` +
+        ` / 靴 ${points[3]} = 合計 ${total}`,
+    );
+    check(
+      `${material}の点数は ${want.join(" / ")} で合計 ${wantTotal}`,
+      points.every((p, i) => p === want[i]) && total === wantTotal,
+      `${points.join(" / ")} = ${total}`,
+    );
+  }
+
+  // **材料は着られないこと。** 表に入れると「材料を頭の枠に置くと固くなる」。
   check("革（材料）は着られない", armorOf(LEATHER) === null, String(armorOf(LEATHER)));
+  check("鉄インゴット（材料）は着られない", armorOf(IRON_INGOT) === null, String(armorOf(IRON_INGOT)));
 
   // **全アイテムを引いて確かめること** —— `armorOf()` が undefined ではなく null を
   // 返す（`foodOf()` と同じ形）ことの足場でもある。
@@ -95,11 +131,25 @@ export function run(): void {
   const wearable = ids.filter((id) => armorOf(id) !== null);
   console.log(`      一覧の ${ids.length} 種のうち、armorOf() が非 null なのは ${wearable.length} 種`);
   check(
-    "着られるのは表に載せた 4 種だけ",
-    wearable.length === 4 && wearable.every((id) => armors.includes(id)),
+    "着られるのは表に載せた 8 種だけ",
+    wearable.length === 8 && wearable.every((id) => armors.includes(id)),
     wearable.map((id) => itemName(id)).join(", "),
   );
   check("表に無い番号（0 と 999）も null", armorOf(0) === null && armorOf(999) === null);
+
+  // **`MAX_ITEM_ID` の突き合わせはここ**（レンガの節から移した。上限はアイテム側の
+  // ままで、いまは鉄の靴 174 が上限）。伸ばし忘れると `ITEMS` には入っているのに
+  // **クリエイティブの一覧にだけ出ない**（持てるしレシピも通るので型では止まらない。
+  // `rules/items-survival.md`）。**比べる相手を新しい番号へ直すこと** —— 古い番号の
+  // まま残すと `tsc` が TS2367 で落ちる（型で止まる安全な罠）。
+  console.log(`      MAX_ITEM_ID ${MAX_ITEM_ID}（鉄の靴 ${IRON_BOOTS}）`);
+  check(
+    "鉄の 4 部位がクリエイティブの一覧に出る（MAX_ITEM_ID が鉄の靴まで届いている）",
+    MAX_ITEM_ID === IRON_BOOTS &&
+      [IRON_HELMET, IRON_CHESTPLATE, IRON_LEGGINGS, IRON_BOOTS].every((id) => ids.includes(id)),
+    `MAX_ITEM_ID ${MAX_ITEM_ID} / 一覧に ` +
+      `${[IRON_HELMET, IRON_CHESTPLATE, IRON_LEGGINGS, IRON_BOOTS].filter((id) => ids.includes(id)).length} 個`,
+  );
 
   // **置けず・掘る道具でもなく・積めない。** `tool:` を付けると `TOOL_ATTACK` に
   // 無い種類が入って `attackDamage()` が NaN を返し、`wearForBreaking()` は掘る道具
@@ -117,9 +167,13 @@ export function run(): void {
   }
 
   // --- 一覧に並ぶ色（互いとも、既存のどれとも見分けが付くこと）---------------
-  // **木の茶色は一覧でいちばん混んでいる帯**（革・パン・茶キノコ・はしご・本棚・
-  // 焼き鳥がここに居る）。素直な明るさの階段は真ん中が全部 20 を割るので、
-  // **通る 4 段を探して選んだ値**（`TUNING.md`）。**上ほど明るい。**
+  // **どちらの材質も、素直な色は通らなかった。**
+  // 革は**木の茶色**（革・パン・茶キノコ・はしご・本棚・焼き鳥がここに居る）、
+  // 鉄は**無彩色の灰**（石・丸石・砂利・かまど・羊毛・紙・骨・粘土・バケツ・
+  // 鉄インゴット・鉄と石の道具 10 本…で**既存 46 個**）が一覧でいちばん混んでいる帯で、
+  // **鉄は明るさのどの帯でもいちばん遠い無彩色が 20.3 / 20.1 / 22.1 / 21.4**
+  // （判定 20 のすぐ上）だった。だから**鉄は青を 18〜48 足した「鋼の青」**
+  // （`TUNING.md` / `rules/items-survival.md`）。**どちらも上ほど明るい。**
   const dist = (a: number, b: number): number =>
     Math.hypot(((a >> 16) & 255) - ((b >> 16) & 255), ((a >> 8) & 255) - ((b >> 8) & 255), (a & 255) - (b & 255));
   let worstOther = Infinity;
@@ -144,33 +198,33 @@ export function run(): void {
       worstPair = Math.min(worstPair, dist(itemColor(armors[i]), itemColor(armors[j])));
   console.log(`      色のいちばん近い相手: ${lines.join(" / ")}`);
   console.log(
-    `      4 つ互いのいちばん近い隔たり: ${worstPair.toFixed(1)}` +
+    `      8 つ互いのいちばん近い隔たり: ${worstPair.toFixed(1)}` +
       `（材料の革 0x${itemColor(LEATHER).toString(16)} とは ` +
       `${armors.map((id) => dist(itemColor(id), itemColor(LEATHER)).toFixed(1)).join(" / ")}）`,
   );
   check(
-    "4 部位は既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）",
+    "8 部位は既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）",
     worstOther >= 20,
     `いちばん近くて ${worstOther.toFixed(1)}`,
   );
   check(
-    "4 部位は互いにも見分けられる（RGB で 20 以上）",
+    "8 部位は互いにも見分けられる（材質をまたいでも。RGB で 20 以上）",
     worstPair >= 20,
     `いちばん近くて ${worstPair.toFixed(1)}`,
   );
   // **明るさの順が部位の順**（帽子がいちばん明るい）。入れ替わっても上の 2 件は
-  // 緑のままなので、並びそのものを 1 件として見張る。
+  // 緑のままなので、並びそのものを**材質ごとに** 1 件として見張る。
   const lum = (c: number): number =>
     0.299 * ((c >> 16) & 255) + 0.587 * ((c >> 8) & 255) + 0.114 * (c & 255);
-  const ladder = [LEATHER_HELMET, LEATHER_CHESTPLATE, LEATHER_LEGGINGS, LEATHER_BOOTS].map((id) =>
-    lum(itemColor(id)),
-  );
-  console.log(`      明るさ: ${ladder.map((v) => v.toFixed(0)).join(" > ")}`);
-  check(
-    "上ほど明るい（帽子 > 上着 > ズボン > 靴）",
-    ladder[0] > ladder[1] && ladder[1] > ladder[2] && ladder[2] > ladder[3],
-    ladder.map((v) => v.toFixed(0)).join(" / "),
-  );
+  for (const [material, pieces] of MATERIALS) {
+    const ladder = pieces.map((id) => lum(itemColor(id)));
+    console.log(`      ${material}の明るさ: ${ladder.map((v) => v.toFixed(0)).join(" > ")}`);
+    check(
+      `${material}は上ほど明るい（帽子 > 上着 > ズボン > 靴）`,
+      ladder[0] > ladder[1] && ladder[1] > ladder[2] && ladder[2] > ladder[3],
+      ladder.map((v) => v.toFixed(0)).join(" / "),
+    );
+  }
 
   describe("骨（スケルトンの落とし物）");
 
@@ -427,14 +481,10 @@ export function run(): void {
       itemStackLimit(BRICK_ITEM) === 64,
     `block ${placedBlock(BRICK_ITEM)} / tool ${toolOf(BRICK_ITEM)} / food ${foodOf(BRICK_ITEM)} / stack ${itemStackLimit(BRICK_ITEM)}`,
   );
-  // **`MAX_ITEM_ID` の突き合わせはここ**（粘土玉の節から移した。上限はアイテム側のままで、
-  // いまはレンガ 170 が上限）。伸ばし忘れると `ITEMS` には入っているのに
-  // **クリエイティブの一覧にだけ出ない**（持てるしレシピも通るので型では止まらない）。
-  check(
-    "レンガがクリエイティブの一覧に出る（MAX_ITEM_ID がレンガまで届いている）",
-    MAX_ITEM_ID === BRICK_ITEM && ids.includes(BRICK_ITEM),
-    `MAX_ITEM_ID ${MAX_ITEM_ID} / 一覧に レンガ ${ids.includes(BRICK_ITEM)}`,
-  );
+  // **`MAX_ITEM_ID` そのものの突き合わせは鉄の防具の節へ移した**（上限が 174 に
+  // 伸びたので、ここに残すと `tsc` が TS2367 で落ちる。`rules/testing.md`）。
+  // ここで見るのは「レンガが一覧から落ちていないこと」の 1 点。
+  check("レンガがクリエイティブの一覧に出る", ids.includes(BRICK_ITEM), `一覧に レンガ ${ids.includes(BRICK_ITEM)}`);
 
   // **赤茶は一覧でとても混んでいる帯**（革 0xa06a41・ステーキ 0x8f5230・作業台 0x9a6f3e・
   // 棒 0x9a7549・腐った肉 0x8a6b4f・革のズボン 0xb16e51）。素直な 0x9c5a3c は

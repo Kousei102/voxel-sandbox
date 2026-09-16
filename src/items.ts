@@ -440,8 +440,9 @@ export const BOOK = 151;
 export const GOLDEN_APPLE = 153;
 
 /**
- * 革の防具 4 部位（頭・胴・脚・足）。**着られる唯一の材質**で、鉄・金・ダイヤは
- * 取っていません（番号 12 個ぶんを後回しにしてあります）。
+ * 革の防具 4 部位（頭・胴・脚・足）。**いちばん弱い材質**で、鉄は下の
+ * `IRON_HELMET`（171..174）にあります。金・ダイヤは取っていません
+ * （番号 8 個ぶんを後回しにしてあります）。
  *
  * **点数は本家のまま 1 / 3 / 2 / 1（合計 7）**で、**どの部位が何点かは下の `ARMORS`
  * の表 1 本**です（`FOODS` と同じ作法。`inventory.ts` にも `vitals.ts` にも
@@ -538,6 +539,29 @@ export const CLAY_BALL = 169;
 export const BRICK_ITEM = 170;
 
 /**
+ * 鉄の防具 4 部位（頭・胴・脚・足）。**革に続く 2 つ目の材質**で、金・ダイヤの
+ * 8 部位はまだ取っていません（番号 8 個ぶんを後回しにしてあります）。
+ *
+ * **点数は本家のまま 2 / 6 / 5 / 2（合計 15）**で、`armorReduced()` に通すと
+ * 15 / 25 = 60% 減ります（`vitals.ts`）。**どの部位が何点かは下の `ARMORS`
+ * の表 1 本**で、**材質が 2 つになっても `inventory.ts` の `armorPoints` は
+ * 1 行も変わりません** —— あちらは `armorOf()` に聞くだけで材質を知らないからです。
+ *
+ * **傷（耐久）は革と同じく持ちません**（`durability.ts` にも `TOOL_USES` にも
+ * 1 行もありません）。**それでも `stack: 1`**。
+ *
+ * **名前は革と同じ並べ方**（帽子 / 上着 / ズボン / 靴）。本家の「ヘルメット」は
+ * 6 文字で、**一覧の `.label` が折れて枠の絵に被ります**（`HANDOFF.md` の持ち越し）。
+ *
+ * **`IRON_INGOT`(6) や `IRON_BLOCK` と衝突する定数名を作らないこと**
+ * （`crafting.ts` が両方 import した瞬間に `npm run typecheck` が落ちます）。
+ */
+export const IRON_HELMET = 171;
+export const IRON_CHESTPLATE = 172;
+export const IRON_LEGGINGS = 173;
+export const IRON_BOOTS = 174;
+
+/**
  * 一覧を作るときに数え上げる上限（`allItemIds()`）。**アイテムの番号だけでなく、
  * ブロックが自動で作るアイテム（上の for）の番号も含みます。**
  *
@@ -546,14 +570,14 @@ export const BRICK_ITEM = 170;
  * （`craftscreen.ts` の `CREATIVE_ITEMS`）にだけ出てこないブロック**ができます
  * （置けるし掘れるので、型でも `typecheck` でも止まりません）。
  *
- * **いまはレンガ（アイテム 170）が上限です。** 直前が粘土玉（アイテム 169）・
- * 粘土（ブロック 168）・トウヒの苗木（ブロック 165）・オークの苗木（ブロック 164）。
+ * **いまは鉄の靴（アイテム 174）が上限です。** 直前がレンガ（アイテム 170）・
+ * 粘土玉（アイテム 169）・粘土（ブロック 168）・トウヒの苗木（ブロック 165）。
  * **共有帯ではブロックとアイテムが 1 本の番号列**なので、上限を持つのがどちら側かは
  * 決まりません（`items.ts` に 1 行も書いていないブロックが上限だったのは 8 度目まで）。
  * **上限をこちら側へ移したら、それまで指していたブロックの import を消すこと** ——
  * 残すと「使われていない」で `npm run typecheck` が落ちます（型で止まる安全な罠）。
  */
-export const MAX_ITEM_ID = BRICK_ITEM;
+export const MAX_ITEM_ID = IRON_BOOTS;
 
 export const MAX_STACK = 64;
 
@@ -827,6 +851,23 @@ item({ id: CLAY_BALL, name: "粘土玉", block: AIR, stack: MAX_STACK, color: 0x
 // 離す向きへ振ってある —— 一覧では「レンガ」と「レンガブロック」が並んで出ます）。
 item({ id: BRICK_ITEM, name: "レンガ", block: AIR, stack: MAX_STACK, color: 0xbc5d39, tool: null });
 
+// 鉄の防具 4 部位。**革の 4 部位とまったく同じ扱い**（`block: AIR` / `tool: null` /
+// `stack: 1`）。**`ToolKind` に "armor" を足さないこと** —— `TOOL_ATTACK` に無い
+// 種類が入ると `attackDamage()` が NaN を返し、`wearForBreaking()` は掘る道具として
+// 1 を返す（`rules/items-survival.md`）。
+//
+// **色は測って選んだ「鋼の青」です。** 素直な銀灰は**どう選んでも通りません** ——
+// 一覧の**無彩色（彩度 30 以下）は既存 46 個**で埋まっていて、明るさのどの帯でも
+// いちばん遠い無彩色が **20.3 / 20.1 / 22.1 / 21.4**（判定は 20）でした。
+// **青を 18〜48 足した 4 段**にすると、いちばん近い相手で
+// **帽子 26.0（紙）/ 上着 27.5（粘土玉）/ ズボン 43.5（粘土）/ 靴 47.8（丸石）**、
+// **互いは最小 39.5・革 4 部位とは最小 118.8**（この周で測り直した値。`TUNING.md`）。
+// **上ほど明るい**（革と同じ並び。明るさ 212 > 165 > 141 > 100）。
+item({ id: IRON_HELMET, name: "鉄の帽子", block: AIR, stack: 1, color: 0xcfcfff, tool: null });
+item({ id: IRON_CHESTPLATE, name: "鉄の上着", block: AIR, stack: 1, color: 0x92a7ce, tool: null });
+item({ id: IRON_LEGGINGS, name: "鉄のズボン", block: AIR, stack: 1, color: 0x788ebe, tool: null });
+item({ id: IRON_BOOTS, name: "鉄の靴", block: AIR, stack: 1, color: 0x506595, tool: null });
+
 const EMPTY: ItemDef = ITEMS[NO_ITEM];
 
 export function itemDef(id: number): ItemDef {
@@ -943,19 +984,25 @@ export interface ArmorDef {
 /**
  * 着られるもの。**ここに無いものは着られない**（`FOODS` とまったく同じ作法）。
  *
- * **いまは革の 4 部位だけ**（鉄・金・ダイヤは番号を取っていません）。
- * **点数は本家のまま 1 / 3 / 2 / 1 = 合計 7**で、`armorReduced()` に通すと
- * 7 / 25 = 28% 減ります（`vitals.ts`）。
+ * **いまは革と鉄の 2 材質・8 種**（金・ダイヤは番号を取っていません）。
+ * **点数は本家のまま**で、革 1 / 3 / 2 / 1 = 合計 7（`armorReduced()` で 28% 減）・
+ * **鉄 2 / 6 / 5 / 2 = 合計 15**（同じく **60% 減**）です（`vitals.ts`）。
  * **足すのはここに 1 行ずつ**で、`inventory.ts` にも `vitals.ts` にも
- * アイテムの名前を書かないこと。
+ * アイテムの名前を書かないこと。**材質が増えても `armorPoints` は 1 行も
+ * 変わりません** —— あちらは `armorOf()` に聞くだけで材質を知らないからです。
  *
- * **材料の革（132）はここに入れないこと** —— 入れると「革を頭の枠に置くと固くなる」。
+ * **材料の革（132）と鉄インゴット（6）はここに入れないこと** ——
+ * 入れると「材料を頭の枠に置くと固くなる」。
  */
 const ARMORS = new Map<number, ArmorDef>([
   [LEATHER_HELMET, { slot: "head", defense: 1 }],
   [LEATHER_CHESTPLATE, { slot: "chest", defense: 3 }],
   [LEATHER_LEGGINGS, { slot: "legs", defense: 2 }],
   [LEATHER_BOOTS, { slot: "feet", defense: 1 }],
+  [IRON_HELMET, { slot: "head", defense: 2 }],
+  [IRON_CHESTPLATE, { slot: "chest", defense: 6 }],
+  [IRON_LEGGINGS, { slot: "legs", defense: 5 }],
+  [IRON_BOOTS, { slot: "feet", defense: 2 }],
 ]);
 
 /** その防具の値。着られないなら null（`foodOf()` と同じ形）。 */

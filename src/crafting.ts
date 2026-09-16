@@ -68,8 +68,12 @@ import {
   GOLDEN_APPLE,
   GOLD_INGOT,
   IRON_AXE,
+  IRON_BOOTS,
+  IRON_CHESTPLATE,
+  IRON_HELMET,
   IRON_HOE,
   IRON_INGOT,
+  IRON_LEGGINGS,
   IRON_PICKAXE,
   IRON_SHOVEL,
   IRON_SWORD,
@@ -317,33 +321,8 @@ export const RECIPES: readonly Recipe[] = [
   { name: "金インゴット", out: GOLD_INGOT, count: 9, ingredients: [GOLD_BLOCK] },
   { name: "ダイヤモンド", out: DIAMOND, count: 9, ingredients: [DIAMOND_BLOCK] },
 
-  // 革の防具 4 部位（Minecraft と同じ形・同じ枚数。革は 5 / 8 / 7 / 4 枚）。
-  // **4 本とも 3 幅なので作業台が要る** —— 靴（`["L.L","L.L"]`）は 2 段だが、
-  // 真ん中の列が空くので幅 3 のまま（2x2 には収まらない）。
-  // **どの部位に着るか・何点かはここではなく `items.ts` の `ARMORS`** で、
-  // レシピは「何が作れるか」しか持たない。
-  {
-    name: "革の帽子",
-    out: LEATHER_HELMET,
-    count: 1,
-    shape: ["LLL", "L.L"],
-    key: { L: LEATHER },
-  },
-  {
-    name: "革の上着",
-    out: LEATHER_CHESTPLATE,
-    count: 1,
-    shape: ["L.L", "LLL", "LLL"],
-    key: { L: LEATHER },
-  },
-  {
-    name: "革のズボン",
-    out: LEATHER_LEGGINGS,
-    count: 1,
-    shape: ["LLL", "L.L", "L.L"],
-    key: { L: LEATHER },
-  },
-  { name: "革の靴", out: LEATHER_BOOTS, count: 1, shape: ["L.L", "L.L"], key: { L: LEATHER } },
+  ...armorRecipes("革", LEATHER, LEATHER_HELMET, LEATHER_CHESTPLATE, LEATHER_LEGGINGS, LEATHER_BOOTS),
+  ...armorRecipes("鉄", IRON_INGOT, IRON_HELMET, IRON_CHESTPLATE, IRON_LEGGINGS, IRON_BOOTS),
 
   ...toolRecipes("木", PLANK, WOOD_PICKAXE, WOOD_AXE, WOOD_SHOVEL, WOOD_SWORD, WOOD_HOE),
   ...toolRecipes("石", COBBLE, STONE_PICKAXE, STONE_AXE, STONE_SHOVEL, STONE_SWORD, STONE_HOE),
@@ -376,6 +355,35 @@ function stairRecipe(name: string, material: number, stairs: number): Recipe {
     shape: ["M..", "MM.", "MMM"],
     key: { M: material },
   };
+}
+
+/**
+ * 防具 4 部位はどの材質も形が同じで、材料だけが変わる（`toolRecipes()` と同じ作法）。
+ * **形も枚数も Minecraft のまま**（5 / 8 / 7 / 4 枚）。
+ *
+ * **4 本とも 3 幅なので作業台が要る** —— 靴（`["M.M","M.M"]`）は 2 段だが、
+ * 真ん中の列が空くので幅 3 のまま（2x2 には収まらない）。
+ * **どの部位に着るか・何点かはここではなく `items.ts` の `ARMORS`** で、
+ * レシピは「何が作れるか」しか持たない。
+ *
+ * **名前は「革 / 鉄」＋「帽子 / 上着 / ズボン / 靴」**（本家の「ヘルメット」は
+ * 6 文字で、一覧の `.label` が折れて枠の絵に被る。`HANDOFF.md` の持ち越し）。
+ */
+function armorRecipes(
+  material: string,
+  ingot: number,
+  helmet: number,
+  chestplate: number,
+  leggings: number,
+  boots: number,
+): Recipe[] {
+  const key = { M: ingot };
+  return [
+    { name: `${material}の帽子`, out: helmet, count: 1, shape: ["MMM", "M.M"], key },
+    { name: `${material}の上着`, out: chestplate, count: 1, shape: ["M.M", "MMM", "MMM"], key },
+    { name: `${material}のズボン`, out: leggings, count: 1, shape: ["MMM", "M.M", "M.M"], key },
+    { name: `${material}の靴`, out: boots, count: 1, shape: ["M.M", "M.M"], key },
+  ];
 }
 
 /**

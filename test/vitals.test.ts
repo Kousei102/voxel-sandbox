@@ -388,7 +388,7 @@ export function run(): void {
     // 効く 5 種と効かない 4 種が、点数を上げても入れ替わらないことの足場。
     const causes: DamageCause[] = ["落下", "モンスター", "溶岩", "炎上", "サボテン", "溺れ", "空腹", "毒", "奈落"];
     console.log("      armorReduced(10, 死因, 点) の表:");
-    for (const points of [0, 7, ARMOR_CAP, 25]) {
+    for (const points of [0, 7, 15, ARMOR_CAP, 25]) {
       const row = causes.map((cause) => `${cause} ${armorReduced(10, cause, points).toFixed(2)}`);
       console.log(`        ${String(points).padStart(2)} 点: ${row.join(" / ")}`);
     }
@@ -415,6 +415,22 @@ export function run(): void {
       "防具点 7（革一式ぶん）で 7.2",
       near(armorReduced(10, "モンスター", 7), 10 * (1 - 7 / ARMOR_DENOM)) && near(armorReduced(10, "モンスター", 7), 7.2),
       `${armorReduced(10, "モンスター", 7).toFixed(3)}`,
+    );
+    // **鉄一式は 2 + 6 + 5 + 2 = 15 点**（`items.ts` の `ARMORS`）で **60% 減**。
+    // **上限（20）には当たらない**ので、`ARMOR_CAP` を触らずにそのまま効く。
+    // **革一式の 28% 減が動いていないことも同じ 1 件で見る** —— 材質を足した周に
+    // 片方だけずれると、出力を読むまで気付けないから。
+    console.log(
+      `      一式ぶん: 革 7 点 → ${armorReduced(10, "モンスター", 7).toFixed(2)}（28% 減）` +
+        ` / 鉄 15 点 → ${armorReduced(10, "モンスター", 15).toFixed(2)}（60% 減）` +
+        `  上限 ${ARMOR_CAP} 点には当たらない`,
+    );
+    check(
+      "防具点 15（鉄一式ぶん）で 4.0（60% 減）。革一式の 7.2 も動かない",
+      near(armorReduced(10, "モンスター", 15), 10 * (1 - 15 / ARMOR_DENOM)) &&
+        near(armorReduced(10, "モンスター", 15), 4) &&
+        near(armorReduced(10, "モンスター", 7), 7.2),
+      `鉄 ${armorReduced(10, "モンスター", 15).toFixed(3)} / 革 ${armorReduced(10, "モンスター", 7).toFixed(3)}`,
     );
     check(
       "防具点 20 で 2（8 割減で頭打ち）",

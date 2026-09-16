@@ -135,7 +135,11 @@ import {
   FEATHER,
   GOLDEN_APPLE,
   GOLD_INGOT,
+  IRON_BOOTS,
+  IRON_CHESTPLATE,
+  IRON_HELMET,
   IRON_INGOT,
+  IRON_LEGGINGS,
   LAVA_BUCKET,
   LEATHER,
   LEATHER_BOOTS,
@@ -254,8 +258,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガの 52 個（170 まで。レンガで 1 個増えた）",
-    sharedItems.length === 52 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位の 56 個（174 まで。鉄の防具で 4 個増えた）",
+    sharedItems.length === 56 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -324,19 +328,23 @@ export function run(): void {
       sharedItems[49] === CLAY && sharedItems[50] === CLAY_BALL &&
       // **170 も手で足したアイテム**（レンガ。粘土玉を焼くと出る。ブロックは 1 つも
       // 増えていない —— 組み上がる先は低帯の `BRICK`(12) なので）。
+      sharedItems[51] === BRICK_ITEM &&
+      // **171..174 は `items.ts` に手で足したアイテム 4 つ**（鉄の防具 4 部位。
+      // 158..161 の革と同じで、ブロックは 1 つも増えていない）。
       // **上限を持つのはアイテム側のまま**なので、`MAX_ITEM_ID` の突き合わせも
       // ここで一緒に見る（伸ばし忘れは型では止まらない。**比べる相手を新しい番号に
       // 直すこと** —— 古い番号のまま残すと `tsc` が TS2367 で落ちます。`rules/testing.md`）。
-      sharedItems[51] === BRICK_ITEM &&
-      MAX_ITEM_ID === BRICK_ITEM,
+      sharedItems[52] === IRON_HELMET && sharedItems[53] === IRON_CHESTPLATE &&
+      sharedItems[54] === IRON_LEGGINGS && sharedItems[55] === IRON_BOOTS &&
+      MAX_ITEM_ID === IRON_BOOTS,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 85（レンガ 170 で 1 個減った）",
-    sharedFree === 85,
+    "111..255 の空きは 81（鉄の防具 171..174 で 4 個減った）",
+    sharedFree === 81,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
