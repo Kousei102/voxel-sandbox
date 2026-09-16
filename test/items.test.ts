@@ -22,7 +22,17 @@ import {
   CHARCOAL,
   CLAY_BALL,
   COAL,
+  DIAMOND,
+  DIAMOND_BOOTS,
+  DIAMOND_CHESTPLATE,
+  DIAMOND_HELMET,
+  DIAMOND_LEGGINGS,
   FLINT,
+  GOLD_BOOTS,
+  GOLD_CHESTPLATE,
+  GOLD_HELMET,
+  GOLD_INGOT,
+  GOLD_LEGGINGS,
   IRON_BOOTS,
   IRON_CHESTPLATE,
   IRON_HELMET,
@@ -54,7 +64,7 @@ import { check, describe } from "./harness";
 export function run(): void {
   describe("防具の表（items.ts の ARMORS）");
 
-  // **着られるのは革と鉄の 2 材質・8 種**（金・ダイヤは番号を取っていない）。
+  // **着られるのは革・鉄・金・ダイヤの 4 材質・16 種**（33b で金とダイヤが入った）。
   // ここが増える周は、`inventory.ts` の `armorPoints` と
   // `test/vitals.test.ts` の点数の表も一緒に動く周。
   //
@@ -63,18 +73,22 @@ export function run(): void {
   // が、**材質が 2 つになると同じ部位が 2 つ出る**（頭が革と鉄で 2 つ）。だから
   // **「材質ごとに頭・胴・脚・足が 1 つずつ」へ数え直した** —— こちらのほうが
   // 強い（材質が何個に増えても、部位の抜けと重複の両方で落ちる）。
+  // **33b では、その数え方のまま材質の列を 2 つ足しただけ**（判定は 1 つも
+  // ゆるめていない。8 → 16 種・部位ごと 2 → 4 つは**材質が 4 つになったぶん**）。
   const armors = allArmorIds();
   const MATERIALS: [string, number[]][] = [
     ["革", [LEATHER_HELMET, LEATHER_CHESTPLATE, LEATHER_LEGGINGS, LEATHER_BOOTS]],
     ["鉄", [IRON_HELMET, IRON_CHESTPLATE, IRON_LEGGINGS, IRON_BOOTS]],
+    ["金", [GOLD_HELMET, GOLD_CHESTPLATE, GOLD_LEGGINGS, GOLD_BOOTS]],
+    ["ダイヤ", [DIAMOND_HELMET, DIAMOND_CHESTPLATE, DIAMOND_LEGGINGS, DIAMOND_BOOTS]],
   ];
   console.log(
     `      着られるアイテム: ${armors.length} 種 [` +
       `${armors.map((id) => `${id} ${itemName(id)} ${armorOf(id)?.slot} ${armorOf(id)?.defense} 点`).join(" / ")}]`,
   );
   check(
-    "着られるのは 8 種（革 4 + 鉄 4。材質が 2 つになったので数え直した）",
-    armors.length === 8,
+    "着られるのは 16 種（革 4 + 鉄 4 + 金 4 + ダイヤ 4。材質が 4 つになったので数え直した）",
+    armors.length === 16,
     `${armors.length} 種`,
   );
 
@@ -90,21 +104,27 @@ export function run(): void {
       slots.join(" / "),
     );
   }
-  // **材質をまたぐと部位は重なる**（頭が革と鉄で 2 つ）。**それが正しい** ——
-  // 8 種が 4 部位に 2 つずつ割れていることを、数のほうから 1 件で押さえる。
+  // **材質をまたぐと部位は重なる**（頭が革・鉄・金・ダイヤで 4 つ）。**それが正しい**
+  // —— 16 種が 4 部位に 4 つずつ割れていることを、数のほうから 1 件で押さえる。
   const bySlot = WANT.map((slot) => armors.filter((id) => armorOf(id)?.slot === slot).length);
   console.log(`      部位ごとの種類数: ${WANT.map((slot, i) => `${slot} ${bySlot[i]}`).join(" / ")}`);
   check(
-    "8 種は 4 部位に 2 つずつ（材質 2 つぶん）",
-    bySlot.every((n) => n === 2),
+    "16 種は 4 部位に 4 つずつ（材質 4 つぶん。数え直したのであってゆるめていない）",
+    bySlot.every((n) => n === 4),
     bySlot.join(" / "),
   );
 
-  // **点数は本家のまま**（革 1 / 3 / 2 / 1 = 7・**鉄 2 / 6 / 5 / 2 = 15**）。
+  // **点数は本家のまま**（革 1 / 3 / 2 / 1 = 7・**鉄 2 / 6 / 5 / 2 = 15**・
+  // **金 2 / 5 / 3 / 1 = 11**・**ダイヤ 3 / 8 / 6 / 3 = 20**）。
   // 合計だけを見ていると、内訳を入れ替えても（帽子 6 / 上着 2 でも）緑になるので両方を出す。
+  //
+  // **⚠ 金（11）は鉄（15）より弱い**のに要る枚数は同じ 24 枚で、**ダイヤ（20）は
+  // `ARMOR_CAP` ちょうど**。どちらも本家のままなので、ここで点を足さないこと。
   const TOTALS: Record<string, [number[], number]> = {
     革: [[1, 3, 2, 1], 7],
     鉄: [[2, 6, 5, 2], 15],
+    金: [[2, 5, 3, 1], 11],
+    ダイヤ: [[3, 8, 6, 3], 20],
   };
   for (const [material, pieces] of MATERIALS) {
     const points = pieces.map((id) => armorOf(id)?.defense ?? 0);
@@ -124,6 +144,11 @@ export function run(): void {
   // **材料は着られないこと。** 表に入れると「材料を頭の枠に置くと固くなる」。
   check("革（材料）は着られない", armorOf(LEATHER) === null, String(armorOf(LEATHER)));
   check("鉄インゴット（材料）は着られない", armorOf(IRON_INGOT) === null, String(armorOf(IRON_INGOT)));
+  check(
+    "金インゴットとダイヤ（材料）も着られない",
+    armorOf(GOLD_INGOT) === null && armorOf(DIAMOND) === null,
+    `金 ${armorOf(GOLD_INGOT)} / ダイヤ ${armorOf(DIAMOND)}`,
+  );
 
   // **全アイテムを引いて確かめること** —— `armorOf()` が undefined ではなく null を
   // 返す（`foodOf()` と同じ形）ことの足場でもある。
@@ -131,8 +156,8 @@ export function run(): void {
   const wearable = ids.filter((id) => armorOf(id) !== null);
   console.log(`      一覧の ${ids.length} 種のうち、armorOf() が非 null なのは ${wearable.length} 種`);
   check(
-    "着られるのは表に載せた 8 種だけ",
-    wearable.length === 8 && wearable.every((id) => armors.includes(id)),
+    "着られるのは表に載せた 16 種だけ（材質 4 つぶん。数え直したのであってゆるめていない）",
+    wearable.length === 16 && wearable.every((id) => armors.includes(id)),
     wearable.map((id) => itemName(id)).join(", "),
   );
   check("表に無い番号（0 と 999）も null", armorOf(0) === null && armorOf(999) === null);
@@ -142,13 +167,15 @@ export function run(): void {
   // **クリエイティブの一覧にだけ出ない**（持てるしレシピも通るので型では止まらない。
   // `rules/items-survival.md`）。**比べる相手を新しい番号へ直すこと** —— 古い番号の
   // まま残すと `tsc` が TS2367 で落ちる（型で止まる安全な罠）。
-  console.log(`      MAX_ITEM_ID ${MAX_ITEM_ID}（鉄の靴 ${IRON_BOOTS}）`);
+  const newest = [
+    GOLD_HELMET, GOLD_CHESTPLATE, GOLD_LEGGINGS, GOLD_BOOTS,
+    DIAMOND_HELMET, DIAMOND_CHESTPLATE, DIAMOND_LEGGINGS, DIAMOND_BOOTS,
+  ];
+  console.log(`      MAX_ITEM_ID ${MAX_ITEM_ID}（ダイヤの靴 ${DIAMOND_BOOTS}・鉄の靴 ${IRON_BOOTS}）`);
   check(
-    "鉄の 4 部位がクリエイティブの一覧に出る（MAX_ITEM_ID が鉄の靴まで届いている）",
-    MAX_ITEM_ID === IRON_BOOTS &&
-      [IRON_HELMET, IRON_CHESTPLATE, IRON_LEGGINGS, IRON_BOOTS].every((id) => ids.includes(id)),
-    `MAX_ITEM_ID ${MAX_ITEM_ID} / 一覧に ` +
-      `${[IRON_HELMET, IRON_CHESTPLATE, IRON_LEGGINGS, IRON_BOOTS].filter((id) => ids.includes(id)).length} 個`,
+    "金・ダイヤの 8 部位がクリエイティブの一覧に出る（MAX_ITEM_ID がダイヤの靴まで届いている）",
+    MAX_ITEM_ID === DIAMOND_BOOTS && newest.every((id) => ids.includes(id)),
+    `MAX_ITEM_ID ${MAX_ITEM_ID} / 一覧に ${newest.filter((id) => ids.includes(id)).length} 個`,
   );
 
   // **置けず・掘る道具でもなく・積めない。** `tool:` を付けると `TOOL_ATTACK` に
@@ -167,13 +194,16 @@ export function run(): void {
   }
 
   // --- 一覧に並ぶ色（互いとも、既存のどれとも見分けが付くこと）---------------
-  // **どちらの材質も、素直な色は通らなかった。**
+  // **どの材質も、素直な色は通らなかった。**
   // 革は**木の茶色**（革・パン・茶キノコ・はしご・本棚・焼き鳥がここに居る）、
   // 鉄は**無彩色の灰**（石・丸石・砂利・かまど・羊毛・紙・骨・粘土・バケツ・
   // 鉄インゴット・鉄と石の道具 10 本…で**既存 46 個**）が一覧でいちばん混んでいる帯で、
   // **鉄は明るさのどの帯でもいちばん遠い無彩色が 20.3 / 20.1 / 22.1 / 21.4**
   // （判定 20 のすぐ上）だった。だから**鉄は青を 18〜48 足した「鋼の青」**
-  // （`TUNING.md` / `rules/items-survival.md`）。**どちらも上ほど明るい。**
+  // （`TUNING.md` / `rules/items-survival.md`）。
+  // **金は黄色い帯**（金インゴット・金のリンゴ・金鉱石・ブレイズロッド）、
+  // **ダイヤは水色の帯**（ミルクバケツ・ガラス・氷・ダイヤ）で、どちらも 33b で
+  // 測り直して通した 4 段。**4 材質とも上ほど明るい。**
   const dist = (a: number, b: number): number =>
     Math.hypot(((a >> 16) & 255) - ((b >> 16) & 255), ((a >> 8) & 255) - ((b >> 8) & 255), (a & 255) - (b & 255));
   let worstOther = Infinity;
@@ -198,17 +228,17 @@ export function run(): void {
       worstPair = Math.min(worstPair, dist(itemColor(armors[i]), itemColor(armors[j])));
   console.log(`      色のいちばん近い相手: ${lines.join(" / ")}`);
   console.log(
-    `      8 つ互いのいちばん近い隔たり: ${worstPair.toFixed(1)}` +
+    `      16 つ互いのいちばん近い隔たり: ${worstPair.toFixed(1)}` +
       `（材料の革 0x${itemColor(LEATHER).toString(16)} とは ` +
       `${armors.map((id) => dist(itemColor(id), itemColor(LEATHER)).toFixed(1)).join(" / ")}）`,
   );
   check(
-    "8 部位は既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）",
+    "16 部位は既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）",
     worstOther >= 20,
     `いちばん近くて ${worstOther.toFixed(1)}`,
   );
   check(
-    "8 部位は互いにも見分けられる（材質をまたいでも。RGB で 20 以上）",
+    "16 部位は互いにも見分けられる（材質をまたいでも。RGB で 20 以上）",
     worstPair >= 20,
     `いちばん近くて ${worstPair.toFixed(1)}`,
   );

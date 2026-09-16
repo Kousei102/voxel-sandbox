@@ -432,6 +432,31 @@ export function run(): void {
         near(armorReduced(10, "モンスター", 7), 7.2),
       `鉄 ${armorReduced(10, "モンスター", 15).toFixed(3)} / 革 ${armorReduced(10, "モンスター", 7).toFixed(3)}`,
     );
+    // **金一式は 2 + 5 + 3 + 1 = 11 点**・**ダイヤ一式は 3 + 8 + 6 + 3 = 20 点**
+    // （`items.ts` の `ARMORS`）。**ダイヤは `ARMOR_CAP`(20) にちょうど当たる** ——
+    // 「早く頭打ちになった」のではなく**上限に届く一式が初めて入った**だけなので、
+    // `ARMOR_CAP` も `ARMOR_DENOM` も触っていない（`rules/vitals.md`）。
+    // **革 7 点と鉄 15 点が 1 つも動いていないことも同じ 1 件で見る。**
+    console.log(
+      `      一式ぶん（4 材質）: 革 7 点 → ${armorReduced(10, "モンスター", 7).toFixed(2)}（28% 減）` +
+        ` / 金 11 点 → ${armorReduced(10, "モンスター", 11).toFixed(2)}（44% 減）` +
+        ` / 鉄 15 点 → ${armorReduced(10, "モンスター", 15).toFixed(2)}（60% 減）` +
+        ` / ダイヤ 20 点 → ${armorReduced(10, "モンスター", 20).toFixed(2)}（80% 減・上限 ${ARMOR_CAP} ちょうど）`,
+    );
+    check(
+      "防具点 11（金一式ぶん）で 5.6（44% 減）。革 7.2 も鉄 4.0 も動かない",
+      near(armorReduced(10, "モンスター", 11), 10 * (1 - 11 / ARMOR_DENOM)) &&
+        near(armorReduced(10, "モンスター", 11), 5.6) &&
+        near(armorReduced(10, "モンスター", 7), 7.2) &&
+        near(armorReduced(10, "モンスター", 15), 4),
+      `金 ${armorReduced(10, "モンスター", 11).toFixed(3)} / 革 ${armorReduced(10, "モンスター", 7).toFixed(3)}` +
+        ` / 鉄 ${armorReduced(10, "モンスター", 15).toFixed(3)}`,
+    );
+    check(
+      "防具点 20（ダイヤ一式ぶん）で 2.0（8 割減・上限ちょうど。ARMOR_CAP は触っていない）",
+      near(armorReduced(10, "モンスター", 20), 2) && ARMOR_CAP === 20 && ARMOR_DENOM === 25,
+      `ダイヤ ${armorReduced(10, "モンスター", 20).toFixed(3)} / 上限 ${ARMOR_CAP} / 分母 ${ARMOR_DENOM}`,
+    );
     check(
       "防具点 20 で 2（8 割減で頭打ち）",
       near(armorReduced(10, "モンスター", ARMOR_CAP), 2),

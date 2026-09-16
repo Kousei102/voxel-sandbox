@@ -8,8 +8,10 @@ import {
   COBBLE,
   CRAFTING_TABLE,
   DIAMOND_BLOCK,
+  DIAMOND_ORE,
   FENCE,
   GOLD_BLOCK,
+  GOLD_ORE,
   IRON_BLOCK,
   IRON_ORE,
   LADDER,
@@ -50,7 +52,11 @@ import {
   CLAY_BALL,
   COAL,
   DIAMOND,
+  DIAMOND_BOOTS,
+  DIAMOND_CHESTPLATE,
+  DIAMOND_HELMET,
   DIAMOND_HOE,
+  DIAMOND_LEGGINGS,
   ENDER_EYE,
   ENDER_PEARL,
   IRON_INGOT,
@@ -61,7 +67,11 @@ import {
   FLINT,
   FLINT_AND_STEEL,
   GOLDEN_APPLE,
+  GOLD_BOOTS,
+  GOLD_CHESTPLATE,
+  GOLD_HELMET,
   GOLD_INGOT,
+  GOLD_LEGGINGS,
   IRON_BOOTS,
   IRON_CHESTPLATE,
   IRON_HELMET,
@@ -843,8 +853,8 @@ export function run(): void {
   // **本数も 1 件として見張る** —— レシピを足したのに表から漏れていたら、
   // 上の `findRecipe` だけでは「揃わないのが正しい」と読めてしまう。
   check(
-    "レシピは 74 本（鉄の防具 4 部位で 4 本増えた。革 4 本は書き方が変わっただけ）",
-    RECIPES.length === 74,
+    "レシピは 82 本（金・ダイヤの防具 8 部位で 8 本増えた。armorRecipes() の呼び出し 2 行だけ）",
+    RECIPES.length === 82,
     `${RECIPES.length} 本`,
   );
 
@@ -936,14 +946,15 @@ export function run(): void {
       ` ｜ 器: シチュー → ${emptyAfterEating(MUSHROOM_STEW)} / ミルク → ${emptyAfterEating(MILK_BUCKET)}`,
   );
 
-  describe("革と鉄の防具");
+  describe("革・鉄・金・ダイヤの防具");
 
-  // **形も枚数も本家のまま**（5 / 8 / 7 / 4 枚）。**どちらの材質も 4 本とも 3 幅なので
+  // **形も枚数も本家のまま**（5 / 8 / 7 / 4 枚）。**どの材質も 4 本とも 3 幅なので
   // 作業台が要る** —— 靴は 2 段だが真ん中の列が空くので幅 3 のまま（2x2 には収まらない）。
   // **どの部位に着るか・何点かはここではなく `items.ts` の `ARMORS`**（`test/items.test.ts`）。
   //
-  // **材質の列を 1 つ増やしただけ**（`crafting.ts` は `armorRecipes()` 1 本になったので、
-  // 形はどの材質でも同じところから出る）。**革 4 本は名前も形も枚数も出目も変わっていない。**
+  // **33b で材質の列をさらに 2 つ増やしただけ**（`crafting.ts` は `armorRecipes()`
+  // 1 本なので、形はどの材質でも同じところから出る。**関数の中は 1 文字も変えていない**）。
+  // **革と鉄の 8 本は名前も形も枚数も出目も変わっていない。**
   const armorTable: [string, number, number, string[], number][] = [
     ["革の帽子", LEATHER, LEATHER_HELMET, ["MMM", "M.M"], 5],
     ["革の上着", LEATHER, LEATHER_CHESTPLATE, ["M.M", "MMM", "MMM"], 8],
@@ -953,6 +964,14 @@ export function run(): void {
     ["鉄の上着", IRON_INGOT, IRON_CHESTPLATE, ["M.M", "MMM", "MMM"], 8],
     ["鉄のズボン", IRON_INGOT, IRON_LEGGINGS, ["MMM", "M.M", "M.M"], 7],
     ["鉄の靴", IRON_INGOT, IRON_BOOTS, ["M.M", "M.M"], 4],
+    ["金の帽子", GOLD_INGOT, GOLD_HELMET, ["MMM", "M.M"], 5],
+    ["金の上着", GOLD_INGOT, GOLD_CHESTPLATE, ["M.M", "MMM", "MMM"], 8],
+    ["金のズボン", GOLD_INGOT, GOLD_LEGGINGS, ["MMM", "M.M", "M.M"], 7],
+    ["金の靴", GOLD_INGOT, GOLD_BOOTS, ["M.M", "M.M"], 4],
+    ["ダイヤの帽子", DIAMOND, DIAMOND_HELMET, ["MMM", "M.M"], 5],
+    ["ダイヤの上着", DIAMOND, DIAMOND_CHESTPLATE, ["M.M", "MMM", "MMM"], 8],
+    ["ダイヤのズボン", DIAMOND, DIAMOND_LEGGINGS, ["MMM", "M.M", "M.M"], 7],
+    ["ダイヤの靴", DIAMOND, DIAMOND_BOOTS, ["M.M", "M.M"], 4],
   ];
   for (const [name, material, out, rows, want] of armorTable) {
     const MA = { M: material };
@@ -987,6 +1006,40 @@ export function run(): void {
     `サバイバルで鉄一式に届く（鉄鉱石を焼いた鉄インゴット ${ironSuit} 枚）`,
     oreSmelt?.out === IRON_INGOT && oreSmelt.count === 1 && ironSuit === 24,
     `焼くと ${itemName(oreSmelt?.out ?? NO_ITEM)} x${oreSmelt?.count ?? 0} / 一式 ${ironSuit} 枚`,
+  );
+
+  // **金一式も 24 枚**（金は鉄より弱い 11 点なのに同じ枚数。本家のまま。`TUNING.md`）。
+  // 道は鉄と同じ形 —— **金鉱石 → かまど → 金インゴット 1 個**。
+  const goldSuit = armorTable.filter(([, m]) => m === GOLD_INGOT).reduce((sum, row) => sum + row[4], 0);
+  const goldSmelt = smeltResultOf(GOLD_ORE);
+  console.log(
+    `      金一式の道: 金鉱石(${GOLD_ORE}) → 焼く → ` +
+      `${itemName(goldSmelt?.out ?? NO_ITEM)} x${goldSmelt?.count ?? 0}` +
+      ` → 金の帽子 5 + 上着 8 + ズボン 7 + 靴 4 = ${goldSuit} 枚（金鉱石 ${goldSuit} 個ぶん）`,
+  );
+  check(
+    `サバイバルで金一式に届く（金鉱石を焼いた金インゴット ${goldSuit} 枚）`,
+    goldSmelt?.out === GOLD_INGOT && goldSmelt.count === 1 && goldSuit === 24,
+    `焼くと ${itemName(goldSmelt?.out ?? NO_ITEM)} x${goldSmelt?.count ?? 0} / 一式 ${goldSuit} 枚`,
+  );
+
+  // **⚠ ダイヤは鉄・金と道が違う** —— **`SMELTING` に 1 行も無く**、
+  // **ダイヤ鉱石を掘ると `DROPS` でダイヤが 1 個**落ちる。だから鉄・金の形を
+  // そのまま写すと `smeltResultOf(DIAMOND_ORE)` が null で落ちる（`DROPS` の側を見る）。
+  // **焼けないことも同じ 1 件で出力してから**見張る（次に材質を足す人の足場）。
+  const diamondSuit = armorTable.filter(([, m]) => m === DIAMOND).reduce((sum, row) => sum + row[4], 0);
+  const oreDrop = rollDrop(DIAMOND_ORE, 0);
+  console.log(
+    `      ダイヤ一式の道: ダイヤ鉱石(${DIAMOND_ORE}) → 掘る → ` +
+      `${itemName(oreDrop.item)} x${oreDrop.count}（焼くと ${smeltResultOf(DIAMOND_ORE) === null ? "何も出ない" : "出る"}）` +
+      ` → ダイヤの帽子 5 + 上着 8 + ズボン 7 + 靴 4 = ${diamondSuit} 個（ダイヤ鉱石 ${diamondSuit} 個ぶん）`,
+  );
+  check(
+    `サバイバルでダイヤ一式に届く（ダイヤ鉱石を掘ったダイヤ ${diamondSuit} 個。焼く道は無い）`,
+    oreDrop.item === DIAMOND && oreDrop.count === 1 && diamondSuit === 24 &&
+      smeltResultOf(DIAMOND_ORE) === null,
+    `掘ると ${itemName(oreDrop.item)} x${oreDrop.count} / 一式 ${diamondSuit} 個` +
+      ` / 焼くと ${smeltResultOf(DIAMOND_ORE) === null ? "null" : "非 null"}`,
   );
 
   describe("クラフト");

@@ -441,8 +441,8 @@ export const GOLDEN_APPLE = 153;
 
 /**
  * 革の防具 4 部位（頭・胴・脚・足）。**いちばん弱い材質**で、鉄は下の
- * `IRON_HELMET`（171..174）にあります。金・ダイヤは取っていません
- * （番号 8 個ぶんを後回しにしてあります）。
+ * `IRON_HELMET`（171..174）・金は `GOLD_HELMET`（175..178）・ダイヤは
+ * `DIAMOND_HELMET`（179..182）にあります。
  *
  * **点数は本家のまま 1 / 3 / 2 / 1（合計 7）**で、**どの部位が何点かは下の `ARMORS`
  * の表 1 本**です（`FOODS` と同じ作法。`inventory.ts` にも `vitals.ts` にも
@@ -540,7 +540,7 @@ export const BRICK_ITEM = 170;
 
 /**
  * 鉄の防具 4 部位（頭・胴・脚・足）。**革に続く 2 つ目の材質**で、金・ダイヤの
- * 8 部位はまだ取っていません（番号 8 個ぶんを後回しにしてあります）。
+ * 8 部位は下の `GOLD_HELMET`（175..178）と `DIAMOND_HELMET`（179..182）にあります。
  *
  * **点数は本家のまま 2 / 6 / 5 / 2（合計 15）**で、`armorReduced()` に通すと
  * 15 / 25 = 60% 減ります（`vitals.ts`）。**どの部位が何点かは下の `ARMORS`
@@ -562,6 +562,43 @@ export const IRON_LEGGINGS = 173;
 export const IRON_BOOTS = 174;
 
 /**
+ * 金の防具 4 部位（33b）。**革・鉄に続く 3 つ目の材質**で、**点数は本家のまま
+ * 2 / 5 / 3 / 1（合計 11）** —— `armorReduced()` に通すと 11 / 25 = **44% 減**です。
+ *
+ * **⚠ 金は鉄（15 点）より弱いのに、要る枚数は同じ 24 枚です。** **本家がそういう
+ * 設計**なので、安くも強くもしないこと（`TUNING.md`）。
+ *
+ * **`GOLD_INGOT`(67) や `GOLD_BLOCK` と衝突する定数名を作らないこと**
+ * （`crafting.ts` が両方 import した瞬間に `npm run typecheck` が落ちます。
+ * 型で止まる安全な罠）。**傷（耐久）は革・鉄と同じく持ちません**が、`stack: 1`。
+ */
+export const GOLD_HELMET = 175;
+export const GOLD_CHESTPLATE = 176;
+export const GOLD_LEGGINGS = 177;
+export const GOLD_BOOTS = 178;
+
+/**
+ * ダイヤの防具 4 部位（33b）。**いちばん強い材質**で、**点数は本家のまま
+ * 3 / 8 / 6 / 3（合計 20）**です。
+ *
+ * **⚠ 一式 20 点は `vitals.ts` の `ARMOR_CAP`(20) にちょうど当たります**
+ * （= 8 割減）。**それでも `ARMOR_CAP` も `ARMOR_DENOM`(25) も触らないこと** ——
+ * 「早く頭打ちになった」のではなく、**上限に届く一式が初めて入った**だけです
+ * （本家の残り 2 割はエンチャントが削るぶんで、ここには経験値もエンチャント台も
+ * ありません。`rules/vitals.md`）。
+ *
+ * **⚠ ダイヤは `SMELTING` にありません** —— **ダイヤ鉱石を掘ると `DROPS` で
+ * ダイヤ 1 個**です（鉄・金と道が違います。`smeltResultOf(DIAMOND_ORE)` は null）。
+ *
+ * **`DIAMOND`(68) や `DIAMOND_BLOCK` / `DIAMOND_PICKAXE` と衝突する定数名を
+ * 作らないこと。傷（耐久）は持ちません**が、`stack: 1`。
+ */
+export const DIAMOND_HELMET = 179;
+export const DIAMOND_CHESTPLATE = 180;
+export const DIAMOND_LEGGINGS = 181;
+export const DIAMOND_BOOTS = 182;
+
+/**
  * 一覧を作るときに数え上げる上限（`allItemIds()`）。**アイテムの番号だけでなく、
  * ブロックが自動で作るアイテム（上の for）の番号も含みます。**
  *
@@ -570,14 +607,15 @@ export const IRON_BOOTS = 174;
  * （`craftscreen.ts` の `CREATIVE_ITEMS`）にだけ出てこないブロック**ができます
  * （置けるし掘れるので、型でも `typecheck` でも止まりません）。
  *
- * **いまは鉄の靴（アイテム 174）が上限です。** 直前がレンガ（アイテム 170）・
+ * **いまはダイヤの靴（アイテム 182）が上限です。** 直前が金・ダイヤの防具
+ * 8 部位（175..182）・鉄の防具 4 部位（171..174）・レンガ（アイテム 170）・
  * 粘土玉（アイテム 169）・粘土（ブロック 168）・トウヒの苗木（ブロック 165）。
  * **共有帯ではブロックとアイテムが 1 本の番号列**なので、上限を持つのがどちら側かは
  * 決まりません（`items.ts` に 1 行も書いていないブロックが上限だったのは 8 度目まで）。
  * **上限をこちら側へ移したら、それまで指していたブロックの import を消すこと** ——
  * 残すと「使われていない」で `npm run typecheck` が落ちます（型で止まる安全な罠）。
  */
-export const MAX_ITEM_ID = IRON_BOOTS;
+export const MAX_ITEM_ID = DIAMOND_BOOTS;
 
 export const MAX_STACK = 64;
 
@@ -868,6 +906,30 @@ item({ id: IRON_CHESTPLATE, name: "鉄の上着", block: AIR, stack: 1, color: 0
 item({ id: IRON_LEGGINGS, name: "鉄のズボン", block: AIR, stack: 1, color: 0x788ebe, tool: null });
 item({ id: IRON_BOOTS, name: "鉄の靴", block: AIR, stack: 1, color: 0x506595, tool: null });
 
+// 金の防具 4 部位（33b）。**革・鉄の 8 部位とまったく同じ扱い**（`block: AIR` /
+// `tool: null` / `stack: 1`。**`ToolKind` に "armor" を足さないこと**）。
+//
+// **色は測って選んだ黄金の 4 段です。** 黄色い帯には**金インゴット `0xf6d64a`・
+// 金のリンゴ `0xf2d24b`・金鉱石・ブレイズロッド**が居るので、素直な階段は真ん中が
+// 20 を割ります。この 4 段でいちばん近いのは**金インゴット 26.3 / ブレイズロッド 38.7 /
+// 金のリンゴ 26.7 / 金鉱石 32.7**（`TUNING.md`）。**上ほど明るい**（革・鉄と同じ並び）。
+item({ id: GOLD_HELMET, name: "金の帽子", block: AIR, stack: 1, color: 0xfee34d, tool: null });
+item({ id: GOLD_CHESTPLATE, name: "金の上着", block: AIR, stack: 1, color: 0xefd714, tool: null });
+item({ id: GOLD_LEGGINGS, name: "金のズボン", block: AIR, stack: 1, color: 0xf8b317, tool: null });
+item({ id: GOLD_BOOTS, name: "金の靴", block: AIR, stack: 1, color: 0xc2aa35, tool: null });
+
+// ダイヤの防具 4 部位（33b）。**上の 12 部位とまったく同じ扱い**（`block: AIR` /
+// `tool: null` / `stack: 1`）。
+//
+// **色は測って選んだ水色の 4 段です。** 水色の帯には**ミルクバケツ・ガラス・氷
+// `0x8fc4f2`・ダイヤ `0x4aedd9`** が居ます。この 4 段でいちばん近いのは
+// **ミルクバケツ 28.4 / ガラス 34.9 / ガラス 27.4 / 氷 39.6**（`TUNING.md`）。
+// **上ほど明るい**（革・鉄・金と同じ並び）。
+item({ id: DIAMOND_HELMET, name: "ダイヤの帽子", block: AIR, stack: 1, color: 0xd1fefe, tool: null });
+item({ id: DIAMOND_CHESTPLATE, name: "ダイヤの上着", block: AIR, stack: 1, color: 0xa4f8f5, tool: null });
+item({ id: DIAMOND_LEGGINGS, name: "ダイヤのズボン", block: AIR, stack: 1, color: 0x92e6e3, tool: null });
+item({ id: DIAMOND_BOOTS, name: "ダイヤの靴", block: AIR, stack: 1, color: 0x80d4d1, tool: null });
+
 const EMPTY: ItemDef = ITEMS[NO_ITEM];
 
 export function itemDef(id: number): ItemDef {
@@ -984,15 +1046,23 @@ export interface ArmorDef {
 /**
  * 着られるもの。**ここに無いものは着られない**（`FOODS` とまったく同じ作法）。
  *
- * **いまは革と鉄の 2 材質・8 種**（金・ダイヤは番号を取っていません）。
+ * **いまは革・鉄・金・ダイヤの 4 材質・16 種**（33b で金とダイヤが入りました）。
  * **点数は本家のまま**で、革 1 / 3 / 2 / 1 = 合計 7（`armorReduced()` で 28% 減）・
- * **鉄 2 / 6 / 5 / 2 = 合計 15**（同じく **60% 減**）です（`vitals.ts`）。
+ * **鉄 2 / 6 / 5 / 2 = 合計 15**（**60% 減**）・**金 2 / 5 / 3 / 1 = 合計 11**
+ * （**44% 減**）・**ダイヤ 3 / 8 / 6 / 3 = 合計 20**（**80% 減**）です（`vitals.ts`）。
  * **足すのはここに 1 行ずつ**で、`inventory.ts` にも `vitals.ts` にも
  * アイテムの名前を書かないこと。**材質が増えても `armorPoints` は 1 行も
- * 変わりません** —— あちらは `armorOf()` に聞くだけで材質を知らないからです。
+ * 変わりません** —— あちらは `armorOf()` に聞くだけで材質を知らないからです
+ * （革 → 鉄 → 金・ダイヤと 3 度そのとおりでした）。
  *
- * **材料の革（132）と鉄インゴット（6）はここに入れないこと** ——
- * 入れると「材料を頭の枠に置くと固くなる」。
+ * **⚠ ダイヤ一式の 20 点は `vitals.ts` の `ARMOR_CAP`(20) にちょうど当たります。**
+ * **それでも `ARMOR_CAP` も `ARMOR_DENOM` も触らないこと**（本家がそういう設計で、
+ * 「早く頭打ちになった」のではなく**上限に届く一式が初めて入った**だけ。
+ * 上の `DIAMOND_HELMET` の説明）。**⚠ 金（11 点）は鉄（15 点）より弱いのに
+ * 要る枚数は同じ 24 枚**ですが、これも本家のままです（`TUNING.md`）。
+ *
+ * **材料の革（132）・鉄インゴット（6）・金インゴット（67）・ダイヤ（68）は
+ * ここに入れないこと** —— 入れると「材料を頭の枠に置くと固くなる」。
  */
 const ARMORS = new Map<number, ArmorDef>([
   [LEATHER_HELMET, { slot: "head", defense: 1 }],
@@ -1003,6 +1073,14 @@ const ARMORS = new Map<number, ArmorDef>([
   [IRON_CHESTPLATE, { slot: "chest", defense: 6 }],
   [IRON_LEGGINGS, { slot: "legs", defense: 5 }],
   [IRON_BOOTS, { slot: "feet", defense: 2 }],
+  [GOLD_HELMET, { slot: "head", defense: 2 }],
+  [GOLD_CHESTPLATE, { slot: "chest", defense: 5 }],
+  [GOLD_LEGGINGS, { slot: "legs", defense: 3 }],
+  [GOLD_BOOTS, { slot: "feet", defense: 1 }],
+  [DIAMOND_HELMET, { slot: "head", defense: 3 }],
+  [DIAMOND_CHESTPLATE, { slot: "chest", defense: 8 }],
+  [DIAMOND_LEGGINGS, { slot: "legs", defense: 6 }],
+  [DIAMOND_BOOTS, { slot: "feet", defense: 3 }],
 ]);
 
 /** その防具の値。着られないなら null（`foodOf()` と同じ形）。 */

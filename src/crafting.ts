@@ -55,7 +55,11 @@ import {
   COAL,
   DIAMOND,
   DIAMOND_AXE,
+  DIAMOND_BOOTS,
+  DIAMOND_CHESTPLATE,
+  DIAMOND_HELMET,
   DIAMOND_HOE,
+  DIAMOND_LEGGINGS,
   DIAMOND_PICKAXE,
   DIAMOND_SHOVEL,
   DIAMOND_SWORD,
@@ -66,7 +70,11 @@ import {
   FLINT,
   FLINT_AND_STEEL,
   GOLDEN_APPLE,
+  GOLD_BOOTS,
+  GOLD_CHESTPLATE,
+  GOLD_HELMET,
   GOLD_INGOT,
+  GOLD_LEGGINGS,
   IRON_AXE,
   IRON_BOOTS,
   IRON_CHESTPLATE,
@@ -323,6 +331,8 @@ export const RECIPES: readonly Recipe[] = [
 
   ...armorRecipes("革", LEATHER, LEATHER_HELMET, LEATHER_CHESTPLATE, LEATHER_LEGGINGS, LEATHER_BOOTS),
   ...armorRecipes("鉄", IRON_INGOT, IRON_HELMET, IRON_CHESTPLATE, IRON_LEGGINGS, IRON_BOOTS),
+  ...armorRecipes("金", GOLD_INGOT, GOLD_HELMET, GOLD_CHESTPLATE, GOLD_LEGGINGS, GOLD_BOOTS),
+  ...armorRecipes("ダイヤ", DIAMOND, DIAMOND_HELMET, DIAMOND_CHESTPLATE, DIAMOND_LEGGINGS, DIAMOND_BOOTS),
 
   ...toolRecipes("木", PLANK, WOOD_PICKAXE, WOOD_AXE, WOOD_SHOVEL, WOOD_SWORD, WOOD_HOE),
   ...toolRecipes("石", COBBLE, STONE_PICKAXE, STONE_AXE, STONE_SHOVEL, STONE_SWORD, STONE_HOE),
@@ -366,8 +376,12 @@ function stairRecipe(name: string, material: number, stairs: number): Recipe {
  * **どの部位に着るか・何点かはここではなく `items.ts` の `ARMORS`** で、
  * レシピは「何が作れるか」しか持たない。
  *
- * **名前は「革 / 鉄」＋「帽子 / 上着 / ズボン / 靴」**（本家の「ヘルメット」は
- * 6 文字で、一覧の `.label` が折れて枠の絵に被る。`HANDOFF.md` の持ち越し）。
+ * **名前は「革 / 鉄 / 金 / ダイヤ」＋「帽子 / 上着 / ズボン / 靴」**（本家の
+ * 「ヘルメット」は 6 文字で、一覧の `.label` が折れて枠の絵に被る。`HANDOFF.md` の持ち越し）。
+ *
+ * **材質を足すのは上の呼び出し 1 行だけ**（33b で金とダイヤを足したときも、
+ * **この関数の中は 1 文字も変わっていない**）。**⚠ 金は鉄より弱いのに同じ 24 枚**、
+ * **ダイヤ一式 20 点は `ARMOR_CAP` ちょうど** —— どちらも本家のまま（`items.ts` の `ARMORS`）。
  */
 function armorRecipes(
   material: string,
