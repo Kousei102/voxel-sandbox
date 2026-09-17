@@ -1,118 +1,119 @@
-# 仕様: ツタを壁に掛ける（キューの 34a・**共有帯 4 個**）
+# 仕様: ツタが下へ垂れる（キューの 34b・**ID 0 個**）
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-**キューの 34「ツタ」を 2 つに割った前半です**（理由は下の ⚠）。この周は**はしご
-（145..148）とまったく同じ「壁に掛かる 4 向き」**までで、**垂れ下がり（ツタの下にツタ）と
-自然生成は 34b**（`AUTODEV-QUEUE.md` に書き戻しました）。
+**キューの 34b を 2 つに割った前半です**（理由は末尾の ⚠）。この周は**「壁が無くても
+真上のツタにぶら下がれる」**ところまでで、**森の葉から自然に垂らすのは 34c**。
 
-**先に引いて読むこと**（`grep -l '"src/blocks.ts"' rules/*.md`）: **`blocks-shapes.md` /
-`items-survival.md` / `beds.md`**、**`test/**` を触るので `testing.md`**、**`tools/shot.ts` は
-`meshing-render.md`**。スキルは **`add-block`** だけ（確かめられないものは増えません）。
+## 1. 何を足すか / 完了の判定
 
-## 1. 何を足すか と 完了の判定
+**ツタ（183..186）に「2 つ目の支えの候補 = 真上の同じツタ」を持たせる。**
+置く側（`World.canPlaceAt`）・壊す側（`World.breakUnsupported`）・向きを決める側
+（`vineVariant()` / `placedVariant()`）の 3 つが、**同じ表**を通ること。
 
-**壁の 4 面に掛けられて、登れて、刃物でだけ落ちるブロック 4 向き。**
-`npm test` が緑のまま増えて、少なくとも次が緑:
+**完了の判定**（`npm test` に次の項目が増えて、全部緑）:
 
-- **`vineVariant()` が壁 4 面で 4 つの ID を返し、床（`FACE_YN`）と天井（`FACE_YP`）で
-  `AIR`**（はしごと同じ。`supportHint(VINE)` が表から **「壁」** を出す）
-- **4 向きとも `isClimbable()` が真**・**`isBladed()` が真なのはクモの巣とツタ 4 向きの
-  5 個**（**下の（6）—— 数え直しであってゆるめるのではない**）
-- **アイテム 183 が「ツタ」で `placedBlock(183) === 183`**・**184..186 にアイテムが無い**・
-  **`MAX_ITEM_ID` が 186**・**色が一覧の既存どれとも 20 以上離れている**
-- **素手と斧では 1 個も落ちず、剣とシアーズで 1 個落ちる**（`mining.ts` の `canHarvest()`）・
-  **進行（クリア導線）は 13 / 13 のまま**・**`SaveData` version 1・形も ±0**
+- `test/blocks.test.ts` の「ツタ」の節に **5 件以上**: `supportFaces(VINE_XN)` が
+  `[FACE_XN, FACE_YP]` の 2 つを返す / はしご・松明・苗木は 1 つのまま /
+  `vineVariant(FACE_YP, VINE_ZP) === VINE_ZP`（上と同じ向きを写す）/
+  `vineVariant(FACE_YP, STONE) === AIR`（ツタ以外の天井には付かない）/
+  `supportsBlock(VINE_XN, FACE_YN, VINE_ZP)` は真で `supportsBlock(VINE_XN, FACE_XN, VINE_ZP)` は偽（**横のツタには付かない**）
+- `test/blocks.test.ts` に **1 件**（**本物の `World`**。あの節にもう 1 つ立っています）:
+  壁のツタの下に 2 マスぶら下げてから**壁を壊すと 3 マスとも落ちる**（`onAutoBreak` が 3 回）
+- `test/placing.test.ts` に **2 件以上**（`Slab` と `tryPlace()`）: ツタの**下面を狙う**と
+  真下に**上と同じ向きの**ツタが置ける / ツタの**横**の空中には置けない（`blocked`）
+- 既存 3710 件が緑のまま（**1 件も判定をゆるめない**）
 
-## 2. 触るファイル / 触らないファイル（**触るのはこの 5 つだけ**）
+## 2. 触るファイル / 触らないファイル
 
-| ファイル | 足すもの |
+| ファイル | 足すもの（見込み） |
 | --- | --- |
-| `src/blocks.ts` | ID 4 つ / `VINE_COLORS` と `VINE_OPTS` / `VINE_BOX_*` 4 つ / `def()` 4 つ / `VINE_BY_SUPPORT` と `vineVariant()` / `placedVariant()` に 1 行 |
-| `src/items.ts` | **`MAX_ITEM_ID` の 1 行だけ**（アイテムは for が自動で作ります） |
-| `test/blocks.test.ts` | `vines()` の 1 節と、`cobwebs()` の `isBladed` の数え直し |
-| `test/items.test.ts` / `test/mining.test.ts` | 下の（5） |
-| `tools/shot.ts` | 場面 `vine` を 1 つ（**`ladders` を写すのがいちばん安い**） |
+| `src/blocks.ts` | `BlockDef.hangsBelow` と `HANGS_BELOW` の表 / `hangsBelow()` / `supportFaces()` と `SUPPORT_FACES` の表 / `supportsBlock()` に 1 行 / `vineVariant()` に 2 つ目の引数 / `PlaceContext.supporter`（**省略可**）と `placeSpot()` の 2 行 / ツタの `def()` 4 つに `hangsBelow: true` |
+| `src/world.ts` | `canPlaceAt()` を `supportFaces()` の for に / `breakUnsupported()` の 2 行 |
+| `test/arena.ts` | `Slab.canPlaceAt()` の写しも**同じ `supportFaces()` の for**にする |
+| `test/blocks.test.ts` / `test/placing.test.ts` | 上の判定 |
+| `tools/shot.ts` | 場面 `vine` に**ぶら下がった 2 マス**を足す（C-3） |
 
-**1 行も触らないファイル**: **`src/main.ts`（±0 行。向きを決めるのは `placedVariant()`）**・
-`player.ts`（`climbable` に聞く形が 19b で入っています）・`worldgen.ts` / `biomes.ts`（**自然
-生成は 34b**）・`crafting.ts`（**本家にレシピはありません**）・`items.ts` の `DROPS`（**自分が
-1 個**が既定）・`mining.ts` / `placing.ts` / `world.ts` / `*render.ts` / `ui.ts`。
+**触らないファイル**: **`src/main.ts`（±0 行。1 文字も開かないこと** —— いま 1450 行で
+止まる目安に並んでいます）/ `src/placing.ts`（`tryPlace()` は今のままで通ります）/
+`src/mesher.ts`（ツタは `model: "boxes"` なので `supportFace()` を引きません）/
+`src/worldgen.ts` と `src/biomes.ts`（**34c の仕事**）/ `src/items.ts` / `src/crafting.ts` /
+`src/player.ts`（登る速さは触らない）/ `src/session.ts`（**セーブは 1 バイトも増えません**）。
 
-## 3. 使う ID（`ROADMAP.md` の予約表から）
+## 3. 使う ID
 
-**共有帯の次の空きは 183。ここから 4 つ**（`ROADMAP.md` の「183..255 予備 73 個」）。
-**はしご 145..148 とまったく同じ並び**で、大元だけ `variantOf` を書きません:
+**0 個。** 183..186（34a の 4 つ）を使い回します。**新しい番号を取らないこと** ——
+取りたくなったら設計が違います（`ROADMAP.md` の予約表の次の空きは 187・残り 69）。
 
-| ID | 名前 | `supportFace` | `variantOf` |
-| --- | --- | --- | --- |
-| **183** | `VINE`（大元・**アイテム 183 もこれ**） | `FACE_XP` | **書かない** |
-| **184 / 185 / 186** | `VINE_XN` / `VINE_ZP` / `VINE_ZN` | `FACE_XN` / `FACE_ZP` / `FACE_ZN` | `VINE` |
+## 4. 判断をどこに置くか
 
-**`MAX_ITEM_ID` を 186 へ伸ばすこと** —— 忘れると一覧に 1 枠も出ません。
+**全部 `blocks.ts`（表と純粋関数）。`world.ts` は表を引いて for を回すだけ**にすること。
 
-## 4. 判断をどのファイルに置くか
+- **`supportFace` は 1 ブロック 1 向きのまま。** 2 つ目は**別の表**（`HANGS_BELOW`）から
+  作る `supportFaces(id)`（面番号の配列。ふつうは 1 つ、ツタだけ `[壁, FACE_YP]`）で、
+  **どれか 1 つを満たせば置ける**
+- **`stacksOnSelf` は代わりになりません** —— あれは `supportFace` の向きの自分を見るので、
+  `VINE_XN` に付けると**真下ではなく -X 側**のツタに付きます（34a の申し送り）
+- `supportsBlock()` に足す例外は **1 行**（**`face` を必ず見ること。見ないと横にも貼り付く**）:
+  `face === FACE_YN && hangsBelow(id) && baseBlock(supporter) === baseBlock(id)`
+- **`canSupport()` はゆるめないこと**（壁掛けの松明とベッドの足場。苗木のときと同じ）
+- `vineVariant(face, supporter = AIR)`: **`FACE_YP` のときだけ**上のツタと**同じ ID を
+  そのまま返す**（`baseBlock(supporter) === VINE` なら `supporter`、でなければ `AIR`）。
+  **`VINE_BY_SUPPORT` の表は書き換えないこと**（天井の欄は `AIR` のまま）
+- `breakUnsupported()` も**隣の向きを `supportFaces()` で見て、落とすかどうかは
+  `canPlaceAt()` に聞くこと**（置く側と壊す側が**同じ関数**になり、連鎖も勝手に落ちます）
+- `placedVariant()` は `ctx.supporter` を渡すだけ。**`PlaceContext.supporter` は省略可**に
+  すること —— 必須にすると `placedVariant()` を呼ぶ既存のテスト 49 か所が全部落ちます
 
-**全部 `blocks.ts` の表です。** 新しく確かめられないものは 1 つも増えません。
+## 5. 書くテスト
 
-- **`climbable: true`** —— 表 1 本（`isClimbable()`）。**速さは持たない**（`LADDER_CLIMB_SPEED`）
-- **`bladed: true`** —— 刃物でだけ落ちる。**`tool: "sword"` と書かないこと**（書くと剣が
-  採掘道具になって速く掘れます）。**何が刃物かは `items.ts` の `isBlade()`**、**効くのは
-  `mining.ts` の `canHarvest()` の 1 行**（どちらも ±0 行）
-- **`VINE_BY_SUPPORT` は `LADDER_BY_SUPPORT` と別の表にすること**（松明とはしごが
-  別々なのと同じ理由。共有すると片方を並べ替えたときにもう片方が黙って壊れます）
-- **性質**: `opaque: false` / `solid: false` / `hardness: 0.2` / `tool: "axe"` / `sound: "grass"` /
-  `model: "boxes"` / 箱は**壁に貼る厚さ 0.0625**（本家と同じ 1/16。はしごの 0.1875 より
-  薄い）。**`blocksSky` は書かない**
-- **色は `top: 0x306d18`**（本家のツタ）。**この周に 144 種で測って**いちばん近いのは
-  **トウヒの葉 38.2 / 葉 39.4**（判定 20）。**C の周は 145 種で測り直すこと**
+`rules/testing.md` のとおり**値を出力してから判定**すること。
 
-## 5. 書くテスト（**値を出力してから判定する**。`rules/testing.md`）
-
-- **`test/blocks.test.ts` に `vines()` の 1 節**: 4 つの `def` と `supportFace` を並べて出す /
-  `vineVariant()` を 6 面ぶん出して**壁 4 面が 4 ID・床と天井が `AIR`** /
-  `supportHint(VINE) === "壁"` / **4 向きとも `isClimbable()` と `isBladed()` と `isProp()` が
-  真・`solid` と `opaque` が偽** / **`stacksOnSelf` / `needsSoil` / `isReplaceable` /
-  `isSlippery` / `isSticky` / `isSpiky` が 4 つとも偽**（対照に石・草むら・はしごを
-  並べること）/ **`baseBlock(184..186) === VINE`**
-- **`cobwebs()` の `isBladed` は数え直す**: `bladed.length === 1` → **`=== 5`** とし、**件名に
-  理由を書くこと**（例:「刃物でだけ落ちるのはクモの巣とツタ 4 向きの 5 個（ツタが入って
-  数え直した。ゆるめていない）」）。**`isSticky` が 1 個のままであること**が「旗を 1 つに
-  まとめなかった」証拠なので、**そちらは 1 文字も変えない**
-- **`test/items.test.ts`**: アイテム 183 の名前・`placedBlock` / **184..186 が `allItemIds()`
-  に無い** / `MAX_ITEM_ID === 186` / **いちばん近い相手と隔たりを出してから 20 以上**
-  （骨・木炭と同じ形）/ **置けるが道具でも食べ物でもない**
-- **`test/mining.test.ts`**: `canHarvest(VINE, ...)` を**素手・斧・剣・シアーズの 4 つ並べて
-  出し**、**剣とシアーズだけ真**
+- **旗を足したら `grep -n 'hangsBelow' test/` と `grep -n 'supportFaces' test/` を引くこと**
+  （34a で `isClimbable` の `length === 4` を落としました。`rules/testing.md`）
+- `test/placing.test.ts` の下面狙いは `aimAt(x, y, z, VINE_XN, [0, -1, 0])` の形
+- **連鎖は `world.onAutoBreak` を数えて見ること**（`Slab.setVoxel` は
+  `breakUnsupported` を呼ばないので、**そこだけは本物の `World`**）
 
 ## 6. このタスク固有の禁じ手
 
-1. **`LADDER_OPTS` を撒かないこと**（`VINE_OPTS` を別に作る。厚さも音も硬さも違います）。
-   **`LADDER_OPTS` のコメント「ツタも足場もまだ無い」は嘘になるので直すこと**
-2. **`replaceable` / `stacksOnSelf` / `needsSoil` を付けないこと。** `replaceable` は
-   `placeSpot()` が狙ったマス自身を返して置けなくなり、`stacksOnSelf` は**横に**生えます
-   （**下に垂れるのは 34b**）
-3. **`ladderVariant()` / `LADDER_BY_SUPPORT` / `torchVariant()` を 1 文字も変えないこと**
-4. **既存の ID を振り直さないこと**・**`SaveData.version` は 1 のまま**・
-   **テストの判定をゆるめないこと**（`isBladed` は**数え直し**。件名に理由を書く）
-5. **レシピも自然生成も足さないこと**（34b。この周は**クリエイティブの一覧から取ります** ——
-   クモの巣・氷と同じ）
+- **`supportHint()` を 1 文字も変えないこと。** ツタは「壁」のままです
+  （表の作り方を変えると松明の「床か壁」と苗木の「土か草の上」まで動きます）
+- **`LADDER_BY_SUPPORT` / `ladderVariant()` / `torchVariant()` に触らないこと**（はしごは
+  天井からぶら下がりません）/ **`hangsBelow` はツタ 4 つ以外の `def()` に付けないこと**
+- **`SaveData.version` は 1 のまま**（差分はブロック ID のままで、増える鍵はありません）/
+  **自然生成を 1 行も書かないこと**（34c）
+- **既存の判定をゆるめて緑にしないこと。** `test/blocks.test.ts` の「床にも天井にも
+  付かない」は**引数なしの `vineVariant(FACE_YP)` が `AIR`** のままで緑です
+  （**消さずに、ラベルだけ「ツタ以外の天井には付かない」に直すこと**）
 
 ## 7. 終了条件
 
-- `npm run typecheck` 緑 / **`npm test` すべて緑**（音が跳ねたら**もう一度走らせる**）/
-  `npm run build` 緑（`src/**` を触るため。**`npm run bench` は要りません**）
-- **`npm run shot -- vine ladders` を撮って `Read` で開いて見ること**（見た目が本体です。
-  **4 向きが壁に貼り付いているか・裏返っていないか・はしごと見分けが付くか**）。
-  **写った不具合はこの周で直すこと**
-- **コミット 1 つを `master` へ push** / `AUTODEV-QUEUE.md` の 34a の行を消す / **この仕様書の
-  `状態:` を `済` にする** / `ROADMAP.md` の予約表に 183..186 を実装済みと書く /
-  `docs/autodev-log.md` に 1 節 / **`HANDOFF.md` を丸ごと書き直す** / **踏んだ落とし穴を
-  `rules/` へ据える**（無ければ「決まりごと 0 件」）/ **色をずらしたら `TUNING.md` に 1 行**
+- `npm run typecheck` 緑 / `npm test` **すべて緑**（音が跳ねたらまずもう一度走らせる）
+- `npm run build` 緑（`src/**` を触るため）。**`npm run bench` は要りません**
+- **撮って `Read` で開いて見ること**（C-3。**垂れ下がりが見た目の本体**）:
+  `npm run shot -- vine` で**ぶら下がった 2 マスが宙に浮いて見えるか**。
+  **`World.setVoxel()` は `canPlaceAt()` を通るので、上から順に置くこと** ——
+  下から置くと 1 マスも書けません（`tools/shot.ts` は本物の `World` です）
+- コミット 1 つ / キューの 34b の行を消す / この仕様書を `状態: 済` に /
+  `ROADMAP.md` の 183..186 の行に 34b を書き足す / `docs/autodev-log.md` に 1 節 /
+  `HANDOFF.md` を丸ごと書き直す / **踏んだ落とし穴を `rules/` へ据える**
+  **手触りの数値を置いたら `TUNING.md` に 1 行**（この周は 0 個の見込み）
 
-## ⚠ 34 を 34a / 34b に割った理由
+## 使えるスキルと、先に読む `rules/`
 
-**`supportFace` は 1 ブロックに 1 つしか持てず**（`canPlaceAt()` も `breakUnsupported()` も
-その 1 向きだけを見ます）、本家の「壁が無くても真上のツタにぶら下がる」には**2 つ目の候補**が
-要ります —— **置き方そのものの変更**なので、**自然生成と合わせて 34b の 1 周**にしました。
+**スキルはありません**（ブロックもアイテムも位置ごとの状態も、確かめられないものも
+増えません。描画は既存の `boxes` がそのまま描きます）。**`rules/` は自動では
+読み込まれないので、先に自分で引いて全部読むこと**（`grep -l '"src/blocks.ts"' rules/*.md`）:
+**`blocks-shapes.md`**（形と支え）/ `items-survival.md` / `lighting.md` /
+**`meshing-render.md`**（`src/world.ts` と `tools/shot.ts`。**壁に貼るものの撮り方**）/
+`beds.md`（`canPlaceAt` の相方）/ **`test/**` を触るので `testing.md`**。
+
+## ⚠ 34b を 2 つに割った理由
+
+**キューの 34b は「垂れ下がり」と「自然生成」の 2 件でした。** 前者だけで `blocks.ts` の
+表 2 本・`world.ts` の 2 か所・`test/arena.ts` の写し・テスト 2 ファイル・`tools/shot.ts` に
+届き（2. の表）、後者は `worldgen.ts` の木の生成に手を入れる話で**触るファイルが 1 つも
+重なりません。** **120 行に収まらない仕様は 1 周で閉じない信号**（`AUTODEV.md` の B）なので、
+**自然生成を 34c として `AUTODEV-QUEUE.md` の先頭に書き戻しました。**
