@@ -589,9 +589,10 @@ export const SPRUCE_SAPLING = 165;
 export const CLAY = 168;
 
 /**
- * ツタ（34a・壁に掛かるところまで）。**はしご（145..148）とまったく同じ
+ * ツタ（34a 壁掛け + 34b 下へ垂れる）。**はしご（145..148）とほぼ同じ
  * 「壁掛け 4 向き」**で、違うのは**色・厚さ（1/16。はしごの 3/16 より薄い）・
- * 硬さ・音**と、**刃物でだけ落ちる（`bladed`）**ところだけです。
+ * 硬さ・音**と、**刃物でだけ落ちる（`bladed`）**、**真上のツタにぶら下がれる
+ * （`hangsBelow`。34b）**ところです。
  *
  * `VINE` が大元で、**アイテム 183 もこれ**（`variantOf` を書かないので、ブロック →
  * アイテムの for が同じ番号のアイテムを作ります）。184..186 は `variantOf: VINE` を
@@ -607,11 +608,12 @@ export const CLAY = 168;
  *   **何が刃物かは `items.ts` の `isBlade()`**、効くのは `mining.ts` の
  *   `canHarvest()` の 1 行（どちらも ±0 行）
  *
- * **`replaceable` も `stacksOnSelf` も `needsSoil` も付けないこと** —— `replaceable` は
- * `placeSpot()` が狙ったマス自身を返して置けなくなり、`stacksOnSelf` は
- * **`supportFace` の向きの自分**を見るので**横に**生えます（本家のように**下へ
- * 垂れる**のと、森の葉から自然に生えるのは **34b**。`supportFace` はブロック 1 つに
- * 1 向きしか持てないので、「壁か、真上のツタか」の 2 つ目の候補が要ります）。
+ * **3 つ目の旗が `hangsBelow`**（34b）—— **真上の同じツタが 2 つ目の支えの候補**に
+ * なります（`supportFaces()` が `[壁, FACE_YP]` を返す）。**`replaceable` も
+ * `stacksOnSelf` も `needsSoil` も付けないこと** —— `replaceable` は `placeSpot()` が
+ * 狙ったマス自身を返して置けなくなり、`stacksOnSelf` は **`supportFace` の向きの
+ * 自分**を見るので**真下ではなく横に**伸びます（だから 34b は別の旗で足しました）。
+ * **森の葉から自然に生えるのは 34c**（`worldgen.ts` にまだ 1 行もありません）。
  */
 export const VINE = 183;
 export const VINE_XN = 184;
@@ -1051,6 +1053,20 @@ export interface BlockDef {
    */
   readonly needsSoil: boolean;
   /**
+   * **真上の同じブロックにもぶら下がれるか**（ツタ。34b）。`supportFace` の壁は
+   * そのままで、**支えの候補が 2 つになるだけ**です（`supportFaces()` の表が
+   * `[supportFace, FACE_YP]` を返し、`canPlaceAt()` は**どれか 1 つ**を満たせば通す）。
+   *
+   * **`stacksOnSelf` は代わりになりません** —— あちらは `supportFace` の向きの
+   * 自分を見るので、`VINE_XN`（壁が -X）に付けると**真下ではなく -X 側**の
+   * ツタに付きます（34a の申し送り）。
+   *
+   * 効くのは `supportsBlock()` の 1 行（**`face === FACE_YN` を必ず見ること** ——
+   * 見ないと横のツタにも貼り付きます）と `supportFaces()` の表だけで、
+   * **`canSupport()` は 1 文字も触りません**（壁掛けの松明とベッドの足場）。
+   */
+  readonly hangsBelow: boolean;
+  /**
    * 「土」の側か（土・草・耕地）。**`needsSoil` の相手**で、引くのは `isSoil()` だけ。
    * **`id === DIRT || id === GRASS` と書かないこと** —— 土を増やしたときに
    * 片方だけ直し忘れます（`isLiquid()` / `isSpiky()` と同じ表 1 本の形）。
@@ -1163,6 +1179,10 @@ const VINE_OPTS = {
   model: "boxes" as const,
   climbable: true,
   bladed: true,
+  // **真上の同じツタにもぶら下がれる**（34b）。**4 つの `def()` に手で書かず、
+  // ここ 1 か所に置くこと** —— 1 向きだけ落とすと、その向きだけ垂れません。
+  // 支えの候補が `[壁, FACE_YP]` の 2 つになるだけで、**`supportFace` は壁のまま**。
+  hangsBelow: true,
 };
 
 function def(
@@ -1209,6 +1229,7 @@ function def(
     supportFace: opts.supportFace ?? NO_SUPPORT,
     stacksOnSelf: opts.stacksOnSelf ?? false,
     needsSoil: opts.needsSoil ?? false,
+    hangsBelow: opts.hangsBelow ?? false,
     soil: opts.soil ?? false,
     variantOf: opts.variantOf ?? AIR,
   };
@@ -2172,6 +2193,8 @@ const BREAKS_INTO = new Uint8Array(ID_LIMIT);
 const STACKS_ON_SELF = new Uint8Array(ID_LIMIT);
 /** 1 = 真下が土でないと立てない（苗木）。引くのは `supportsBlock()` と `supportHint()`。 */
 const NEEDS_SOIL = new Uint8Array(ID_LIMIT);
+/** 1 = 真上の同じブロックにもぶら下がれる（ツタ）。引くのは `supportFaces()` と `supportsBlock()`。 */
+const HANGS_BELOW = new Uint8Array(ID_LIMIT);
 /** 1 = 「土」の側（土・草・耕地）。`NEEDS_SOIL` の相手で、引くのは `isSoil()` だけ。 */
 const SOIL = new Uint8Array(ID_LIMIT);
 /**
@@ -2204,6 +2227,7 @@ for (const block of BLOCKS) {
   BREAKS_INTO[block.id] = block.breaksInto;
   STACKS_ON_SELF[block.id] = block.stacksOnSelf ? 1 : 0;
   NEEDS_SOIL[block.id] = block.needsSoil ? 1 : 0;
+  HANGS_BELOW[block.id] = block.hangsBelow ? 1 : 0;
   SOIL[block.id] = block.soil ? 1 : 0;
   // **`solid` なブロックだけ**（通り抜けられるブロックの箱は当たり判定に使われない）。
   TALL_COLLISION[block.id] =
@@ -2215,6 +2239,31 @@ for (let id = 0; id < ID_LIMIT; id++) {
   if (BY_ID[id]) continue;
   BY_ID[id] = BY_ID[AIR];
 }
+
+/** 支えが 1 つも要らないブロックの `supportFaces()`。**毎回新しい配列を作らないこと。** */
+const NO_SUPPORT_FACES: readonly number[] = [];
+/**
+ * 「支えの候補」の表（面番号の配列）。**ふつうは `supportFace` の 1 つだけ**で、
+ * **`hangsBelow` のブロック（ツタ）だけが `[壁, FACE_YP]` の 2 つ**を持ちます。
+ * 支えの要らないブロックは空の配列（`NO_SUPPORT_FACES`）。
+ *
+ * **`SUPPORT_FACE` から立てること**（手で 2 本目の表を書くと食い違います。
+ * `TALL_COLLISION` を `collision` から立てているのと同じ形）。引くのは
+ * `World.canPlaceAt()` / `World.breakUnsupported()` / `Slab.canPlaceAt()` で、
+ * **どれか 1 つを満たせば置ける**のがこの表の意味です。
+ *
+ * **1 フレームに何度も引くので、配列は作り置きして使い回すこと。**
+ */
+const SUPPORT_FACES: readonly (readonly number[])[] = (() => {
+  const table: (readonly number[])[] = [];
+  for (let id = 0; id < ID_LIMIT; id++) {
+    const faces: number[] = [];
+    if (SUPPORT_FACE[id] !== NO_SUPPORT) faces.push(SUPPORT_FACE[id]);
+    if (HANGS_BELOW[id] === 1 && SUPPORT_FACE[id] !== FACE_YP) faces.push(FACE_YP);
+    table[id] = faces.length === 0 ? NO_SUPPORT_FACES : faces;
+  }
+  return table;
+})();
 
 /**
  * 下付きハーフ → 上付きハーフ。定義から引き出しているので、材質を足しても
@@ -2336,20 +2385,20 @@ const LADDER_BY_SUPPORT: readonly number[] = [
 
 /**
  * 「支えのある向き」からツタのブロックを選ぶ表。**壁の 4 面だけ** ——
- * 床にも天井にも付かない（この周は、はしごとまったく同じ置き方まで）。
+ * 床にも「ツタでない天井」にも付かない。
  *
  * **`LADDER_BY_SUPPORT` を写して書き換えたものではなく、別の表**です
  * （松明とはしごを分けてあるのと同じ理由。共有すると、片方を並べ替えたときに
  * もう片方が黙って壊れます）。添字は面番号。
  *
- * **本家の「壁が無くても真上のツタにぶら下がる」はまだありません**（34b）——
- * `supportFace` はブロック 1 つに 1 向きしか持てないので、**2 つ目の候補**を
- * `canPlaceAt()` / `breakUnsupported()` / `supportsBlock()` に通す話になります。
+ * **真上のツタにぶら下がるぶん（34b）はこの表には入っていません** ——
+ * 天井の欄は `AIR` のままで、**`vineVariant()` が `FACE_YP` だけ表を引かずに
+ * 上と同じ向きを写します**（`hangsBelow` の旗と `supportFaces()` の表が相方）。
  */
 const VINE_BY_SUPPORT: readonly number[] = [
   VINE,
   VINE_XN,
-  AIR, // 天井から吊り下げられない（下へ垂れるのは 34b）
+  AIR, // ツタでない天井には付かない（真上がツタなら `vineVariant()` が写す。34b）
   AIR, // 床には立たない（はしごと同じ）
   VINE_ZP,
   VINE_ZN,
@@ -2528,6 +2577,28 @@ export function supportFace(id: number): number {
 }
 
 /**
+ * 支えの候補（面番号）。**どれか 1 つを満たせば置ける**ので、置く側
+ * （`World.canPlaceAt`）も壊す側（`World.breakUnsupported`）も**この for を回すこと**
+ * （`supportFace()` 1 本を見るとツタが真上のツタにぶら下がれません。34b）。
+ *
+ * ふつうは `supportFace()` の 1 つだけで、**ツタだけが `[壁, FACE_YP]` の 2 つ**。
+ * 支えの要らないブロックは空の配列（**`NO_SUPPORT` との比較を呼ぶ側に書かせない**）。
+ *
+ * **返る配列は作り置きなので、書き換えないこと。**
+ */
+export function supportFaces(id: number): readonly number[] {
+  return SUPPORT_FACES[id];
+}
+
+/**
+ * 真上の同じブロックにもぶら下がれるか（ツタ）。**`id === VINE` と書かないこと** ——
+ * `stacksOnSelf()` / `needsSoil()` と同じで、表 1 本に聞く。
+ */
+export function hangsBelow(id: number): boolean {
+  return HANGS_BELOW[id] === 1;
+}
+
+/**
  * 松明を「支えが face の向きにある」場所へ置くときのブロック。置けないなら AIR。
  * 置き方を増やしたいだけなら、ここと TORCH_BY_SUPPORT を触れば済む。
  */
@@ -2546,8 +2617,15 @@ export function ladderVariant(face: number): number {
 /**
  * ツタを「支えが face の向きにある」場所へ置くときのブロック。置けないなら AIR。
  * `ladderVariant()` と同じ形だが、**表は別**（上のコメント）。
+ *
+ * **天井（`FACE_YP`）だけは表を引きません**（34b）—— ツタは**真上のツタ**に
+ * ぶら下がれるので、上と**同じ向きをそのまま写します**（壁の無い所で向きを
+ * 選び直すと、垂れた列の途中で板の側が入れ替わります）。
+ * **`VINE_BY_SUPPORT` の天井の欄は `AIR` のまま**にしてあるので、
+ * `supporter` を渡さない呼び方（既定の `AIR`）は今までどおり「天井には付かない」です。
  */
-export function vineVariant(face: number): number {
+export function vineVariant(face: number, supporter: number = AIR): number {
+  if (face === FACE_YP) return baseBlock(supporter) === VINE ? supporter : AIR;
   return VINE_BY_SUPPORT[face] ?? AIR;
 }
 
@@ -2630,6 +2708,10 @@ export function supportsBlock(supporter: number, face: number, id: number): bool
   // 土（土・草・耕地）でなければ落とす —— 石でも板でも立ってしまうのを止める。
   // **壊す側もここを通る**ので、真下の土を掘れば苗木も一緒に壊れて落ちる。
   if (needsSoil(id) && !isSoil(supporter)) return false;
+  // **広げるほうの例外がもう 1 つ**（ツタ。34b）。真上の同じツタにはぶら下がれる ——
+  // **`face` を必ず見ること**（見ないと横のツタにも貼り付いて、空中へ横に伸びます）。
+  // `baseBlock()` で比べるのは、向き違い 4 つが混ざった列でもぶら下がれるようにするため。
+  if (face === FACE_YN && hangsBelow(id) && baseBlock(supporter) === baseBlock(id)) return true;
   return canSupport(supporter, face);
 }
 
@@ -2639,6 +2721,13 @@ export interface PlaceContext {
   readonly support: number;
   /** 狙った点の、ブロック内での高さ 0..1。 */
   readonly hitY: number;
+  /**
+   * 支えになっているブロック（`support` の側の中身）。**省略可**にしてあるのは、
+   * **必須にすると `placedVariant()` を呼ぶ既存の呼び出しが全部落ちる**ため
+   * （テストに 49 か所あります）。いま見ているのはツタだけで、
+   * **真上のツタにぶら下がるときに「上と同じ向き」を写す**のに使います（34b）。
+   */
+  readonly supporter?: number;
   /** 置く人が向いている水平の向き（面番号）。階段はこちら側が高くなる。 */
   readonly facing: number;
 }
@@ -2702,6 +2791,9 @@ export function placeSpot(aim: PlaceAim, facing: number): PlaceSpot {
       z: aim.block.z,
       support: FACE_YN,
       hitY: 0,
+      // **真下の中身は `PlaceAim` に入っていない**（`placeSpot()` は世界を読まない）。
+      // 草むらを狙ったときの支えは地面なので、ツタの「上と同じ向き」には要らない。
+      supporter: AIR,
       facing,
     };
   }
@@ -2712,6 +2804,8 @@ export function placeSpot(aim: PlaceAim, facing: number): PlaceSpot {
     // 狙ったブロックは新しいマスから見て法線の逆側にある
     support: faceFromNormal(-aim.normal.x, -aim.normal.y, -aim.normal.z),
     hitY: aim.point.y - Math.floor(aim.point.y),
+    // **狙ったブロックがそのまま支え**（隣に置くので、法線の逆側 = 狙ったマス）。
+    supporter: aim.id,
     facing,
   };
 }
@@ -2725,7 +2819,8 @@ export function placeSpot(aim: PlaceAim, facing: number): PlaceSpot {
 export function placedVariant(base: number, ctx: PlaceContext): number {
   if (base === TORCH) return torchVariant(ctx.support);
   if (base === LADDER) return ladderVariant(ctx.support);
-  if (base === VINE) return vineVariant(ctx.support);
+  // **ツタだけは支えの中身も渡す**（真上のツタなら上と同じ向きを写す。34b）。
+  if (base === VINE) return vineVariant(ctx.support, ctx.supporter ?? AIR);
   // ベッドは置く人が向いている先が枕になるので、**クリックしたマスは必ず足側**。
   // 上下の反転は無いので `placedUpper()` は通さない。
   if (base === BED) {

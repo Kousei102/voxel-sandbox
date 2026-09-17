@@ -89,6 +89,7 @@ import {
   fenceConnects,
   frameFacing,
   frameHasEye,
+  hangsBelow,
   isEndPortalFrame,
   isClimbable,
   isOpaque,
@@ -112,6 +113,7 @@ import {
   shapeBoxes,
   shapeBounds,
   stacksOnSelf,
+  supportFaces,
   supportHint,
   supportsBlock,
   tilled,
@@ -1367,7 +1369,7 @@ export function run(): void {
   bowlAndStew();
   sugarCane(world, ground);
   ladders();
-  vines();
+  vines(world, ground);
   apples();
   paperBookBookshelf();
   goldenApples();
@@ -2662,16 +2664,21 @@ function ladders(): void {
 }
 
 /**
- * ツタ（183..186・34a）。**はしごの節とまったく同じ形で見る** —— 壁掛け 4 向きの
+ * ツタ（183..186・34a + 34b）。**はしごの節とまったく同じ形で見る** —— 壁掛け 4 向きの
  * 表・向き違いの寄せ先・アイテム 1 個・掘ると大元・箱の貼り付き、の 5 つ。
  *
- * **はしごと違うのは 3 つだけ**なので、そこは名指しで見る:
- * **厚さ 1/16（はしごは 3/16）**・**硬さ 0.2 と草の音**・**`bladed` の旗**。
+ * **はしごと違うのは 4 つだけ**なので、そこは名指しで見る:
+ * **厚さ 1/16（はしごは 3/16）**・**硬さ 0.2 と草の音**・**`bladed` の旗**・
+ * **`hangsBelow` の旗（真上のツタにぶら下がる。34b）**。
  * **刃物でだけ落ちること自体は `cobwebs()` の数え直しと `test/mining.test.ts`**、
  * **一覧の色は `test/items.test.ts`** が見ている（ここは形と旗の表だけ）。
+ *
+ * **34b のぶんは末尾**（支えの候補の表・`vineVariant()` の 2 つ目の引数・
+ * `supportsBlock()` の真理値表・**本物の `World` での連鎖**）。`Slab` は
+ * `breakUnsupported()` を持たないので、連鎖だけはここで `world` を通す。
  */
-function vines(): void {
-  describe("ツタ（壁掛け 4 向き）");
+function vines(world: World, ground: number): void {
+  describe("ツタ（壁掛け 4 向き + 下へ垂れる）");
 
   // **4 つの定義を並べて出してから判定する。** 番号と supportFace の対応が
   // ずれたときに、出力だけでどこが動いたか読める。
@@ -2699,9 +2706,9 @@ function vines(): void {
       vineVariant(FACE_ZP) === VINE_ZP && vineVariant(FACE_ZN) === VINE_ZN,
     faces.map(([n, f]) => `${n}:${vineVariant(f)}`).join(" "),
   );
-  // **床と天井は AIR**（この周は、はしごとまったく同じ置き方まで。下へ垂れるのは 34b）。
+  // **床と「ツタでない天井」は AIR**（支えの中身を渡さない呼び方は 34a のまま）。
   check(
-    "床にも天井にも付かない（下へ垂れるのは 34b）",
+    "床にも付かず、ツタ以外の天井にも付かない",
     vineVariant(FACE_YP) === AIR && vineVariant(FACE_YN) === AIR &&
       torchVariant(FACE_YN) === TORCH,
     `天井 ${vineVariant(FACE_YP)} / 床 ${vineVariant(FACE_YN)} / 松明の床 ${torchVariant(FACE_YN)}`,
@@ -2832,6 +2839,147 @@ function vines(): void {
     all.every((id) => !canSupport(id, FACE_YP) && !supportsBlock(id, FACE_YP, TORCH)),
     `canSupport ${canSupport(VINE, FACE_YP)}`,
   );
+
+  // --- 下へ垂れる（34b） -----------------------------------------------------
+  // **支えの候補が 2 つになるだけ**で、`supportFace` は壁のまま（`hangsBelow` の旗）。
+  // **4 向きぶんと、対照（はしご・松明・苗木・石）を並べて出してから判定する。**
+  console.log(
+    `      supportFaces: ${all.map((id) => `${id}→[${supportFaces(id).join(",")}]`).join(" / ")}` +
+      `  ｜ はしご [${supportFaces(LADDER).join(",")}] / 松明 [${supportFaces(TORCH).join(",")}] / ` +
+      `苗木 [${supportFaces(SAPLING).join(",")}] / 石 [${supportFaces(STONE).join(",")}]`,
+  );
+  check(
+    "4 向きとも支えの候補は [壁, +Y] の 2 つ（supportFace は壁のまま）",
+    all.every((id) => {
+      const faces = supportFaces(id);
+      return faces.length === 2 && faces[0] === blockDef(id).supportFace && faces[1] === FACE_YP;
+    }) && supportFaces(VINE_XN)[0] === FACE_XN,
+    all.map((id) => `${id}:[${supportFaces(id).join(",")}]`).join(" "),
+  );
+  check(
+    "はしご・松明・苗木は候補 1 つのまま / 石は 0 個（hangsBelow はツタ 4 つだけ）",
+    supportFaces(LADDER).length === 1 && supportFaces(TORCH).length === 1 &&
+      supportFaces(SAPLING).length === 1 && supportFaces(STONE).length === 0 &&
+      all.every((id) => hangsBelow(id)) &&
+      ![LADDER, LADDER_XN, TORCH, SAPLING, STONE, SUGAR_CANE].some((id) => hangsBelow(id)),
+    `はしご ${supportFaces(LADDER).length} / 松明 ${supportFaces(TORCH).length} / ` +
+      `苗木 ${supportFaces(SAPLING).length} / 石 ${supportFaces(STONE).length}`,
+  );
+  // **上と同じ向きをそのまま写すこと**（垂れた列の途中で板の側が入れ替わらない）。
+  const ceilings: [string, number][] = [
+    ["ツタ+X", VINE],
+    ["ツタ-X", VINE_XN],
+    ["ツタ+Z", VINE_ZP],
+    ["ツタ-Z", VINE_ZN],
+    ["石", STONE],
+    ["はしご", LADDER],
+    ["空気", AIR],
+  ];
+  console.log(
+    `      vineVariant(+Y, 真上): ${ceilings.map(([n, id]) => `${n}→${vineVariant(FACE_YP, id)}`).join(" / ")}`,
+  );
+  check(
+    "真上がツタなら同じ向きが返る（4 向きとも）",
+    all.every((id) => vineVariant(FACE_YP, id) === id),
+    all.map((id) => `${id}→${vineVariant(FACE_YP, id)}`).join(" "),
+  );
+  check(
+    "ツタ以外の天井には付かない（石・はしご・空気・引数なしは AIR）",
+    vineVariant(FACE_YP, STONE) === AIR && vineVariant(FACE_YP, LADDER) === AIR &&
+      vineVariant(FACE_YP, AIR) === AIR && vineVariant(FACE_YP) === AIR,
+    `石 ${vineVariant(FACE_YP, STONE)} / はしご ${vineVariant(FACE_YP, LADDER)} / ` +
+      `空気 ${vineVariant(FACE_YP, AIR)}`,
+  );
+  // **`supportsBlock()` の 1 行は `face` を見ていること** —— 見ないと横のツタにも
+  // 貼り付いて、空中へ横に伸びていきます。**`canSupport()` はゆるめていない。**
+  // **石の天井は `canSupport()` がそのまま通す**（ゆるめても狭めてもいない）——
+  // だから「石の下に垂れたツタは落ちない」が、**手では置けない**
+  // （`vineVariant(FACE_YP, STONE)` が AIR。上の判定）。2 つは別の話で、
+  // **落ちるかどうかは `canPlaceAt()`、置けるかどうかは表**が決める。
+  const hangCases: [string, number, number, number, boolean][] = [
+    ["ツタの真下のツタ（向き違い）", VINE_XN, FACE_YN, VINE_ZP, true],
+    ["ツタの真下の同じ向き", VINE_XN, FACE_YN, VINE_XN, true],
+    ["ツタの横のツタ", VINE_XN, FACE_XN, VINE_ZP, false],
+    ["ツタの真下のはしご", VINE_XN, FACE_YN, LADDER, false],
+    ["石の真下のツタ（canSupport がそのまま通る）", STONE, FACE_YN, VINE_XN, true],
+    ["空気の真下のツタ", AIR, FACE_YN, VINE_XN, false],
+  ];
+  console.log(
+    `      supportsBlock(支え, face, 置くもの): ` +
+      hangCases.map(([n, s, f, i]) => `${n} ${supportsBlock(s, f, i)}`).join(" / ") +
+      `  （canSupport(ツタ, -Y) は ${canSupport(VINE_XN, FACE_YN)} のまま）`,
+  );
+  for (const [name, supporter, face, id, want] of hangCases) {
+    check(
+      `${name}は${want ? "ぶら下がれる" : "付かない"}`,
+      supportsBlock(supporter, face, id) === want,
+      `${supportsBlock(supporter, face, id)}`,
+    );
+  }
+  check(
+    "石の天井は「支えになる」が「置く向き」は出ない（手では置けない。置く経路は表が止める）",
+    supportsBlock(STONE, FACE_YN, VINE_XN) && vineVariant(FACE_YP, STONE) === AIR,
+    `supportsBlock ${supportsBlock(STONE, FACE_YN, VINE_XN)} / vineVariant ${vineVariant(FACE_YP, STONE)}`,
+  );
+  check(
+    "canSupport はゆるめていない（ツタは 6 面とも支えになれない）",
+    all.every((id) => [0, 1, 2, 3, 4, 5].every((f) => !canSupport(id, f))),
+    `-Y ${canSupport(VINE_XN, FACE_YN)} / +Y ${canSupport(VINE_XN, FACE_YP)}`,
+  );
+  // **置く経路も通しで見る**（`placedVariant()` は `ctx.supporter` を渡すだけ）。
+  check(
+    "placedVariant() は真上のツタから同じ向きを出す（supporter 省略なら AIR）",
+    placedVariant(VINE, { support: FACE_YP, hitY: 0, facing: FACE_XP, supporter: VINE_ZP }) === VINE_ZP &&
+      placedVariant(VINE, { support: FACE_YP, hitY: 0, facing: FACE_XP, supporter: STONE }) === AIR &&
+      placedVariant(VINE, { support: FACE_YP, hitY: 0, facing: FACE_XP }) === AIR,
+    `ツタ+Z の下→${placedVariant(VINE, { support: FACE_YP, hitY: 0, facing: FACE_XP, supporter: VINE_ZP })} / ` +
+      `石の下→${placedVariant(VINE, { support: FACE_YP, hitY: 0, facing: FACE_XP, supporter: STONE })}`,
+  );
+
+  // **本物の `World` で壁に 1 マス + ぶら下がり 2 マスを作り、壁を壊す**
+  // （`Slab` は `breakUnsupported` を持たないので、連鎖はここでしか見られない。
+  // 手本はサトウキビの 3 段積み）。置く側だけ直して壊す側を `supportFace()` 1 本の
+  // ままにすると、**垂らせるのに壁を壊しても垂れたぶんが宙に残る。**
+  {
+    const bx = 9;
+    const bz = 9;
+    const by = ground + 5;
+    // 周りを空にしてから使う（地形なりだと壁の裏に土が残って支えが増える）。
+    for (let y = by - 4; y <= by + 1; y++) {
+      for (let x = bx - 1; x <= bx + 2; x++) {
+        for (let z = bz - 1; z <= bz + 1; z++) world.setVoxel(x, y, z, AIR);
+      }
+    }
+    world.setVoxel(bx, by, bz, STONE); // 壁は 1 マスだけ（真横の列は空のまま）
+    // **上から順に置くこと** —— `setVoxel()` は `canPlaceAt()` を通るので、
+    // 下から置くと真上が空で 1 マスも書けない。
+    const hung = [0, 1, 2].map((k) => world.setVoxel(bx + 1, by - k, bz, VINE_XN));
+    console.log(
+      `      壁 ${bx},${by},${bz} + ツタ 3 マス: 置けた ${hung.join(",")} / 中身 ` +
+        [0, 1, 2].map((k) => world.getVoxel(bx + 1, by - k, bz)).join(","),
+    );
+    check(
+      "壁のツタの下に 2 マスぶら下げられる（真下に壁は無い）",
+      hung.every((ok) => ok) &&
+        [0, 1, 2].every((k) => world.getVoxel(bx + 1, by - k, bz) === VINE_XN) &&
+        world.getVoxel(bx, by - 1, bz) === AIR,
+      `置けた ${hung.join(",")} / 壁の下 ${world.getVoxel(bx, by - 1, bz)}`,
+    );
+
+    let broke = 0;
+    world.onAutoBreak = (_x, _y, _z, broken) => { if (baseBlock(broken) === VINE) broke++; };
+    world.setVoxel(bx, by, bz, AIR); // 壁を壊す
+    console.log(
+      `      壁を壊したあと: 合図 ${broke} 回 / 中身 ` +
+        [0, 1, 2].map((k) => world.getVoxel(bx + 1, by - k, bz)).join(","),
+    );
+    check(
+      "壁を壊すとぶら下がった 2 マスも落ちる（合図が 3 回）",
+      broke === 3 && [0, 1, 2].every((k) => world.getVoxel(bx + 1, by - k, bz) === AIR),
+      `合図 ${broke} 回 / 中身 ${[0, 1, 2].map((k) => world.getVoxel(bx + 1, by - k, bz)).join(",")}`,
+    );
+    world.onAutoBreak = undefined;
+  }
 }
 
 /**

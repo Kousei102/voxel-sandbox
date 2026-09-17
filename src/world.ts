@@ -6,10 +6,9 @@ import {
   SKY_BLOCKERS,
   blockEmission,
   blocksSky,
-  NO_SUPPORT,
   isOpaque,
   oppositeFace,
-  supportFace,
+  supportFaces,
   supportsBlock,
 } from "./blocks";
 import { Chunk, chunkKey, localIndex } from "./chunk";
@@ -197,13 +196,14 @@ export class World {
     if (lz === 0) this.markDirty(cx, cy, cz - 1);
     if (lz === CHUNK_SIZE - 1) this.markDirty(cx, cy, cz + 1);
 
-    this.breakUnsupported(wx, wy, wz, id);
+    this.breakUnsupported(wx, wy, wz);
     return true;
   }
 
   /**
    * そのブロックを (wx,wy,wz) に置けるだけの支えがあるか。
-   * 支えの向きは `supportFace`（床置きの松明なら真下、壁掛けなら壁の側）。
+   * 支えの候補は `supportFaces()`（床置きの松明なら真下、壁掛けなら壁の側、
+   * **ツタは壁と真上のツタの 2 つ**）で、**どれか 1 つを満たせば置ける**。
    *
    * 支えが未読み込みの列にあると `getVoxel` が AIR を返して「置けない」になる。
    * プレイヤーの操作では支えは必ず「今クリックしたブロック」なので読み込み済みだし、
@@ -211,13 +211,21 @@ export class World {
    * それ以外の経路から呼ぶなら、先に列が揃っているか確かめること。
    */
   canPlaceAt(wx: number, wy: number, wz: number, id: number): boolean {
-    const face = supportFace(id);
-    if (face === NO_SUPPORT) return true;
-    const [dx, dy, dz] = OFFSETS[face];
-    // 支えになる側から見ると、こちらを向いた面が埋まっている必要がある。
-    // **`canSupport()` ではなく `supportsBlock()` に聞くこと** —— 積める生えもの
-    // （サトウキビ）の「自分の上には自分」はあちらの外側にある。
-    return supportsBlock(this.getVoxel(wx + dx, wy + dy, wz + dz), oppositeFace(face), id);
+    // **候補は `supportFaces()` の表から。どれか 1 つを満たせば置ける** ——
+    // ツタは「壁」と「真上の同じツタ」の 2 つを持つ（34b）。**`supportFace()` 1 本を
+    // 見ないこと**（2 つ目の候補が消えて、垂れたツタが置けなくなる）。
+    const faces = supportFaces(id);
+    if (faces.length === 0) return true;
+    for (const face of faces) {
+      const [dx, dy, dz] = OFFSETS[face];
+      // 支えになる側から見ると、こちらを向いた面が埋まっている必要がある。
+      // **`canSupport()` ではなく `supportsBlock()` に聞くこと** —— 積める生えもの
+      // （サトウキビ）の「自分の上には自分」とツタの「真上のツタ」はあちらの外側にある。
+      if (supportsBlock(this.getVoxel(wx + dx, wy + dy, wz + dz), oppositeFace(face), id)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -227,8 +235,12 @@ export class World {
    * 壊れたぶんは `onAutoBreak` で外へ知らせる（`main.ts` が地面に落とす）。
    * **`World` が `drops.ts` を知らないのが肝心** —— ここはストリーミングのファイルで、
    * 落とし物の判断（何を・いくつ・クリエイティブでは落とさない）を持たせる場所ではない。
+   *
+   * **書き込んだ ID は受け取りません**（34b）—— 落とすかどうかは `canPlaceAt()` に
+   * 聞くので、支えの中身は**世界から読み直します**（呼ぶのは `setVoxel` が
+   * 書いた「あと」なので、読める値は書いた値そのもの）。
    */
-  private breakUnsupported(wx: number, wy: number, wz: number, id: number): void {
+  private breakUnsupported(wx: number, wy: number, wz: number): void {
     for (let face = 0; face < OFFSETS.length; face++) {
       const [dx, dy, dz] = OFFSETS[face];
       const nx = wx + dx;
@@ -236,11 +248,14 @@ export class World {
       const nz = wz + dz;
       const neighbor = this.getVoxel(nx, ny, nz);
       if (neighbor === AIR) continue;
-      // 隣が「こちら側」に支えを求めているなら、今の中身で支えられるか見る
-      if (supportFace(neighbor) !== oppositeFace(face)) continue;
-      // **置く側（`canPlaceAt`）とまったく同じ式であること。** 片方だけ
-      // `canSupport()` のままにすると、積めるのに下を壊しても上が落ちない。
-      if (supportsBlock(id, face, neighbor)) continue;
+      // 隣が「こちら側」を支えの候補にしているなら、今の中身で立てるか見る。
+      // **`supportFaces()` の表を引くこと** —— ツタは候補が 2 つある（34b）ので、
+      // `supportFace()` 1 本だと真上のツタを壊しても下が落ちない。
+      if (!supportFaces(neighbor).includes(oppositeFace(face))) continue;
+      // **落とすかどうかは `canPlaceAt()` に聞くこと。** 置く側と壊す側が同じ関数に
+      // なるので、候補が増えても食い違わず、**残った候補（壁 or 真上）があるものは
+      // 落ちない**（連鎖も、下のツタがこれをもう一度通るので勝手に続く）。
+      if (this.canPlaceAt(nx, ny, nz, neighbor)) continue;
       // **壊す前に知らせること。** あとにすると、連鎖で更に壊れたぶんと順番が入れ替わる。
       this.onAutoBreak?.(nx, ny, nz, neighbor);
       this.setVoxel(nx, ny, nz, AIR);

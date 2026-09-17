@@ -20,6 +20,8 @@ import {
   SUGAR_CANE,
   TALL_GRASS,
   TORCH,
+  VINE,
+  VINE_XN,
   WATER,
   WHEAT_CROP,
   blockName,
@@ -337,6 +339,85 @@ export function run(): void {
     );
     world.onAutoBreak = undefined;
     world.dispose();
+  }
+
+  // --- ツタは真上のツタにぶら下がる（34b） ----------------------------------
+  // **`placing.ts` は 1 行も直していません** —— 増えたのは `blocks.ts` の
+  // 支えの候補の表（`supportFaces()`）と `vineVariant()` の 2 つ目の引数だけで、
+  // 置く側（`canPlaceAt`）も壊す側（`breakUnsupported`）も**同じそこ**を通ります。
+  {
+    // 壁は 1 マスだけ（y=11 の -X 側）。**真下に壁が無い**ので、
+    // 下へ伸びるぶんは「真上のツタ」だけが支えです。
+    const slab = new Slab();
+    slab.fill(-1, -1, 11, 11, 0, 0, STONE);
+    slab.setVoxel(0, 11, 0, VINE_XN);
+
+    // 下面（法線 -Y）を狙うと、真下に**上と同じ向き**のツタが置ける。
+    const first = tryPlace(slab, nobody, aimAt(0, 11, 0, VINE_XN, [0, -1, 0]), 0, VINE);
+    const second = tryPlace(slab, nobody, aimAt(0, 10, 0, VINE_XN, [0, -1, 0]), 0, VINE);
+    console.log(
+      `      ツタの下面を狙う: 1 マス目 ${first.kind} → ${slab.getVoxel(0, 10, 0)} / ` +
+        `2 マス目 ${second.kind} → ${slab.getVoxel(0, 9, 0)}（壁は y=11 の 1 マスだけ）`,
+    );
+    check(
+      "ツタの下面を狙うと、真下に上と同じ向きのツタが 2 マス続けて置ける",
+      first.kind === "placed" && second.kind === "placed" &&
+        slab.getVoxel(0, 10, 0) === VINE_XN && slab.getVoxel(0, 9, 0) === VINE_XN &&
+        slab.getVoxel(-1, 10, 0) === AIR,
+      `${first.kind}/${slab.getVoxel(0, 10, 0)} ${second.kind}/${slab.getVoxel(0, 9, 0)}`,
+    );
+
+    // **横の空中には置けない**（`supportsBlock()` が `face` を見ている証拠 ——
+    // 見ていないと、ツタの横から横へ空中に伸びていく）。
+    const side = tryPlace(slab, nobody, aimAt(0, 11, 0, VINE_XN, [1, 0, 0]), 0, VINE);
+    console.log(
+      `      ツタの横（+X）を狙う: ${side.kind}${side.kind === "blocked" ? `「${side.message}」` : ""} / ` +
+        `マスの中身 ${slab.getVoxel(1, 11, 0)}`,
+    );
+    check(
+      "ツタの横の空中には置けない（真上も空なら blocked のままマスは空）",
+      side.kind === "blocked" && side.message.includes("壁にしか") &&
+        slab.getVoxel(1, 11, 0) === AIR,
+      side.kind === "blocked" ? side.message : side.kind,
+    );
+
+    // **⚠ ただし「真上に固いブロックがある横」は置けます**（34b で開いた道）。
+    // 支えとしては**天井**が持っているので嘘ではありませんが、**板の向きは
+    // 狙った面から決まる**（`placedVariant()` は `ctx.support` だけを見る）ので、
+    // **薄い板（ツタ・はしご）の横に貼り付いて見えます。**
+    // **ここは現状を書き留めた判定です** —— 直すなら向きを決める側に
+    // 「その壁が本当に支えになれるか」を渡す話になり、`placing.ts` か
+    // 34a の判定に手が入ります（`rules/blocks-shapes.md` と `HANDOFF.md` の人の判断）。
+    const ceilinged: [string, number][] = [["ツタの横", VINE_XN], ["はしごの横", LADDER]];
+    const opened: string[] = [];
+    for (const [name, neighbor] of ceilinged) {
+      const s = new Slab();
+      s.setVoxel(0, 11, 0, neighbor);
+      s.setVoxel(1, 12, 0, STONE); // 真上の天井（これが支えになる）
+      const out = tryPlace(s, nobody, aimAt(0, 11, 0, neighbor, [1, 0, 0]), 0, VINE);
+      opened.push(`${name}(真上に石): ${out.kind} → ${s.getVoxel(1, 11, 0)}`);
+    }
+    console.log(`      ${opened.join(" / ")}`);
+    check(
+      "真上に石があれば、薄い板の横でも置ける（支えは天井。向きは狙った面から）",
+      opened.every((line) => line.includes(`placed → ${VINE_XN}`)),
+      opened.join(" / "),
+    );
+
+    // **石の天井の下にも手では置けない**（`vineVariant()` の天井の欄は AIR のまま）。
+    // 支えとしては通る（`canSupport()` をゆるめていないので）が、**置く経路は表が止める**。
+    const ceiling = new Slab();
+    ceiling.fill(-1, 1, 11, 11, -1, 1, STONE);
+    const under = tryPlace(ceiling, nobody, aimAt(0, 11, 0, STONE, [0, -1, 0]), 0, VINE);
+    console.log(
+      `      石の下面を狙う: ${under.kind}${under.kind === "blocked" ? `「${under.message}」` : ""} / ` +
+        `マスの中身 ${ceiling.getVoxel(0, 10, 0)}`,
+    );
+    check(
+      "石の天井の下には手では置けない（ツタの天井だけが写る）",
+      under.kind === "blocked" && ceiling.getVoxel(0, 10, 0) === AIR,
+      under.kind === "blocked" ? under.message : under.kind,
+    );
   }
 
   // --- 苗木は土・草・耕地の上にだけ立つ（30a） ------------------------------
