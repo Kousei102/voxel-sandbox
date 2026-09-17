@@ -56,6 +56,10 @@ import {
   STONE_SLAB_TOP,
   SUGAR_CANE,
   TALL_GRASS,
+  VINE,
+  VINE_XN,
+  VINE_ZN,
+  VINE_ZP,
   WATER,
   WHEAT_CROP,
   WHEAT_CROP_RIPE,
@@ -508,6 +512,63 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
       camera: look(setup, new Vector3(at.x + 5.5, at.y + 3.6, at.z + 6.5), new Vector3(at.x + 2, at.y + 1.6, at.z + 0.5)),
       dayNight: skyOf(OVERWORLD, setup.time),
       note: `柱 0,${y},0 の 4 面に 1 本ずつ（145 / 146 / 147 / 148）+ 裸の石の柱 4,${y},0`,
+    };
+  },
+
+  /**
+   * ツタ（183..186・34a）。**自然には 1 マスも生えない**（生やすのは 34b）ので、
+   * `ladders` と同じで**ここへ直に置く**しかない。見るのは 3 つ:
+   * 板が壁に貼り付いているか / **裏返っていないか**（壁の中に埋まって見えない）/
+   * **はしごと見分けが付くか**（厚さ 1/16 対 3/16・緑対木の茶）。
+   *
+   * **`ladders` の場面を写している**（いちばん安い）が、**柱をもう 1 本、
+   * はしごを掛けて並べること** —— 2 つを同じ絵に入れないと「見分けが付くか」が
+   * 撮った絵から読めない（本棚の隣に板を並べてあるのと同じ理由）。
+   */
+  vine(setup) {
+    const { scene, world } = makeWorld(OVERWORLD, 3);
+    const pad = 6;
+    // **平らな台を作る**（`ladders` と同じ理由。地形なりだと柱が斜面に埋まる）。
+    let y = 0;
+    for (let dz = -pad; dz <= pad; dz++) {
+      for (let dx = -pad; dx <= pad; dx++) y = Math.max(y, world.surfaceY(dx, dz));
+    }
+    for (let dz = -pad; dz <= pad; dz++) {
+      for (let dx = -pad; dx <= pad; dx++) {
+        for (let h = y; h < y + 8; h++) world.setVoxel(dx, h, dz, AIR);
+        for (let h = y - 4; h < y; h++) world.setVoxel(dx, h, dz, DIRT);
+        world.setVoxel(dx, y - 1, dz, GRASS);
+      }
+    }
+    // **真ん中に石の柱を 6 段立てて、下の 4 段だけ 4 面に 1 本ずつ掛ける**
+    // （`ladders` は 4 段ちょうどだが、ツタは 4 面とも塞ぐと**ただの緑の柱**に見えて、
+    // 「薄い板が貼り付いている」のか「緑の立方体を積んだ」のか絵から読めない ——
+    // 2026-09-17 に 1 枚撮って分かった）。**上に石を 2 段残すこと**が、
+    // 中身が石のままだという唯一の手がかり。
+    for (let h = y; h < y + 6; h++) world.setVoxel(0, h, 0, STONE);
+    for (let h = y; h < y + 4; h++) {
+      world.setVoxel(1, h, 0, VINE_XN); // 柱の +X 側の面 → 支えは -X
+      world.setVoxel(-1, h, 0, VINE); // 柱の -X 側の面 → 支えは +X
+      world.setVoxel(0, h, 1, VINE_ZN);
+      world.setVoxel(0, h, -1, VINE_ZP);
+    }
+    // **はしごを掛けた柱を隣に並べる。** 厚さ（1/16 対 3/16）も色も、
+    // **同じ絵に 2 つ入れないと**「見分けが付くか」が読めない。
+    // **掛けるのはカメラから見て奥行きのある側の面**（+X。`ladders` と同じ理由で、
+    // 広く写る +Z に掛けると残る石が細い帯にしかならない）。
+    for (let h = y; h < y + 4; h++) {
+      world.setVoxel(4, h, 0, STONE);
+      world.setVoxel(5, h, 0, LADDER_XN);
+    }
+    // **書き換えたらメッシュ化をもう一度流すこと**（`ladders` と同じ）。
+    world.primeAround(0.5, 0.5, 3);
+    const at = new Vector3(0, y, 0);
+    return {
+      scene,
+      // **すぐそばの斜めから**（`ladders` と同じ。遠いと板 1 枚が数画素に潰れる）。
+      camera: look(setup, new Vector3(at.x + 5.5, at.y + 3.6, at.z + 6.5), new Vector3(at.x + 2, at.y + 1.6, at.z + 0.5)),
+      dayNight: skyOf(OVERWORLD, setup.time),
+      note: `石の柱 0,${y},0（6 段）の下 4 段にツタ 4 面（183 / 184 / 185 / 186）+ はしごを掛けた柱 4,${y},0`,
     };
   },
 

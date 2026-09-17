@@ -14,6 +14,10 @@ import {
   STONE,
   SUGAR_CANE,
   TALL_GRASS,
+  VINE,
+  VINE_XN,
+  VINE_ZN,
+  VINE_ZP,
 } from "../src/blocks";
 import {
   BONE,
@@ -162,19 +166,19 @@ export function run(): void {
   );
   check("表に無い番号（0 と 999）も null", armorOf(0) === null && armorOf(999) === null);
 
-  // **`MAX_ITEM_ID` の突き合わせはここ**（レンガの節から移した。上限はアイテム側の
-  // ままで、いまは鉄の靴 174 が上限）。伸ばし忘れると `ITEMS` には入っているのに
-  // **クリエイティブの一覧にだけ出ない**（持てるしレシピも通るので型では止まらない。
-  // `rules/items-survival.md`）。**比べる相手を新しい番号へ直すこと** —— 古い番号の
-  // まま残すと `tsc` が TS2367 で落ちる（型で止まる安全な罠）。
+  // **上限そのものの突き合わせはツタの節へ移した**（`MAX_ITEM_ID` が 186 に伸びたので、
+  // ここに `=== DIAMOND_BOOTS` を残すと `tsc` が TS2367 で落ちる。`rules/testing.md`）。
+  // ここで見るのは「**金・ダイヤの 8 部位が一覧に出ているか**」そのもの —— 上限を
+  // 伸ばし忘れるとここが先に落ちるので、見張りとしては同じだけ効く
+  // （伸ばし忘れは型では止まらない。`rules/items-survival.md`）。
   const newest = [
     GOLD_HELMET, GOLD_CHESTPLATE, GOLD_LEGGINGS, GOLD_BOOTS,
     DIAMOND_HELMET, DIAMOND_CHESTPLATE, DIAMOND_LEGGINGS, DIAMOND_BOOTS,
   ];
   console.log(`      MAX_ITEM_ID ${MAX_ITEM_ID}（ダイヤの靴 ${DIAMOND_BOOTS}・鉄の靴 ${IRON_BOOTS}）`);
   check(
-    "金・ダイヤの 8 部位がクリエイティブの一覧に出る（MAX_ITEM_ID がダイヤの靴まで届いている）",
-    MAX_ITEM_ID === DIAMOND_BOOTS && newest.every((id) => ids.includes(id)),
+    "金・ダイヤの 8 部位がクリエイティブの一覧に出る（MAX_ITEM_ID がダイヤの靴を越えている）",
+    newest.every((id) => ids.includes(id)),
     `MAX_ITEM_ID ${MAX_ITEM_ID} / 一覧に ${newest.filter((id) => ids.includes(id)).length} 個`,
   );
 
@@ -557,5 +561,69 @@ export function run(): void {
     "レンガとレンガブロック(12) は一覧で見分けられる（RGB で 20 以上）",
     brickPair >= 20,
     `${brickPair.toFixed(1)}`,
+  );
+
+  describe("ツタ（アイテム 183・持って壁に掛けるブロック）");
+
+  // **ブロックなので `items.ts` には 1 行も無い** —— `variantOf` が `AIR` なので
+  // ブロック → アイテムの for が同じ番号のアイテムを作る（**手で足すと二重登録**）。
+  // **184..186 は `variantOf: VINE` なのでアイテムを持たない。**
+  console.log(
+    `      ツタ(${VINE}) ${itemName(VINE)} 0x${itemColor(VINE).toString(16)}  置ける ` +
+      `${placedBlock(VINE) === VINE} / 道具 ${toolOf(VINE) !== null} / 食べ物 ${foodOf(VINE) !== null}` +
+      ` / 1 枠 ${itemStackLimit(VINE)} 個  向き違い ${[VINE_XN, VINE_ZP, VINE_ZN]
+        .map((id) => `${id}:${ids.includes(id) ? "一覧に居る" : "無し"}`)
+        .join(" ")}`,
+  );
+  check(
+    "ツタは持って置けて・道具でも食べ物でもない（1 枠 64 個）",
+    placedBlock(VINE) === VINE && toolOf(VINE) === null && foodOf(VINE) === null &&
+      itemStackLimit(VINE) === 64,
+    `block ${placedBlock(VINE)} / tool ${toolOf(VINE)} / food ${foodOf(VINE)} / stack ${itemStackLimit(VINE)}`,
+  );
+  // **向き違いが一覧に出ると「ツタ」が 4 個並ぶ。** ここが崩れると、置いて壊したときに
+  // 別の番号のアイテムが手に入る形でも壊れる（共有帯は 1 本の番号列なので）。
+  check(
+    "184..186 は allItemIds() に出てこない（向き違いはアイテムを持たない）",
+    [VINE_XN, VINE_ZP, VINE_ZN].every((id) => !ids.includes(id)),
+    [VINE_XN, VINE_ZP, VINE_ZN].map((id) => `${id}:${ids.includes(id)}`).join(" "),
+  );
+  // **`MAX_ITEM_ID` そのものの突き合わせはここ**（金・ダイヤの防具の節から移した。
+  // 上限が 186 に伸びたので、あちらに `=== DIAMOND_BOOTS` を残すと `tsc` が TS2367 で
+  // 落ちる。`rules/testing.md`）。**上限はツタの向き違いの最後まで伸ばす** ——
+  // アイテムになるのは 183 だけだが、共有帯はブロックとアイテムで 1 本の番号列なので、
+  // 183 で止めると次に取る空き番号を数え違える。
+  console.log(`      MAX_ITEM_ID ${MAX_ITEM_ID}（ツタの大元 ${VINE} / 向き違いの最後 ${VINE_ZN}）`);
+  check(
+    "MAX_ITEM_ID はツタの向き違いの最後（186）まで伸びている",
+    MAX_ITEM_ID === VINE_ZN && ids.includes(VINE),
+    `MAX_ITEM_ID ${MAX_ITEM_ID} / 一覧に ツタ ${ids.includes(VINE)}`,
+  );
+
+  // **緑は一覧でいちばん混んでいる帯**（草 0x6aa84f・葉 0x3f7a3a・トウヒの葉
+  // 0x2c5c3a・草むら 0x5e9c41・サボテン 0x5c9b47・苗木 2 種・エンダーアイ）。
+  // **いちばん近い相手と隔たりを出してから**判定する（骨・木炭・レンガと同じ形）。
+  let vineBest = Infinity;
+  let vineWho = "";
+  for (const other of ids) {
+    if (other === VINE) continue;
+    const gap = dist(itemColor(VINE), itemColor(other));
+    if (gap < vineBest) {
+      vineBest = gap;
+      vineWho = `${itemName(other)} 0x${itemColor(other).toString(16)}`;
+    }
+  }
+  // **緑の帯の相手を名指しで出しておくこと** —— 一番近い 1 人だけだと、色を触ったときに
+  // 「どちらへ寄せると詰まるか」が出力から読めない（木炭の暗い帯と同じ理由）。
+  for (const other of [LEAVES, SPRUCE_LEAVES, GRASS, TALL_GRASS, CACTUS, SAPLING])
+    console.log(
+      `      ツタ ↔ ${itemName(other)} 0x${itemColor(other).toString(16)}: ` +
+        `${dist(itemColor(VINE), itemColor(other)).toFixed(1)}`,
+    );
+  console.log(`      ツタの色のいちばん近い相手: ${vineWho} ${vineBest.toFixed(1)}`);
+  check(
+    "ツタは既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）",
+    vineBest >= 20,
+    `いちばん近いのは${vineWho}で ${vineBest.toFixed(1)}`,
   );
 }

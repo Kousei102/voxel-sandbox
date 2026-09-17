@@ -70,6 +70,10 @@ import {
   TIER_STONE,
   TORCH,
   VARIANT_BAND_MAX,
+  VINE,
+  VINE_XN,
+  VINE_ZN,
+  VINE_ZP,
   WALL_TORCH_ZN,
   WATER,
   WHEAT_CROP,
@@ -112,6 +116,7 @@ import {
   supportsBlock,
   tilled,
   torchVariant,
+  vineVariant,
 } from "../src/blocks";
 import { MAX_LIGHT } from "../src/constants";
 import { PLAYER_SIZE } from "../src/physics";
@@ -266,8 +271,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位の 64 個（182 まで。金・ダイヤの防具で 8 個増えた）",
-    sharedItems.length === 64 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタの 65 個（186 まで。ツタが入って 1 個増えた —— ブロックは 4 つ増えたが、アイテムになるのは大元の 183 だけ）",
+    sharedItems.length === 65 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -350,15 +355,23 @@ export function run(): void {
       sharedItems[58] === GOLD_LEGGINGS && sharedItems[59] === GOLD_BOOTS &&
       sharedItems[60] === DIAMOND_HELMET && sharedItems[61] === DIAMOND_CHESTPLATE &&
       sharedItems[62] === DIAMOND_LEGGINGS && sharedItems[63] === DIAMOND_BOOTS &&
-      MAX_ITEM_ID === DIAMOND_BOOTS,
+      // **183 は `items.ts` に 1 行も書かずに増えたブロック**（ツタの大元。145 の
+      // はしごと同じで `variantOf` が `AIR` なので for が同じ番号のアイテムを作る）。
+      // **184..186 は `variantOf: VINE` なのでアイテムを持ちません** —— だから
+      // ブロックが 4 個増えてもアイテムは 1 個だけ。**上限を持つのがブロック側なのは
+      // 10 度目**なので、`MAX_ITEM_ID` の突き合わせをここで一緒に見る（伸ばし忘れは
+      // 型では止まらない。**比べる相手を新しい番号に直すこと** —— 古い番号のまま
+      // 残すと `tsc` が TS2367 で落ちます。`rules/testing.md`）。
+      sharedItems[64] === VINE &&
+      MAX_ITEM_ID === VINE_ZN,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 73（金・ダイヤの防具 175..182 で 8 個減った）",
-    sharedFree === 73,
+    "111..255 の空きは 69（ツタ 183..186 で 4 個減った）",
+    sharedFree === 69,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1098,9 +1111,16 @@ export function run(): void {
     `      登れるブロック ${climbable.length} 個: ` +
       `${climbable.map((b) => `${b.name}(${b.id})`).join(" / ") || "無し"}`,
   );
+  // **ゆるめるのではなく数え直すこと**（`isBladed` の 5 個と同じ形。`rules/testing.md`）。
+  // **一覧そのものと突き合わせている**ので、8 個に増えても「抜けと余分の両方で落ちる」
+  // 強さは 1 つも弱まっていない。
   check(
-    "登れるのははしごの 4 向きだけ（145..148）",
-    climbableIds.length === 4 && climbableIds.join(",") === [LADDER, LADDER_XN, LADDER_ZP, LADDER_ZN].sort((a, b) => a - b).join(","),
+    "登れるのははしごとツタの 4 向きずつ 8 個（145..148 と 183..186。ツタが入って数え直した。ゆるめていない）",
+    climbableIds.length === 8 &&
+      climbableIds.join(",") ===
+        [LADDER, LADDER_XN, LADDER_ZP, LADDER_ZN, VINE, VINE_XN, VINE_ZP, VINE_ZN]
+          .sort((a, b) => a - b)
+          .join(","),
     `id=[${climbableIds.join(",")}]`,
   );
   check(
@@ -1347,6 +1367,7 @@ export function run(): void {
   bowlAndStew();
   sugarCane(world, ground);
   ladders();
+  vines();
   apples();
   paperBookBookshelf();
   goldenApples();
@@ -2052,9 +2073,13 @@ function cobwebs(): void {
     sticky.length === 1 && isSticky(COBWEB) && others.every(([, id]) => !isSticky(id)),
     sticky.join(" ") || "0 個",
   );
+  // **`isSticky` の 1 個はそのまま**であることが「旗を 1 つにまとめなかった」証拠
+  // （ツタは刃物だけ・クモの巣は両方）。**そちらは 1 文字も動かさないこと。**
   check(
-    "isBladed が真なのもクモの巣だけ",
-    bladed.length === 1 && isBladed(COBWEB) && others.every(([, id]) => !isBladed(id)),
+    "刃物でだけ落ちるのはクモの巣とツタ 4 向きの 5 個（ツタが入って数え直した。ゆるめていない）",
+    bladed.length === 5 && isBladed(COBWEB) &&
+      [VINE, VINE_XN, VINE_ZP, VINE_ZN].every((id) => isBladed(id)) &&
+      others.every(([, id]) => !isBladed(id)),
     bladed.join(" ") || "0 個",
   );
   // **`tool: "sword"` で表していないこと**が `bladed` を別の旗にした理由そのもの
@@ -2633,6 +2658,179 @@ function ladders(): void {
     "はしごの上には松明を置けない",
     !canSupport(LADDER, FACE_YP) && !supportsBlock(LADDER, FACE_YP, TORCH),
     `canSupport ${canSupport(LADDER, FACE_YP)}`,
+  );
+}
+
+/**
+ * ツタ（183..186・34a）。**はしごの節とまったく同じ形で見る** —— 壁掛け 4 向きの
+ * 表・向き違いの寄せ先・アイテム 1 個・掘ると大元・箱の貼り付き、の 5 つ。
+ *
+ * **はしごと違うのは 3 つだけ**なので、そこは名指しで見る:
+ * **厚さ 1/16（はしごは 3/16）**・**硬さ 0.2 と草の音**・**`bladed` の旗**。
+ * **刃物でだけ落ちること自体は `cobwebs()` の数え直しと `test/mining.test.ts`**、
+ * **一覧の色は `test/items.test.ts`** が見ている（ここは形と旗の表だけ）。
+ */
+function vines(): void {
+  describe("ツタ（壁掛け 4 向き）");
+
+  // **4 つの定義を並べて出してから判定する。** 番号と supportFace の対応が
+  // ずれたときに、出力だけでどこが動いたか読める。
+  const all = [VINE, VINE_XN, VINE_ZP, VINE_ZN];
+  const defs = all.map((id) => blockDef(id));
+  console.log(
+    `      def: ${defs.map((d) => `${d.id}:${d.name} supportFace=${d.supportFace} variantOf=${d.variantOf}`).join(" / ")}`,
+  );
+
+  // **6 面ぶんを並べて出してから判定する**（はしごの節と同じ理由）。
+  const faces: [string, number][] = [
+    ["+X", FACE_XP],
+    ["-X", FACE_XN],
+    ["+Y（天井）", FACE_YP],
+    ["-Y（床）", FACE_YN],
+    ["+Z", FACE_ZP],
+    ["-Z", FACE_ZN],
+  ];
+  console.log(
+    `      vineVariant(): ${faces.map(([n, f]) => `${n}→${vineVariant(f)}`).join(" / ")}`,
+  );
+  check(
+    "壁の 4 面それぞれに別の向きが返る",
+    vineVariant(FACE_XP) === VINE && vineVariant(FACE_XN) === VINE_XN &&
+      vineVariant(FACE_ZP) === VINE_ZP && vineVariant(FACE_ZN) === VINE_ZN,
+    faces.map(([n, f]) => `${n}:${vineVariant(f)}`).join(" "),
+  );
+  // **床と天井は AIR**（この周は、はしごとまったく同じ置き方まで。下へ垂れるのは 34b）。
+  check(
+    "床にも天井にも付かない（下へ垂れるのは 34b）",
+    vineVariant(FACE_YP) === AIR && vineVariant(FACE_YN) === AIR &&
+      torchVariant(FACE_YN) === TORCH,
+    `天井 ${vineVariant(FACE_YP)} / 床 ${vineVariant(FACE_YN)} / 松明の床 ${torchVariant(FACE_YN)}`,
+  );
+  // **置けない理由の文も表から出ていること**（`supportHint()`）。「床か壁」のままだと嘘。
+  console.log(
+    `      supportHint: ツタ「${supportHint(VINE)}」 / はしご「${supportHint(LADDER)}」 / ` +
+      `松明「${supportHint(TORCH)}」 / 苗木「${supportHint(SAPLING)}」`,
+  );
+  check(
+    "置けない理由の文は「壁」（松明の「床か壁」・苗木の「土か草の上」とは別）",
+    supportHint(VINE) === "壁" && supportHint(TORCH) === "床か壁" &&
+      supportHint(SAPLING) === "土か草の上",
+    `ツタ「${supportHint(VINE)}」`,
+  );
+  // **置く経路も通しで見る**（`placedVariant()` に 1 行足したのがここに出る）。
+  check(
+    "placedVariant() が支えの向きから 4 向きを出す",
+    placedVariant(VINE, { support: FACE_XN, hitY: 0.5, facing: FACE_XP }) === VINE_XN &&
+      placedVariant(VINE, { support: FACE_ZP, hitY: 0.5, facing: FACE_XP }) === VINE_ZP &&
+      placedVariant(VINE, { support: FACE_YN, hitY: 0, facing: FACE_XP }) === AIR,
+    `-X→${placedVariant(VINE, { support: FACE_XN, hitY: 0.5, facing: FACE_XP })} ` +
+      `床→${placedVariant(VINE, { support: FACE_YN, hitY: 0, facing: FACE_XP })}`,
+  );
+
+  // 向き違いは大元に寄る（アイテムもドロップも名前も増えない）。
+  check(
+    "184..186 の variantOf と baseBlock() は 183（大元は AIR のまま）",
+    [VINE_XN, VINE_ZP, VINE_ZN].every((id) => blockDef(id).variantOf === VINE) &&
+      [VINE_XN, VINE_ZP, VINE_ZN].every((id) => baseBlock(id) === VINE) &&
+      blockDef(VINE).variantOf === AIR && baseBlock(VINE) === VINE,
+    all.map((id) => `${id}→${baseBlock(id)}`).join(" "),
+  );
+
+  // **アイテムは 1 個だけ**（向き違いに付くと一覧に「ツタ」が 4 個並ぶ）。
+  const named = allItemIds().filter((id) => itemName(id) === blockName(VINE));
+  console.log(`      アイテム一覧の「${blockName(VINE)}」: ${named.length} 個 [${named.join(" ")}]`);
+  check(
+    "アイテム一覧に「ツタ」は 1 個だけ（183）",
+    named.length === 1 && named[0] === VINE,
+    named.join(" "),
+  );
+
+  // 掘ると 4 つとも大元が 1 個（`DROPS` に 1 行も書いていないので、既定の
+  // `baseBlock()` がそのまま出る）。**刃物でないと 1 個も落ちないのは
+  // `canHarvest()` の側**なので、そちらは `test/mining.test.ts`。
+  const drops = all.map((id) => rollDrop(id, 0.5));
+  console.log(`      掘ると: ${drops.map((d) => `${d.item} x${d.count}`).join(" / ")}`);
+  check(
+    "4 向きとも掘ると 183 が 1 個",
+    drops.every((d) => d.item === VINE && d.count === 1),
+    drops.map((d) => `${d.item} x${d.count}`).join(" "),
+  );
+
+  // 形。**厚さ 1/16 の板が支えの側に貼り付く**こと（裏返っていると壁に埋まる）。
+  // **はしごの 3/16 と並べて出すこと** —— 同じ定数を撒くと厚さが一緒に動く。
+  const boxes: [string, number, number, number][] = [
+    // [名前, id, 見る軸の添字(0=x,2=z), 支えのある側が +か]
+    ["+X", VINE, 0, 1],
+    ["-X", VINE_XN, 0, 0],
+    ["+Z", VINE_ZP, 2, 1],
+    ["-Z", VINE_ZN, 2, 0],
+  ];
+  console.log(
+    `      箱: ${boxes.map(([n, id]) => `${n}=[${blockDef(id).boxes[0].join(",")}]`).join(" / ")}` +
+      `  はしご +X=[${blockDef(LADDER).boxes[0].join(",")}]`,
+  );
+  check(
+    "板は支えのある側に厚さ 1/16 で貼り付く（はしごの 3/16 より薄い）",
+    boxes.every(([, id, axis, positive]) => {
+      const box = blockDef(id).boxes[0];
+      const min = box[axis];
+      const max = box[axis + 3];
+      return positive ? min === 0.9375 && max === 1 : min === 0 && max === 0.0625;
+    }) && blockDef(LADDER).boxes[0][0] === 0.8125,
+    boxes.map(([n, id]) => `${n}:${blockDef(id).boxes[0].join(",")}`).join(" "),
+  );
+
+  // 性質。**はしごと違うのは硬さと音だけ**（道具はどちらも斧 —— あれは「掘る速さ」の
+  // 表で、落ちるかどうかは `bladed` の側が決める）。
+  console.log(
+    `      性質: solid ${defs.map((d) => d.solid).join("/")} / opaque ${defs.map((d) => d.opaque).join("/")} / ` +
+      `硬さ ${defs.map((d) => d.hardness).join("/")} / 音 ${defs[0].sound} / 道具 ${defs[0].tool} / ` +
+      `model ${defs[0].model}（はしごは硬さ ${blockDef(LADDER).hardness} / 音 ${blockDef(LADDER).sound}）`,
+  );
+  check(
+    "4 向きとも通り抜けられて・不透明でなく・斧で 0.2・草の音",
+    defs.every((d) => !d.solid && !d.opaque && d.hardness === 0.2 && d.tool === "axe" &&
+      d.sound === "grass" && d.model === "boxes") &&
+      all.every((id) => isProp(id)),
+    defs.map((d) => `${d.id}:${d.solid}/${d.opaque}/${d.hardness}/${d.sound}`).join(" "),
+  );
+  // **旗は 2 つだけ**（登れる・刃物でだけ落ちる）。**残り 6 つは 4 向きとも偽**で、
+  // 対照に石・草むら・はしごを並べる（「いつも真」の実装がここを素通りしないため）。
+  const flags: [string, (id: number) => boolean][] = [
+    ["climbable", isClimbable],
+    ["bladed", isBladed],
+    ["stacksOnSelf", stacksOnSelf],
+    ["needsSoil", needsSoil],
+    ["replaceable", isReplaceable],
+    ["slippery", isSlippery],
+    ["sticky", isSticky],
+    ["spiky", isSpiky],
+  ];
+  for (const [name, fn] of flags)
+    console.log(
+      `      ${name}: ツタ ${all.map((id) => fn(id)).join("/")}` +
+        `  ｜ 石 ${fn(STONE)} / 草むら ${fn(TALL_GRASS)} / はしご ${fn(LADDER)}`,
+    );
+  check(
+    "4 向きとも登れて・刃物でだけ落ちる（石・草むら・はしごは登れない側の対照）",
+    all.every((id) => isClimbable(id) && isBladed(id)) &&
+      !isClimbable(STONE) && !isClimbable(TALL_GRASS) && isClimbable(LADDER) &&
+      !isBladed(LADDER) && !isBladed(STONE),
+    all.map((id) => `${id}:${isClimbable(id)}/${isBladed(id)}`).join(" "),
+  );
+  check(
+    "stacksOnSelf も needsSoil も replaceable も slippery も sticky も spiky も付いていない",
+    all.every((id) =>
+      !stacksOnSelf(id) && !needsSoil(id) && !isReplaceable(id) &&
+      !isSlippery(id) && !isSticky(id) && !isSpiky(id)) &&
+      isReplaceable(TALL_GRASS),
+    all.map((id) => `${id}:${stacksOnSelf(id)}/${needsSoil(id)}/${isReplaceable(id)}`).join(" "),
+  );
+  // ツタ自身は支えになれない（薄い板なので `canSupport()` を通らない）。
+  check(
+    "ツタの上には松明を置けない",
+    all.every((id) => !canSupport(id, FACE_YP) && !supportsBlock(id, FACE_YP, TORCH)),
+    `canSupport ${canSupport(VINE, FACE_YP)}`,
   );
 }
 

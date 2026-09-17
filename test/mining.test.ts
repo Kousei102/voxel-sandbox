@@ -12,6 +12,10 @@ import {
   IRON_ORE,
   LEAVES,
   STONE,
+  VINE,
+  VINE_XN,
+  VINE_ZN,
+  VINE_ZP,
   WATER,
   WHEAT_CROP_RIPE,
   WOOD,
@@ -261,7 +265,7 @@ function bladedBlocks(): void {
     ["木の斧", WOOD_AXE],
   ];
   console.log("      ブロック      " + kit.map(([n]) => n.padStart(9)).join(""));
-  for (const block of [COBWEB, STONE]) {
+  for (const block of [COBWEB, VINE, STONE]) {
     const cells = kit.map(([, tool]) => {
       const text = breakTime(block, tool).toFixed(2) + (canHarvest(block, tool) ? "" : "x");
       return text.padStart(9);
@@ -306,5 +310,48 @@ function bladedBlocks(): void {
     Math.abs(breakTime(COBWEB, NO_ITEM) - 6) < 1e-9 &&
       Math.abs(breakTime(COBWEB, WOOD_PICKAXE) - 6) < 1e-9,
     `${breakTime(COBWEB, NO_ITEM).toFixed(3)} 秒`,
+  );
+
+  // --- ツタ（183..186）も同じ 1 行で効く。**旗が 2 つ目のブロックに乗った初めての例** ---
+  // **ツタは `tool: "axe"` を持つ**（クモの巣は `tool` を書いていない）ので、
+  // **「掘る速さの表」と「落ちるかどうか」が別であること**がここでだけ見える。
+  const vineKit: [string, number][] = [
+    ["素手", NO_ITEM],
+    ["木の斧", WOOD_AXE],
+    ["木の剣", WOOD_SWORD],
+    ["シアーズ", SHEARS],
+  ];
+  console.log(
+    `      ツタ: ${vineKit
+      .map(([n, tool]) => `${n} ${canHarvest(VINE, tool)}（${breakTime(VINE, tool).toFixed(2)} 秒）`)
+      .join(" / ")}`,
+  );
+  check(
+    "ツタは剣とシアーズでだけ落ちる（素手と斧では 1 個も落ちない）",
+    !canHarvest(VINE, NO_ITEM) && !canHarvest(VINE, WOOD_AXE) &&
+      canHarvest(VINE, WOOD_SWORD) && canHarvest(VINE, SHEARS),
+    vineKit.map(([n, tool]) => `${n}:${canHarvest(VINE, tool)}`).join(" "),
+  );
+  // **4 向きとも同じであること** —— 旗は `def()` 4 つに撒いてあるので、1 つ書き忘れても
+  // 大元だけ見ていると気付けない（向き違いは掘る側からは大元と見分けが付かない）。
+  check(
+    "4 向きとも同じ（旗を 1 つでも書き忘れると、その向きだけ素手で落ちる）",
+    [VINE, VINE_XN, VINE_ZP, VINE_ZN].every(
+      (id) => !canHarvest(id, NO_ITEM) && canHarvest(id, WOOD_SWORD),
+    ),
+    [VINE, VINE_XN, VINE_ZP, VINE_ZN]
+      .map((id) => `${id}:素手 ${canHarvest(id, NO_ITEM)}/剣 ${canHarvest(id, WOOD_SWORD)}`)
+      .join(" "),
+  );
+  // **`tool: "axe"` は「掘る速さ」の表**なので、斧は**速くなるだけで 1 個も落ちません**
+  // （鉄鉱石を石のツルハシで掘るのと同じ形）。**ここでは適正の倍率（1.5 : 5）のほうが
+  // 効くので、斧 0.5 秒は剣 0.3 秒より遅い** —— 硬さ 0.2 x 5 / 速さ 2 = 0.5。
+  check(
+    "斧は速さだけを変える（0.2 x 5 / 2 = 0.5 秒。落ちないので素手の 1.0 秒より速いだけ）",
+    Math.abs(breakTime(VINE, WOOD_AXE) - 0.5) < 1e-9 &&
+      Math.abs(breakTime(VINE, NO_ITEM) - 1) < 1e-9 &&
+      Math.abs(breakTime(VINE, WOOD_SWORD) - 0.3) < 1e-9,
+    `素手 ${breakTime(VINE, NO_ITEM).toFixed(2)} / 斧 ${breakTime(VINE, WOOD_AXE).toFixed(2)} / ` +
+      `剣 ${breakTime(VINE, WOOD_SWORD).toFixed(2)} 秒`,
   );
 }

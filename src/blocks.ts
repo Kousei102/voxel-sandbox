@@ -588,6 +588,36 @@ export const SPRUCE_SAPLING = 165;
  */
 export const CLAY = 168;
 
+/**
+ * ツタ（34a・壁に掛かるところまで）。**はしご（145..148）とまったく同じ
+ * 「壁掛け 4 向き」**で、違うのは**色・厚さ（1/16。はしごの 3/16 より薄い）・
+ * 硬さ・音**と、**刃物でだけ落ちる（`bladed`）**ところだけです。
+ *
+ * `VINE` が大元で、**アイテム 183 もこれ**（`variantOf` を書かないので、ブロック →
+ * アイテムの for が同じ番号のアイテムを作ります）。184..186 は `variantOf: VINE` を
+ * 持つので**アイテムが作られず**、掘ると `baseBlock()` = 183 が落ちます
+ * （`items.ts` の `DROPS` に 0 行）。**`MAX_ITEM_ID` だけは伸ばすこと。**
+ *
+ * **旗は 2 つ**（どちらも表 1 本。数値は 1 つも持ちません）:
+ *
+ * - **`climbable`（`isClimbable()`）** —— はしごと同じで登れる。
+ *   **どれだけ速いかは `player.ts` の `LADDER_CLIMB_SPEED`**
+ * - **`bladed`（`isBladed()`）** —— 刃物（剣かシアーズ）でだけ落ちる。
+ *   **`tool: "sword"` と書かないこと** —— 書くと剣が採掘道具になって速く掘れます。
+ *   **何が刃物かは `items.ts` の `isBlade()`**、効くのは `mining.ts` の
+ *   `canHarvest()` の 1 行（どちらも ±0 行）
+ *
+ * **`replaceable` も `stacksOnSelf` も `needsSoil` も付けないこと** —— `replaceable` は
+ * `placeSpot()` が狙ったマス自身を返して置けなくなり、`stacksOnSelf` は
+ * **`supportFace` の向きの自分**を見るので**横に**生えます（本家のように**下へ
+ * 垂れる**のと、森の葉から自然に生えるのは **34b**。`supportFace` はブロック 1 つに
+ * 1 向きしか持てないので、「壁か、真上のツタか」の 2 つ目の候補が要ります）。
+ */
+export const VINE = 183;
+export const VINE_XN = 184;
+export const VINE_ZP = 185;
+export const VINE_ZN = 186;
+
 /** 上付きハーフ。見た目と当たり判定だけが違うので、大元は下付きのハーフ。 */
 export const STONE_SLAB_TOP = 64;
 export const COBBLE_SLAB_TOP = 65;
@@ -735,6 +765,18 @@ export const LADDER_BOX_XP: BoxList = [[1 - LADDER_THICKNESS, 0, 0, 1, 1, 1]];
 export const LADDER_BOX_XN: BoxList = [[0, 0, 0, LADDER_THICKNESS, 1, 1]];
 export const LADDER_BOX_ZP: BoxList = [[0, 0, 1 - LADDER_THICKNESS, 1, 1, 1]];
 export const LADDER_BOX_ZN: BoxList = [[0, 0, 0, 1, 1, LADDER_THICKNESS]];
+/**
+ * ツタ。**はしごとまったく同じ持ち方の 4 向き**で、違うのは厚さだけ ——
+ * **1/16（本家と同じ）で、はしごの 3/16 より薄い**。
+ *
+ * **`LADDER_BOX_*` を撒かないこと** —— 厚さが変わったときに片方だけ動いて、
+ * 絵でしか気付けない形で食い違う（`LADDER_THICKNESS` と同じで名前で持つ）。
+ */
+const VINE_THICKNESS = 0.0625;
+export const VINE_BOX_XP: BoxList = [[1 - VINE_THICKNESS, 0, 0, 1, 1, 1]];
+export const VINE_BOX_XN: BoxList = [[0, 0, 0, VINE_THICKNESS, 1, 1]];
+export const VINE_BOX_ZP: BoxList = [[0, 0, 1 - VINE_THICKNESS, 1, 1, 1]];
+export const VINE_BOX_ZN: BoxList = [[0, 0, 0, 1, 1, VINE_THICKNESS]];
 /**
  * ベッドの高さ。本家と同じ 9/16。**`PLAYER_SIZE.step`（0.6）より低いこと** ——
  * 超えると歩いて乗れなくなり、寝床の縁で跳ばされる。
@@ -1095,8 +1137,32 @@ const LADDER_OPTS = {
   sound: "wood" as const,
   model: "boxes" as const,
   // 4 向きが一度にこれを持つ（向き違いも `LADDER_OPTS` を撒いているため）。
-  // **他のブロックに付けないこと** —— ツタも足場もまだ無い。
+  // **`VINE_OPTS` へ撒かないこと** —— ツタは厚さも音も硬さも違い、旗も
+  // `bladed` が 1 つ多い（2026-09-17 の 34a で、別の定数として足した）。
   climbable: true,
+};
+
+/**
+ * ツタの 4 向きで共通の見た目と性質（34a）。**`LADDER_OPTS` とは別の定数**で、
+ * 違うのは**硬さ 0.2（はしごの 0.4 より柔らかい）・音（草）・`bladed` の旗**の 3 つ。
+ * `boxes` と `supportFace` と `variantOf` だけが向きごとに違うのは、はしごと同じ持ち方。
+ *
+ * **`blocksSky` を書かないこと**（既定は `opaque` = false）—— 壁に貼っただけの薄い板で
+ * 屋根にはならないので、止めても見えるところは変わらず、下のマスが暗くなるだけ損をする。
+ *
+ * **`tool: "axe"` は「掘る速さ」の表**で、落ちるかどうかは `bladed` の側が決めます
+ * （斧で速く掘れるが 1 個も落ちない、が正しい形）。
+ */
+const VINE_COLORS = { top: 0x306d18, side: 0x2a5e15, bottom: 0x24500f };
+const VINE_OPTS = {
+  opaque: false,
+  solid: false,
+  hardness: 0.2,
+  tool: "axe" as const,
+  sound: "grass" as const,
+  model: "boxes" as const,
+  climbable: true,
+  bladed: true,
 };
 
 function def(
@@ -1867,6 +1933,33 @@ export const BLOCKS: readonly BlockDef[] = [
     variantOf: LADDER,
   }),
 
+  // ツタ（上のコメント）。**はしごの 4 行とまったく同じ形**で、違うのは
+  // 撒く定数（`VINE_OPTS`）と箱だけ。大元（183）も向き違い（184..186）も同じ性質。
+  // **`replaceable` も `stacksOnSelf` も `needsSoil` も書かないこと**（上のコメント）。
+  def(VINE, "ツタ", VINE_COLORS, {
+    ...VINE_OPTS,
+    boxes: VINE_BOX_XP,
+    supportFace: FACE_XP,
+  }),
+  def(VINE_XN, "ツタ", VINE_COLORS, {
+    ...VINE_OPTS,
+    boxes: VINE_BOX_XN,
+    supportFace: FACE_XN,
+    variantOf: VINE,
+  }),
+  def(VINE_ZP, "ツタ", VINE_COLORS, {
+    ...VINE_OPTS,
+    boxes: VINE_BOX_ZP,
+    supportFace: FACE_ZP,
+    variantOf: VINE,
+  }),
+  def(VINE_ZN, "ツタ", VINE_COLORS, {
+    ...VINE_OPTS,
+    boxes: VINE_BOX_ZN,
+    supportFace: FACE_ZN,
+    variantOf: VINE,
+  }),
+
   // 本棚（上のコメント）。**鉱物の立方体 3 つとまったく同じ形の定義**で、違うのは
   // 色・硬さ・道具だけ。**`boxes` も `model` も `variantOf` も書かないこと** ——
   // 既定のまま（`opaque` / `solid` が true・`FULL_BOX`・`model: "cube"`）が普通の立方体。
@@ -2241,6 +2334,27 @@ const LADDER_BY_SUPPORT: readonly number[] = [
   LADDER_ZN,
 ];
 
+/**
+ * 「支えのある向き」からツタのブロックを選ぶ表。**壁の 4 面だけ** ——
+ * 床にも天井にも付かない（この周は、はしごとまったく同じ置き方まで）。
+ *
+ * **`LADDER_BY_SUPPORT` を写して書き換えたものではなく、別の表**です
+ * （松明とはしごを分けてあるのと同じ理由。共有すると、片方を並べ替えたときに
+ * もう片方が黙って壊れます）。添字は面番号。
+ *
+ * **本家の「壁が無くても真上のツタにぶら下がる」はまだありません**（34b）——
+ * `supportFace` はブロック 1 つに 1 向きしか持てないので、**2 つ目の候補**を
+ * `canPlaceAt()` / `breakUnsupported()` / `supportsBlock()` に通す話になります。
+ */
+const VINE_BY_SUPPORT: readonly number[] = [
+  VINE,
+  VINE_XN,
+  AIR, // 天井から吊り下げられない（下へ垂れるのは 34b）
+  AIR, // 床には立たない（はしごと同じ）
+  VINE_ZP,
+  VINE_ZN,
+];
+
 export function isOpaque(id: number): boolean {
   return OPAQUE[id] === 1;
 }
@@ -2430,6 +2544,14 @@ export function ladderVariant(face: number): number {
 }
 
 /**
+ * ツタを「支えが face の向きにある」場所へ置くときのブロック。置けないなら AIR。
+ * `ladderVariant()` と同じ形だが、**表は別**（上のコメント）。
+ */
+export function vineVariant(face: number): number {
+  return VINE_BY_SUPPORT[face] ?? AIR;
+}
+
+/**
  * 「どこになら付けられるか」の言い分け。**表から引くこと** ——
  * `base === LADDER` と書くと、置き方を増やしたときに文だけが嘘になります。
  *
@@ -2603,6 +2725,7 @@ export function placeSpot(aim: PlaceAim, facing: number): PlaceSpot {
 export function placedVariant(base: number, ctx: PlaceContext): number {
   if (base === TORCH) return torchVariant(ctx.support);
   if (base === LADDER) return ladderVariant(ctx.support);
+  if (base === VINE) return vineVariant(ctx.support);
   // ベッドは置く人が向いている先が枕になるので、**クリックしたマスは必ず足側**。
   // 上下の反転は無いので `placedUpper()` は通さない。
   if (base === BED) {
