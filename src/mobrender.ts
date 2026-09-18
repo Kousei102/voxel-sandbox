@@ -23,7 +23,7 @@ import {
 } from "three";
 import { BLOCK_SHADE, SKY_SHADE } from "./meshbuild";
 import { buildMobMesh, type MobPartMesh } from "./mobmesh";
-import { MOBS, mobRgb, walkSwing, type Mob, type MobKind } from "./mobs";
+import { MOBS, mobRgb, mobVariant, walkSwing, type Mob, type MobKind } from "./mobs";
 import { BLOCK_LIGHT, SKY_LIGHT } from "./lighting";
 import { LIGHT_ATTRIBUTE, useTerrainLighting } from "./terrainshader";
 import type { World } from "./world";
@@ -31,6 +31,11 @@ import type { World } from "./world";
 interface Rig {
   readonly root: Group;
   readonly parts: { readonly mesh: Mesh; readonly part: MobPartMesh }[];
+  /**
+   * いま貼ってある姿（`mobVariant()` の返す数）。**変わったら作り直す** ——
+   * どの数が何の姿かは `mobs.ts` が決めていて、ここは「変わったか」しか見ない。
+   */
+  readonly variant: number;
   /** 前フレームの光量 0..15。変わったときだけ属性を書き直す。 */
   sky: number;
   block: number;
@@ -53,8 +58,13 @@ export class MobRenderer {
   private readonly hurtMaterial: MeshBasicMaterial;
   private readonly burnMaterial: MeshBasicMaterial;
   private readonly rigs = new Map<number, Rig>();
-  /** 種類ごとの形。1 回作って使い回す（幾何は全個体で同じ）。 */
-  private readonly shapes = new Map<MobKind, MobPartMesh[]>();
+  /**
+   * 種類と姿ごとの形。1 回作って使い回す（幾何は同じ姿の全個体で同じ）。
+   *
+   * **鍵を種類だけに戻さないこと** —— 姿の違う個体が同じ形を共有して、
+   * **先に湧いたほうの姿で全部が描かれる。**
+   */
+  private readonly shapes = new Map<string, MobPartMesh[]>();
 
   constructor(
     private readonly scene: Scene,
@@ -75,9 +85,17 @@ export class MobRenderer {
 
     for (const mob of mobs) {
       alive.add(mob.id);
+      // 姿が変わったら作り直す。**光の控え（sky / block）は引き継がないこと** ——
+      // `createRig()` が -1 に戻すので、次の `applyLight()` が必ず貼り直す
+      // （引き継ぐと、姿が変わった瞬間だけ光が古いまま残る）。
+      const variant = mobVariant(mob);
       let rig = this.rigs.get(mob.id);
+      if (rig && rig.variant !== variant) {
+        disposeRig(rig);
+        rig = undefined;
+      }
       if (!rig) {
-        rig = this.createRig(mob.kind);
+        rig = this.createRig(mob.kind, variant);
         this.rigs.set(mob.id, rig);
       }
 
@@ -112,11 +130,12 @@ export class MobRenderer {
     }
   }
 
-  private createRig(kind: MobKind): Rig {
-    let shape = this.shapes.get(kind);
+  private createRig(kind: MobKind, variant: number): Rig {
+    const key = `${kind}:${variant}`;
+    let shape = this.shapes.get(key);
     if (!shape) {
-      shape = buildMobMesh(MOBS[kind], mobRgb);
-      this.shapes.set(kind, shape);
+      shape = buildMobMesh(MOBS[kind], mobRgb, variant);
+      this.shapes.set(key, shape);
     }
 
     const root = new Group();
@@ -138,7 +157,7 @@ export class MobRenderer {
       parts.push({ mesh, part });
     }
     this.scene.add(root);
-    return { root, parts, sky: -1, block: -1 };
+    return { root, parts, variant, sky: -1, block: -1 };
   }
 
   /**

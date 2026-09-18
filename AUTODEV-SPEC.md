@@ -1,6 +1,6 @@
 # 仕様: 刈られた羊が見て分かること（キューの 12・**ID 0 個**）
 
-状態: 未着手
+状態: 済
 差し戻し: 0 回
 
 **先に読むこと**: `rules/mobs.md`（全部）/ `rules/meshing-render.md`（撮る所）/ `rules/testing.md`。

@@ -65,11 +65,14 @@ import {
   canSpawnPassive,
   hostileFor,
   mobRgb,
+  mobVariant,
   spawnLight,
   sunlightBurns,
   teleportSpot,
   walkSwing,
+  variantBoxes,
   type Mob,
+  type MobBox,
   type MobContext,
   type MobDef,
   type MobDropStack,
@@ -113,14 +116,43 @@ function quiet(arena: Arena): Arena {
   return arena;
 }
 
-/** 部位の箱をすべて足した体積。裏返りが 1 面でもあると符号つき体積とずれる。 */
-function boxVolume(def: MobDef, group: number): number {
+/**
+ * 部位の箱をすべて足した体積。裏返りが 1 面でもあると符号つき体積とずれる。
+ *
+ * **箱を受け取る形にしてあること**（`def.boxes` を直に読まないこと）——
+ * 読むと、刈られた姿のような変種を測っているつもりで既定の箱を見る。
+ */
+function boxVolume(boxes: readonly MobBox[], group: number): number {
   let total = 0;
-  for (const b of def.boxes) {
+  for (const b of boxes) {
     if (b.group !== group) continue;
     total += (b.box[3] - b.box[0]) * (b.box[4] - b.box[1]) * (b.box[5] - b.box[2]);
   }
   return total;
+}
+
+/** 部位（グループ）1 つぶんの外形。`pivot` を足した位置で見る。 */
+function groupExtent(def: MobDef, boxes: readonly MobBox[], group: number): [number, number, number] {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const b of boxes) {
+    if (b.group !== group) continue;
+    const p = def.groups[b.group].pivot;
+    minX = Math.min(minX, p[0] + b.box[0]);
+    maxX = Math.max(maxX, p[0] + b.box[3]);
+    minY = Math.min(minY, p[1] + b.box[1]);
+    maxY = Math.max(maxY, p[1] + b.box[4]);
+    minZ = Math.min(minZ, p[2] + b.box[2]);
+    maxZ = Math.max(maxZ, p[2] + b.box[5]);
+  }
+  return [maxX - minX, maxY - minY, maxZ - minZ];
+}
+
+/** 2 色の隔たり（`test/items.test.ts` の `dist` と同じ式）。 */
+function colorDist(a: number, b: number): number {
+  const dr = ((a >> 16) & 255) - ((b >> 16) & 255);
+  const dg = ((a >> 8) & 255) - ((b >> 8) & 255);
+  const db = (a & 255) - (b & 255);
+  return Math.sqrt(dr * dr + dg * dg + db * db);
 }
 
 function stripComments(path: string): string {
@@ -181,8 +213,17 @@ export function run(): void {
     // **搾れるかどうかもここに足すこと。** ミルクは見た目に出ない（手の中で入れ替わる
     // だけ）が、「誰から搾れるか」が描画側に生えると、牛を捕まえるまで確かめられない。
     "milkable",
+    // **刈られた「姿」もここに足すこと。** 描画側は `mobVariant()` の返す数だけを見て、
+    // その数が何を意味するかを知らない。知った瞬間、「いつ刈られた姿か」が
+    // `mobs.ts` と 2 か所に分かれて、片方だけ直す形が戻る。
+    "shorn",
   ].filter((name) => renderSource.includes(name));
   check("mobrender.ts に判断が漏れていない", decisions.length === 0, decisions.join(" "));
+
+  // **種類の名前を 1 つも書かないこと。** 形を種類と姿で引くようになっても、
+  // 「羊なら」という分岐が生えたらそこから先はブラウザを開くまで確かめられない。
+  const namedKinds = MOB_KINDS.filter((k) => renderSource.includes(`"${k}"`));
+  check("mobrender.ts に種類の名前が直書きされていない", namedKinds.length === 0, namedKinds.join(" "));
 
   const lines = (path: string) => readFileSync(path, "utf8").split("\n").length;
   console.log(
@@ -194,14 +235,22 @@ export function run(): void {
   describe("モブの形");
 
   console.log("      種類   部位  頂点  当たり判定      モデルの外形 (x, y, z)");
-  for (const kind of MOB_KINDS) {
-    const def = MOBS[kind];
-    const parts = buildMobMesh(def, mobRgb);
+
+  /**
+   * 形 1 つぶんの 5 件。**姿（変種）が増えても同じ 5 件を掛けること** ——
+   * 括り出す前は既定の箱しか見ておらず、刈られた羊のような 2 つ目の姿が
+   * 巡回順も当たり判定も**1 件も検査されないまま**通っていた。
+   */
+  function checkShape(label: string, def: MobDef, boxes: readonly MobBox[], variant: number): void {
+    const parts = buildMobMesh(def, mobRgb, variant);
+    // 渡した箱と、`buildMobMesh()` が実際に積む箱が同じものであること
+    // （ずれていると、既定の箱を測って「変種も通った」と言うことになる）。
+    check(`${label}: 積んだ箱が variantBoxes(${variant}) と同じ`, variantBoxes(def, variant) === boxes);
 
     // モデル全体の外形。グループの pivot を足した位置で見る。
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
     let vertices = 0;
-    for (const b of def.boxes) {
+    for (const b of boxes) {
       const p = def.groups[b.group].pivot;
       minX = Math.min(minX, p[0] + b.box[0]);
       maxX = Math.max(maxX, p[0] + b.box[3]);
@@ -213,7 +262,7 @@ export function run(): void {
     for (const part of parts) vertices += part.mesh.positions.length / 3;
 
     console.log(
-      `      ${def.name.padEnd(5)} ${String(parts.length).padStart(3)}` +
+      `      ${label.padEnd(5)} ${String(parts.length).padStart(3)}` +
         ` ${String(vertices).padStart(5)}` +
         `  ${def.size.half * 2} x ${def.size.height}` +
         `      ${(maxX - minX).toFixed(3)} x ${(maxY - minY).toFixed(3)} x ${(maxZ - minZ).toFixed(3)}`,
@@ -222,16 +271,16 @@ export function run(): void {
     // 巡回順と体積。1 面でも裏返っていると、裏面カリングでそこが丸ごと消える。
     let volumeError = 0;
     for (let g = 0; g < parts.length; g++) {
-      verifyWinding(`${def.name}[${g}]`, parts[g].mesh, null);
-      volumeError = Math.max(volumeError, Math.abs(signedVolume(parts[g].mesh) - boxVolume(def, g)));
+      verifyWinding(`${label}[${g}]`, parts[g].mesh, null);
+      volumeError = Math.max(volumeError, Math.abs(signedVolume(parts[g].mesh) - boxVolume(boxes, g)));
     }
-    check(`${def.name}: 体積が箱の合計と一致（裏返りなし）`, volumeError < 1e-6, `ずれ ${volumeError.toExponential(2)}`);
-    check(`${def.name}: 頂点数が箱の数と合う`, vertices === def.boxes.length * 24, `${vertices} / ${def.boxes.length * 24}`);
+    check(`${label}: 体積が箱の合計と一致（裏返りなし）`, volumeError < 1e-6, `ずれ ${volumeError.toExponential(2)}`);
+    check(`${label}: 頂点数が箱の数と合う`, vertices === boxes.length * 24, `${vertices} / ${boxes.length * 24}`);
 
     // **振る部位は軸からぶら下がっていること。** y1 が 0 でないと足首で回り、
     // 見た目には「アニメがおかしい」という形でしか出ない。
-    const badPivot = def.boxes.filter((b) => def.groups[b.group].motion === "swing" && b.box[4] !== 0);
-    check(`${def.name}: 振る部位は軸からぶら下がる`, badPivot.length === 0, `${badPivot.length} 個が y1 ≠ 0`);
+    const badPivot = boxes.filter((b) => def.groups[b.group].motion === "swing" && b.box[4] !== 0);
+    check(`${label}: 振る部位は軸からぶら下がる`, badPivot.length === 0, `${badPivot.length} 個が y1 ≠ 0`);
 
     // モデルが当たり判定からはみ出すと、壁にめり込んで見える。
     // **後ろ（+Z）だけは四足の胴がはみ出してよい**（マイクラも同じで、豚の胴は
@@ -245,7 +294,7 @@ export function run(): void {
       (longBody || maxZ <= def.size.half + 1e-9) &&
       maxY <= def.size.height + 1e-9;
     check(
-      `${def.name}: モデルが当たり判定に収まる${longBody ? "（後ろを除く）" : ""}`,
+      `${label}: モデルが当たり判定に収まる${longBody ? "（後ろを除く）" : ""}`,
       fits,
       `前と横 ${front.toFixed(3)} / 後ろ ${maxZ.toFixed(3)}` +
         ` / 高さ ${maxY.toFixed(3)} / 判定 ±${def.size.half} x ${def.size.height}`,
@@ -257,8 +306,16 @@ export function run(): void {
       for (const c of part.mesh.colors) if (!(c >= 0 && c <= 1)) badColor++;
       if (part.mesh.light.length !== (part.mesh.positions.length / 3) * 2) badLight++;
     }
-    check(`${def.name}: 色が 0..1 に収まる`, badColor === 0, `${badColor} 件`);
-    check(`${def.name}: 光の属性が頂点数 x 2`, badLight === 0);
+    check(`${label}: 色が 0..1 に収まる`, badColor === 0, `${badColor} 件`);
+    check(`${label}: 光の属性が頂点数 x 2`, badLight === 0);
+  }
+
+  for (const kind of MOB_KINDS) checkShape(MOBS[kind].name, MOBS[kind], MOBS[kind].boxes, 0);
+  // **2 つ目の姿にも同じ 5 件を掛ける**（既定の姿は上の行で今までどおりの名前で通る）。
+  for (const kind of MOB_KINDS) {
+    const def = MOBS[kind];
+    if (def.shornBoxes === null) continue;
+    checkShape(`${def.name}（刈られた）`, def, def.shornBoxes, 1);
   }
 
   // **クモの脚は胴より外へ出ていること。** 箱としては正しくても、暗い胴の中に
@@ -286,6 +343,114 @@ export function run(): void {
       legs > body && legs <= def.size.half + 1e-9,
       `脚 ${legs.toFixed(3)} / 胴 ${body.toFixed(3)} / 判定 ${def.size.half}`,
     );
+  }
+
+  describe("刈られた姿");
+
+  // **姿を持つのは羊だけ**（表から数える。種類の名前を決め打ちにしない）。
+  {
+    const shorn = MOB_KINDS.filter((k) => MOBS[k].shornBoxes !== null);
+    console.log(
+      `      姿を持つモブ: ${shorn.length} 種類（${shorn.join(" ")}）/ ` +
+        `${MOB_KINDS.length} 種類ぶん見た`,
+    );
+    check(
+      `刈られた姿を持つのは羊だけ（${MOB_KINDS.length} 種類ぶん）`,
+      shorn.length === 1 && shorn[0] === "sheep",
+      shorn.join(" "),
+    );
+    // **刈れるモブと姿を持つモブがずれていないこと**（片方だけ足すと、刈っても
+    // 見た目が変わらない／刈れないのに姿だけ持つ、のどちらかになる）。
+    check(
+      "刈れるモブと姿を持つモブが一致する",
+      MOB_KINDS.every((k) => (MOBS[k].shearing !== null) === (MOBS[k].shornBoxes !== null)),
+      MOB_KINDS.filter((k) => (MOBS[k].shearing !== null) !== (MOBS[k].shornBoxes !== null)).join(" "),
+    );
+    // **姿を持たないモブは、変種を渡されても既定の箱**（`mobrender.ts` が
+    // 1 を渡しても壊れない形にしておく）。
+    check(
+      "姿を持たないモブは変種 1 でも既定の箱",
+      MOB_KINDS.every((k) => MOBS[k].shornBoxes !== null || variantBoxes(MOBS[k], 1) === MOBS[k].boxes),
+    );
+  }
+
+  // --- 刈ると姿が変わり、羊毛が戻ると元へ戻る ---
+  {
+    const { pack, sheep, c, world } = shearArena();
+    const before = mobVariant(sheep);
+    pack.shear(sheep, c);
+    const shorn = mobVariant(sheep);
+    const regrow = MOBS.sheep.shearing?.regrow ?? 0;
+    // **境目の 1 フレーム手前で止めて、「まだ戻っていない」ことも見る**（`rules/testing.md`）。
+    for (let i = 0; i < regrow * 60 - 1; i++) pack.update(1 / 60, world, c);
+    const justBefore = mobVariant(sheep);
+    const timerBefore = sheep.woolTimer;
+    for (let i = 0; i < 2; i++) pack.update(1 / 60, world, c);
+    const back = mobVariant(sheep);
+    console.log(
+      `      姿: 刈る前 ${before} → 刈った直後 ${shorn}（残り ${sheep.woolTimer.toFixed(3)} 秒）` +
+        ` → ${regrow} 秒の 1 フレーム手前 ${justBefore}（残り ${timerBefore.toFixed(3)} 秒）` +
+        ` → ${regrow} 秒後 ${back}（残り ${sheep.woolTimer}）`,
+    );
+    check("刈る前の姿は 0", before === 0, `${before}`);
+    check("刈ると姿が 1 になる", shorn === 1, `${shorn}`);
+    check(`${regrow} 秒の 1 フレーム手前はまだ刈られた姿`, justBefore === 1 && timerBefore > 0, `${justBefore} / ${timerBefore}`);
+    check(`羊毛が戻ると姿も 0 に戻る`, back === 0 && sheep.woolTimer === 0, `${back} / ${sheep.woolTimer}`);
+  }
+
+  // --- 刈られた体は、もこもこより細い（**体だけで比べる**） ---
+  // **モデル全体で比べないこと** —— 外形は脚と頭が決めていて、刈っても変わらない。
+  {
+    const def = MOBS.sheep;
+    const shornBoxes = def.shornBoxes ?? def.boxes;
+    const wool = groupExtent(def, def.boxes, 0);
+    const skin = groupExtent(def, shornBoxes, 0);
+    const whole = (boxes: readonly MobBox[]): string => {
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      for (const b of boxes) {
+        const p = def.groups[b.group].pivot;
+        minX = Math.min(minX, p[0] + b.box[0]);
+        maxX = Math.max(maxX, p[0] + b.box[3]);
+        minY = Math.min(minY, p[1] + b.box[1]);
+        maxY = Math.max(maxY, p[1] + b.box[4]);
+        minZ = Math.min(minZ, p[2] + b.box[2]);
+        maxZ = Math.max(maxZ, p[2] + b.box[5]);
+      }
+      return `${(maxX - minX).toFixed(3)} x ${(maxY - minY).toFixed(3)} x ${(maxZ - minZ).toFixed(3)}`;
+    };
+    console.log(
+      `      体（group 0）: もこもこ ${wool.map((n) => n.toFixed(3)).join(" x ")}` +
+        ` → 刈られた ${skin.map((n) => n.toFixed(3)).join(" x ")}`,
+    );
+    console.log(`      モデル全体: もこもこ ${whole(def.boxes)} → 刈られた ${whole(shornBoxes)}（変わらない）`);
+    check(
+      "刈られた体は 3 軸とももこもこより細い",
+      skin.every((n, i) => n < wool[i] - 1e-9),
+      `${skin.map((n) => n.toFixed(3)).join(" x ")} / ${wool.map((n) => n.toFixed(3)).join(" x ")}`,
+    );
+    // **骨組みは使い回すこと**（`pivot` と `motion` を変えると描画側に部位の分岐が生える）。
+    check(
+      "刈られた姿もグループの数と使うグループが同じ",
+      new Set(shornBoxes.map((b) => b.group)).size === new Set(def.boxes.map((b) => b.group)).size &&
+        shornBoxes.every((b) => b.group < def.groups.length),
+    );
+  }
+
+  // --- 地肌の色が羊毛からも顔・脚からも見分けられること ---
+  // **同じ色どうしが隣り合うと、箱としては正しくても 1 画素も分かれて見えない**
+  // （鶏の翼・牛の頭で 2 度踏んだ罠。`rules/mobs.md`）。**両方の実測値を出してから判定**。
+  {
+    const skin = MOBS.sheep.shornBoxes?.[0].color ?? 0;
+    const wool = MOBS.sheep.boxes[0].color;
+    const face = MOBS.sheep.boxes[MOBS.sheep.boxes.length - 1].color;
+    const fromWool = colorDist(skin, wool);
+    const fromFace = colorDist(skin, face);
+    console.log(
+      `      地肌 #${skin.toString(16)}: 羊毛 #${wool.toString(16)} から ${fromWool.toFixed(1)}` +
+        ` / 顔と脚 #${face.toString(16)} から ${fromFace.toFixed(1)}`,
+    );
+    check("地肌は羊毛から 40 以上離れている", fromWool >= 40, `${fromWool.toFixed(1)}`);
+    check("地肌は顔と脚から 20 以上離れている", fromFace >= 20, `${fromFace.toFixed(1)}`);
   }
 
   describe("モブの歩行位相");

@@ -1076,6 +1076,43 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
       note: `${mobs.count} 体: ${MOB_KINDS.join(" / ")}`,
     };
   },
+
+  /**
+   * もこもこの羊と、刈られた羊を並べる。**`mobs` の場面には出ない** ——
+   * あちらは `spawn()` したてなので `woolTimer` が 0 で、全部もこもこになる
+   * （苗木・ケーキと同じで、「時間が経たないと見えないもの」は撮る前に作ること）。
+   *
+   * **`woolTimer` を直に書き換えないこと** —— `shear()` を通せば、刈る側の判断
+   * （`canShear()` と `ShearRule`）ごと絵になる。
+   *
+   * **寄りすぎないこと（2026-09-18 に 5 枚無駄に撮った）。** 目の高さ（`y + 1.7`）で
+   * 4 マスまで寄ると、**画の下半分の地面が 1 枚も描かれず空色に抜けます** ——
+   * 地形を平らに埋め直しても、`primeAround` を 3 回流しても直りません
+   * （**カメラが低くて近いほうが原因**で、`y + 2.2` まで上げて 6.5 マス引いたら消えた）。
+   * **`mobs` の場面と同じ構え方にしておくこと。**
+   */
+  sheep(setup) {
+    const { scene, world } = makeWorld(OVERWORLD, 4);
+    const y = world.surfaceY(0, 0);
+    const mobs = new Mobs();
+    const renderer = new MobRenderer(scene, world.daylightUniform());
+    // **2 体を同じ向きにすること** —— 向きが違うと、細くなったのか横を向いたのか
+    // 分からない。少し斜めに向けて、胴の長さと高さの両方が輪郭に出るようにする。
+    const facing = Math.PI * 0.8;
+    // 足元は自分の列の地面に合わせる（`mobs` の場面と同じ。虚空に浮かせない）。
+    const woolly = mobs.spawn("sheep", -2.2, world.surfaceY(-2, 0), 0, facing);
+    const shorn = mobs.spawn("sheep", 2.2, world.surfaceY(2, 0), 0, facing);
+    const cut = mobs.shear(shorn, { playerX: 0, playerY: y, playerZ: 8, brightness: 1 });
+    renderer.sync(mobs.list, world);
+    return {
+      scene,
+      camera: look(setup, new Vector3(0, y + 2.2, 6.5), new Vector3(0, y + 0.9, 0)),
+      dayNight: skyOf(OVERWORLD, setup.time),
+      note:
+        `左 もこもこ（残り ${woolly.woolTimer} 秒）/ ` +
+        `右 刈られた（刈れた ${cut} ・残り ${shorn.woolTimer} 秒）/ 地面 y=${y}`,
+    };
+  },
 };
 
 function parse(argv: readonly string[]): { names: string[]; setup: Setup; out: string } {

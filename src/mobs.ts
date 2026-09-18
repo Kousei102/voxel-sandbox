@@ -378,6 +378,18 @@ export interface MobDef {
   readonly voice: number;
   readonly groups: readonly MobGroup[];
   readonly boxes: readonly MobBox[];
+  /**
+   * 刈られているあいだの形。**姿が変わらないモブは `null`。**
+   *
+   * **`?:`（省略可）にしないこと** —— `BiomeDef.vine` と同じで、足し忘れが黙って通る。
+   * **`kind === "sheep"` と書かないこと**（`shearing` / `milkable` / `orbit` と同じ作法）。
+   *
+   * **`groups` はもこもこと使い回す**（`pivot` と `motion` を変えない）。変えた瞬間、
+   * `mobrender.ts` に部位の数の分岐が生える。**取り出すのは `variantBoxes()` 1 本**で、
+   * `mobmesh.ts` も `mobrender.ts` もここを直に読まないこと ——
+   * 読むと「1 は刈られた姿」という取り決めがファイル 3 つに散る。
+   */
+  readonly shornBoxes: readonly MobBox[] | null;
 }
 
 /** 1 ピクセル = 1/16 ブロック。マイクラのモデルの寸法をそのまま書けるようにする。 */
@@ -449,11 +461,18 @@ const PIG: MobDef = {
     { group: 4, box: [px(-2), px(-6), px(-2), px(2), 0, px(2)], color: PIG_SKIN },
     { group: 5, box: [px(-2), px(-6), px(-2), px(2), 0, px(2)], color: PIG_SKIN },
   ],
+  shornBoxes: null,
 };
 
 const SHEEP_WOOL = 0xe8e4dc;
 const SHEEP_FACE = 0xd6c8b4;
 const SHEEP_EYE = 0x2b1e1c;
+/**
+ * 刈られた地肌。**羊毛からも顔・脚からも離れていること** —— 隣り合う面が同じ色だと、
+ * 箱としては正しいのに 1 画素も分かれて見えない（`rules/mobs.md` の鶏の翼・牛の頭）。
+ * 実測は**羊毛から 82.6・顔と脚から 36.3**（`test/mobs.test.ts` が両方を出してから見張る）。
+ */
+const SHEEP_SKIN = 0xe3b09c;
 
 /**
  * 羊。豚より背が高く（1.2）、頭が体から前に出ている。
@@ -505,6 +524,30 @@ const SHEEP: MobDef = {
     { group: 1, box: [px(-2.5), px(0), px(-5.1), px(-1), px(1.5), px(-5)], color: SHEEP_EYE },
     { group: 1, box: [px(1), px(0), px(-5.1), px(2.5), px(1.5), px(-5)], color: SHEEP_EYE },
     // 脚（**軸からぶら下げる = y1 が 0**）
+    { group: 2, box: [px(-2), px(-9), px(-2), px(2), 0, px(2)], color: SHEEP_FACE },
+    { group: 3, box: [px(-2), px(-9), px(-2), px(2), 0, px(2)], color: SHEEP_FACE },
+    { group: 4, box: [px(-2), px(-9), px(-2), px(2), 0, px(2)], color: SHEEP_FACE },
+    { group: 5, box: [px(-2), px(-9), px(-2), px(2), 0, px(2)], color: SHEEP_FACE },
+  ],
+  // 刈られた姿。**骨組み（`groups`）はもこもこと同じものを使い回す** ——
+  // `pivot` も `motion` も変えないので、`mobrender.ts` に部位の分岐が 1 つも生えない。
+  //
+  // **体を低くする（上端 18 → 16.5）のが要点。** 頭（上端 18）が体から出て、
+  // 横から見た輪郭が変わる。体の外形は 0.625 x 0.563 x 1.250 → 0.438 x 0.438 x 1.063 で、
+  // **3 軸とも縮む**（`test/mobs.test.ts` が両方を出してから見張る）。
+  // **モデル全体の外形は変わらない**（0.625 x 1.125 x 1.444 のまま。脚と頭が決めている）。
+  //
+  // **脚の上端 9 と体の下端 9.5 の 0.5px の隙間を埋めないこと** ——
+  // 同じ地肌色どうしが隣り合うので、隙間と色の両方が要る（`rules/mobs.md`）。
+  shornBoxes: [
+    // 刈られた体（もこもこ [-5,9,-4]..[5,18,16] より細く・低く・短い）
+    { group: 0, box: [px(-3.5), px(9.5), px(-3), px(3.5), px(16.5), px(14)], color: SHEEP_SKIN },
+    // 頭の箱はもこもこと同じ。**色だけ地肌へ**（羊毛が無くなったのは頭も同じ）。
+    { group: 1, box: [px(-3), px(-3), px(-4), px(3), px(3), px(0)], color: SHEEP_SKIN },
+    // 顔・目・脚はもこもこと同じ箱・同じ色（**y1 === 0 を崩さない**）。
+    { group: 1, box: [px(-2.5), px(-3), px(-5), px(2.5), px(1.5), px(-4)], color: SHEEP_FACE },
+    { group: 1, box: [px(-2.5), px(0), px(-5.1), px(-1), px(1.5), px(-5)], color: SHEEP_EYE },
+    { group: 1, box: [px(1), px(0), px(-5.1), px(2.5), px(1.5), px(-5)], color: SHEEP_EYE },
     { group: 2, box: [px(-2), px(-9), px(-2), px(2), 0, px(2)], color: SHEEP_FACE },
     { group: 3, box: [px(-2), px(-9), px(-2), px(2), 0, px(2)], color: SHEEP_FACE },
     { group: 4, box: [px(-2), px(-9), px(-2), px(2), 0, px(2)], color: SHEEP_FACE },
@@ -602,6 +645,7 @@ const CHICKEN: MobDef = {
     { group: 4, box: [px(-0.6), px(-4), px(-1.5), px(0.6), 0, px(1.5)], color: CHICKEN_FEATHER },
     { group: 5, box: [px(-0.6), px(-4), px(-1.5), px(0.6), 0, px(1.5)], color: CHICKEN_FEATHER },
   ],
+  shornBoxes: null,
 };
 
 const COW_HIDE = 0x4a3728;
@@ -705,6 +749,7 @@ const COW: MobDef = {
     { group: 4, box: [px(-2), px(-12), px(-2), px(2), 0, px(2)], color: COW_HIDE },
     { group: 5, box: [px(-2), px(-12), px(-2), px(2), 0, px(2)], color: COW_HIDE },
   ],
+  shornBoxes: null,
 };
 
 const ZOMBIE_SKIN = 0x5f9e46;
@@ -773,6 +818,7 @@ const ZOMBIE: MobDef = {
     { group: 4, box: [px(-2), px(-11), px(-2), px(2), 0, px(2)], color: ZOMBIE_PANTS },
     { group: 5, box: [px(-2), px(-11), px(-2), px(2), 0, px(2)], color: ZOMBIE_PANTS },
   ],
+  shornBoxes: null,
 };
 
 const SPIDER_BODY = 0x4a3b32;
@@ -881,6 +927,7 @@ const SPIDER: MobDef = {
     { group: 9, box: [0, px(-1.4), px(-1), px(5.6), 0, px(1)], color: SPIDER_LEG },
     { group: 9, box: [px(5), px(-8), px(-1), px(6.6), 0, px(1)], color: SPIDER_LEG },
   ],
+  shornBoxes: null,
 };
 
 const SKELETON_BONE = 0xcdc8b0;
@@ -985,6 +1032,7 @@ const SKELETON: MobDef = {
     { group: 4, box: [px(-1), px(-11), px(-1), px(1), 0, px(1)], color: SKELETON_BONE },
     { group: 5, box: [px(-1), px(-11), px(-1), px(1), 0, px(1)], color: SKELETON_BONE },
   ],
+  shornBoxes: null,
 };
 
 const BLAZE_CORE = 0xd8890f;
@@ -1068,6 +1116,7 @@ const BLAZE: MobDef = {
     { group: 4, box: [px(-1), px(-12), px(-1), px(1), 0, px(1)], color: BLAZE_ROD_COLOR },
     { group: 5, box: [px(-1), px(-12), px(-1), px(1), 0, px(1)], color: BLAZE_ROD_COLOR },
   ],
+  shornBoxes: null,
 };
 
 const ENDERMAN_SKIN = 0x14121a;
@@ -1149,6 +1198,7 @@ const ENDERMAN: MobDef = {
     { group: 4, box: [px(-1), px(-26), px(-1), px(1), 0, px(1)], color: ENDERMAN_SKIN },
     { group: 5, box: [px(-1), px(-26), px(-1), px(1), 0, px(1)], color: ENDERMAN_SKIN },
   ],
+  shornBoxes: null,
 };
 
 const DRAGON_SKIN = 0x1b1424;
@@ -1266,6 +1316,7 @@ const DRAGON: MobDef = {
     // 尾（後ろへ 18px。**当たり判定 ±2 に収める**）
     { group: 6, box: [px(-3), px(-3), 0, px(3), 0, px(18)], color: DRAGON_SKIN },
   ],
+  shornBoxes: null,
 };
 
 export const MOBS: Record<MobKind, MobDef> = {
@@ -1292,6 +1343,30 @@ export const MOB_KINDS: readonly MobKind[] = [
   "enderman",
   "dragon",
 ];
+/**
+ * いまどの姿で描くか。**0 は既定・1 は刈られた姿。**
+ *
+ * **「いつ刈られた姿か」を決めるのはこの 1 か所だけ。** `mobrender.ts` が見るのは
+ * この数だけで、`woolTimer` も `shearing` も種類の名前も 1 つも知らない
+ * （知った瞬間、羊を捕まえて刈るまで確かめられない判断が描画側に生える）。
+ *
+ * **`kind === "sheep"` と書かないこと**（`shearing` / `milkable` / `orbit` と同じ作法）。
+ */
+export function mobVariant(mob: Mob): number {
+  return MOBS[mob.kind].shornBoxes !== null && mob.woolTimer > 0 ? 1 : 0;
+}
+
+/**
+ * その姿の箱。**取り出す口はここ 1 本**（`mobmesh.ts` も `mobrender.ts` も
+ * `def.shornBoxes` を直に読まないこと）—— 読むと「1 は刈られた姿」という
+ * 取り決めがファイル 3 つに散る。
+ *
+ * 姿を持たないモブは、どの変種を渡されても既定の箱を返す。
+ */
+export function variantBoxes(def: MobDef, variant: number): readonly MobBox[] {
+  return variant > 0 && def.shornBoxes !== null ? def.shornBoxes : def.boxes;
+}
+
 /** 湧きの抽選に使う受動モブ。**敵対と混ぜないこと**（湧く条件も上限も別）。 */
 const PASSIVE_KINDS: readonly MobKind[] = ["pig", "sheep", "chicken", "cow"];
 /**

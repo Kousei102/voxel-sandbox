@@ -13,7 +13,7 @@
 
 import { MAX_LIGHT } from "./constants";
 import { Builder, FACE_SHADE, type MeshArrays } from "./meshbuild";
-import type { MobBox, MobDef, MobGroup } from "./mobs";
+import { variantBoxes, type MobDef, type MobGroup } from "./mobs";
 
 export interface MobPartMesh {
   readonly group: MobGroup;
@@ -109,16 +109,23 @@ export function buildBoxMesh(
  * `Builder.quad()` の「法線の成分の和で巡回順を決める」規約は
  * **形を作るときの制約**であって `Object3D` の変換には掛からない
  * （回転は行列式 +1 なので巡回順と法線の関係は保たれる）。
+ *
+ * `variant` は姿（0 が既定・1 が刈られた姿）。**どの箱かを決めるのは
+ * `mobs.ts` の `variantBoxes()`** で、ここは受け取った箱を積むだけ ——
+ * **`def.shornBoxes` を直に読まないこと**（取り決めが 3 ファイルに散る）。
+ * **`groups` は姿をまたいで同じ**なので、グループの数も `pivot` も変わらない。
  */
 export function buildMobMesh(
   def: MobDef,
   rgbOf: (hex: number, out: Float32Array) => void,
+  variant = 0,
 ): MobPartMesh[] {
+  const boxes = variantBoxes(def, variant);
   const parts: MobPartMesh[] = [];
   for (let g = 0; g < def.groups.length; g++) {
     builder.reset();
     let any = false;
-    for (const b of def.boxes as readonly MobBox[]) {
+    for (const b of boxes) {
       if (b.group !== g) continue;
       rgbOf(b.color, rgb);
       emitBox(b.box, rgb);
@@ -126,7 +133,7 @@ export function buildMobMesh(
     }
     const mesh = any ? builder.toArrays() : null;
     // 箱が 1 つも無いグループは、そもそも定義の書き間違い。黙って飛ばさず落とす。
-    if (!mesh) throw new Error(`${def.kind}: グループ ${g} に箱が 1 つも無い`);
+    if (!mesh) throw new Error(`${def.kind}[${variant}]: グループ ${g} に箱が 1 つも無い`);
     parts.push({ group: def.groups[g], mesh });
   }
   return parts;
