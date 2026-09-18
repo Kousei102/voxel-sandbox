@@ -57,12 +57,11 @@ import {
   SUGAR_CANE,
   TALL_GRASS,
   VINE,
-  VINE_XN,
-  VINE_ZN,
-  VINE_ZP,
   WATER,
   WHEAT_CROP,
   WHEAT_CROP_RIPE,
+  baseBlock,
+  supportFace,
 } from "../src/blocks";
 import { CHUNK_VOLUME, SEA_LEVEL } from "../src/constants";
 import { Crops, SAPLING_GROW_SECONDS } from "../src/crops";
@@ -74,6 +73,19 @@ import { World, type ChunkSource } from "../src/world";
 import { encodePng, render, stats } from "./raster";
 
 const SEED = 4242;
+
+/**
+ * 面番号 → 隣のマス（`blocks.ts` の並び `0=+X 1=-X 2=+Y 3=-Y 4=+Z 5=-Z`）。
+ * **壁に貼り付くもの（ツタ）をどちらから撮るか**を決めるのに使う。
+ */
+const FACE_STEP: readonly (readonly [number, number, number])[] = [
+  [1, 0, 0],
+  [-1, 0, 0],
+  [0, 1, 0],
+  [0, -1, 0],
+  [0, 0, 1],
+  [0, 0, -1],
+];
 
 interface Shot {
   readonly camera: PerspectiveCamera;
@@ -516,70 +528,122 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
   },
 
   /**
-   * ツタ（183..186・34a + 34b）。**自然には 1 マスも生えない**（生やすのは 34c）ので、
-   * `ladders` と同じで**ここへ直に置く**しかない。見るのは 4 つ:
-   * 板が壁に貼り付いているか / **裏返っていないか**（壁の中に埋まって見えない）/
-   * **はしごと見分けが付くか**（厚さ 1/16 対 3/16・緑対木の茶）/
-   * **垂れた 2 マスが宙に浮いて見えるか**（34b。下のひさしのくだり）。
+   * ツタ（183..186）。**34c から森の木に自然に掛かる**ので、
+   * **手で置かずに「生えている所」を探して立つ**（`mushrooms` と同じ形。
+   * 34a / 34b の頃は石の柱に手で掛けていたが、あれでは
+   * **生成が本当に葉から垂らせているか**が 1 枚も撮れない）。
    *
-   * **`ladders` の場面を写している**（いちばん安い）が、**柱をもう 1 本、
-   * はしごを掛けて並べること** —— 2 つを同じ絵に入れないと「見分けが付くか」が
-   * 撮った絵から読めない（本棚の隣に板を並べてあるのと同じ理由）。
+   * 見るのは 4 つ: **葉から下へ垂れて見えるか** / 板が葉に貼り付いているか
+   * （**裏返っていないか** —— 裏返ると葉の中に埋まって見えない）/
+   * **緑（`0x306d18`）が葉（`0x3f7a3a`）と見分けられるか** /
+   * **宙にぶら下がった下のほうが切れていないか**。
+   * **厚さ（1/16 対はしごの 3/16）は `ladders` の場面で見ること。**
+   *
+   * **森は原点のまわりに無い種がある**ので、`clay` と同じで**生成器を直に舐めて
+   * 外側へ広げながら探す**（`World` で広く `primeAround` すると、探すほうが
+   * 撮るより高くつく）。
    */
   vine(setup) {
-    const { scene, world } = makeWorld(OVERWORLD, 3);
-    const pad = 6;
-    // **平らな台を作る**（`ladders` と同じ理由。地形なりだと柱が斜面に埋まる）。
-    let y = 0;
-    for (let dz = -pad; dz <= pad; dz++) {
-      for (let dx = -pad; dx <= pad; dx++) y = Math.max(y, world.surfaceY(dx, dz));
-    }
-    for (let dz = -pad; dz <= pad; dz++) {
-      for (let dx = -pad; dx <= pad; dx++) {
-        for (let h = y; h < y + 8; h++) world.setVoxel(dx, h, dz, AIR);
-        for (let h = y - 4; h < y; h++) world.setVoxel(dx, h, dz, DIRT);
-        world.setVoxel(dx, y - 1, dz, GRASS);
+    const gen = sourceOf(OVERWORLD);
+    const chunks = new Map<string, Uint8Array>();
+    const voxel = (x: number, y: number, z: number): number => {
+      const key = `${x >> 4},${y >> 4},${z >> 4}`;
+      let chunk = chunks.get(key);
+      if (!chunk) {
+        chunk = new Uint8Array(CHUNK_VOLUME);
+        gen.generateChunk(x >> 4, y >> 4, z >> 4, chunk);
+        chunks.set(key, chunk);
+      }
+      return chunk[(((y & 15) * 16) + (z & 15)) * 16 + (x & 15)];
+    };
+    // **木の掛かる帯だけ見ること**（地表 41..75 + 木の高さ）。世界の 256 段を
+    // 舐めるとチャンクを 16 倍作ることになる。
+    const found: Vector3[] = [];
+    for (let ring = 0; ring <= 8 && found.length === 0; ring++) {
+      for (let cx = -ring; cx <= ring; cx++) {
+        for (let cz = -ring; cz <= ring; cz++) {
+          if (Math.max(Math.abs(cx), Math.abs(cz)) !== ring) continue;
+          for (let cy = 2; cy <= 5; cy++) {
+            for (let ly = 0; ly < 16; ly++) {
+              for (let lz = 0; lz < 16; lz++) {
+                for (let lx = 0; lx < 16; lx++) {
+                  const x = cx * 16 + lx;
+                  const y = cy * 16 + ly;
+                  const z = cz * 16 + lz;
+                  if (baseBlock(voxel(x, y, z)) === VINE) found.push(new Vector3(x, y, z));
+                }
+              }
+            }
+          }
+        }
       }
     }
-    // **真ん中に石の柱を 6 段立てて、下の 4 段だけ 4 面に 1 本ずつ掛ける**
-    // （`ladders` は 4 段ちょうどだが、ツタは 4 面とも塞ぐと**ただの緑の柱**に見えて、
-    // 「薄い板が貼り付いている」のか「緑の立方体を積んだ」のか絵から読めない ——
-    // 2026-09-17 に 1 枚撮って分かった）。**上に石を 2 段残すこと**が、
-    // 中身が石のままだという唯一の手がかり。
-    for (let h = y; h < y + 6; h++) world.setVoxel(0, h, 0, STONE);
-    for (let h = y; h < y + 4; h++) {
-      world.setVoxel(1, h, 0, VINE_XN); // 柱の +X 側の面 → 支えは -X
-      world.setVoxel(-1, h, 0, VINE); // 柱の -X 側の面 → 支えは +X
-      world.setVoxel(0, h, 1, VINE_ZN);
-      world.setVoxel(0, h, -1, VINE_ZP);
+    // **いちばん長く垂れている列を選ぶこと。** 最初に見つけた 1 マスのそばに立つと
+    // 「垂れて見えるか」を確かめられず（`mushrooms` と同じ罠）、**葉の横に 1 マス
+    // だけ貼り付いたぶんを狙うと、葉に埋もれて何も読めない絵になる**（1 枚撮って分かった）。
+    let at = found[0] ?? new Vector3(0, 60, 0);
+    let most = 0;
+    let length = 1;
+    let best = -1;
+    for (const spot of found) {
+      // 列の下端だけを見る（同じ列を何度も測らない）
+      if (baseBlock(voxel(spot.x, spot.y - 1, spot.z)) === VINE) continue;
+      let run = 0;
+      while (baseBlock(voxel(spot.x, spot.y + run, spot.z)) === VINE) run++;
+      const near = found.filter((o) => o.distanceTo(spot) < 7).length;
+      if (near + run * 4 > best) {
+        best = near + run * 4;
+        most = near;
+        length = run;
+        at = spot;
+      }
     }
-    // **下へ垂れたぶん（34b）**。柱のてっぺんから +X へ「ひさし」を 1 マス出して、
-    // その +X の面にツタを掛け、**そこから下へ 2 マス垂らす** —— 壁に貼った 4 面と
-    // 違って**真横に石が 1 マスも無い**ので、「宙に浮いて見えるか」がこれで撮れる。
-    // **上から順に置くこと** —— `World.setVoxel()` は `canPlaceAt()` を通るので、
-    // 下から置くと真上が空で 1 マスも書けない（仕様書の C-3）。
-    world.setVoxel(1, y + 5, 0, STONE);
-    for (let k = 0; k <= 2; k++) world.setVoxel(2, y + 5 - k, 0, VINE_XN);
-    // **はしごを掛けた柱を隣に並べる。** 厚さ（1/16 対 3/16）も色も、
-    // **同じ絵に 2 つ入れないと**「見分けが付くか」が読めない。
-    // **掛けるのはカメラから見て奥行きのある側の面**（+X。`ladders` と同じ理由で、
-    // 広く写る +Z に掛けると残る石が細い帯にしかならない）。
-    for (let h = y; h < y + 4; h++) {
-      world.setVoxel(4, h, 0, STONE);
-      world.setVoxel(5, h, 0, LADDER_XN);
+    // **見つけた所を中心に用意すること**（原点のままだと森が遠くて 1 マスも写らない）。
+    const { scene, world } = makeWorld(OVERWORLD, 4, { x: at.x, z: at.z });
+    // **森の中は立つ場所を選ばないと、カメラが葉の中に埋まる**（1 枚撮って分かった。
+    // 埋まると画の半分が葉の内側の面で真緑になる）。**近い所から順に試して、
+    // 視線が通っているものを取ること** —— 遠くから撮ると板 1 枚が数画素に潰れる。
+    // **狙うのは列の真ん中**（下端だけを狙うと、垂れているぶんが画の上へ切れる）。
+    const target = new Vector3(at.x + 0.5, at.y + (length - 1) / 2 + 0.5, at.z + 0.5);
+    let eye = new Vector3(at.x + 5.5, at.y + 1.5, at.z + 5.5);
+    let clearest = -1;
+    // **板は支えの側の面に貼り付いている**ので、**壁の側から見ると葉しか写らない。**
+    // 立つのは壁の反対側（`supportFace()` の逆向き）だけにすること。
+    // **斜めから見ると 1/16 の板が細い線に潰れる**ので、**真向かいを選ぶこと**
+    // （2026-09-18 に斜めから 1 枚撮って分かった）。
+    const [wallX, , wallZ] = FACE_STEP[supportFace(voxel(at.x, at.y, at.z))];
+    for (const r of [3, 4, 5]) {
+      for (const [dx, dz] of [[1, 1], [1, -1], [-1, 1], [-1, -1], [1, 0], [0, 1], [-1, 0], [0, -1]]) {
+        if (dx * wallX + dz * wallZ > 0) continue;
+        const square = dx === -wallX && dz === -wallZ ? 3 : 0;
+        for (const dy of [0, 1, -1, 2]) {
+          const from = new Vector3(target.x + dx * r, target.y + dy, target.z + dz * r);
+          if (world.getVoxel(Math.floor(from.x), Math.floor(from.y), Math.floor(from.z)) !== AIR) continue;
+          // 視線の途中が空いているか（的そのものは数えない）
+          let clear = 0;
+          for (let i = 1; i <= 16; i++) {
+            const p = from.clone().lerp(target, i / 18);
+            if (world.getVoxel(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z)) === AIR) clear++;
+          }
+          // **視線が通っているのが先、真向かいはその次**（葉に潰されたら元も子もない）。
+          if (clear * 4 + square > clearest) {
+            clearest = clear * 4 + square;
+            eye = from;
+          }
+        }
+      }
     }
-    // **書き換えたらメッシュ化をもう一度流すこと**（`ladders` と同じ）。
-    world.primeAround(0.5, 0.5, 3);
-    const at = new Vector3(0, y, 0);
     return {
       scene,
-      // **すぐそばの斜めから**（`ladders` と同じ。遠いと板 1 枚が数画素に潰れる）。
-      camera: look(setup, new Vector3(at.x + 5.5, at.y + 3.6, at.z + 6.5), new Vector3(at.x + 2, at.y + 1.6, at.z + 0.5)),
+      // **少し見上げるくらいの高さから。** 上から見下ろすと葉に隠れて、
+      // 垂れているぶんが 1 マスも写らない。
+      camera: look(setup, eye, target),
       dayNight: skyOf(OVERWORLD, setup.time),
       note:
-        `石の柱 0,${y},0（6 段）の下 4 段にツタ 4 面（183 / 184 / 185 / 186）+ ` +
-        `ひさし 1,${y + 5},0 から下へ 3 マス（上 1 マスだけが壁掛け・下 2 マスは宙にぶら下がり。34b）+ ` +
-        `はしごを掛けた柱 4,${y},0`,
+        found.length > 0
+          ? `森のツタ ${at.x},${at.y},${at.z} から上へ ${length} マス（±128 に ${found.length} マス / 7 マス以内に ${most} マス）` +
+            ` / カメラ ${eye.x},${eye.y},${eye.z}（見え方 ${clearest}）`
+          : "**1 マスも見つからない**（原点のまわりに森が無い種）",
     };
   },
 

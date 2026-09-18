@@ -23,9 +23,16 @@ import {
   STONE,
   SUGAR_CANE,
   TALL_GRASS,
+  VINE,
   WATER,
   WOOD,
+  baseBlock,
   blockName,
+  oppositeFace,
+  supportFace,
+  supportFaces,
+  supportsBlock,
+  vineVariant,
 } from "../src/blocks";
 import {
   ALPINE,
@@ -38,6 +45,7 @@ import {
   FOREST,
   FROZEN_OCEAN,
   OCEAN,
+  PLAINS,
   TAIGA,
   biomeDef,
   biomeName,
@@ -57,6 +65,19 @@ const ORE_TABLE = [
   ["ダイヤ鉱石", DIAMOND_ORE, 14],
 ] as const;
 const ORE_IDS = ORE_TABLE.map(([, id]) => id);
+
+/**
+ * 面番号 → 隣のマス（`blocks.ts` の並び `0=+X 1=-X 2=+Y 3=-Y 4=+Z 5=-Z`）。
+ * ツタの支えを `World.canPlaceAt()` と同じ理屈で確かめるのに使う。
+ */
+const FACE_STEP: readonly (readonly [number, number, number])[] = [
+  [1, 0, 0],
+  [-1, 0, 0],
+  [0, 1, 0],
+  [0, -1, 0],
+  [0, 0, 1],
+  [0, 0, -1],
+];
 
 export function run(): void {
   describe("地形生成");
@@ -461,6 +482,144 @@ export function run(): void {
     reds > 0 && browns > 0 && reds / caps > 0.3 && reds / caps < 0.7,
     `赤 ${reds} / 茶 ${browns}（赤 ${((reds / Math.max(1, caps)) * 100).toFixed(0)}%）`,
   );
+
+  // --- ツタ（34c・`BiomeDef.vine` と `treeshape.ts` の `vineCells()`）---
+  // **キノコと同じまとまった森を 1 マスも飛ばさずに数える**（原点のまわりは平原なので、
+  // 間引いた走査では 1 本も当たらない。`rules/worldgen.md`）。**走査を広げて数を
+  // 稼がないこと** —— 点数がそのまま `npm test` の秒数になる。
+  //
+  // **いちばん強い見張りは「支えを持っているか」**。生成では置けていても支えが無いと、
+  // **隣を 1 つ壊した瞬間に列ごと消える**（`World.breakUnsupported()` が
+  // `canPlaceAt()` に聞き直すため）。だから**置く側とまったく同じ理屈**
+  // （`supportFaces()` の for を回して `supportsBlock()` に聞く）を手で書く。
+  const forestAt = patches[0][2];
+  let vines = 0;
+  let unsupported = 0;
+  let wallHung = 0;
+  let hanging = 0;
+  let wrongVariant = 0;
+  let treesInPatch = 0;
+  const vineIds = new Map<number, number>();
+  const vineRuns = new Map<number, number>();
+  if (forestAt) {
+    for (let x = forestAt[0]; x < forestAt[0] + 64; x++) {
+      for (let z = forestAt[1]; z < forestAt[1] + 64; z++) {
+        const h = gen.heightAt(x, z);
+        // 木の本数（幹の先に葉が乗っている所）。**ツタ 1 本あたりの割合を出すため。**
+        let run = 0;
+        for (let y = h + 1; y <= h + 16; y++) {
+          const id = voxel(x, y, z);
+          if (id === WOOD && voxel(x, y + 1, z) === LEAVES) treesInPatch++;
+          // 垂れた列の長さ（上から下へ数える向きに合わせて、切れたところで締める）
+          if (baseBlock(id) === VINE) run++;
+          else if (run > 0) {
+            vineRuns.set(run, (vineRuns.get(run) ?? 0) + 1);
+            run = 0;
+          }
+          if (baseBlock(id) !== VINE) continue;
+          vines++;
+          vineIds.set(id, (vineIds.get(id) ?? 0) + 1);
+          // **支え**（`World.canPlaceAt()` と同じ。候補は壁と真上の 2 つで、
+          // どれか 1 つを満たせばよい）。
+          let held = false;
+          for (const face of supportFaces(id)) {
+            const [dx, dy, dz] = FACE_STEP[face];
+            if (supportsBlock(voxel(x + dx, y + dy, z + dz), oppositeFace(face), id)) held = true;
+          }
+          if (!held) unsupported++;
+          // **向きが壁の側と合っているか。** 壁掛けのぶんは葉が横にあり、
+          // 垂れたぶんは真上が同じツタ（34b）。どちらでもないものが居たら
+          // 「向きだけ合っている宙ぶらりん」なので、上の支えの件で落ちる。
+          const wallFace = supportFace(id);
+          const [wx, , wz] = FACE_STEP[wallFace];
+          const wall = voxel(x + wx, y, z + wz);
+          if (wall === LEAVES || wall === SPRUCE_LEAVES) {
+            wallHung++;
+            if (vineVariant(wallFace) !== id) wrongVariant++;
+          } else if (baseBlock(voxel(x, y + 1, z)) === VINE) {
+            hanging++;
+          }
+        }
+        if (run > 0) vineRuns.set(run, (vineRuns.get(run) ?? 0) + 1);
+      }
+    }
+  }
+  console.log(
+    `      64x64 の森のツタ: ${vines} マス / 木 ${treesInPatch} 本` +
+      `（木 1 本あたり ${(vines / Math.max(1, treesInPatch)).toFixed(2)} マス）` +
+      ` / 壁掛け ${wallHung} + ぶら下がり ${hanging}` +
+      ` / 列の長さ ${[...vineRuns].sort((a, b) => a[0] - b[0]).map(([l, c]) => `${l}:${c}`).join(" ")}` +
+      ` / 内訳 ${[...vineIds].sort((a, b) => a[0] - b[0]).map(([id, c]) => `${id} ${c}`).join(" / ")}`,
+  );
+  check("森にツタが生えている", vines > 20 && treesInPatch > 10, `${vines} マス / 木 ${treesInPatch} 本`);
+  // **0 件を出してから判定すること。** 「1 本も見つからなかった」で緑になる形を
+  // 避けるため、本数（上の件）を別に置いてある。
+  check("生えたツタは 1 本残らず支えを持っている", unsupported === 0, `支えの無いツタ ${unsupported} マス`);
+  check(
+    "ツタの向きが壁の側と合っている（vineVariant の答えと同じ）",
+    wallHung > 0 && wrongVariant === 0,
+    `壁掛け ${wallHung} マスのうち向き違い ${wrongVariant} マス`,
+  );
+  // **垂れたぶんが実際に世界に出ていること**（`hangsBelow` の 2 つ目の支えが効いている証拠）。
+  check("ツタが葉の下へ垂れている（真上のツタにぶら下がる）", hanging > 0, `${hanging} マス`);
+  // **4 向きとも出ること。** 隅は 2 面とも葉なので、先に見つけた面だけに貼ると
+  // 4 向きのうち 2 つしか世界に出てこない。
+  check("4 向きとも世界に出る", vineIds.size === 4, `${vineIds.size} 種類`);
+
+  // **森でないバイオームには 1 本も生えない。** 平原にはオークが、砂漠にはサボテンが
+  // 立つので、**木があるのにツタが無い**ことを見るのが肝心（海は木そのものが無い）。
+  let strayVines = 0;
+  const strayWhere: string[] = [];
+  for (const [name, want] of [["平原", PLAINS], ["砂漠", DESERT], ["海", OCEAN]] as const) {
+    const at = patchOf(want);
+    if (!at) continue;
+    let here = 0;
+    let trees = 0;
+    for (let x = at[0]; x < at[0] + 32; x++) {
+      for (let z = at[1]; z < at[1] + 32; z++) {
+        const h = gen.heightAt(x, z);
+        for (let y = h + 1; y <= h + 14; y++) {
+          const id = voxel(x, y, z);
+          if (id === WOOD || id === CACTUS) trees++;
+          if (baseBlock(id) === VINE) here++;
+        }
+      }
+    }
+    strayVines += here;
+    strayWhere.push(`${name} ${here} マス（木や柱 ${trees} マス）`);
+  }
+  console.log(`      森でないバイオームのツタ: ${strayWhere.join(" / ")}`);
+  check("森でないバイオームには 1 本も生えない", strayVines === 0, `${strayVines} マス`);
+  check(
+    "ツタを生やすバイオームは森だけ（表の側）",
+    BIOMES.every((b) => b.vine === 0 || b.id === FOREST),
+    BIOMES.filter((b) => b.vine > 0).map((b) => `${b.name} ${b.vine}`).join(" / "),
+  );
+
+  // **生成の順に依らないこと**（木と同じ形）。隣の列を先に作っても後に作っても、
+  // ツタの位置が 1 マスも動かない —— 動くと、チャンクの読み込み順で世界が変わる。
+  if (forestAt) {
+    const cx = forestAt[0] >> 4;
+    const cz = forestAt[1] >> 4;
+    let orderDiff = 0;
+    const scratch = new Uint8Array(CHUNK_VOLUME);
+    for (let cy = 2; cy < 6; cy++) {
+      const alone = new Uint8Array(CHUNK_VOLUME);
+      new WorldGen(12345).generateChunk(cx, cy, cz, alone);
+      const after = new Uint8Array(CHUNK_VOLUME);
+      const warm = new WorldGen(12345);
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dz = -1; dz <= 1; dz++) warm.generateChunk(cx + dx, cy, cz + dz, scratch);
+      }
+      warm.generateChunk(cx, cy, cz, after);
+      for (let i = 0; i < after.length; i++) if (after[i] !== alone[i]) orderDiff++;
+    }
+    check(
+      "ツタは生成の順に依らない（隣の列を先に作っても同じ）",
+      orderDiff === 0,
+      `${orderDiff} マスの差`,
+    );
+  }
 
   // --- サトウキビ ---
   // 草むら・キノコとまったく同じ経路（地表のすぐ上の 1 マス）だが、**生えるのは浜だけ**。

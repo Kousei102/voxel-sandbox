@@ -21,7 +21,7 @@ import { CHUNK_SIZE, SEA_LEVEL, WORLD_HEIGHT } from "./constants";
 import { Noise } from "./noise";
 import { STRONGHOLD } from "./stronghold";
 import { placementsFor, stampPlacements, type Placement, type StructureDef } from "./structures";
-import { TREE_RADIUS, treeCells } from "./treeshape";
+import { TREE_RADIUS, treeCells, vineCells } from "./treeshape";
 
 interface Tree {
   x: number;
@@ -29,6 +29,12 @@ interface Tree {
   z: number;
   height: number;
   kind: TreeKind;
+  /**
+   * この木にツタが掛かるか（34c）。**木 1 本につき 1 回だけ引く旗**で、
+   * 列のキャッシュに乗るので**どのチャンクを生成しても同じ答え**になる。
+   * どれだけの木に掛かるかは `biomes.ts`（`BiomeDef.vine`）。
+   */
+  vines: boolean;
 }
 
 interface ColumnData {
@@ -259,7 +265,12 @@ export class WorldGen {
           : def.treeKind === "cactus"
             ? 1 + Math.floor(roll * 3)
             : 4 + Math.floor(roll * 3);
-      trees.push({ x: wx, y: h + 1, z: wz, height: trunk, kind: def.treeKind });
+      // **ツタが掛かるかは木 1 本につき 1 回**（34c）。**割合は `biomes.ts` が持つ** ——
+      // ここに数値を書かないこと（`grass` / `mushroom` / `cane` と同じ決まり）。
+      // **塩は他の 8 本と重ねないこと。** 木の場所を決める 3 本（0x1234 / 0xabcd /
+      // 0x5678）や高さの 0x99 と重ねると、**背の高い木にだけツタが掛かる**ように偏る。
+      const vines = def.vine > 0 && hash2(wx, wz, this.seed ^ 0x4b73) < def.vine;
+      trees.push({ x: wx, y: h + 1, z: wz, height: trunk, kind: def.treeKind, vines });
     }
 
     const structures = placementsFor(STRUCTURES, this.seed, cx, cz, this.groundAt);
@@ -424,6 +435,17 @@ export class WorldGen {
     // （`crops.ts`）も同じこれを引くので、自然の木と植えた木が別物になりません。
     // **出す順（葉 → 幹）も `overwrite` の真偽もあちらが並べたままにすること。**
     for (const cell of treeCells(tree.kind, tree.height)) {
+      put(tree.x + cell.dx, tree.y + cell.dy, tree.z + cell.dz, cell.id, cell.overwrite);
+    }
+
+    // **ツタは葉と幹のあと**（34c）。**どのマスに何を置くかも `treeshape.ts` の 1 本**で、
+    // ここには形も向きも 1 行も書かない（`vineCells()` が `treeCells()` から導く）。
+    //
+    // **`overwrite: false` のまま書くこと。** ぶつかった所は相手（葉・幹・石）が残るが、
+    // **そのぶんが下のツタの支えになる** —— `supportsBlock()` は固い天井を支えと
+    // 認めるので（`rules/blocks-shapes.md`）、**切れ端が宙に浮くことはない。**
+    if (!tree.vines) return;
+    for (const cell of vineCells(tree.kind, tree.height, tree.x, tree.z)) {
       put(tree.x + cell.dx, tree.y + cell.dy, tree.z + cell.dz, cell.id, cell.overwrite);
     }
   }
