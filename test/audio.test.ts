@@ -53,9 +53,19 @@ function bench(seconds = WINDOW) {
   const engine = new AudioEngine(() => ctx as unknown as BaseAudioContext);
   return {
     engine,
+    /**
+     * **必ず写しを返すこと。** `getChannelData(0)` が返すのは
+     * `node-web-audio-api` の**ネイティブ側のメモリを指す借り物**で、
+     * `AudioBuffer` を誰も持っていないため**次の描画がその領域を上書きします。**
+     * 借り物のまま持ち回ると、**あとで比べる波形だけ**が 3 通りに化けました
+     * （2026-09-19 に実測: **爆発** ピーク 1e7〜1e21 / **無音** 明るさ 0.000 /
+     * **混線** 地上と水中が同じ 0.461）。撮ってすぐ測る一覧の 15 本は
+     * 225 回撮って 1 度も化けず、化けたのは後で比べる 9 本だけ、という偏りが裏付けです。
+     * **中央値も撮り直しも効きません**（描画が増えるほど悪化する）。写しだけが効きます。
+     */
     async wave(): Promise<Float32Array> {
       const buffer = await ctx.startRendering();
-      return buffer.getChannelData(0) as unknown as Float32Array;
+      return new Float32Array(buffer.getChannelData(0) as unknown as Float32Array);
     },
   };
 }
@@ -246,6 +256,39 @@ async function body(): Promise<void> {
   const high = await shot((e) => e.play("mobsay", "none", 1.4));
   console.log(`      鳴き声の明るさ: 低い声 ${brightness(low).toFixed(3)} / 高い声 ${brightness(high).toFixed(3)}`);
   check("声色（音程の倍率）が波形に出る", brightness(high) > brightness(low), `${brightness(high).toFixed(3)} > ${brightness(low).toFixed(3)}`);
+
+  // --- 同じ呼び方なら同じ波形が出る ---
+  // **`wave()` が写しを返していることの見張り。** 種は `shot()` が 1 発ごとに撒き直すので、
+  // 正常ならビット同一になります（**違いが 0 件でないときに判定をゆるめないこと** ——
+  // 測り方ではなく持ち方の問題です）。
+  //
+  // **⚠ 間に 24 発挟むのが本体です。捕まえたいのは「隣り合う 2 発の違い」ではありません。**
+  // 借り物（`getChannelData(0)` そのもの）に戻して実測した捕捉率:
+  // **挟まない 0/10 → 8 発 6/10 → 24 発 15/15**。`bench()` は 1 発ごとに
+  // `OfflineAudioContext` を作り直すので、**隣り合う 2 発はまだ別のメモリに乗っていて
+  // 化けません** —— 解放された領域が描画に**使い回される**まで撮り続けて初めて割れます
+  // （2026-09-19 の B の周で化けたのも、撮ってから測るまでに何発も挟まった 9 本だけでした）。
+  // **数を減らさないこと・この行を「無駄な撮り直し」として消さないこと。**
+  // 24 発でも 1 回 0.37 秒です。
+  const againA = await shot((e) => e.play("step", "stone"));
+  for (let i = 0; i < 24; i++) await shot((e) => e.play("break", "stone"));
+  const againB = await shot((e) => e.play("step", "stone"));
+  let differing = 0;
+  let firstDiff = -1;
+  for (let i = 0; i < Math.min(againA.length, againB.length); i++) {
+    if (againA[i] !== againB[i]) {
+      differing++;
+      if (firstDiff < 0) firstDiff = i;
+    }
+  }
+  const sameShape = `${againA.length} / ${againB.length} サンプル・違い ${differing} 件`;
+  const sameWhere = firstDiff >= 0 ? `（最初は ${firstDiff} 番目 = ${(firstDiff / RATE).toFixed(3)} 秒）` : "";
+  console.log(`      同じ呼び方を 2 発（step/stone）: ${sameShape}${sameWhere}`);
+  check(
+    "同じ呼び方なら同じ波形が出る（ビット同一）",
+    againA.length === againB.length && differing === 0,
+    `${sameShape}${sameWhere}`,
+  );
 
   // --- 鳴らす前 ---
   // `AudioContext` を作れない環境（自動再生制限・古いブラウザ）でも落ちないこと。
