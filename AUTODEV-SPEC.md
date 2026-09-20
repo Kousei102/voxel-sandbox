@@ -1,117 +1,119 @@
-# 仕様: サボテンが育つ（キューの 37・**ID 0 個**）
+# 仕様: クモが壁を登る（キューの 38・**ID 0 個**）
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-**先に読むこと**: `rules/stateful-blocks.md`（とくに 98..176 行の「育つもの（`crops.ts`）」）/
-`rules/blocks-shapes.md`（`blocks.ts`）/ `rules/worldgen.md`（`treeshape.ts`）/ `rules/testing.md`。
-**スキルは使いません** —— 器（`add-stateful-block`）は `crops.ts` がもう持っていて、
-足す ID は 0 個（`add-block`）、確かめられないものも増えません（`unverifiable-pair`）。
+**先に読むこと**: `rules/mobs.md`（とくに「段差登りで越えられない壁は跳んで越える」
+109..113 行と、飛ぶモブの「壁に当たったら上がる」197..199 行）/ `rules/testing.md`。
+**スキルは使いません** —— ID は 0 個・位置ごとの状態も増えず、**確かめられないものも
+増えません**（登る判断は `mobs.ts` の中だけで、`mobrender.ts` は 0 行）。
 
-## この周の前に分かったこと（2026-09-19 の B の周で実測。**推測ではありません**）
+## この周の前に数え直したこと（2026-09-20 の B の周で実測。**推測ではありません**）
 
-- **`main.ts` は 0 行**。`main.ts:944` の `crops.notePlaced(placed.at, placed.id, world)` は
-  **置いた全部のブロックで呼ばれます**。何を覚えるかを決めるのは `crops.ts` 側です
-- **⚠ いちばんの落とし穴: `crops.ts` だけ直しても、本物の世界では 1 段も伸びません。**
-  `World.setVoxel()` は `canPlaceAt()` を通し（`world.ts:183`）、
-  `supportsBlock(CACTUS, FACE_YP, CACTUS)` は**いま false** です
-  （`CACTUS` に `stacksOnSelf` が無い。`blocks.ts:1568`）。**書き込みが黙って落ちます**
-- **`test/crops.test.ts` の偽の `Field` は `canPlaceAt` を持たないので、これを見逃します。**
-  だから**本物の `World` で積む見張りが要ります**（下の 5. の h）
-- サボテンの上限は **3 段**（`treeshape.ts:217` の `1 + Math.floor(roll * 3)`。自然生成も 1..3 段）
-- **自然に生えたサボテンは伸びません**（誰も置いていないので印が無い）。
-  **サトウキビとまったく同じ線**なので、変えないこと（`TUNING.md` の 521 行）
+- **クモは登りません。** `MobDef`（`mobs.ts:264..393`）に登るための列が 1 つも無く、
+  `step()` の壁の分岐は **2 通りだけ**です（`mobs.ts:2402..2414`）:
+  飛ぶモブ（`hopTimer` を立てて上がる）と、**接地しているモブの跳躍**
+  （`blocked && mob.onGround && mob.walking && mob.liquid === AIR`）。
+  コメントに **「空中でも跳べると壁を登っていける」**（2410 行）とあり、
+  **登れないことは意図して選ばれています** —— そこを種類で開けるのがこの周です
+- **`main.ts` は 0 行。** 登るかどうかは `mobs.update()` の中だけで決まります
+- **`physics.ts` は 0 行。** 材料はもうあります —— `moveBody()` の戻り値が
+  **「横で押し戻されたか（＝登れない壁に当たった）」**（`physics.ts:142`）で、
+  **段差（`step` 0.6）で上がれたぶんは入りません**。だからハーフでは登りません
+- **列を足しても直すのは `mobs.ts` だけ** —— `MobDef` のリテラルは 10 種類ぶんすべて
+  ここにあり、`test/**` にもほかの `src/**` にも 1 つもありません
+- **`climbSpeed` はどこにも無く**、`mobrender.ts` に `climb` も 0 件です
 
 ## 1. 何を足すか / 完了の判定
 
-**`crops.ts` の 4 つ目の道として、プレイヤーが置いたサボテンが上へ伸びるようにする**
-（小麦・サトウキビ・苗木に続く 4 本目）。
+**クモだけが、壁に当たっているあいだ上へ登る**（跳ぶのではなく、登る）。
+**完了の判定**: `npm test` に新しい節 **「壁を登るモブ（クモ）」が 7 件**増えて
+**全部（3846 → 3853 件）が緑**。うち **「クモが 4 段の壁を越える（y ≒ 15）」**は、
+**跳躍では 1.23 m しか上がれない**（`JUMP_SPEED` 8.6 / `GRAVITY` 30）ので通りません。
 
-完了の判定:
+## 2. 触るファイルと、触らないファイル
 
-- `npm test` の**「育つ苗（crops.ts）」が 94 件 → 100 件**（下の 5. の a..f）
-- `npm test` の**「サボテンを積む」2 件が増える**（`test/blocks.test.ts`。下の g・h）
-- **全体が 3838 → 3846 件で緑**（`npm run typecheck` も緑）。
-  件数がずれたら `docs/autodev-log.md` に理由を 1 行残すこと
-- **既存 3838 件は 1 件も減らさず、判定を 1 文字も変えないこと**
-
-## 2. 触るファイル / 触らないファイル
-
-| 触る | 何をするか |
+| ファイル | やること |
 | --- | --- |
-| `src/blocks.ts` | `CACTUS` の def に **`stacksOnSelf: true` の 1 行**／`CANE_HEIGHT_MAX` の隣に **`CACTUS_HEIGHT_MAX = 3`** を足して export |
-| `src/treeshape.ts` | `grownTreeHeight()` の `cactus` の**リテラル 3 を `CACTUS_HEIGHT_MAX` に差し替える**（範囲 1..3 は変えない） |
-| `src/crops.ts` | `CACTUS_GROW_SECONDS = 180` / `notePlaced()` に 1 分岐 / `update()` の振り分けに 1 分岐 / `growCane()` を `growStack()` に一般化 |
-| `test/crops.test.ts` | a..f の 6 件（サトウキビの節をそのまま手本に） |
-| `test/blocks.test.ts` | g・h の 2 件（「砂の上にサトウキビを 3 段積める」の節が手本） |
-| `TUNING.md` / `docs/autodev-log.md` / `AUTODEV-QUEUE.md` / `HANDOFF.md` / `ROADMAP.md` | 1 行 / 1 節 / 済んだ行を消す / 丸ごと / **ID は 0 個なので予約表は「変更なし」と書くだけ** |
+| `src/mobs.ts` | `MobDef` に列 1 つ / 10 種類の def に 1 行ずつ / `step()` に分岐 1 つ |
+| `test/mobs.test.ts` | 新しい節 7 件 / 見張りの一覧に `"climb"` を 1 語 |
+| `TUNING.md` | 1 節（下の 7.） |
+| `rules/mobs.md` | 踏んだ落とし穴を 1〜3 行（`AUTODEV.md` の C-4） |
 
-**触らないこと**: **`main.ts` は 1 行も触らない**（1450 行・停止条件に並んでいます）/
-`placing.ts` / `use.ts` / `world.ts` / `worldgen.ts` / `items.ts` / `crafting.ts` /
-`mesher.ts` / `player.ts`。**`CACTUS_BOX` も `spiky` も `supportFace` も動かさない。**
+**触らないこと**: **`src/main.ts`（0 行。1450 行で上限に並んでいます）** /
+`src/physics.ts`（`moveBody()` も `stepUp()` も 1 文字も変えない） /
+`src/mobrender.ts` / `src/mobmesh.ts` / `src/player.ts` / `test/physics.test.ts`。
 
 ## 3. 使う ID
 
-**0 個。** ブロックもアイテムも足しません（**共有帯の空きは 69 のまま・次は 187**）。
-**`ROADMAP.md` の予約表は 1 行も変えないこと。**
+**0 個。** ブロックもアイテムも増えないので、**`ROADMAP.md` の予約表は 1 行も触りません**
+（共有帯の次の空きは 187 のまま・低帯は 57 のまま）。
 
 ## 4. 判断をどこに置くか
 
-**変わりません**（`rules/stateful-blocks.md` の表そのまま）。
+**全部 `mobs.ts`。** 新しく確かめられないものは 1 つも増えません。
 
-- **何秒で・何段まで・どの条件で伸びるかは `crops.ts` だけ**。`main.ts` にも
-  `blocks.ts` にも数値を書かないこと（`test/ui.test.ts` の見張り）
-- `blocks.ts` が持つのは**形の話だけ**（積めるか＝`stacksOnSelf`・上限の段数）
-- **`growCane()` を写して 2 本にしないこと。** `growStack(key, age, dt, x, y, z, self,
-  maxHeight, seconds, world)` に一般化して、**サトウキビとサボテンの両方がここを通る**形に
-  すること。**中身の順番も `changed` の立て方も 1 つも変えないこと** ——
-  既存のサトウキビ 11 件がそのまま見張りになります
-- `notePlaced()` は**積み上がるもの（サトウキビ・サボテン）で列のいちばん下を覚える**。
-  **上を覚えると、刈った瞬間に印が消えて二度と伸びません**（舐める比較も `id` で行うこと）
+- **表に列を 1 つ**: `readonly climbSpeed: number`（**m/s。0 なら登らない**）。
+  `hover` / `regen` とまったく同じ形で、**`?:`（省略可）にしないこと**
+  （足し忘れが黙って通ります。`shornBoxes` と同じ）。**クモは 3.0・ほかの 9 種類は 0**
+- **`kind === "spider"` と書かないこと**（`shearing` / `milkable` / `orbit` と同じ作法）
+- **`FLY_RISE`(3) を使い回さないこと。** 同じ 3 でも**別の値**です ——
+  1 つの定数を全員で分け合うと `MOB_DAMAGE` / `FLY_HOVER` と同じ形で壊れます
+- **`step()` の分岐は「飛ぶ → 登る → 跳ぶ」の順に置くこと**（`mobs.ts:2402`）。
+  **跳ぶほうを先にすると、接地しているクモが跳んでしまって 1 段も登りません**
+- 登る条件は **`blocked && mob.walking && def.climbSpeed > 0 && mob.liquid === AIR`**。
+  **`mob.onGround` を条件に入れないこと** —— 入れると 1 段登った所で止まります
+  （空中では登れないので、それが「登れない」の正体です）
+- やることは **`mob.velocity.y = def.climbSpeed` と `mob.hopTimer = HOP_TIME` と
+  `mob.onGround = false` の 3 行**。**`hopTimer` を立てるのを省かないこと** ——
+  `moveBody` が壁に当たるたび横の速度を 0 にするので、立てないと
+  **登り切った所で前へ出られず、壁の上をかすめて手前へ落ち続けます**
+  （飛ぶモブと跳ぶモブが `hopTimer` を立てているのと同じ理由。`rules/mobs.md`）
 
-## 5. 書くテスト（**足すのは 8 件**。どれも値を出力してから判定）
+## 5. 書くテスト（`test/mobs.test.ts`・新しい節「壁を登るモブ（クモ）」）
 
-`test/crops.test.ts`（「育つ苗」の節・**サトウキビの節を手本に**）:
+**「モブの物理」の節より後**に置くこと（`bumpInto(kind, wall)` を使い回します。
+**あの関数は 1 文字も変えないこと**）。**値を出してから判定する形**で 7 件:
 
-- **a.** 置いたサボテンが `CACTUS_GROW_SECONDS` ごとに 1 段伸び、**`CACTUS_HEIGHT_MAX` で止まる**
-  （段数の並びを出力してから判定）
-- **b.** **刈ったら 0 秒から伸び直す**（上を壊して 2 回ぶん進める）
-- **c.** **上が塞がっていたら伸びない・秒数は持ち越す・どけたら次のフレームで伸びる**
-- **d.** **覚えるのは列のいちばん下**（2 段目を置いて `peek()` が下のマスに乗ること）
-- **e.** **未読み込みの列では 1 マスも書かず、印も忘れない**（`unloaded` / `frozen` を使う）
-- **f.** **印の無いサボテン（自然生成ぶん）は伸びない**（`notePlaced()` を呼ばずに `update()`）
-
-`test/blocks.test.ts`（**新しい節「サボテンを積む」**）:
-
-- **g.** `supportsBlock(CACTUS, FACE_YP, CACTUS)` が true で、
-  **`canSupport(CACTUS, FACE_YP)` は false のまま**（4 つの値を出力する）
-- **h.** **本物の `World`** で砂の上に 3 段積めて、**いちばん下を壊すと上 2 段も落ちる**
-  （「砂の上にサトウキビを 3 段積める」の節と同じ形。**偽の試験場では確かめたことになりません**）
+- a. **表**: `MOB_KINDS.map((k) => ...climbSpeed)` を 10 種類ぶん出したうえで、
+  **`filter((k) => MOBS[k].climbSpeed > 0).join(" ") === "spider"`**
+  （`teleport` の 724 行とまったく同じ形。**抜けと余分の両方で落ちます**）
+- b. **クモは 2 段の壁を越える**（`bumpInto("spider", 2)`。x と y を出す）
+- c. **クモは 4 段の壁も越える**（`y >= 14.9`。**跳躍の 1.23 m では届かない**ことを
+  コメントに残す）。**これが「跳んだのではなく登った」の唯一の証拠です**
+- d. **登らない 6 種類は 2 段の壁を越えられない**（`climbSpeed === 0 && !flying &&
+  !teleport && !boss` を回す = 豚・羊・鶏・牛・ゾンビ・スケルトン。
+  **既存の 580 行「2 ブロックの壁は越えられない」をゆるめない**ことの裏取り）
+- e. **歩いていないクモは登らない**（壁へ押し付けたまま毎フレーム `walking = false` を
+  貼って 3 秒。**先に「壁に当たっている」証拠（x が 3 の手前で止まっている）を
+  出すこと** —— 出さないと、壁に届いていないだけで緑になります。`rules/testing.md`）
+- f. **壁が無ければ登らない**（平地で 3 秒歩かせて **y が 11 のまま・接地のまま**。
+  `climbSpeed` が飛行になっていないこと）
+- g. **見張り**: `mobrender.ts` の `decisions` の一覧（171..220 行）に **`"climb"`** を
+  足して、**`mobrender.ts に判断が漏れていない` が緑のまま**であること
 
 ## 6. このタスク固有の禁じ手
 
-- **`main.ts` に 1 行も足さない**（1450 行・停止条件 2 に並んでいます）
-- **既存の判定をゆるめない。** とくに `test/blocks.test.ts:527`
-  **「サボテンは細いので支えにならない」（`!canSupport(CACTUS, FACE_YP)`）は真のまま**です
-  —— `stacksOnSelf` は `supportsBlock()` の**外側**の例外で、`canSupport()` には触りません
-- **`canSupport()` / `CACTUS_BOX` / `supportFace` / `spiky` を動かさない**
-  （松明とベッドの足場に効きます。`rules/blocks-shapes.md`）
-- **自然に生えたサボテンを伸ばそうとしない**（世界じゅうの砂漠が `SaveData` に乗ります）
-- **本家の「砂の上にしか置けない」「横に固いブロックがあると壊れる」を足さない** ——
-  この周の外です（見送った理由を `docs/autodev-log.md` に 1 行）
-- **育ったサボテンがプレイヤーの居るマスに書かれても特別扱いを足さない**
-  （物理が押し出し、`spiky` は `player.ts` が毎フレーム見ています）
-- **`SaveData` の形を変えない**（`crops` の表 1 つに乗ります。`version` は 1 のまま）
-- **育つ段階をブロック ID で表さない**（`rules/stateful-blocks.md` の 143 行）
+- **`MobDef` に列を 2 つ以上足さないこと**（登る速さ 1 つで足ります）
+- **`size.step`（クモの 0.6）を触らないこと。** ハーフで登り始めます
+- **`physics.ts` を触らないこと。** `blocked` はもう要るものを返しています
+- **キューの 39（明るいところでは襲ってこない）に手を出さないこと** ——
+  `spawnBrightness()` も `hostile` も `thinkHostile()` の追跡条件も 0 行です
+- **`SPIDER` のほかの値を触らないこと**（`speed` 6.0 / `size` / `fireproof` false /
+  `spawnWeight` 100 / `drop`）。**朝に燃えるのは意図した違い**です（`TUNING.md`）
+- **`test/mobs.test.ts` の 573..580 行（1 段の壁を 10 種類・2 段をゾンビ）を
+  書き換えないこと。** クモは 1 段の壁も**登って**越えるので、そのまま緑です
 
 ## 7. 終了条件
 
-- `npm run typecheck` 緑 / `npm test` **3846 件すべて緑**（2 回走らせて 2 回とも）
-- `npm run build` 緑（**`src/**` を触るので要ります**）。**`npm run bench` は不要**
-  （生成もメッシュ化も触らないため）
-- **絵**: `npm run shot -- terrain` は砂漠を写さない見込みなので、**`CACTUS_HEIGHT_MAX` 段まで
-  伸ばしたサボテンが写る場面を撮って `Read` で見ること**（`tools/shot.ts` に場面を 1 つ足すのが
-  いちばん安い。`HANDOFF.md` の「絵を撮るときの注意」と前の周の `sheep` が手本）
-- **コミット 1 つ**を `master` へ push / キューの 37 の行を消す / この仕様書を `状態: 済` に
-- **`TUNING.md` に 1 行**（`CACTUS_GROW_SECONDS` 180 秒・3 段まで・自然生成ぶんは伸びない）
-- 踏んだ落とし穴を `rules/` へ据える（`Edit` で普通に直す。無ければ「決まりごと 0 件」と書く）
+`npm run typecheck` と `npm test`（**3853 件・全部緑**）/ `npm run build`（`src/**` を
+触るため）/ **コミット 1 つを `master` へ push** / **`TUNING.md` に 1 節**
+（**登る速さ 3.0 m/s は本家に数値が無いので見当**。はしごの 2.35（`player.ts`）とも
+`FLY_RISE`(3) とも**別に持っている**理由と、**囲いがクモには効かなくなる**ことを書く）/
+`AUTODEV-QUEUE.md` の 38 の行を消す / この仕様書を `状態: 済` にする /
+**`docs/autodev-log.md` に 1 節** / **`HANDOFF.md` を丸ごと書き直す**。
+
+**`npm run bench` は要りません**（生成もメッシュ化も触らないため）。
+**撮るのは `npm run shot -- mobs`**（クモの形は変わりませんが、`MobDef` に列を足すので
+10 種類の形が崩れていないことを見る）。**登っている姿は絵になりません** ——
+**動きなので、公開サイトで人に見てもらうぶん**として `HANDOFF.md` に 2〜3 行残すこと。
