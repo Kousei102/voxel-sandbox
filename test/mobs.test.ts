@@ -217,6 +217,10 @@ export function run(): void {
     // その数が何を意味するかを知らない。知った瞬間、「いつ刈られた姿か」が
     // `mobs.ts` と 2 か所に分かれて、片方だけ直す形が戻る。
     "shorn",
+    // **壁を登るかどうかもここに足すこと。** 登る動きは絵にならない（動きなので）が、
+    // 「誰が・どれだけの速さで登るか」が描画側に生えると、公開サイトでクモを
+    // 壁際まで連れてくるまで確かめられない。
+    "climb",
   ].filter((name) => renderSource.includes(name));
   check("mobrender.ts に判断が漏れていない", decisions.length === 0, decisions.join(" "));
 
@@ -634,6 +638,107 @@ export function run(): void {
     "水の中では遅くなる（プレイヤーと同じ 0.6 倍）",
     Math.abs(inWater / onLand - 0.6) < 0.08,
     `${(inWater / onLand).toFixed(2)} 倍`,
+  );
+
+  describe("壁を登るモブ（クモ）");
+
+  // **登るかどうかは表の列 1 つ（`MobDef.climbSpeed`）だけ**で、`step()` の分岐は
+  // 「飛ぶ → 登る → 跳ぶ」の順に並んでいる。**跳躍を先に当てると、接地している
+  // クモが跳んでしまって 1 段も登らない。**
+  console.log(
+    `      登る速さ (m/s): ${MOB_KINDS.map((k) => `${MOBS[k].name} ${MOBS[k].climbSpeed.toFixed(1)}`).join(" / ")}`,
+  );
+  const climbers = MOB_KINDS.filter((k) => MOBS[k].climbSpeed > 0);
+  check(
+    "壁を登るのはクモだけ（増やしたら数値を TUNING.md へ）",
+    climbers.join(" ") === "spider",
+    climbers.join(" ") || "（1 種類も登らない）",
+  );
+
+  // 2 段の壁。**ゾンビは越えられない**（すぐ上の「2 ブロックの壁は越えられない」）ので、
+  // ここは「囲いがクモには効かない」の裏取りでもある。
+  const spiderTwo = bumpInto("spider", 2);
+  console.log(
+    `      クモ: 2 段の壁 → ${spiderTwo.climbed ? "越えた" : "越えられない"}（y=${spiderTwo.y.toFixed(2)}）`,
+  );
+  check("クモは 2 ブロックの壁を登って越える", spiderTwo.climbed && spiderTwo.y >= 12.9, `y=${spiderTwo.y.toFixed(2)}（壁の上は 13）`);
+
+  // **4 段は「跳んだのではなく登った」ことの唯一の証拠。** 跳躍で上がれるのは
+  // `JUMP_SPEED`(8.6)² / (2 * `GRAVITY`(30)) = 1.23 m しかないので、
+  // 何度跳ね直しても 4 m の壁（上は y=15）には届かない。
+  const spiderFour = bumpInto("spider", 4);
+  console.log(
+    `      クモ: 4 段の壁 → ${spiderFour.climbed ? "越えた" : "越えられない"}（y=${spiderFour.y.toFixed(2)}・跳躍では 1.23 m まで）`,
+  );
+  check(
+    "クモは 4 ブロックの壁も登って越える（跳躍では 1.23 m しか上がれない）",
+    spiderFour.climbed && spiderFour.y >= 14.9,
+    `y=${spiderFour.y.toFixed(2)}（壁の上は 15）`,
+  );
+
+  // 登らない地上のモブは、これまでどおり 2 段で止まること。**飛ぶ・跳ぶ・ボスは
+  // 壁と関係なく越えるので外す。** 6 という数は種類を足したら**数え直すこと**
+  // （ゆるめるのではなく、増えたぶんをここに書き直す）。
+  const wallBound = MOB_KINDS.filter(
+    (k) => MOBS[k].climbSpeed === 0 && !MOBS[k].flying && !MOBS[k].teleport && !MOBS[k].boss,
+  );
+  const crossed = wallBound.filter((k) => bumpInto(k, 2).climbed);
+  console.log(`      2 段の壁を試した ${wallBound.length} 種類: ${wallBound.map((k) => MOBS[k].name).join(" ")}`);
+  check(
+    "登らない 6 種類は 2 ブロックの壁を越えられない",
+    wallBound.length === 6 && crossed.length === 0,
+    `${wallBound.length} 種類のうち越えたのは ${crossed.length} 種類（${crossed.join(" ") || "なし"}）`,
+  );
+
+  const awayFromWall = ctx({ playerX: -40, playerZ: 0.5 });
+
+  // **歩いていないクモは登らない。** 先に「壁に当たっている」証拠を出すこと ——
+  // 出さないと、壁に届いていないだけで緑になる（`rules/testing.md`）。
+  const pressArena = new Arena();
+  pressArena.fill(-20, 20, 10, 10, -20, 20, STONE);
+  pressArena.fill(3, 20, 11, 14, -20, 20, STONE);
+  quiet(pressArena);
+  const pressPack = new Mobs();
+  const pressed = pressPack.spawn("spider", 0.5, 11, 0.5, -Math.PI / 2, seeded(38));
+  for (let i = 0; i < 180; i++) {
+    // 歩かせずに壁へ押し付ける。**`stateTimer` を立て直すこと** —— 徘徊の抽選（5Hz）は
+    // `walking` を反転させるので、false を貼るだけでは true に戻る。
+    pressed.walking = false;
+    pressed.stateTimer = 99;
+    pressed.yaw = pressed.targetYaw = -Math.PI / 2;
+    pressed.velocity.x = MOBS.spider.speed;
+    pressPack.update(1 / 60, pressArena.asWorld(), awayFromWall);
+  }
+  console.log(`      歩かせずに 3 秒押し付けたクモ: x=${pressed.position.x.toFixed(3)} y=${pressed.position.y.toFixed(3)}`);
+  check(
+    "押し付けたクモは壁に当たっている（半幅 0.7 なので x は 2.3 で止まる）",
+    pressed.position.x > 2.2 && pressed.position.x < 3,
+    `x=${pressed.position.x.toFixed(3)}`,
+  );
+  check(
+    "歩いていないクモは登らない",
+    pressed.position.y < 11.01 && pressed.onGround,
+    `y=${pressed.position.y.toFixed(3)} / 接地 ${pressed.onGround}`,
+  );
+
+  // 壁が無ければ 1 mm も上がらないこと（`climbSpeed` が飛行になっていない）。
+  const openArena = new Arena();
+  openArena.fill(-20, 20, 10, 10, -20, 20, STONE);
+  quiet(openArena);
+  const openPack = new Mobs();
+  const stroller = openPack.spawn("spider", 0.5, 11, 0.5, -Math.PI / 2, seeded(39));
+  let highest = 11;
+  for (let i = 0; i < 180; i++) {
+    stroller.walking = true;
+    stroller.yaw = stroller.targetYaw = -Math.PI / 2;
+    openPack.update(1 / 60, openArena.asWorld(), awayFromWall);
+    highest = Math.max(highest, stroller.position.y);
+  }
+  console.log(`      平地を 3 秒歩いたクモ: x=${stroller.position.x.toFixed(2)} y の最高 ${highest.toFixed(3)}`);
+  check(
+    "壁が無ければ登らない（歩いた距離つき）",
+    stroller.position.x > 10 && highest < 11.01 && stroller.onGround,
+    `x=${stroller.position.x.toFixed(2)} / y の最高 ${highest.toFixed(3)} / 接地 ${stroller.onGround}`,
   );
 
   describe("飛ぶモブ（ブレイズ）");

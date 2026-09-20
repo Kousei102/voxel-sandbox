@@ -311,6 +311,19 @@ export interface MobDef {
    */
   readonly hover: number;
   /**
+   * 壁に当たっているあいだ登る速さ (m/s)。**0 なら登らない**（跳んで越えるだけ）。
+   *
+   * **`kind === "spider"` と書かないこと**（`shearing` / `milkable` / `orbit` と同じ作法）——
+   * 登れるモブが増えるたびに、物理の中の分岐が増える。
+   *
+   * **`FLY_RISE`(3) を使い回さないこと。** 同じ 3 でも別の値で、
+   * `MOB_DAMAGE` / `FLY_HOVER` と同じ形で壊れる（片方を直すともう片方が動く）。
+   *
+   * 登るのは `blocked`（＝段差登り 0.6 では上がれなかった壁）のあいだだけなので、
+   * **ハーフや階段の 1 段では登り始めない**（あれは `moveBody` が黙って上げる）。
+   */
+  readonly climbSpeed: number;
+  /**
    * 火で焼けない（溶岩も日光も効かない）。**ネザーのモブにはこれが要る** ——
    * 溶岩の海の上を飛ぶブレイズが、かすっただけで 2.5 秒で焼け死ぬ。
    */
@@ -427,6 +440,7 @@ const PIG: MobDef = {
   spawnWeight: 10,
   flying: false,
   hover: 0,
+  climbSpeed: 0,
   fireproof: false,
   spawnOn: null,
   boss: false,
@@ -492,6 +506,7 @@ const SHEEP: MobDef = {
   spawnWeight: 12,
   flying: false,
   hover: 0,
+  climbSpeed: 0,
   fireproof: false,
   spawnOn: null,
   boss: false,
@@ -592,6 +607,7 @@ const CHICKEN: MobDef = {
   // 飛び方しか無いので、入れると壁も崖も無視して飛んでいきます）。
   flying: false,
   hover: 0,
+  climbSpeed: 0,
   fireproof: false,
   // **受動に `spawnOn` を付けないこと**（`trySpawn()` 側にも手が要ります。`rules/mobs.md`）。
   spawnOn: null,
@@ -690,6 +706,7 @@ const COW: MobDef = {
   spawnWeight: 8,
   flying: false,
   hover: 0,
+  climbSpeed: 0,
   fireproof: false,
   // **受動に `spawnOn` を付けないこと**（`trySpawn()` 側にも手が要ります。`rules/mobs.md`）。
   spawnOn: null,
@@ -786,6 +803,7 @@ const ZOMBIE: MobDef = {
   spawnWeight: 100,
   flying: false,
   hover: 0,
+  climbSpeed: 0,
   fireproof: false,
   spawnOn: null,
   boss: false,
@@ -868,6 +886,9 @@ const SPIDER: MobDef = {
   spawnWeight: 100,
   flying: false,
   hover: 0,
+  // **壁を登る唯一のモブ**（本家どおり）。歩き 6.0 より遅く、はしご（2.35）より速い。
+  // **囲い（家の壁・柵）がクモには効かなくなる**のが、この値を入れた意味（`TUNING.md`）。
+  climbSpeed: 3.0,
   // **false のまま**（上の説明）。朝になると日光で燃える。
   fireproof: false,
   // **付けないこと** —— 付けると、その地面で「どこでも」の敵対に勝ってしまう。
@@ -994,6 +1015,7 @@ const SKELETON: MobDef = {
   spawnWeight: 100,
   flying: false,
   hover: 0,
+  climbSpeed: 0,
   // **false のまま** —— そのまま「朝に燃える」になる（本家のスケルトンも燃える）。
   fireproof: false,
   spawnOn: null,
@@ -1084,6 +1106,8 @@ const BLAZE: MobDef = {
   // 床から 2.5 浮く。**`ATTACK_HEIGHT`(1.5) より高いので、平地に立つ相手には
   // 近接がめったに届かない** —— 火球のほうが本体という取り決め（`rules/mobs.md`）。
   hover: 2.5,
+  // **0**。飛ぶモブは壁に当たったら `hopTimer` を立てて上がるので、登る速さは要らない。
+  climbSpeed: 0,
   fireproof: true,
   spawnOn: [NETHER_BRICK],
   boss: false,
@@ -1163,6 +1187,7 @@ const ENDERMAN: MobDef = {
   },
   flying: false,
   hover: 0,
+  climbSpeed: 0,
   fireproof: false,
   spawnOn: null,
   boss: false,
@@ -1261,6 +1286,8 @@ const DRAGON: MobDef = {
   // **ブレイズ（2.5）より低いこと。** 近接しか持たないので、2.5 のままだと
   // 降りてきても `ATTACK_HEIGHT`(1.5) に届かず、一度も殴れないボスになる。
   hover: 1.2,
+  // **0**（飛ぶモブなので上と同じ）。
+  climbSpeed: 0,
   // エンドに溶岩は無いが、**日光では燃えないこと**が要る（エンドの空は
   // 明るさ 0.7 固定なので、`sunlightBurns()` の線を超える所がある）。
   fireproof: true,
@@ -2403,6 +2430,20 @@ export class Mobs {
       // **飛ぶモブは跳ばずに上がる。** 段差登り（`size.step` = 0）も跳躍も持たないので、
       // これが無いと手すり 1 段の前で止まり続ける。
       mob.hopTimer = HOP_TIME;
+    } else if (blocked && mob.walking && def.climbSpeed > 0 && mob.liquid === AIR) {
+      // **登るモブは跳ばずに上がり続ける**（クモ）。**この分岐を跳躍より後ろに
+      // 置かないこと** —— 接地しているあいだは跳躍のほうが先に当たって、
+      // 1 段も登らないまま壁の前で跳ね続ける。
+      //
+      // **`mob.onGround` を条件に入れないこと。** 空中でも登れることが「登る」の
+      // 中身そのもので、入れると 1 段上がった所で止まる。
+      //
+      // `hopTimer` は跳ぶモブ・飛ぶモブと同じ理由で要る —— 壁に当たるたび
+      // `moveBody` が横の速度を 0 にするので、立てないと登り切った先へ前へ出られず、
+      // 壁の上をかすめて手前へ落ち続ける。
+      mob.velocity.y = def.climbSpeed;
+      mob.hopTimer = HOP_TIME;
+      mob.onGround = false;
     } else if (blocked && mob.onGround && mob.walking && mob.liquid === AIR) {
       // **段差登り（0.5）で越えられなかった壁は跳んで越える。**
       // 立方体 1 個ぶんの段差はマイクラでも跳ぶところで、これが無いと
