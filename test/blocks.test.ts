@@ -1368,6 +1368,7 @@ export function run(): void {
   mushrooms();
   bowlAndStew();
   sugarCane(world, ground);
+  cactusStack(world, ground);
   ladders();
   vines(world, ground);
   apples();
@@ -3150,6 +3151,68 @@ function sugarCane(world: World, ground: number): void {
         `3 段目 ${world.getVoxel(cx, ground + 2, cz)}`,
     );
     world.onAutoBreak = undefined;
+  }
+}
+
+/**
+ * **サボテンを積む**（37・2026-09-20）。サボテンに `stacksOnSelf` を足したので、
+ * 見るのは**サトウキビ（18b）とまったく同じ 2 つ**です:
+ * `supportsBlock()` の真理値表と、**本物の `World` で 3 段積んで下を壊す**経路。
+ *
+ * **`canSupport(CACTUS, FACE_YP)` は false のまま**（サボテンの箱は 1/16 細いので
+ * 「面が端まで埋まっている」を満たせません）。**あちらをゆるめて通さないこと** ——
+ * 壁掛けの松明とベッドの足場です（`rules/blocks-shapes.md`）。
+ *
+ * **偽の試験場では確かめたことになりません** —— `crops.ts` の試験場（`test/crops.test.ts`
+ * の `Field`）は `canPlaceAt` を持たないので、`stacksOnSelf` を足し忘れても緑のままです。
+ */
+function cactusStack(world: World, ground: number): void {
+  describe("サボテンを積む");
+
+  // g. **4 つの値を 1 行に出してから判定する**（サトウキビの節と同じ書き方）。
+  console.log(
+    `      supportsBlock(サボテン, FACE_YP, サボテン) ${supportsBlock(CACTUS, FACE_YP, CACTUS)} / ` +
+      `canSupport(サボテン, FACE_YP) ${canSupport(CACTUS, FACE_YP)} / ` +
+      `stacksOnSelf(サボテン) ${stacksOnSelf(CACTUS)} / ` +
+      `supportsBlock(サボテン, FACE_YP, 松明) ${supportsBlock(CACTUS, FACE_YP, TORCH)}`,
+  );
+  check(
+    "サボテンの上のサボテンは置ける（canSupport はゆるめていない・松明は刺さらない）",
+    supportsBlock(CACTUS, FACE_YP, CACTUS) && !canSupport(CACTUS, FACE_YP) &&
+      stacksOnSelf(CACTUS) && !supportsBlock(CACTUS, FACE_YP, TORCH),
+    `supportsBlock ${supportsBlock(CACTUS, FACE_YP, CACTUS)} / ` +
+      `canSupport ${canSupport(CACTUS, FACE_YP)} / stacksOnSelf ${stacksOnSelf(CACTUS)} / ` +
+      `松明 ${supportsBlock(CACTUS, FACE_YP, TORCH)}`,
+  );
+
+  // h. **本物の `World` で 3 段積んで、いちばん下を壊す**（置く側だけを
+  // `supportsBlock()` にして壊す側を `canSupport()` のまま残すと、
+  // **積めるのに下を壊しても上 2 段が宙に残る**）。サトウキビの節と同じ形。
+  {
+    const cx = 7;
+    const cz = 7;
+    world.setVoxel(cx, ground - 1, cz, SAND);
+    for (let y = ground; y < ground + 5; y++) world.setVoxel(cx, y, cz, AIR);
+    let stacked = 0;
+    for (let k = 0; k < 3; k++) {
+      if (world.setVoxel(cx, ground + k, cz, CACTUS)) stacked++;
+    }
+    let broke = 0;
+    world.onAutoBreak = (_x, _y, _z, id) => { if (id === CACTUS) broke++; };
+    world.setVoxel(cx, ground, cz, AIR); // いちばん下を壊す
+    world.onAutoBreak = undefined;
+    console.log(
+      `      3 段積み: 置けたのは ${stacked} 段 / いちばん下を壊したあとの中身 ` +
+        [0, 1, 2, 3].map((k) => world.getVoxel(cx, ground + k, cz)).join(",") +
+        ` / 落ちた合図 ${broke} 回`,
+    );
+    check(
+      "砂の上にサボテンを 3 段積めて、いちばん下を壊すと上 2 段も落ちる",
+      stacked === 3 && broke === 2 && world.getVoxel(cx, ground + 1, cz) === AIR &&
+        world.getVoxel(cx, ground + 2, cz) === AIR,
+      `${stacked} 段 / 合図 ${broke} 回 / 2 段目 ${world.getVoxel(cx, ground + 1, cz)} / ` +
+        `3 段目 ${world.getVoxel(cx, ground + 2, cz)}`,
+    );
   }
 }
 

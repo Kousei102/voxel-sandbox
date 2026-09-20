@@ -20,6 +20,8 @@ import { PerspectiveCamera, Scene, Vector3 } from "three";
 import {
   AIR,
   BOOKSHELF,
+  CACTUS,
+  CACTUS_HEIGHT_MAX,
   BROWN_MUSHROOM,
   CAKE,
   CLAY,
@@ -44,6 +46,8 @@ import {
   PLANK_SLAB,
   PLANK_SLAB_TOP,
   RED_MUSHROOM,
+  SAND,
+  SANDSTONE,
   SANDSTONE_SLAB,
   SANDSTONE_SLAB_TOP,
   SAPLING,
@@ -64,7 +68,7 @@ import {
   supportFace,
 } from "../src/blocks";
 import { CHUNK_VOLUME, SEA_LEVEL } from "../src/constants";
-import { Crops, SAPLING_GROW_SECONDS } from "../src/crops";
+import { CACTUS_GROW_SECONDS, Crops, SAPLING_GROW_SECONDS } from "../src/crops";
 import { DayNight } from "../src/daynight";
 import { DIMENSIONS, END, NETHER, OVERWORLD, type DimensionId } from "../src/dimensions";
 import { MOB_KINDS, Mobs } from "../src/mobs";
@@ -1052,6 +1056,72 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
         `下付き 6 材質 -5..5,${y},2（石/丸石/板/砂岩/ネザーレンガ/石レンガ）/ ` +
         `上付き 6 材質 -5..5,${y},-1 / ` +
         `元の立方体 ${y},-4 の列（石 -5 / 板 -1 / ネザーレンガ 3 / 石レンガ 5）`,
+    };
+  },
+
+  /**
+   * **伸びたサボテン**（37）。**砂漠は `terrain` にも `ground` にも写らない**
+   * （この種の原点は平原）ので、`grown` と同じで**ここへ直に置いて
+   * `Crops.update()` を実際に回して伸ばします** —— 手で 3 段積むと、
+   * 「伸びる道が本当に上へ書けるか」を 1 つも確かめないまま緑の絵になります。
+   * **`stacksOnSelf` を足し忘れたまま撮ると、ここが 1 段のまま写ります**
+   * （`World.setVoxel()` が `canPlaceAt()` に落とされるため）。
+   *
+   * 見るのは 4 つ: **`CACTUS_HEIGHT_MAX` 段まで伸びているか** /
+   * **継ぎ目が空いていないか**（`CACTUS_BOX` の上端は 1）/
+   * **1/16 細い柱が砂の上で「サボテン」に見えるか** /
+   * **自然に生えたぶん（印の無い 1 本）が 1 段のまま残っているか**
+   * （`TUNING.md` の線。サトウキビとまったく同じ）。
+   */
+  cactus(setup) {
+    const { scene, world } = makeWorld(OVERWORLD, 3);
+    const pad = 9;
+    // **平らな台**（`grown` / `sapling` と同じ作り。地形なりだと斜面に埋まる）。
+    // **砂漠を探さずに砂を敷くこと** —— 探すのは高く、見るのはサボテンの形だけ。
+    let y = 0;
+    for (let dz = -pad; dz <= pad; dz++) {
+      for (let dx = -pad; dx <= pad; dx++) y = Math.max(y, world.surfaceY(dx, dz));
+    }
+    for (let dz = -pad; dz <= pad; dz++) {
+      for (let dx = -pad; dx <= pad; dx++) {
+        for (let h = y; h < y + 10; h++) world.setVoxel(dx, h, dz, AIR);
+        for (let h = y - 4; h < y; h++) world.setVoxel(dx, h, dz, SAND);
+        world.setVoxel(dx, y - 1, dz, SAND);
+      }
+    }
+    // **置いたぶん 2 本**（印を付ける）。2 本並べるのは、継ぎ目の空きが
+    // **隣と見比べて初めて読める**ため（氷とガラスを並べたのと同じ理由）。
+    const crops = new Crops();
+    for (const x of [-3, -1]) {
+      world.setVoxel(x, y, 0, CACTUS);
+      crops.notePlaced({ x, y, z: 0 }, CACTUS, world);
+    }
+    // **自然に生えたぶん 1 本**（`notePlaced()` を呼ばない ＝ 伸びない）。
+    // 同じ 1 枚に「置いたぶん」と「自然のぶん」が並ぶので、線がそのまま絵に出る。
+    world.setVoxel(2, y, 0, CACTUS);
+    // **比べる砂岩の立方体**（1/16 の痩せ方が、マスいっぱいの隣と並べて読める）。
+    world.setVoxel(4, y, 0, SANDSTONE);
+    // **上限まで伸びるぶん回すこと。** 1 回だけだと 2 段で止まった絵になり、
+    // 「`CACTUS_HEIGHT_MAX` で止まる」も「継ぎ目」も確かめられない。
+    for (let i = 0; i < CACTUS_HEIGHT_MAX + 1; i++) crops.update(CACTUS_GROW_SECONDS, world);
+    // **書き換えたらメッシュ化をもう一度流すこと**（`grown` / `sapling` と同じ）。
+    world.primeAround(0.5, 0.5, 3);
+    const heightAt = (x: number): number => {
+      let n = 0;
+      while (world.getVoxel(x, y + n, 0) === CACTUS) n++;
+      return n;
+    };
+    return {
+      scene,
+      // **低い斜め上から寄る**（`sapling` と同じ構え）。遠いと 1/16 の痩せ方も
+      // 継ぎ目も読めず、真上からだと段数が 1 マスに潰れる。
+      // **`HANDOFF.md` の「目の高さまで下げて 4 マスまで寄らない」を守ること。**
+      camera: look(setup, new Vector3(0.5, y + 2.9, 6.8), new Vector3(0, y + 1.3, 0)),
+      dayNight: skyOf(OVERWORLD, setup.time),
+      note:
+        `伸ばしたぶん -3,${y},0 が ${heightAt(-3)} 段 / -1,${y},0 が ${heightAt(-1)} 段 ` +
+        `（上限 ${CACTUS_HEIGHT_MAX}）/ 自然に生えたぶん 2,${y},0 が ${heightAt(2)} 段 / ` +
+        `比べる砂岩 4,${y},0 / 覚えている ${crops.count} 本`,
     };
   },
 

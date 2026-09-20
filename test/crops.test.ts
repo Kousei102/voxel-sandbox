@@ -8,6 +8,8 @@
 
 import {
   AIR,
+  CACTUS,
+  CACTUS_HEIGHT_MAX,
   CANE_HEIGHT_MAX,
   DIRT,
   FARMLAND,
@@ -26,6 +28,7 @@ import {
 } from "../src/blocks";
 import { CHUNK_SIZE } from "../src/constants";
 import {
+  CACTUS_GROW_SECONDS,
   CANE_GROW_SECONDS,
   Crops,
   GROW_SECONDS,
@@ -76,11 +79,25 @@ class Field implements CropWorld {
   }
 }
 
-/** その列に何段のサトウキビが立っているか。**段の違いは ID ではなく積み方**（18b）。 */
-function caneHeight(field: Field, x: number, y: number, z: number): number {
+/**
+ * その列に何段の `id` が立っているか。**段の違いは ID ではなく積み方**（18b）。
+ * **サトウキビもサボテンもここを通す**（37。同じ `growStack()` を見るので、
+ * 数え方を 2 本に写すと片方だけ古い数え方で緑になります）。
+ */
+function stackHeight(field: Field, x: number, y: number, z: number, id: number): number {
   let n = 0;
-  while (field.getVoxel(x, y + n, z) === SUGAR_CANE) n++;
+  while (field.getVoxel(x, y + n, z) === id) n++;
   return n;
+}
+
+/** その列に何段のサトウキビが立っているか。 */
+function caneHeight(field: Field, x: number, y: number, z: number): number {
+  return stackHeight(field, x, y, z, SUGAR_CANE);
+}
+
+/** その列に何段のサボテンが立っているか（37）。 */
+function cactusHeight(field: Field, x: number, y: number, z: number): number {
+  return stackHeight(field, x, y, z, CACTUS);
 }
 
 /** 耕地 1 マスとその上の苗。**下の耕地が無いと育たない**ので、そこも一緒に置く。 */
@@ -425,6 +442,176 @@ export function run(): void {
     check("サトウキビは 1 段伸びる", caneHeight(field, 5, 40, 5) === 2, `${caneHeight(field, 5, 40, 5)} 段`);
     // 小麦は実って忘れ、サトウキビは残る。
     check("実った小麦だけが消える", crops.peek(5, 40, 5) === 0 && crops.count === 1, `${crops.count} 本`);
+  }
+
+  // --- 伸びるサボテン（37） ---------------------------------------------------
+  //
+  // **サトウキビとまったく同じ `growStack()` を通ります。** だから見るのは
+  // 「サボテンの ID・上限・秒数でそこへ入れているか」で、順番そのものは
+  // 上のサトウキビ 11 件がそのまま見張っています。
+
+  console.log(
+    `      CACTUS_GROW_SECONDS ${CACTUS_GROW_SECONDS} 秒 / CACTUS_HEIGHT_MAX ${CACTUS_HEIGHT_MAX} 段`,
+  );
+
+  {
+    // a. **段数の移りを先に 1 行出してから判定する**（`rules/testing.md`）。
+    const field = new Field();
+    const crops = new Crops();
+    field.set(0, 39, 0, SAND);
+    field.set(0, 40, 0, CACTUS);
+    crops.notePlaced({ x: 0, y: 40, z: 0 }, CACTUS, field);
+
+    const heights = [cactusHeight(field, 0, 40, 0)];
+    for (let i = 0; i < 4; i++) {
+      crops.update(CACTUS_GROW_SECONDS, field);
+      heights.push(cactusHeight(field, 0, 40, 0));
+    }
+    console.log(
+      `      段数の移り（${CACTUS_GROW_SECONDS} 秒ごと）: ${heights.join(" → ")} / ` +
+        `覚えている ${crops.count} 本`,
+    );
+    check(
+      `サボテンは秒数ごとに 1 段ずつ伸び、${CACTUS_HEIGHT_MAX} 段で止まって印は残る`,
+      heights[1] === 2 && heights[2] === CACTUS_HEIGHT_MAX &&
+        heights[3] === CACTUS_HEIGHT_MAX && heights[4] === CACTUS_HEIGHT_MAX && crops.count === 1,
+      `${heights.join(" → ")} / 覚えている ${crops.count} 本`,
+    );
+  }
+
+  {
+    // b. **刈ったら 0 秒から伸び直す**（伸びきっている間に秒数を溜め込んでいないか）。
+    const field = new Field();
+    const crops = new Crops();
+    field.set(0, 39, 0, SAND);
+    for (let dy = 0; dy < CACTUS_HEIGHT_MAX; dy++) field.set(0, 40 + dy, 0, CACTUS);
+    crops.notePlaced({ x: 0, y: 40, z: 0 }, CACTUS, field);
+    crops.update(CACTUS_GROW_SECONDS, field); // 伸びきっているので何も起きない
+
+    field.set(0, 41, 0, AIR); // 上 2 つを刈る
+    field.set(0, 42, 0, AIR);
+    const after = [cactusHeight(field, 0, 40, 0)];
+    crops.update(CACTUS_GROW_SECONDS, field);
+    after.push(cactusHeight(field, 0, 40, 0));
+    crops.update(CACTUS_GROW_SECONDS, field);
+    after.push(cactusHeight(field, 0, 40, 0));
+    console.log(`      刈ったあとの段数: ${after.join(" → ")}`);
+    check(
+      "刈ったサボテンは 0 秒から伸び直す",
+      after[0] === 1 && after[1] === 2 && after[2] === CACTUS_HEIGHT_MAX,
+      after.join(" → "),
+    );
+  }
+
+  {
+    // c. **塞がっていたら書かない。秒数は持ち越す**（どけたらすぐ伸びる）。
+    const field = new Field();
+    const crops = new Crops();
+    field.set(0, 39, 0, SAND);
+    field.set(0, 40, 0, CACTUS);
+    field.set(0, 41, 0, STONE);
+    crops.notePlaced({ x: 0, y: 40, z: 0 }, CACTUS, field);
+
+    const changed = crops.update(CACTUS_GROW_SECONDS, field);
+    const blocked = cactusHeight(field, 0, 40, 0);
+    const carried = crops.peek(0, 40, 0) ?? 0;
+    // **書き込みの回数はここで控えること** —— あとで読むと、どけたあとの 1 回が乗ります。
+    const blockedWrites = field.writes;
+    console.log(
+      `      上が石のとき: 段数 ${blocked} / 育ち ${carried} 秒 / ` +
+        `書き込み ${blockedWrites} 回 / 合図 ${changed}`,
+    );
+    field.set(0, 41, 0, AIR); // どけたら、持ち越したぶんですぐ伸びる
+    const freed = crops.update(0, field);
+    console.log(`      石をどけた次のフレーム: 段数 ${cactusHeight(field, 0, 40, 0)} / 合図 ${freed}`);
+    check(
+      "上が塞がっていたら伸びず・秒数は持ち越し・どけたら次のフレームで伸びる",
+      blocked === 1 && changed === false && blockedWrites === 0 && carried >= CACTUS_GROW_SECONDS &&
+        freed === true && cactusHeight(field, 0, 40, 0) === 2,
+      `塞がり ${blocked} 段 / 育ち ${carried} 秒 / 塞がっている間の書き込み ${blockedWrites} 回 / ` +
+        `どけたあと ${cactusHeight(field, 0, 40, 0)} 段`,
+    );
+  }
+
+  {
+    // d. **覚えるのは列のいちばん下**（上を覚えると、刈った瞬間に印が消えて二度と伸びない）。
+    // **舐める比較を `SUGAR_CANE` で書き写していたら、ここで上を覚えて落ちる。**
+    const field = new Field();
+    const crops = new Crops();
+    field.set(0, 39, 0, SAND);
+    field.set(0, 40, 0, CACTUS);
+    field.set(0, 41, 0, CACTUS);
+    crops.notePlaced({ x: 0, y: 41, z: 0 }, CACTUS, field); // 2 段目を置いたと伝える
+    crops.notePlaced({ x: 0, y: 40, z: 0 }, CACTUS, field); // 同じ列にもう 1 本
+    console.log(
+      `      2 段目（y=41）を置いたとき: 覚えている ${crops.count} 本 / ` +
+        `下 ${crops.peek(0, 40, 0)} / 上 ${crops.peek(0, 41, 0)}`,
+    );
+    check(
+      "覚えるのは列のいちばん下で、同じ列に 2 本置いてもキーは 1 つ",
+      crops.peek(0, 40, 0) === 0 && crops.peek(0, 41, 0) === null && crops.count === 1,
+      `下 ${crops.peek(0, 40, 0)} / 上 ${crops.peek(0, 41, 0)} / ${crops.count} 本`,
+    );
+  }
+
+  {
+    // e. **未読み込みの列では 1 マスも書かず、印も忘れない**（`syncLit()` と同じ罠）。
+    // 書き込みが落ちるほう（`frozen`）でも忘れないことを続けて見る。
+    const field = new Field();
+    const crops = new Crops();
+    const far = CHUNK_SIZE * 7;
+    field.set(far, 39, 0, SAND);
+    field.set(far, 40, 0, CACTUS);
+    crops.notePlaced({ x: far, y: 40, z: 0 }, CACTUS, field);
+    field.unloaded.add(`${7},${0}`);
+
+    const changed = crops.update(CACTUS_GROW_SECONDS * 2, field);
+    const writesWhileUnloaded = field.writes;
+    console.log(
+      `      未読み込みの列（x=${far}）: 覚えている ${crops.count} 本 / ` +
+        `育ち ${crops.peek(far, 40, 0)} 秒 / 書き込み ${writesWhileUnloaded} 回 / 合図 ${changed}`,
+    );
+
+    field.unloaded.delete(`${7},${0}`);
+    field.frozen = true; // 読み込めても書き込みが落ちる番
+    crops.update(CACTUS_GROW_SECONDS, field);
+    console.log(
+      `      書き込みが落ちる番: 覚えている ${crops.count} 本 / 段数 ${cactusHeight(field, far, 40, 0)} / ` +
+        `書き込み ${field.writes} 回`,
+    );
+    check(
+      "未読み込みの列では 1 マスも書かず、書き込みが落ちても印を忘れない",
+      writesWhileUnloaded === 0 && changed === false && crops.count === 1 &&
+        cactusHeight(field, far, 40, 0) === 1 && field.writes === 1,
+      `未読み込み中の書き込み ${writesWhileUnloaded} 回 / 覚えている ${crops.count} 本 / ` +
+        `段数 ${cactusHeight(field, far, 40, 0)} / 書き込み ${field.writes} 回`,
+    );
+  }
+
+  {
+    // f. **自然に生えたサボテンは伸びない**（誰も置いていないので印が無い）。
+    // **表が空だと `update()` が先頭で返る**ので、置いたぶんを 1 本隣に立てて
+    // 「回っているのに伸びていない」を見ること（`rules/testing.md` の 1 つ目）。
+    const field = new Field();
+    const crops = new Crops();
+    field.set(0, 39, 0, SAND);
+    field.set(0, 40, 0, CACTUS);
+    crops.notePlaced({ x: 0, y: 40, z: 0 }, CACTUS, field); // 置いたぶん
+    field.set(4, 39, 0, SAND);
+    field.set(4, 40, 0, CACTUS); // 自然に生えたぶん（`notePlaced()` を呼ばない）
+
+    crops.update(CACTUS_GROW_SECONDS, field);
+    console.log(
+      `      置いたぶん ${cactusHeight(field, 0, 40, 0)} 段 / ` +
+        `自然に生えたぶん ${cactusHeight(field, 4, 40, 0)} 段 / 覚えている ${crops.count} 本`,
+    );
+    check(
+      "印の無いサボテン（自然生成ぶん）は伸びない（置いたぶんは伸びている）",
+      cactusHeight(field, 0, 40, 0) === 2 && cactusHeight(field, 4, 40, 0) === 1 &&
+        crops.count === 1 && crops.peek(4, 40, 0) === null,
+      `置いた ${cactusHeight(field, 0, 40, 0)} 段 / 自然 ${cactusHeight(field, 4, 40, 0)} 段 / ` +
+        `${crops.count} 本`,
+    );
   }
 
   // --- 苗木が木に育つ（30b） --------------------------------------------------

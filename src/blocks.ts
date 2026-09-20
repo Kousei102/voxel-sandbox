@@ -390,6 +390,16 @@ export const SUGAR_CANE = 143;
 export const CANE_HEIGHT_MAX = 3;
 
 /**
+ * サボテンが立つ段数の上限（本家と同じ 3）。**生成も、置いたぶんが伸びるのも同じ値**を
+ * 見ます（37・2026-09-20）。**`treeshape.ts` にリテラルの 3 を書かないこと**
+ * （`CANE_HEIGHT_MAX` とまったく同じ理由 —— 2 か所に持つと、片方だけ変えたときに
+ * 「生成は 4 段なのに伸びるのは 3 段まで」という形で静かに食い違います）。
+ *
+ * **手で積む高さに上限はありません** —— 本家も 3 で止まるのは「伸びる」ほうだけです。
+ */
+export const CACTUS_HEIGHT_MAX = 3;
+
+/**
  * はしご。**壁掛けの松明（`WALL_TORCH_*`）とまったく同じ形**で、違うのは
  * 見た目（`model: "boxes"` の薄い板）と、**床にも天井にも付かない**ところだけです。
  *
@@ -1575,6 +1585,15 @@ export const BLOCKS: readonly BlockDef[] = [
     // 触れているあいだ刺さる。**上に立つぶんは痛くない**（箱の上面を削ると
     // 積んだサボテンの継ぎ目に出るので、そこは本家と違えてある。`TUNING.md`）
     spiky: true,
+    // **自分の上には自分を積める**（37。サトウキビ = 18b とまったく同じ 1 行）。
+    // ここが無いと `supportsBlock(CACTUS, FACE_YP, CACTUS)` が false のままで、
+    // **`crops.ts` が伸ばそうとした `setVoxel` が `canPlaceAt()` に黙って落とされます。**
+    // **`canSupport()` の側は触らないこと** —— サボテンの箱は 1/16 細いので
+    // 「上面が端まで埋まっている」を満たせず（`test/blocks.test.ts` の
+    // 「サボテンは細いので支えにならない」）、あれは松明とベッドの足場です。
+    // **`replaceable` も付けないこと**（付けると `placeSpot()` が狙ったマス自身を
+    // 返して永久に積めません。`rules/blocks-shapes.md`）。
+    stacksOnSelf: true,
   }),
 
   // 草むら。通り抜けられて、上にブロックを置けば消える（Minecraft と同じ）。

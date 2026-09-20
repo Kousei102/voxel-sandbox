@@ -1,5 +1,5 @@
 /**
- * 植えてある苗と、**プレイヤーが置いたサトウキビ**の育ち具合。
+ * 植えてある苗と、**プレイヤーが置いたサトウキビ・サボテン**の育ち具合。
  * **「位置ごとに状態を持つブロック」の 3 つ目**で、かまど（`furnaces.ts`）・
  * チェスト（`chests.ts`）とまったく同じ器の形です（`rules/stateful-blocks.md`）。
  *
@@ -23,6 +23,8 @@
 
 import {
   AIR,
+  CACTUS,
+  CACTUS_HEIGHT_MAX,
   CANE_HEIGHT_MAX,
   FARMLAND,
   SAPLING,
@@ -62,6 +64,14 @@ export const CANE_GROW_SECONDS = 180;
  * 180 秒にしてあります。**`main.ts` にこの数値を書かないこと。**
  */
 export const SAPLING_GROW_SECONDS = 180;
+
+/**
+ * **プレイヤーが置いたサボテン**が 1 マス上へ伸びるのにかかる秒数。**暫定**（`TUNING.md`）。
+ *
+ * 本家もサボテンとサトウキビは**まったく同じ乱数ティック 16 回**（≒ 18 分）なので、
+ * `CANE_GROW_SECONDS` と同じ値にしてあります。**`main.ts` にこの数値を書かないこと。**
+ */
+export const CACTUS_GROW_SECONDS = 180;
 
 /** その苗木がどの木になるか。苗木でなければ null。 */
 function saplingKind(id: number): TreeKind | null {
@@ -108,12 +118,16 @@ export class Crops {
    * ブロックを置いた、と伝える。**`placeHeld()` は全部のブロックで呼ぶ**ので、
    * **何を覚えるかを決めるのはここです**（`main.ts` は何が伸びるかも何秒かも知りません）。
    *
-   * 覚えるのは**サトウキビと苗木 2 種**。サトウキビだけは**置いたマスではなく、
-   * その列のいちばん下**を覚えます —— **上を覚えると、刈った瞬間に印が消えて
-   * 二度と伸びません。** 同じ列に 2 本置いてもキーは 1 つに畳まれます。
+   * 覚えるのは**サトウキビ・サボテンと苗木 2 種**。**積み上がる 2 つ**（サトウキビ・
+   * サボテン）は**置いたマスではなく、その列のいちばん下**を覚えます ——
+   * **上を覚えると、刈った瞬間に印が消えて二度と伸びません。**
+   * 同じ列に 2 本置いてもキーは 1 つに畳まれます。
    * **苗木は 1 マスきりなので、置いたマスをそのまま覚えます。**
    *
-   * **自然に生えたサトウキビは伸びません**（誰も置いていないので印が無い）。
+   * **下へ舐める比較は `id` で行うこと**（`SUGAR_CANE` と書き写さない）——
+   * サボテンの列をサトウキビの ID で舐めると、1 段も下がらずに上を覚えます。
+   *
+   * **自然に生えたサトウキビ・サボテンは伸びません**（誰も置いていないので印が無い）。
    * 上に 1 本置けば、そこから下へ舐めて列ごと覚えます。
    */
   notePlaced(at: UseSpot | undefined, id: number, world: CropWorld): void {
@@ -122,10 +136,10 @@ export class Crops {
       this.map.set(cropKey(at.x, at.y, at.z), 0);
       return;
     }
-    if (id !== SUGAR_CANE) return;
+    if (id !== SUGAR_CANE && id !== CACTUS) return;
     const { x, z } = at;
     let y = at.y;
-    while (world.getVoxel(x, y - 1, z) === SUGAR_CANE) y--;
+    while (world.getVoxel(x, y - 1, z) === id) y--;
     this.map.set(cropKey(x, y, z), 0);
   }
 
@@ -147,10 +161,12 @@ export class Crops {
    * **`world.update()` の中で回さないこと**（かまど・モブ・落とし物と同じ理由。
    * `test/world.test.ts` の p99 にストリーミングの退行と混ざります）。
    *
-   * **表は 1 つで、道が 3 つあります**（18c のサトウキビ・30b の苗木）。列を確かめたあと、
-   * **素の `getVoxel(x,y,z)` で `WHEAT_CROP` / `SUGAR_CANE` / 苗木 2 種 / それ以外に
-   * 分けます** —— それ以外は「掘られた・上書きされた・もう実っている」なので忘れます。
-   * サトウキビの道は `growCane()`、苗木の道は `growTree()`、苗の道は次の 4 つ（`growWheat()`）:
+   * **表は 1 つで、道が 4 つあります**（18c のサトウキビ・30b の苗木・37 のサボテン）。
+   * 列を確かめたあと、**素の `getVoxel(x,y,z)` で `WHEAT_CROP` / `SUGAR_CANE` /
+   * `CACTUS` / 苗木 2 種 / それ以外に分けます** —— それ以外は「掘られた・
+   * 上書きされた・もう実っている」なので忘れます。
+   * **積み上がる 2 つ（サトウキビ・サボテン）は同じ `growStack()` を通ります**
+   * —— 写して 2 本にしないこと。苗木の道は `growTree()`、苗の道は次の 4 つ（`growWheat()`）:
    *
    * 1. **列が読み込まれているか。** `getVoxel` は未読み込みで AIR を返すので、
    *    ここを飛ばすと**遠くの畑が丸ごと「掘られた」と読まれて忘れられます**
@@ -178,7 +194,13 @@ export class Crops {
       if (here === WHEAT_CROP) {
         if (this.growWheat(key, age, dt, x, y, z, world)) changed = true;
       } else if (here === SUGAR_CANE) {
-        if (this.growCane(key, age, dt, x, y, z, world)) changed = true;
+        if (this.growStack(key, age, dt, x, y, z, SUGAR_CANE, CANE_HEIGHT_MAX, CANE_GROW_SECONDS, world)) {
+          changed = true;
+        }
+      } else if (here === CACTUS) {
+        if (this.growStack(key, age, dt, x, y, z, CACTUS, CACTUS_HEIGHT_MAX, CACTUS_GROW_SECONDS, world)) {
+          changed = true;
+        }
       } else if (kind !== null) {
         if (this.growTree(key, age, dt, x, y, z, kind, world)) changed = true;
       } else {
@@ -216,39 +238,52 @@ export class Crops {
   }
 
   /**
-   * サトウキビの列を 1 段ぶん伸ばす。**覚えているのは列のいちばん下**なので、
-   * まず上へ舐めて段数を数えます（`notePlaced()` と対）。
+   * **積み上がる生えもの**（サトウキビ = 18c・サボテン = 37）の列を 1 段ぶん伸ばす。
+   * **覚えているのは列のいちばん下**なので、まず上へ舐めて段数を数えます
+   * （`notePlaced()` と対）。
    *
-   * 1. **`CANE_HEIGHT_MAX` 段まで伸びていたら育てない。忘れもしない** ——
+   * **2 本に写さないこと。** 違うのは受け取る 3 つ（`self` / `maxHeight` / `seconds`）
+   * だけで、**中身の順番も `changed` の立て方も 1 つも変えていません** ——
+   * サトウキビの 11 件がそのままサボテンの見張りにもなります。
+   *
+   * **`self` と `id` の一致で舐めること** —— ここで `SUGAR_CANE` を書き写すと、
+   * サボテンの列が 1 段も数えられずに上限を越えて伸びます。
+   *
+   * 1. **`maxHeight` 段まで伸びていたら育てない。忘れもしない** ——
    *    **秒数を 0 に戻して**次のフレームへ回します（刈られたら 0 秒から伸び直す）。
    *    **ここで `changed` を立てないこと** —— 立てると、伸びきった 1 本があるだけで
    *    `saveDirty` が毎フレーム立ちます（既に 0 なら書き込みもしません）。
    * 2. **上が塞がっていたら書かない。秒数は持ち越すこと**（どけたらすぐ伸びます）。
    * 3. **`setVoxel` が成功したときだけ**秒数を 0 に戻す（`syncLit()` と同じ作法）。
+   *    **`World.setVoxel()` は `canPlaceAt()` を通す**ので、`self` に
+   *    `stacksOnSelf` が無いと**ここが黙って落ち続けます**（37 でサボテンに足した理由）。
    */
-  private growCane(
+  private growStack(
     key: string,
     age: number,
     dt: number,
     x: number,
     y: number,
     z: number,
+    self: number,
+    maxHeight: number,
+    seconds: number,
     world: CropWorld,
   ): boolean {
     let top = y;
-    while (world.getVoxel(x, top + 1, z) === SUGAR_CANE) top++;
+    while (world.getVoxel(x, top + 1, z) === self) top++;
 
-    if (top - y + 1 >= CANE_HEIGHT_MAX) {
+    if (top - y + 1 >= maxHeight) {
       if (age !== 0) this.map.set(key, 0);
       return false;
     }
 
     const grown = age + dt;
-    if (grown < CANE_GROW_SECONDS || world.getVoxel(x, top + 1, z) !== AIR) {
+    if (grown < seconds || world.getVoxel(x, top + 1, z) !== AIR) {
       this.map.set(key, grown);
       return false;
     }
-    if (world.setVoxel(x, top + 1, z, SUGAR_CANE)) {
+    if (world.setVoxel(x, top + 1, z, self)) {
       this.map.set(key, 0);
       return true;
     }

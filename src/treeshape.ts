@@ -12,6 +12,7 @@
 
 import {
   CACTUS,
+  CACTUS_HEIGHT_MAX,
   FACE_XN,
   FACE_XP,
   FACE_ZN,
@@ -214,6 +215,8 @@ export function vineCells(kind: TreeKind, height: number, x: number, z: number):
 export function grownTreeHeight(kind: TreeKind, x: number, z: number): number {
   const roll = hash2(x, z, 0x5a91);
   if (kind === "spruce") return 6 + Math.floor(roll * 4);
-  if (kind === "cactus") return 1 + Math.floor(roll * 3);
+  // **リテラルの 3 を書かないこと** —— 伸びる側（`crops.ts`）が見るのと同じ
+  // `CACTUS_HEIGHT_MAX` を引く（`CANE_HEIGHT_MAX` と同じ作法。37）。範囲は 1..3 のまま。
+  if (kind === "cactus") return 1 + Math.floor(roll * CACTUS_HEIGHT_MAX);
   return 4 + Math.floor(roll * 3);
 }
