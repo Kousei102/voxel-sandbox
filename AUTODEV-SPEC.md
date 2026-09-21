@@ -1,119 +1,119 @@
-# 仕様: クモは明るいところでは襲ってこない（キューの 39・**ID 0 個**）
+# 仕様: エンダーマンが水に触れると痛い（キューの 40・**ID 0 個**）
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-**先に読むこと**: `rules/mobs.md` / `rules/testing.md`（`grep -l '"src/mobs.ts"' rules/*.md`
-で当たるのはこの 2 本）。**スキルは使いません** —— ID 0 個・位置ごとの状態も増えず、
-**確かめられないものも増えません**（判断は `mobs.ts` だけ・`mobrender.ts` は 0 行）。
+**先に読むこと**: `rules/mobs.md` / `rules/testing.md`（`grep -l '"src/mobs.ts"' rules/*.md` と
+`grep -l '"AUTODEV-SPEC.md"' rules/*.md` の 2 本）。**スキルは使いません**（ID 0 個・確かめ
+られないものも 0 個）。
 
-## この周の前に数え直したこと（2026-09-20 の B の周で実測。**推測ではありません**）
+## この周の前に数え直したこと（2026-09-21 の B の周で実測。**推測ではありません**）
 
-- **クモは明るくても襲ってきます。** `chasing()`（`mobs.ts:2307..2313`）が見るのは
-  **距離と `invulnerable` と番だけ**で、明るさを見る行が 1 つもありません
-  （`MobDef` にも明るさの列はありません）
-- **キューの `spawnBrightness()` という名前は存在しません。** 実際にあるのは
-  **`spawnLight(sky, block, brightness)`**（`mobs.ts:1782`。`max(sky * brightness, block)`）と、
-  それを使う `canSpawnHostile()`（線は `HOSTILE_LIGHT_MAX` = **7**）。**式はもうあります**
-- **`main.ts` も `world.ts` も 0 行**（襲うかどうかは `mobs.update()` の中だけ。
-  `getLight()` は `thinkHostile()` が日光のためにもう呼んでいます。`mobs.ts:2223`）
-- **`Mob` は保存しません**（`session.ts` に `mob` の字が 1 つも無い）。印を 1 つ足しても
-  **`SaveData` は 1 バイトも増えません**。**既存のクモのテストも 1 本も壊れません** ——
-  壁登りの 5 件はどれもプレイヤーが `playerX: -40` で、もともと追跡していません
+- **モブは水で 1 も減りません。** 体力が減る道は `burn()`（日光と溶岩。`mobs.ts:2545`）と
+  `wound()`（殴られた・撃たれた）の 2 本だけで、**水を見る行が 1 つもありません**
+- **キューの「`isHotLiquid` とそっくり」は足りません** —— `mob.liquid` は**胴の中ほど**
+  （`size.height * 0.5`。`mobs.ts:2455`）の 1 点だけで、**深さ 2 マス未満の水では濡れません**
+- **跳んで逃げる道はもうあります** —— `wound()` が `teleportUrge` を立て、`teleport()` が
+  `hurtChance`(0.5) で跳ばせ、**`teleportSpot()` が液体を行き先から外します**（`mobs.ts:2659`）
+- **`main.ts` も `vitals.ts` も 0 行**（`DamageCause` は増えません）。**`Mob` は保存しないので
+  `SaveData` は 1 バイトも増えません**
 
 ## 1. 何を足すか / 完了の判定
 
-**クモだけが、明るい所（光量 12 以上）ではプレイヤーを追わず・殴らない。** 暗くなれば
-今までどおり襲ってきます。**湧きは 1 件も変えません**（湧きの線は 7 のまま）。**完了の
-判定**: `npm test` に新しい節 **「明るい所では襲ってこない（クモ）」が 7 件**増えて
-**全部（3853 → 3860 件）が緑**。
+**エンダーマンだけが、水に触れているあいだ毎秒 2 ずつ体力を失う**（体力 40 なので 20 秒）。
+**痛んだ拍子に既存の道で跳んで逃げます。** **完了の判定**: `npm test` に新しい節
+**「水に触れると痛い（エンダーマン）」が 7 件**増えて**全部（3860 → 3867 件）が緑**。
 
 ## 2. 触るファイルと、触らないファイル
 
 | ファイル | やること |
 | --- | --- |
-| `src/mobs.ts` | `MobDef` に列 1 つ / `Mob` に印 1 つ / 純粋関数 1 本 / 分岐 2 か所 |
-| `test/mobs.test.ts` | 新しい節 7 件 / 見張りの一覧に `"calm"` を 1 語 |
+| `src/mobs.ts` | `MobDef` に列 1 つ / `Mob` に溜め 1 つ / 純粋関数 1 本 / 私有の `soak()` 1 本 / `update()` に 1 行 |
+| `test/mobs.test.ts` | 新しい節 7 件 / 見張りの一覧に `"waterHurt"` を 1 語 |
 | `TUNING.md` / `rules/mobs.md` | 1 節（下の 7.）/ 踏んだ落とし穴を 1〜3 行（C-4） |
 
 **触らないこと**: **`src/main.ts`（0 行。1450 行で止まる目安に並んでいます）** /
-`src/mobrender.ts` / `src/world.ts` / `src/lighting.ts` / `src/vitals.ts` / `ROADMAP.md`。
+`src/vitals.ts` / `src/blocks.ts` / `src/mobrender.ts` / `src/player.ts` / `ROADMAP.md`。
 
 ## 3. 使う ID
 
-**0 個。** ブロックもアイテムも増えないので **`ROADMAP.md` の予約表は 1 行も触りません**（共有帯の次の空きは 187 のまま・低帯は 57 のまま）。
+**0 個。** ブロックもアイテムも増えないので **`ROADMAP.md` の予約表は 1 行も触りません**（次の空きは 187・低帯は 57 のまま）。
 
 ## 4. 判断をどこに置くか —— **全部 `mobs.ts`**（確かめられないものは増えません）
 
-- **表に列を 1 つ**: `readonly calmLight: number`（**この明るさ以上では襲ってこない。
-  0 なら明るさを見ない**）。`hover` / `regen` / `climbSpeed` と同じ形で、
-  **`?:`（省略可）にしないこと**。**クモは 12・ほかの 9 種類は 0**。
-  **`kind === "spider"` と書かないこと**（`climbSpeed` / `milkable` と同じ作法）
-- **`HOSTILE_LIGHT_MAX`(7) を使い回さないこと。** **湧く線（7）と襲う線（12）は別物**で、
-  1 つの定数を分け合うと `MOB_DAMAGE` / `FLY_HOVER` と同じ形で壊れます
-- **`Mob` に印を 1 つ**: `calm: boolean`（`spawn()` の初期値は `false`）。**書くのは
-  5Hz の `thinkHostile()` だけ**・読むのは下の 2 か所だけ
-- **純粋関数を 1 本**（`canSpawnHostile()` の隣・**export する**）:
-  `calmInLight(calmLight, sky, block, brightness)` =
-  **`calmLight > 0 && spawnLight(sky, block, brightness) >= calmLight`**。
-  **決まりはこの 1 本だけが持つこと**（`calmLight > 0` の判断を呼ぶ側へ写さない）
-- **`thinkHostile()`**: いまの日光の `Math.floor(...)` 3 本を**目の高さの const 3 つへ
-  くくり出し**（値は変えない）、その座標で `mob.calm = calmInLight(...)` を**毎回**書く。
-  **⚠ 代入は `mob.liquid === AIR && !def.fireproof` の `if` の外**（水で忘れます）
-- **止めるのは 2 か所だけ**: `chasing()` の先頭に **`if (mob.calm) return false;`** と、
-  `update()` の **`if (!def.hostile) continue;`（2113 行）を `|| mob.calm` に**。
-  **`strike()` と `fire()` の中に明るさを書かないこと** —— あの 1 行で両方止まります
+- **表に列を 1 つ**: `readonly waterHurt: number`（**触れているあいだの毎秒のダメージ。0 なら
+  水を見ない**）。**`?:` にしない**・**エンダーマン 2・ほか 9 種類は 0**・**`kind` を見ない**
+- **`BURN_DAMAGE`(2) を使い回さないこと。** 同じ 2 でも別の値で、`MOB_DAMAGE` / `FLY_HOVER` /
+  `FLY_RISE` と同じ形で壊れます（日光の速さを触ると水まで動く）
+- **`Mob` に溜めを 1 つ**: `soakTick: number`（`burnTick` の隣。`spawn()` の初期値は 0）。
+  **乾いているあいだは進めないだけで、0 へ戻さないこと** —— 戻すと、水面を出入りするだけで
+  永久に痛くないモブになります
+- **純粋関数を 1 本**（`calmInLight()` の隣・**export する**。決まりはこの 1 本だけが持つ）:
 
-## 5. 書くテスト（`test/mobs.test.ts`・新しい節「明るい所では襲ってこない（クモ）」）
+```ts
+export function waterDamage(waterHurt: number, mid: number, feet: number): number {
+  const wet = (id: number) => isLiquid(id) && !isHotLiquid(id);
+  return waterHurt > 0 && (wet(mid) || wet(feet)) ? waterHurt : 0;
+}
+```
 
-**`describe("モブと溶岩")`（2927 行）の直前**に置くこと（「敵対モブの AI」の節の末尾。
-**真ん中に挟むと、後ろの日光の判定が新しい節の名前で出ます**）。**`midnight`（1630 行）
-を使い回し**、**値を出してから判定する形**で、**新しい `check()` はちょうど 7 件**:
+- **2 点を見るのは浅い水のため**（本家は「触れたら」）。**`mob.liquid` の測る高さを動かさない
+  こと**（速さ・跳躍・壁登り・溶岩が乗っています）。**`WATER` と直に比べない**（`blocks.ts` は 0 行）
+- **私有の `soak(mob, def, world, dt, ctx)` を 1 本**（`burn()` の真下に、あれを写す形。
+  倒れたら true）: `waterDamage(def.waterHurt, mob.liquid, world.getVoxel(…足元…))` が 0 なら
+  **何もせず false**（足元の `getVoxel` を払うのは表に値を持つモブだけ）。0 でなければ
+  `soakTick += dt` を溜めて **1 秒ごとに `wound()` を 1 回**。倒れたら `mobdeath` を
+  `SAY_DISTANCE` の内だけ鳴らし、**`onDrop` は呼ばない**（`burn()` と同じ規則）
+- **`update()` に 1 行**: `if (this.soak(…)) continue;` を **`burn()` の直後・`regenerate()` の前**へ
+- **`burnTimer` を水で立てないこと** —— 水中のエンダーマンが燃えて見えます
 
-- **試験場は 1 つだけ**: 石の床（**草にすると受動が湧きます**）・**`sky = MAX_LIGHT - 1`（14）**・
-  **`block = 8`**。**`quiet()` を使わないこと**（`block` 15 固定で明るさを動かせません）。
-  この 1 つで 3 つとも満たします —— **昼は `max(14, 8) = 14 ≥ 12` で襲わない** / **夜は
-  `14 * midnight ≤ 6.5` なので `8 < 12` で襲う** / **8 > 7 で自然には 1 体も湧かない**
-  （15 にしないのは**日光で焼けないため**。`sunlightBurns` は 15 だけ）
-- a. **表**: `MOB_KINDS.map((k) => ...calmLight)` を 10 種類ぶん出したうえで、
-  **`filter((k) => MOBS[k].calmLight > 0).join(" ") === "spider"`**（`climbSpeed` の
-  651 行と同じ形。**抜けと余分の両方で落ちます**）
-- b. **昼はクモが追ってこない**（`brightness: 1`。**実効光と、3 秒後の距離の両方を出す**）
-- c. **夜は同じ場所で追ってくる**（`brightness: midnight`。**b と c の違いは時刻だけ**）
-- d. **境目**: `sky = 0` で **光量 11 なら追い・12 なら追わない**（1 段の差で切り替わる。
-  **どちらも 7 より明るいので湧きません** = 湧く線と襲う線が別であることの裏取り）
-- e. **ゾンビは昼でも追ってくる**（同じ試験場・`brightness: 1`。`calmLight` 0 の裏取り）
-- f. **昼のクモはプレイヤーを殴らない**（模造の `MobTarget` で回数を数える。
-  **0 回だけで緑にしないこと** —— **3 秒後もまだ `ATTACK_RANGE`(1.4) の内に居ること**を
-  同じ `check` で見て、両方の値を出すこと。`rules/testing.md`）
-- g. **夜の同じ置き方では殴られる**（f の裏取り。**回数と最後の距離を出す**）
-- **見張り**: `mobrender.ts` の `decisions` の一覧（183..224 行）に **`"calm"`** を足して、
+## 5. 書くテスト（`test/mobs.test.ts`・新しい節「水に触れると痛い（エンダーマン）」）
+
+**`describe("モブと溶岩")` の節の末尾**（`describe("敵対モブの攻撃…")` の直前）に置くこと ——
+対照に**あの節がもう作っている `wet`**（`swim("zombie", WATER)`）をそのまま使います。
+**`swim()` と溶岩の 6 件は 1 文字も書き換えないこと。** 新しい `check()` はちょうど 7 件:
+
+- **試験場は `swim()` を写した `dunk({ kind, random, seconds, health })` 1 つ**（蓋をした水の池。
+  **浮いて出てしまわないよう蓋をすること**）。返すのは `{ soaked, escaped, health,
+  burnTimer, alive, drops, seconds }`。**`escaped`（一度でも
+  `mob.liquid === AIR` になったか）は `pack.update()` のあとで見ること**（湧いた直後は物理が
+  1 度も回っておらず `AIR`）。**写した理由は `random` を渡せること**（`seeded(83)` では
+  跳んで逃げてしまい、減り方を測れません）
+- a. **表**: 10 種類ぶんの `waterHurt` を出したうえで、**`MOB_KINDS.filter((k) =>
+  MOBS[k].waterHurt > 0).join(" ") === "enderman"`**（`calmLight` の 2987 行と同じ形）
+- b. **純粋関数の 4 通りを 1 件で**: 水 → 2 / 溶岩 → 0 / 空気 → 0 / **足元だけ水でも 2**
+  （浅い水のぶん。**4 つの値を出してから判定すること**）
+- c. **沈めたエンダーマンが毎秒 2 ずつ減る**（`random: () => 1` で跳ばせない。**浸かった証拠
+  `soaked` を先に**出し、**10 秒で 40 → 20 前後**。判定は**実測の毎秒が 1.5〜2.5 の中**）
+- d. **対照: 同じ水でゾンビは 1 も減らない**（**上の `wet` を使う**。
+  `wet.health === MOBS.zombie.maxHealth`。**2 種類の体力を並べて出すこと**）
+- e. **水では火が点かない**（c と同じ走りの `burnTimer === 0`。水中で燃えて見えない裏取り）
+- f. **痛んだら跳んで逃げる**（`random: seeded(…)` で 15 秒。**`soaked` と `escaped` の両方が
+  立つこと**と、そのときの体力を出す。**既存の `teleportUrge` の道に乗っている証拠**）
+- g. **水で倒れてもドロップしない**（`health: 4` で沈める。**`alive === false` と
+  `drops === 0` の両方を出す**。溶岩の焼死と同じ規則）
+- **見張り**: `decisions` の一覧（183..228 行）に **`"waterHurt"`** を足して、
   **`mobrender.ts に判断が漏れていない` が緑のまま**であること（**`check` は増えません**）
 
 ## 6. このタスク固有の禁じ手
 
-- **`MobDef` に列を 2 つ以上足さないこと**（明るさの線 1 つで足ります）
-- **湧きを 1 件も変えないこと** —— `canSpawnHostile()` / `HOSTILE_LIGHT_MAX` / `hostileFor()` / `trySpawn()` は 1 文字も触らない。**クモは今までどおり暗い所に湧きます**
-- **「殴られたら明るくても追い返す」（本家の反撃）を足さないこと。** 敵対モブはいま
-  反撃の状態を持っておらず（`fleeTimer` は受動だけ）、**取るならそれだけで 1 周**です
-- **`quiet()`（113 行）と `chases()`（2859 行）を書き換えないこと**（`block = 15` なので
-  クモは calm ですが、**使っているのはゾンビだけ**です）
-- **`SPIDER` のほかの値を触らないこと**（`speed` 6.0 / `climbSpeed` 3.0 / `damage` 2 /
-  `fireproof` false）。**明るい所でも壁を登るのは正しい**（登るのは襲う判断ではなく
-  `step()` の物理で、本家のクモも昼に登ります）
-- **キューの 40（エンダーマンが水で痛い）に手を出さないこと**（`isHotLiquid` は 0 行）
+- **`MobDef` に列を 2 つ以上足さないこと**（毎秒のダメージ 1 つで足ります）
+- **溺れ（酸素・息継ぎ）を足さないこと**（**別の周**。足すのは触れているあいだの痛みだけ）
+- **雨を足さないこと**（本家は雨でも痛みますが、**天候は見送り済み**）
+- **`teleport()` / `teleportSpot()` / `wound()` を 1 文字も触らないこと**（印は `wound()` が立てます）
+- **`mob.liquid` の測り方（`size.height * 0.5` の 1 点）を動かさないこと**
+- **`DamageCause` を増やさないこと**（`vitals.ts` はプレイヤーの体力の話で、ここは 0 行）
+- **`ENDERMAN` のほかの値を触らないこと**（`maxHealth` 40 / `damage` 7 / `teleport` の表）
+- **キューの 41（ネザーレンガのフェンス）に手を出さないこと**
 
 ## 7. 終了条件
 
-`npm run typecheck` と `npm test`（**3860 件・全部緑**）/ `npm run build`（`src/**` を
-触るため）/ **コミット 1 つを `master` へ push** / **`TUNING.md` に 1 節**（**光量 12 は
-本家の実測**: `getBrightness() >= 0.5` が光量 12 に当たる。**湧く線 7 との違い**と、
-**松明（光量 14）のそばではクモは襲ってこないが、ゾンビは襲ってくる**ことを書く）/
-`AUTODEV-QUEUE.md` の 39 の行を消す / この仕様書を `状態: 済` にする /
+`npm run typecheck` と `npm test`（**3867 件・全部緑**）/ `npm run build`（`src/**` を触るため）/
+**コミット 1 つを `master` へ push** / **`TUNING.md` に 1 節**（**毎秒 2 は本家の実測**:
+1 ダメージ × 0.5 秒の無敵。**深さ 2 マス未満の浅い水でも痛む**ことと **雨は無い**ことも書く）/
+`AUTODEV-QUEUE.md` の 40 の行を消す / この仕様書を `状態: 済` にする /
 **`docs/autodev-log.md` に 1 節** / **`HANDOFF.md` を丸ごと書き直す**。
 
 **`npm run bench` は要りません**（生成もメッシュ化も触らないため）。**撮るのは
-`npm run shot -- mobs --size 900x900`**（形は変わりませんが、`MobDef` に列を足すので
-10 種類が崩れていないことを見る。**前の周とビット同一になるはず**）。
-**明るさで襲うのをやめる姿は絵になりません** —— **公開サイトで人に見てもらうぶん**として
-`HANDOFF.md` に 2〜3 行残すこと。
+`npm run shot -- mobs --size 900x900`**（列を足すので 10 種類の形を見る。**前の周とビット同一
+になるはず**）。**水で痛む姿は絵になりません** —— **人に見てもらうぶん**を `HANDOFF.md` へ。
