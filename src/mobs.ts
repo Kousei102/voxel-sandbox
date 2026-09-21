@@ -344,6 +344,21 @@ export interface MobDef {
    */
   readonly fireproof: boolean;
   /**
+   * **水に触れているあいだ、毎秒どれだけ体力を失うか。0 なら水を見ない。**
+   * エンダーマンだけが 0 でない（本家と同じ）。痛んだぶんは既存の
+   * `teleportUrge` の道に乗るので、**跳んで逃げるのはここではなく `teleport()`。**
+   *
+   * **`BURN_DAMAGE`(2) を使い回さないこと。** 同じ 2 でも別の値で、
+   * `MOB_DAMAGE` / `FLY_HOVER` / `FLY_RISE` と同じ形で壊れる
+   * （日光の焼ける速さを触ると、水で痛む速さまで一緒に動く）。
+   *
+   * **`kind === "enderman"` と書かないこと**（`climbSpeed` / `calmLight` と同じ作法）。
+   *
+   * **溺れ（酸素・息継ぎ）ではない。** 触れているあいだの痛みだけで、
+   * `Mob` に時計はもう 1 本も増やしていない（溺れは別の周）。
+   */
+  readonly waterHurt: number;
+  /**
    * 湧ける地面のブロック。**null なら固い地面ならどこでも。**
    * 指定のあるモブはその地面で「どこでも」のモブに勝つ（`hostileFor()`）。
    */
@@ -458,6 +473,7 @@ const PIG: MobDef = {
   climbSpeed: 0,
   calmLight: 0,
   fireproof: false,
+  waterHurt: 0,
   spawnOn: null,
   boss: false,
   orbit: null,
@@ -525,6 +541,7 @@ const SHEEP: MobDef = {
   climbSpeed: 0,
   calmLight: 0,
   fireproof: false,
+  waterHurt: 0,
   spawnOn: null,
   boss: false,
   orbit: null,
@@ -627,6 +644,7 @@ const CHICKEN: MobDef = {
   climbSpeed: 0,
   calmLight: 0,
   fireproof: false,
+  waterHurt: 0,
   // **受動に `spawnOn` を付けないこと**（`trySpawn()` 側にも手が要ります。`rules/mobs.md`）。
   spawnOn: null,
   boss: false,
@@ -727,6 +745,7 @@ const COW: MobDef = {
   climbSpeed: 0,
   calmLight: 0,
   fireproof: false,
+  waterHurt: 0,
   // **受動に `spawnOn` を付けないこと**（`trySpawn()` 側にも手が要ります。`rules/mobs.md`）。
   spawnOn: null,
   boss: false,
@@ -825,6 +844,7 @@ const ZOMBIE: MobDef = {
   climbSpeed: 0,
   calmLight: 0,
   fireproof: false,
+  waterHurt: 0,
   spawnOn: null,
   boss: false,
   orbit: null,
@@ -914,6 +934,7 @@ const SPIDER: MobDef = {
   calmLight: 12,
   // **false のまま**（上の説明）。朝になると日光で燃える。
   fireproof: false,
+  waterHurt: 0,
   // **付けないこと** —— 付けると、その地面で「どこでも」の敵対に勝ってしまう。
   spawnOn: null,
   boss: false,
@@ -1042,6 +1063,7 @@ const SKELETON: MobDef = {
   calmLight: 0,
   // **false のまま** —— そのまま「朝に燃える」になる（本家のスケルトンも燃える）。
   fireproof: false,
+  waterHurt: 0,
   spawnOn: null,
   boss: false,
   orbit: null,
@@ -1134,6 +1156,7 @@ const BLAZE: MobDef = {
   climbSpeed: 0,
   calmLight: 0,
   fireproof: true,
+  waterHurt: 0,
   spawnOn: [NETHER_BRICK],
   boss: false,
   orbit: null,
@@ -1215,6 +1238,10 @@ const ENDERMAN: MobDef = {
   climbSpeed: 0,
   calmLight: 0,
   fireproof: false,
+  // **本家と同じ「水に触れると痛い」。** 毎秒 2 なので、体力 40 を沈めたままなら 20 秒。
+  // 痛んだ拍子に `wound()` が `teleportUrge` を立て、既存の `teleport()` が
+  // **液体を行き先から外して**跳ばせる —— だからここは痛みだけを持つ（`TUNING.md`）。
+  waterHurt: 2,
   spawnOn: null,
   boss: false,
   orbit: null,
@@ -1318,6 +1345,7 @@ const DRAGON: MobDef = {
   // エンドに溶岩は無いが、**日光では燃えないこと**が要る（エンドの空は
   // 明るさ 0.7 固定なので、`sunlightBurns()` の線を超える所がある）。
   fireproof: true,
+  waterHurt: 0,
   spawnOn: null,
   boss: true,
   // 柱の輪（半径 28）の内側を回る。**外側にすると柱に体当たりし続ける。**
@@ -1641,6 +1669,16 @@ export interface Mob {
   burnTimer: number;
   /** 焦げるまでの溜め。1 秒ごとに 1 回ダメージを入れるのに使う。 */
   burnTick: number;
+  /**
+   * 水で痛むまでの溜め（`burnTick` の水版）。1 秒ごとに 1 回ダメージを入れる。
+   *
+   * **乾いているあいだは進めないだけで、0 へ戻さないこと** —— 戻すと、
+   * 水面を出入りするだけで永久に痛くないモブになる（1 秒溜まる前に必ず消える）。
+   *
+   * **保存しません**（`burnTick` と同じ。モブそのものを保存しないので、
+   * セーブは 1 バイトも増えません）。`waterHurt` が 0 のモブでは 0 のまま動かない。
+   */
+  soakTick: number;
   /** 次にプレイヤーを殴れるまでの残り (秒)。**1 体ごとに持つ。** */
   attackTimer: number;
   /**
@@ -1857,6 +1895,28 @@ export function calmInLight(
 }
 
 /**
+ * 水に触れているぶんの毎秒のダメージ（`MobDef.waterHurt`）。触れていなければ 0。
+ *
+ * **見るのは 2 点（胴の中ほど `mid` と足元 `feet`）。** `Mob.liquid` は
+ * **胴の中ほどの 1 点だけ**なので、高いモブ（エンダーマンは 2.9）は
+ * **深さ 2 マス未満の水では濡れたことにならない** —— 本家は「触れたら」なので、
+ * 足首までの浅瀬でも痛むのが正しい。**`mob.liquid` の測る高さのほうを動かさないこと**
+ * （速さ・跳躍・壁登り・溶岩がまとめて乗っている）。
+ *
+ * **`waterHurt > 0`（＝水を見るか）の判断はこの 1 本だけが持つこと**
+ * （`calmInLight()` とまったく同じ作法）。呼ぶ側へ写すと、
+ * 「0 なら水を見ない」が 2 か所に分かれて片方だけ直す形が生まれる。
+ *
+ * **液体の ID を名指しで比べないこと** —— 液体かどうかは `blocks.ts` の仕事で
+ * （`test/blocks.test.ts` の見張りが**この説明ごと**読む。落とすのは行コメントだけ）、
+ * 熱いほう（溶岩）は `burn()` のぶんなのでここでは外す。
+ */
+export function waterDamage(waterHurt: number, mid: number, feet: number): number {
+  const wet = (id: number) => isLiquid(id) && !isHotLiquid(id);
+  return waterHurt > 0 && (wet(mid) || wet(feet)) ? waterHurt : 0;
+}
+
+/**
  * 日光で燃えるか。**スカイライトが最大（真上が完全に空いている）ときだけ。**
  * 木の下・屋根の下・水の中では燃えない（水は呼ぶ側で見る）。
  */
@@ -2000,6 +2060,7 @@ export class Mobs {
       fleeTimer: 0,
       burnTimer: 0,
       burnTick: 0,
+      soakTick: 0,
       attackTimer: 0,
       // 湧いた瞬間に撃たせない（目の前に湧いたときの初弾を待たせる）。
       shootTimer: MOBS[kind].ranged?.cooldown ?? 0,
@@ -2167,6 +2228,9 @@ export class Mobs {
       }
       // 焼け死んだらここで list から消えているので、続きに触らない
       if (this.burn(mob, def, dt, ctx)) continue;
+      // **水は焼けたあと・回復の前。** 表に値を持つモブ（エンダーマン）だけが通る。
+      // 溺れ死んだらここで list から消えているので、続きに触らない。
+      if (this.soak(mob, def, world, dt, ctx)) continue;
       // **回復は焼けたあと。** 先に回すと、燃えているぶんを打ち消してから減らす形になり、
       // 「燃えているのに体力が動かない」1 フレームができる。
       this.regenerate(mob, def, dt, ctx);
@@ -2552,6 +2616,41 @@ export class Mobs {
       // （別の入口を作ると、片方だけ直したときに静かに食い違う）。
       if (!this.wound(mob, isHotLiquid(mob.liquid) ? LAVA_DAMAGE : BURN_DAMAGE)) continue;
       // 断末魔だけ鳴らす（毎秒の悲鳴は、夜明けに何十体ぶんも重なってうるさい）
+      if (distanceTo(mob, ctx) < SAY_DISTANCE) this.onSound?.("mobdeath", def.voice);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * 水に触れているぶんのダメージ（毎フレーム）。溺れ死んだら true。
+   * **`burn()` を写した形**で、違うのは「残り時間を持たない」ことだけ
+   * （水から上がった瞬間に止まるのが正しい。燃え残りに当たるものが無い）。
+   *
+   * **火は点けないこと**（`burnTimer` を立てない）—— 水中のエンダーマンが
+   * 燃えて見える。**焼死と同じでドロップもしない**（40 ブロック先で勝手に
+   * 水へ落ちたエンダーマンの真珠が手元に湧いてはいけない）。
+   */
+  private soak(mob: Mob, def: MobDef, world: World, dt: number, ctx: MobContext): boolean {
+    // **足元の `getVoxel` を払うのは、表に値を持つモブだけ** ——
+    // `waterHurt` が 0 なら `waterDamage()` は必ず 0 なので、先にここで返る。
+    if (def.waterHurt <= 0) return false;
+    const feet = world.getVoxel(
+      Math.floor(mob.position.x),
+      Math.floor(mob.position.y),
+      Math.floor(mob.position.z),
+    );
+    const damage = waterDamage(def.waterHurt, mob.liquid, feet);
+    if (damage <= 0) return false;
+
+    // **乾いているあいだは進めないだけで、0 へ戻さないこと**（`Mob.soakTick`）。
+    mob.soakTick += dt;
+    while (mob.soakTick >= 1) {
+      mob.soakTick -= 1;
+      // 倒れなければ次の 1 秒へ。**印（`teleportUrge`）は `wound()` が立てる**ので、
+      // 跳んで逃げるのはこの先の `teleport()` に任せる（ここには 1 行も書かない）。
+      if (!this.wound(mob, damage)) continue;
+      // 断末魔だけ鳴らす（`burn()` とまったく同じ規則）。
       if (distanceTo(mob, ctx) < SAY_DISTANCE) this.onSound?.("mobdeath", def.voice);
       return true;
     }

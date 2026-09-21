@@ -1,6 +1,6 @@
 # 仕様: エンダーマンが水に触れると痛い（キューの 40・**ID 0 個**）
 
-状態: 未着手
+状態: 済
 差し戻し: 0 回
 
 **先に読むこと**: `rules/mobs.md` / `rules/testing.md`（`grep -l '"src/mobs.ts"' rules/*.md` と

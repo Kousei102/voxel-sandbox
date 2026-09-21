@@ -71,6 +71,7 @@ import {
   teleportSpot,
   walkSwing,
   variantBoxes,
+  waterDamage,
   type Mob,
   type MobBox,
   type MobContext,
@@ -225,6 +226,10 @@ export function run(): void {
     // 「誰が・どの明るさで」が描画側に生えると、松明のそばへクモを連れてくるまで
     // 確かめられない（しかも湧く線 7 との取り違えが黙って通る）。
     "calm",
+    // **水で痛むかどうかもここに足すこと。** 水に沈んだ姿は絵にならないが、
+    // 「誰が・毎秒どれだけ」が描画側に生えると、公開サイトでエンダーマンを
+    // 水辺まで連れてくるまで確かめられない（しかも溶岩のぶんと取り違えが黙って通る）。
+    "waterHurt",
   ].filter((name) => renderSource.includes(name));
   check("mobrender.ts に判断が漏れていない", decisions.length === 0, decisions.join(" "));
 
@@ -3158,6 +3163,143 @@ export function run(): void {
     "溶岩は日光よりずっと速く焼く",
     boiled.seconds * 2 < burned.seconds,
     `${boiled.seconds.toFixed(1)} 秒 < ${burned.seconds.toFixed(1)} 秒`,
+  );
+
+  describe("水に触れると痛い（エンダーマン）");
+
+  /**
+   * 蓋をした**水**の池に沈める（上の `swim()` を写したもの）。
+   * **浮いて出てしまわないよう蓋をすること**（モブは液面へ浮く）。
+   *
+   * **写した理由は `random` を渡せること** —— `swim()` の `seeded(83)` では
+   * エンダーマンが跳んで逃げてしまい、毎秒どれだけ減るかを測れない。
+   */
+  function dunk(opts: { kind: MobKind; random: () => number; seconds: number; health?: number }): {
+    soaked: boolean;
+    escaped: boolean;
+    health: number;
+    burnTimer: number;
+    alive: boolean;
+    drops: number;
+    seconds: number;
+  } {
+    const arena = quiet(new Arena());
+    arena.fill(-20, 20, 0, 9, -20, 20, STONE);
+    arena.fill(-6, 6, 10, 20, -6, 6, WATER);
+    arena.fill(-6, 6, 21, 21, -6, 6, STONE);
+    const pack = new Mobs();
+    let drops = 0;
+    pack.onDrop = () => drops++;
+    const mob = pack.spawn(opts.kind, 0.5, 11, 3.5, 0, seeded(81))!;
+    if (opts.health !== undefined) mob.health = opts.health;
+    const c = ctx({ random: opts.random });
+    const world = arena.asWorld();
+    const total = Math.round(opts.seconds * 60);
+    let frames = 0;
+    // **浸かった証拠を先に取ること**（浸かっていなければ、何を見ても意味がない）
+    let soaked = false;
+    // **`pack.update()` のあとで見ること** —— 湧いた直後は物理が 1 度も回っておらず
+    // `mob.liquid` は `AIR` のままなので、先に見ると全部「逃げた」になる。
+    let escaped = false;
+    for (; frames < total && pack.count > 0; frames++) {
+      pack.update(1 / 60, world, c);
+      soaked ||= mob.liquid === WATER;
+      escaped ||= mob.liquid === AIR;
+    }
+    return {
+      soaked,
+      escaped,
+      health: mob.health,
+      burnTimer: mob.burnTimer,
+      alive: pack.count > 0,
+      drops,
+      seconds: frames / 60,
+    };
+  }
+
+  // a. 表。**水で痛むのはエンダーマンだけ**（`calmLight` と同じ形で一覧から数える）。
+  console.log(
+    `      水で毎秒減るぶん: ${MOB_KINDS.map((k) => `${MOBS[k].name} ${MOBS[k].waterHurt}`).join(" / ")}`,
+  );
+  const soggyKinds = MOB_KINDS.filter((k) => MOBS[k].waterHurt > 0);
+  check(
+    "水で痛むのはエンダーマンだけ",
+    soggyKinds.join(" ") === "enderman",
+    `${soggyKinds.join(" ") || "（0 種類）"} / 毎秒 ${MOBS.enderman.waterHurt}`,
+  );
+
+  // b. 純粋関数の 4 通り。**足元だけ水でも痛むこと**が浅瀬のぶん
+  //    （`mob.liquid` は胴の中ほどの 1 点なので、高さ 2.9 のエンダーマンは
+  //    深さ 2 マス未満の水では濡れたことにならない）。
+  const hurt = MOBS.enderman.waterHurt;
+  const hurtWater = waterDamage(hurt, WATER, AIR);
+  const hurtLava = waterDamage(hurt, LAVA, AIR);
+  const hurtAir = waterDamage(hurt, AIR, AIR);
+  const hurtShallow = waterDamage(hurt, AIR, WATER);
+  console.log(
+    `      waterDamage: 水 ${hurtWater} / 溶岩 ${hurtLava} / 空気 ${hurtAir} /` +
+      ` 足元だけ水 ${hurtShallow}`,
+  );
+  check(
+    "水だけが痛い（溶岩と空気は 0・足元だけ水でも痛い）",
+    hurtWater === hurt && hurtLava === 0 && hurtAir === 0 && hurtShallow === hurt,
+    `${hurtWater} / ${hurtLava} / ${hurtAir} / ${hurtShallow}`,
+  );
+
+  // c. 沈めたら毎秒 2 ずつ。**跳んで逃げられると測れない**ので `random: () => 1`
+  //    （`hurtChance` 0.5 を必ず外す）。
+  const sunk = dunk({ kind: "enderman", random: () => 1, seconds: 10 });
+  const lostRate = (MOBS.enderman.maxHealth - sunk.health) / sunk.seconds;
+  console.log(
+    `      水に 10 秒沈めたエンダーマン: 体力 ${MOBS.enderman.maxHealth} → ${sunk.health.toFixed(1)}` +
+      ` / 毎秒 ${lostRate.toFixed(2)}（表の値 ${MOBS.enderman.waterHurt}）`,
+  );
+  // **浸かった証拠を判定にも入れること** —— 浸かっていなければ「減らなかった」も
+  // 「減った」も何も測っていない（`rules/testing.md` の「先に動いた証拠を」）。
+  check(
+    "水に浸かったエンダーマンは毎秒 2 ずつ減る",
+    sunk.soaked && lostRate >= 1.5 && lostRate <= 2.5,
+    `浸かった ${sunk.soaked} / 毎秒 ${lostRate.toFixed(2)} / 表 ${MOBS.enderman.waterHurt}`,
+  );
+
+  // d. 対照。**同じ水でゾンビは 1 も減らない**（上の `wet` を使い回す）。
+  console.log(
+    `      同じ水のゾンビ: 体力 ${wet.health} / ${MOBS.zombie.maxHealth}` +
+      `（エンダーマンは ${sunk.health.toFixed(1)} / ${MOBS.enderman.maxHealth}）`,
+  );
+  check(
+    "対照: 同じ水でゾンビは 1 も減らない",
+    wet.health === MOBS.zombie.maxHealth,
+    `${wet.health} / ${MOBS.zombie.maxHealth}（waterHurt ${MOBS.zombie.waterHurt}）`,
+  );
+
+  // e. 水で火が点かないこと。**`burnTimer` を立てると、水中のエンダーマンが燃えて見える。**
+  check("水では火が点かない", sunk.burnTimer === 0, `燃え残り ${sunk.burnTimer.toFixed(2)} 秒`);
+
+  // f. 痛んだら跳んで逃げる。**既存の `teleportUrge` の道に乗っている証拠**
+  //    （`wound()` が印を立て、`teleportSpot()` が液体を行き先から外す）。
+  const fled = dunk({ kind: "enderman", random: seeded(83), seconds: 15 });
+  console.log(
+    `      15 秒: 浸かった ${fled.soaked} / 水から出た ${fled.escaped} /` +
+      ` 体力 ${fled.health.toFixed(1)} / ${MOBS.enderman.maxHealth}`,
+  );
+  check(
+    "痛んだエンダーマンは跳んで水から逃げる",
+    fled.soaked && fled.escaped,
+    `浸かった ${fled.soaked} / 出た ${fled.escaped} / 体力 ${fled.health.toFixed(1)}`,
+  );
+
+  // g. 水で倒れてもドロップしない（溶岩の焼死とまったく同じ規則）。
+  const drowned = dunk({ kind: "enderman", random: () => 1, seconds: 10, health: 4 });
+  console.log(
+    `      体力 4 で沈めたエンダーマン: ${drowned.seconds.toFixed(1)} 秒で消えた / ドロップ ${drowned.drops} 件`,
+  );
+  // **倒れた証拠と合わせて 1 件で見ること** —— ドロップ 0 件だけを見ると、
+  // 1 も減らずに生きているときも緑になる（溶岩の焼死と同じ形）。
+  check(
+    "水で倒れてもドロップしない",
+    !drowned.alive && drowned.drops === 0,
+    `${drowned.seconds.toFixed(1)} 秒で倒れた ${!drowned.alive} / ドロップ ${drowned.drops} 件`,
   );
 
   describe("敵対モブの攻撃（プレイヤーへのダメージ）");
