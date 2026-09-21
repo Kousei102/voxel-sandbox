@@ -324,6 +324,21 @@ export interface MobDef {
    */
   readonly climbSpeed: number;
   /**
+   * **この明るさ以上ではプレイヤーを襲わない**（追いもせず殴りもしない）。
+   * **0 なら明るさを見ない**（ゾンビのように昼でも襲ってくる）。
+   *
+   * **`HOSTILE_LIGHT_MAX`(7) を使い回さないこと。** **湧く線と襲う線は別物**で、
+   * 1 つの定数を分け合うと `MOB_DAMAGE` / `FLY_HOVER` と同じ形で壊れる
+   * （松明を置いた所に湧かなくなる／暗がりの手前で襲うのをやめる、のどちらかに転ぶ）。
+   *
+   * **`kind === "spider"` と書かないこと**（`climbSpeed` / `milkable` と同じ作法）——
+   * 明るさで手を止めるモブが増えるたびに、判断の中の分岐が増える。
+   *
+   * **湧きには 1 ミリも効かない。** クモは今までどおり暗い所に湧いて、
+   * 朝になったら襲うのをやめるだけ（`canSpawnHostile()` は 1 文字も見ない）。
+   */
+  readonly calmLight: number;
+  /**
    * 火で焼けない（溶岩も日光も効かない）。**ネザーのモブにはこれが要る** ——
    * 溶岩の海の上を飛ぶブレイズが、かすっただけで 2.5 秒で焼け死ぬ。
    */
@@ -441,6 +456,7 @@ const PIG: MobDef = {
   flying: false,
   hover: 0,
   climbSpeed: 0,
+  calmLight: 0,
   fireproof: false,
   spawnOn: null,
   boss: false,
@@ -507,6 +523,7 @@ const SHEEP: MobDef = {
   flying: false,
   hover: 0,
   climbSpeed: 0,
+  calmLight: 0,
   fireproof: false,
   spawnOn: null,
   boss: false,
@@ -608,6 +625,7 @@ const CHICKEN: MobDef = {
   flying: false,
   hover: 0,
   climbSpeed: 0,
+  calmLight: 0,
   fireproof: false,
   // **受動に `spawnOn` を付けないこと**（`trySpawn()` 側にも手が要ります。`rules/mobs.md`）。
   spawnOn: null,
@@ -707,6 +725,7 @@ const COW: MobDef = {
   flying: false,
   hover: 0,
   climbSpeed: 0,
+  calmLight: 0,
   fireproof: false,
   // **受動に `spawnOn` を付けないこと**（`trySpawn()` 側にも手が要ります。`rules/mobs.md`）。
   spawnOn: null,
@@ -804,6 +823,7 @@ const ZOMBIE: MobDef = {
   flying: false,
   hover: 0,
   climbSpeed: 0,
+  calmLight: 0,
   fireproof: false,
   spawnOn: null,
   boss: false,
@@ -889,6 +909,9 @@ const SPIDER: MobDef = {
   // **壁を登る唯一のモブ**（本家どおり）。歩き 6.0 より遅く、はしご（2.35）より速い。
   // **囲い（家の壁・柵）がクモには効かなくなる**のが、この値を入れた意味（`TUNING.md`）。
   climbSpeed: 3.0,
+  // **明るい所（光量 12 以上）では襲ってこない唯一のモブ**（本家どおり）。
+  // **湧く線（7）とは別の値**で、松明（14）のそばではクモだけが手を止める。
+  calmLight: 12,
   // **false のまま**（上の説明）。朝になると日光で燃える。
   fireproof: false,
   // **付けないこと** —— 付けると、その地面で「どこでも」の敵対に勝ってしまう。
@@ -1016,6 +1039,7 @@ const SKELETON: MobDef = {
   flying: false,
   hover: 0,
   climbSpeed: 0,
+  calmLight: 0,
   // **false のまま** —— そのまま「朝に燃える」になる（本家のスケルトンも燃える）。
   fireproof: false,
   spawnOn: null,
@@ -1108,6 +1132,7 @@ const BLAZE: MobDef = {
   hover: 2.5,
   // **0**。飛ぶモブは壁に当たったら `hopTimer` を立てて上がるので、登る速さは要らない。
   climbSpeed: 0,
+  calmLight: 0,
   fireproof: true,
   spawnOn: [NETHER_BRICK],
   boss: false,
@@ -1188,6 +1213,7 @@ const ENDERMAN: MobDef = {
   flying: false,
   hover: 0,
   climbSpeed: 0,
+  calmLight: 0,
   fireproof: false,
   spawnOn: null,
   boss: false,
@@ -1288,6 +1314,7 @@ const DRAGON: MobDef = {
   hover: 1.2,
   // **0**（飛ぶモブなので上と同じ）。
   climbSpeed: 0,
+  calmLight: 0,
   // エンドに溶岩は無いが、**日光では燃えないこと**が要る（エンドの空は
   // 明るさ 0.7 固定なので、`sunlightBurns()` の線を超える所がある）。
   fireproof: true,
@@ -1576,6 +1603,18 @@ export interface Mob {
   /** 殴られた直後の赤い明滅の残り (秒)。描画がこれを見て色を差し替える。 */
   hurtTimer: number;
   /**
+   * いま居る所が明るすぎて襲う気が無いか（`MobDef.calmLight`）。
+   * **true のあいだは追いもせず殴りもしない。**
+   *
+   * **貼り直すのは 5Hz の `thinkHostile()` だけ**（初期値は `spawn()`）で、読むのは
+   * `chasing()` と `update()` の 2 か所だけ。**`strike()` と `fire()` に明るさを
+   * 書かないこと** —— あの 2 か所は `update()` の 1 行で同時に止まる。
+   *
+   * **保存しません**（`woolTimer` と同じ。モブそのものを保存しないので、
+   * セーブは 1 バイトも増えません）。`calmLight` が 0 のモブでは false のまま動かない。
+   */
+  calm: boolean;
+  /**
    * 刈られてから、また刈れるようになるまでの残り (秒)。**0 なら刈れる。**
    *
    * **保存しません**（モブそのものを保存しないので、1 バイトも増えません）。
@@ -1801,6 +1840,23 @@ export function canSpawnHostile(sky: number, block: number, brightness: number):
 }
 
 /**
+ * その明るさでは襲う気が失せるか（`MobDef.calmLight`）。
+ * **明るさの合成は湧きと同じ `spawnLight()`** —— シェーダの見え方とずれると、
+ * 「明るく見えるのに襲ってくる」場所ができる（湧きとまったく同じ話）。
+ *
+ * **`calmLight > 0` の判断はこの 1 本だけが持つこと。** 呼ぶ側へ写すと、
+ * 「0 なら明るさを見ない」が 2 か所に分かれて片方だけ直す形が生まれる。
+ */
+export function calmInLight(
+  calmLight: number,
+  sky: number,
+  block: number,
+  brightness: number,
+): boolean {
+  return calmLight > 0 && spawnLight(sky, block, brightness) >= calmLight;
+}
+
+/**
  * 日光で燃えるか。**スカイライトが最大（真上が完全に空いている）ときだけ。**
  * 木の下・屋根の下・水の中では燃えない（水は呼ぶ側で見る）。
  */
@@ -1930,6 +1986,12 @@ export class Mobs {
       headYaw: 0,
       headPitch: 0,
       hurtTimer: 0,
+      // **湧いた瞬間はまだ明るさを見ていない**（最初の判断は 0.2 秒以内に来て貼り直す）。
+      // 見るまでは手を出さない側に置くこと —— `false` から始めると、明るい所に置かれた
+      // クモが最初の判断より前に 1 発殴る（`attackTimer` の初期値は 0）。
+      // **`calmLight > 0` をここへ写さないこと** —— 決まりは `calmInLight()` の 1 本だけが
+      // 持つ。明るさを見ないモブ（`calmLight` 0）は、いちばん明るい値を渡しても false。
+      calm: calmInLight(MOBS[kind].calmLight, MAX_LIGHT, MAX_LIGHT, 1),
       // 湧いた羊はすぐ刈れる（本家と同じ）。
       woolTimer: 0,
       // **0 から始めないこと** —— 湧いた瞬間に全員が 1 個ずつ産む。
@@ -2110,7 +2172,9 @@ export class Mobs {
       this.regenerate(mob, def, dt, ctx);
       // **跳ぶのは焼けたあと。** 燃えているエンダーマンが日陰へ逃げられるのはここ。
       this.teleport(mob, def, world, dt, ctx, random);
-      if (!def.hostile) continue;
+      // **明るい所で襲うのをやめるのはこの 1 行**（`mob.calm`）。`strike()` と `fire()` の
+      // 中に明るさを書かないこと —— 近接と飛び道具の 2 か所に同じ条件が分かれる。
+      if (!def.hostile || mob.calm) continue;
       this.strike(mob, def, dt, ctx);
       this.fire(mob, def, world, dt, ctx);
     }
@@ -2216,20 +2280,29 @@ export class Mobs {
     ctx: MobContext,
     random: () => number,
   ): void {
+    // 目の高さ。日光（下）と「明るい所では襲わない」（その下）が同じ 1 点を見る。
+    const eyeX = Math.floor(mob.position.x);
+    const eyeY = Math.floor(mob.position.y + def.size.height * 0.8);
+    const eyeZ = Math.floor(mob.position.z);
+    const sky = world.getLight(eyeX, eyeY, eyeZ, SKY_LIGHT);
+
     // 日光。**スカイライトが最大の所だけ**なので、屋根の下・木の下・洞窟では燃えない。
     // 液体に浸かっているあいだも燃えない（Minecraft と同じ）。溶岩はこの下の
     // `update()` が別に点けるので、ここで見なくてよい。
     if (mob.liquid === AIR && !def.fireproof) {
-      const sky = world.getLight(
-        Math.floor(mob.position.x),
-        Math.floor(mob.position.y + def.size.height * 0.8),
-        Math.floor(mob.position.z),
-        SKY_LIGHT,
-      );
       // **`Math.max` で伸ばすこと。** 代入にすると、溶岩から上がったモブが
       // 日向へ出た瞬間に残り 15 秒が 2 秒へ**縮む**（長いほうが勝つのが正しい）。
       if (sunlightBurns(sky, ctx.brightness)) mob.burnTimer = Math.max(mob.burnTimer, BURN_LINGER);
     }
+
+    // **この代入は日光の `if` の外に置くこと** —— 中に入れると、水に浸かったクモと
+    // 火に強いモブだけが印を貼り直せず、潜った瞬間の明るさのまま固まる。
+    mob.calm = calmInLight(
+      def.calmLight,
+      sky,
+      world.getLight(eyeX, eyeY, eyeZ, BLOCK_LIGHT),
+      ctx.brightness,
+    );
 
     const distance = distanceTo(mob, ctx);
     if (this.chasing(mob, def, ctx)) {
@@ -2305,6 +2378,9 @@ export class Mobs {
    * クリエイティブは狙われない（`Vitals` 側では弾けないので、判断の側で切る）。
    */
   private chasing(mob: Mob, def: MobDef, ctx: MobContext): boolean {
+    // **明るい所では襲う気が無い**（`MobDef.calmLight`。印は 5Hz の `thinkHostile()`）。
+    // ここ 1 本で「追う・向く・歩く」が同時に止まり、殴るほうは `update()` が止める。
+    if (mob.calm) return false;
     if (ctx.invulnerable) return false;
     // **詰めない番のあいだは、目の前に立たれても輪を離れない**（`MobPhase.chase`）。
     // ここ 1 本で「追う・高さ・輪へ戻る」の 3 か所が同時に切り替わる。

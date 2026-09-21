@@ -221,6 +221,10 @@ export function run(): void {
     // 「誰が・どれだけの速さで登るか」が描画側に生えると、公開サイトでクモを
     // 壁際まで連れてくるまで確かめられない。
     "climb",
+    // **明るさで襲うのをやめるかどうかもここに足すこと。** 手を止める姿は絵にならないが、
+    // 「誰が・どの明るさで」が描画側に生えると、松明のそばへクモを連れてくるまで
+    // 確かめられない（しかも湧く線 7 との取り違えが黙って通る）。
+    "calm",
   ].filter((name) => renderSource.includes(name));
   check("mobrender.ts に判断が漏れていない", decisions.length === 0, decisions.join(" "));
 
@@ -2922,6 +2926,132 @@ export function run(): void {
   check(
     "燃えるのは真上が空いている昼だけ",
     sunlightBurns(MAX_LIGHT, noon) && !sunlightBurns(MAX_LIGHT - 1, noon) && !sunlightBurns(MAX_LIGHT, midnight),
+  );
+
+  describe("明るい所では襲ってこない（クモ）");
+
+  /**
+   * 明るさを動かせる試験場。**`quiet()` を使わないこと** —— あれは `block` が 15 固定
+   * なので、**クモが常に calm** になって「暗ければ襲ってくる」側を 1 度も測れない。
+   *
+   * 石の床（**草にすると受動が湧いて数が動く**）・`sky = 14`・`block = 8` の 1 つで、
+   * 次の 4 つが同時に立つ: **昼は max(14, 8) = 14 ≥ 12 で襲わない** /
+   * **夜は 14 * 真夜中 ≤ 6.5 なので 8 < 12 で襲う** / **8 > 7 なので敵対は 1 体も湧かない** /
+   * **`sky` が 15 でないので日光で焼けない**（`sunlightBurns` は 15 だけ）。
+   */
+  function litGround(block = 8, sky = MAX_LIGHT - 1): Arena {
+    const arena = new Arena();
+    arena.fill(-40, 40, 10, 10, -40, 40, STONE);
+    arena.sky = sky;
+    arena.block = block;
+    return arena;
+  }
+
+  /**
+   * プレイヤーの `distance` ブロック手前に 1 体置いて `seconds` 秒ぶん回す。
+   * **徘徊で近づく／離れるに左右されないよう待機で固定する**（上の `chases()` と同じ手）——
+   * 追いかけ始めれば `chasing()` が `walking` を立てるので、**詰めた距離がそのまま証拠**になる。
+   */
+  function prowl(
+    kind: MobKind,
+    distance: number,
+    brightness: number,
+    arena: Arena,
+    seconds = 3,
+  ): { gap: number; hits: number; light: number } {
+    const pack = new Mobs();
+    let hits = 0;
+    const vitals: MobTarget = {
+      damage: () => {
+        hits++;
+        return true;
+      },
+    };
+    const c = ctx({ random: seeded(71), brightness, vitals });
+    const mob = pack.spawn(kind, 0.5, 11, 0.5 - distance, 0, seeded(73));
+    mob.walking = false;
+    mob.stateTimer = 1000; // 徘徊の抽選が来ないようにしておく
+    const world = arena.asWorld();
+    for (let f = 0; f < seconds * 60; f++) pack.update(1 / 60, world, c);
+    return {
+      gap: Math.hypot(mob.position.x - c.playerX, mob.position.z - c.playerZ),
+      hits,
+      light: spawnLight(arena.sky, arena.block, brightness),
+    };
+  }
+
+  // a. 表から来ていること。**抜けと余分の両方で落ちる形**（`climbSpeed` と同じ）。
+  console.log(
+    `      襲うのをやめる明るさ: ${MOB_KINDS.map((k) => `${MOBS[k].name} ${MOBS[k].calmLight}`).join(" / ")}`,
+  );
+  const calmKinds = MOB_KINDS.filter((k) => MOBS[k].calmLight > 0);
+  check(
+    "明るさで襲うのをやめるのはクモだけ",
+    calmKinds.join(" ") === "spider",
+    `${calmKinds.join(" ") || "（0 種類）"} / 線 ${MOBS.spider.calmLight}・湧く線 ${HOSTILE_LIGHT_MAX}`,
+  );
+
+  // b / c. **違いは時刻だけ。** 同じ試験場・同じ置き方で、昼は動かず夜は詰めてくる。
+  const daySpider = prowl("spider", 8, 1, litGround());
+  const nightSpider = prowl("spider", 8, midnight, litGround());
+  console.log(
+    `      8 ブロック手前から 3 秒: 昼 実効光 ${daySpider.light.toFixed(2)} → ${daySpider.gap.toFixed(2)}` +
+      ` / 夜 実効光 ${nightSpider.light.toFixed(2)} → ${nightSpider.gap.toFixed(2)} ブロック`,
+  );
+  check(
+    "昼のクモは追ってこない",
+    daySpider.gap > 7.5,
+    `実効光 ${daySpider.light.toFixed(2)} ≥ ${MOBS.spider.calmLight} / ${daySpider.gap.toFixed(2)} ブロック`,
+  );
+  check(
+    "夜の同じ場所では追ってくる",
+    nightSpider.gap < 3,
+    `実効光 ${nightSpider.light.toFixed(2)} < ${MOBS.spider.calmLight} / 8 → ${nightSpider.gap.toFixed(2)} ブロック`,
+  );
+
+  // d. 境目は 1 段で切り替わること。**どちらも 7 より明るいので自然には湧かない** ——
+  // ここが「湧く線（7）と襲う線（12）は別物」の裏取りになっている。
+  const litDark = prowl("spider", 8, 1, litGround(MOBS.spider.calmLight - 1, 0));
+  const litCalm = prowl("spider", 8, 1, litGround(MOBS.spider.calmLight, 0));
+  console.log(
+    `      松明だけの暗がり（sky 0）: 光量 ${litDark.light.toFixed(0)} → ${litDark.gap.toFixed(2)}` +
+      ` / 光量 ${litCalm.light.toFixed(0)} → ${litCalm.gap.toFixed(2)} ブロック` +
+      `（どちらも湧く線 ${HOSTILE_LIGHT_MAX} より明るいので 1 体も湧かない）`,
+  );
+  check(
+    "境目は光量 12（11 なら追い、12 で止まる）",
+    litDark.gap < 3 && litCalm.gap > 7.5,
+    `${litDark.light.toFixed(0)} → ${litDark.gap.toFixed(2)} / ${litCalm.light.toFixed(0)} → ${litCalm.gap.toFixed(2)}`,
+  );
+
+  // e. `calmLight` 0 の裏取り。**同じ試験場・同じ明るさ**でゾンビは詰めてくる。
+  const dayZombie = prowl("zombie", 8, 1, litGround());
+  console.log(
+    `      同じ昼の試験場でゾンビ: 8 → ${dayZombie.gap.toFixed(2)} ブロック（calmLight ${MOBS.zombie.calmLight}）`,
+  );
+  check(
+    "ゾンビは昼でも追ってくる",
+    dayZombie.gap < 3,
+    `8 → ${dayZombie.gap.toFixed(2)} ブロック`,
+  );
+
+  // f / g. 殴るほうも止まること。**0 回だけで緑にしないこと** ——
+  // 届く間合い（`ATTACK_RANGE`）に居続けたうえで 0 回であることまで見る。
+  const dayBite = prowl("spider", 1.2, 1, litGround());
+  const nightBite = prowl("spider", 1.2, midnight, litGround());
+  console.log(
+    `      1.2 ブロック手前で 3 秒: 昼 ${dayBite.hits} 回・最後 ${dayBite.gap.toFixed(2)}` +
+      ` / 夜 ${nightBite.hits} 回・最後 ${nightBite.gap.toFixed(2)}（届く間合い ${ATTACK_RANGE}）`,
+  );
+  check(
+    "昼のクモはプレイヤーを殴らない",
+    dayBite.hits === 0 && dayBite.gap <= ATTACK_RANGE,
+    `${dayBite.hits} 回 / 最後 ${dayBite.gap.toFixed(2)} ≤ ${ATTACK_RANGE}`,
+  );
+  check(
+    "夜の同じ置き方では殴られる",
+    nightBite.hits > 0,
+    `${nightBite.hits} 回 / 最後 ${nightBite.gap.toFixed(2)} ブロック`,
   );
 
   describe("モブと溶岩");
