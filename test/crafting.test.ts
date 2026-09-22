@@ -16,6 +16,7 @@ import {
   IRON_ORE,
   LADDER,
   NETHER_BRICK,
+  NETHER_BRICK_FENCE,
   NETHER_BRICK_SLAB,
   PLANK,
   PLANK_SLAB,
@@ -829,6 +830,41 @@ export function run(): void {
     `${ladderAgain?.name ?? "無し"} x${ladderAgain?.count ?? 0}`,
   );
 
+  // **ネザーレンガのフェンスは同じ 3x2 で、材料が別・本数も別**（41・本家 Beta 1.9）。
+  // **6 個 → 6 本**で、**木のフェンスの 2 本を写していないこと**がここの要 ——
+  // 形が同じなので、材料の判定が甘いと**どちらか片方しか作れなくなる**（はしごと同じ罠）。
+  // **⚠ `fenceRows`（"SSS"）を使い回さないこと** —— `grid()` は字で引くので、
+  // 字が `S` のままだと `key["S"]` が `undefined` になり、**1 枠も置かれないまま
+  // 「レシピが無い」で落ちます**（この周に踏みました。`rules/testing.md`）。
+  const NB = { N: NETHER_BRICK };
+  const nbRows = ["NNN", "NNN"];
+  const nbFence = findRecipe(grid(3, nbRows, NB), 3);
+  const nbFenceIn2 = findRecipe(grid(2, ["NN", "NN"], NB), 2);
+  // **木のフェンスが 2 本のままであること**も一緒に見る（上の `fence` を使い回す）。
+  console.log(
+    `      ${nbRows.join(" / ")}（ネザーレンガ） → ${nbFence?.name ?? "無し"} x${nbFence?.count ?? 0}` +
+      `（2x2: ${nbFenceIn2?.name ?? "無し"}）  ` +
+      `対照 同じ形の棒 ${fenceRows.join(" / ")} → ${fence?.name ?? "無し"} x${fence?.count ?? 0}`,
+  );
+  check(
+    "ネザーレンガ 6 個 → ネザーレンガのフェンス 6 本（木のフェンスの 2 本を写していない）",
+    nbFence?.out === NETHER_BRICK_FENCE && nbFence.count === 6 &&
+      fence?.out === FENCE && fence.count === 2,
+    `${nbFence?.name ?? "無し"} x${nbFence?.count ?? 0} / 木は ${fence?.count ?? 0} 本`,
+  );
+  check(
+    "2x2 ではネザーレンガのフェンスも作れない（3 幅なので作業台が要る）",
+    nbFenceIn2 === null,
+    nbFenceIn2?.name ?? "無し",
+  );
+  // **ネザーレンガそのもののレシピは足していない**（要塞から掘るだけ）。
+  const nbItself = RECIPES.filter((r) => r.out === NETHER_BRICK).map((r) => r.name);
+  check(
+    "ネザーレンガそのもののレシピは 1 本も無い（要塞から掘るだけ）",
+    nbItself.length === 0,
+    nbItself.join(" / ") || "0 本",
+  );
+
   describe("ケーキ");
 
   // **ミルクバケツ 3 + 砂糖 2 + 卵 1 + 小麦 3 の 3x3**（本家と同じ形・並び）。
@@ -853,8 +889,8 @@ export function run(): void {
   // **本数も 1 件として見張る** —— レシピを足したのに表から漏れていたら、
   // 上の `findRecipe` だけでは「揃わないのが正しい」と読めてしまう。
   check(
-    "レシピは 82 本（金・ダイヤの防具 8 部位で 8 本増えた。armorRecipes() の呼び出し 2 行だけ）",
-    RECIPES.length === 82,
+    "レシピは 83 本（ネザーレンガのフェンスで 1 本増えた。フェンスの材質が 2 つになったので数え直した）",
+    RECIPES.length === 83,
     `${RECIPES.length} 本`,
   );
 

@@ -41,6 +41,7 @@ import {
   LOW_BAND_MAX,
   MAX_BLOCK_ID,
   NETHER_BRICK,
+  NETHER_BRICK_FENCE,
   NETHER_BRICK_SLAB,
   NETHER_BRICK_SLAB_TOP,
   NO_SUPPORT,
@@ -68,6 +69,7 @@ import {
   TIER_HAND,
   TIER_IRON,
   TIER_STONE,
+  TIER_WOOD,
   TORCH,
   VARIANT_BAND_MAX,
   VINE,
@@ -273,8 +275,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタの 65 個（186 まで。ツタが入って 1 個増えた —— ブロックは 4 つ増えたが、アイテムになるのは大元の 183 だけ）",
-    sharedItems.length === 65 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタ・ネザーレンガのフェンスの 66 個（187 まで。**フェンスの材質が 2 つになったので数え直した** —— 名指しの一覧はそのままで、末尾に 1 個足しただけ）",
+    sharedItems.length === 66 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -360,20 +362,24 @@ export function run(): void {
       // **183 は `items.ts` に 1 行も書かずに増えたブロック**（ツタの大元。145 の
       // はしごと同じで `variantOf` が `AIR` なので for が同じ番号のアイテムを作る）。
       // **184..186 は `variantOf: VINE` なのでアイテムを持ちません** —— だから
-      // ブロックが 4 個増えてもアイテムは 1 個だけ。**上限を持つのがブロック側なのは
-      // 10 度目**なので、`MAX_ITEM_ID` の突き合わせをここで一緒に見る（伸ばし忘れは
-      // 型では止まらない。**比べる相手を新しい番号に直すこと** —— 古い番号のまま
-      // 残すと `tsc` が TS2367 で落ちます。`rules/testing.md`）。
+      // ブロックが 4 個増えてもアイテムは 1 個だけ。
       sharedItems[64] === VINE &&
-      MAX_ITEM_ID === VINE_ZN,
+      // **187 も `items.ts` に 1 行も書かずに増えたブロック**（ネザーレンガの
+      // フェンス。157 のフェンスと同じで `variantOf` が `AIR` なので for が同じ
+      // 番号のアイテムを作る）。**上限を持つのがブロック側なのは 11 度目**なので、
+      // `MAX_ITEM_ID` の突き合わせをここで一緒に見る（伸ばし忘れは型では止まらない。
+      // **比べる相手を新しい番号に直すこと** —— 古い番号のまま残すと `tsc` が
+      // TS2367 で落ちます。`rules/testing.md`）。
+      sharedItems[65] === NETHER_BRICK_FENCE &&
+      MAX_ITEM_ID === NETHER_BRICK_FENCE,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 69（ツタ 183..186 で 4 個減った）",
-    sharedFree === 69,
+    "111..255 の空きは 68（ネザーレンガのフェンス 187 で 1 個減った。番号を 1 つ取ったので数え直した）",
+    sharedFree === 68,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1378,6 +1384,7 @@ export function run(): void {
   cakes();
   ices();
   fences();
+  netherBrickFences();
   saplings();
   clay();
   brickNames();
@@ -1747,24 +1754,31 @@ function fences(): void {
     `      対照: ${others.map(([n, id]) => `${n} 当たり上端 ${Math.max(0, ...collisionBoxes(id).map((b) => b[4]))} tall=${isTallCollision(id)}`).join(" / ")}`,
   );
   check(
-    "見た目と当たり判定が違うのはフェンスだけ（ほかは 3 つの用途が同じ形）",
-    differs.length === 1 && def.collision !== def.boxes &&
+    "見た目と当たり判定が違うのはフェンス 2 材質だけ（ほかは 3 つの用途が同じ形。材質が 2 つになったので数え直した）",
+    differs.length === 2 && def.collision !== def.boxes &&
+      blockDef(NETHER_BRICK_FENCE).collision !== blockDef(NETHER_BRICK_FENCE).boxes &&
       others.every(([, id]) => blockDef(id).collision === blockDef(id).boxes),
     differs.join(" ") || "0 個",
   );
   // **手で旗を書かず `collision` の最大 y > 1 から立てること**（2 か所に書くと食い違う）。
   // **`isTallCollision()` が真のマスだけ**が `collides()` の 1 段下の層に残る。
   check(
-    "isTallCollision が真なのもフェンスだけ（石・ハーフ・階段・サボテン・ケーキ・はしごは偽）",
-    tall.length === 1 && isTallCollision(FENCE) && others.every(([, id]) => !isTallCollision(id)),
+    "isTallCollision が真なのもフェンス 2 材質だけ（石・ハーフ・階段・サボテン・ケーキ・はしごは偽。材質が 2 つになったので数え直した）",
+    tall.length === 2 && isTallCollision(FENCE) && isTallCollision(NETHER_BRICK_FENCE) &&
+      others.every(([, id]) => !isTallCollision(id)),
     tall.join(" ") || "0 個",
   );
 
   // --- 繋がる相手の表（26b）。**表を出してから判定する**（「いつも真」を素通りさせない） ---
   // 繋がるのは**フェンスどうし**と、**立方体で `solid` かつ `opaque`** なものだけ。
   // **見た目の腕がどこへ伸びるかだけ**で、当たり判定（マスいっぱい x 1.5）は隣に依らない。
+  // **ネザーレンガのフェンス（187）も相手に並べる**（41 で材質が 2 つになった）。
+  // **⚠ 本家では木とネザーレンガのフェンスは繋がりませんが、ここでは繋がります** ——
+  // `fenceConnects()` は「フェンスならどれでも」の表 1 本で、材質の分岐を入れると
+  // `mesher.ts` とこの表の 2 か所に材質が漏れるため（`blocks.ts` の注記）。
   const connectTable: [string, number][] = [
     ["石", STONE], ["葉", LEAVES], ["板", PLANK], ["フェンス", FENCE],
+    ["ネザーレンガのフェンス", NETHER_BRICK_FENCE],
     ["ガラス", GLASS], ["水", WATER], ["草", TALL_GRASS], ["空気", AIR],
     ["石ハーフ", STONE_SLAB], ["石階段", STONE_STAIRS], ["サボテン", CACTUS],
   ];
@@ -1778,9 +1792,9 @@ function fences(): void {
       .map(([n, id]) => `${n} ${isProp(id)}/${blockDef(id).solid}/${blockDef(id).opaque}`)
       .join(" / ")}`,
   );
-  const connected = new Set(["石", "葉", "板", "フェンス"]);
+  const connected = new Set(["石", "葉", "板", "フェンス", "ネザーレンガのフェンス"]);
   check(
-    "繋がるのは石・葉・板・フェンスだけ（立方体で solid かつ opaque、とフェンス）",
+    "繋がるのは石・葉・板・フェンス 2 材質だけ（立方体で solid かつ opaque、とフェンス。材質が 2 つになったので数え直した）",
     connectTable.every(([n, id]) => fenceConnects(id) === connected.has(n)),
     connectTable.map(([n, id]) => `${n} ${fenceConnects(id)}`).join(" / "),
   );
@@ -1892,6 +1906,180 @@ function fences(): void {
   check(
     "上面・側面・下面が同じ 1 色（top だけを書いている）",
     def.top === def.side && def.side === def.bottom && def.top === 0x988a5e,
+    `top 0x${def.top.toString(16)} / side 0x${def.side.toString(16)} / bottom 0x${def.bottom.toString(16)}`,
+  );
+}
+
+/**
+ * ネザーレンガのフェンス（ブロック 187・41・本家 Beta 1.9）。**2 材質目のフェンス**なので、
+ * **ここで見るのは「157 と同じところ」と「違う 3 つ」の両方**です。
+ *
+ * **同じ配列を指していること**（`boxes` / `collision`）が要 —— 写して 2 本目を作ると、
+ * 片方だけ直したときに見た目と当たり判定が静かに食い違います（`===` で見張る）。
+ * **違うのは色・道具（ツルハシ + `minTier`）・レシピの 3 つだけ**で、
+ * **`mesher.ts` も `fenceConnects()` も `isTallCollision()` も ±0 行**です
+ * （数え直した 4 件は上の `fences()` にあります）。
+ */
+function netherBrickFences(): void {
+  describe("ネザーレンガのフェンス（ブロック 187）");
+
+  const def = blockDef(NETHER_BRICK_FENCE);
+  const wood = blockDef(FENCE);
+  const shape = shapeBoxes(NETHER_BRICK_FENCE);
+  const collision = collisionBoxes(NETHER_BRICK_FENCE);
+  console.log(
+    `      model ${def.model} / isProp ${isProp(NETHER_BRICK_FENCE)} / opaque ${def.opaque} / ` +
+      `blocksSky ${def.blocksSky} / solid ${def.solid} / hardness ${def.hardness} / ` +
+      `tool ${blockTool(NETHER_BRICK_FENCE)} / minTier ${def.minTier} / sound ${def.sound}\n` +
+      `      形 箱 ${shape.length} 個 上端 ${Math.max(...shape.map((b) => b[4]))} / ` +
+      `当たり判定 箱 ${collision.length} 個 [${collision[0].join(" ")}]`,
+  );
+  check(
+    "model は fence・isProp は真・opaque は偽・solid は真（157 とまったく同じ）",
+    def.model === "fence" && isProp(NETHER_BRICK_FENCE) && !def.opaque && def.solid &&
+      def.model === wood.model && isProp(FENCE) === isProp(NETHER_BRICK_FENCE) &&
+      def.opaque === wood.opaque && def.solid === wood.solid,
+    `model ${def.model} / isProp ${isProp(NETHER_BRICK_FENCE)} / opaque ${def.opaque} / solid ${def.solid}`,
+  );
+  // **同じ配列を「指している」こと**（`===`）。値が等しいだけでは足りない ——
+  // 写して 2 本目を作ると、片方だけ直したときに静かに食い違う（`AUTODEV-SPEC.md` の 6）。
+  check(
+    "boxes も collision も 157 とまったく同じ配列を指している（写して 2 本目を作っていない）",
+    def.boxes === wood.boxes && def.collision === wood.collision &&
+      shape.length === 9 && collision.length === 1 && collision[0][4] === 1.5,
+    `boxes 同じ ${def.boxes === wood.boxes} / collision 同じ ${def.collision === wood.collision} / ` +
+      `形 ${shape.length} 箱 当たり ${collision.length} 箱 上端 ${collision[0][4]}`,
+  );
+  // **支えが要らない**（`supportFace` を書かない = `NO_SUPPORT`。157 と同じで宙に浮く）。
+  check(
+    "supportFace は NO_SUPPORT（157 と同じで宙に浮く）・blocksSky は偽",
+    def.supportFace === NO_SUPPORT && def.supportFace === wood.supportFace &&
+      !def.blocksSky && !wood.blocksSky,
+    `supportFace ${def.supportFace} / blocksSky ${def.blocksSky}`,
+  );
+
+  // --- 違う 3 つのうちの 1 つ目: 道具（**斧ではなくツルハシ・`minTier` が要る**） ---
+  // **数値を出してから判定する。** 硬さは 157 と同じ 2 だが、**`minTier: TIER_WOOD` を
+  // 書いたので素手では落ちません**（`canHarvest()` が偽）。157 は `TIER_HAND` なので
+  // 素手でも落ちる —— **ここが「石の仲間」と「木の仲間」の分かれ目**。
+  console.log(
+    `      硬さ ${def.hardness} / tool ${blockTool(NETHER_BRICK_FENCE)} / minTier ${def.minTier} / ` +
+      `素手 ${breakTime(NETHER_BRICK_FENCE, NO_ITEM).toFixed(3)}s ` +
+      `木の斧 ${breakTime(NETHER_BRICK_FENCE, WOOD_AXE).toFixed(3)}s ` +
+      `木のツルハシ ${breakTime(NETHER_BRICK_FENCE, WOOD_PICKAXE).toFixed(3)}s\n` +
+      `      対照（木のフェンス 157）: tool ${blockTool(FENCE)} / minTier ${wood.minTier} / ` +
+      `素手で落ちる ${canHarvest(FENCE, NO_ITEM)}`,
+  );
+  check(
+    "硬さ 2・ツルハシが適正・minTier は TIER_WOOD（素手 10.0 秒 / 木の斧 10.0 秒 / 木のツルハシ 1.5 秒）",
+    def.hardness === 2 && def.hardness === wood.hardness &&
+      blockTool(NETHER_BRICK_FENCE) === "pickaxe" && def.minTier === TIER_WOOD &&
+      breakTime(NETHER_BRICK_FENCE, WOOD_PICKAXE) === 1.5 &&
+      breakTime(NETHER_BRICK_FENCE, NO_ITEM) === 10 &&
+      breakTime(NETHER_BRICK_FENCE, WOOD_AXE) === 10,
+    `hardness ${def.hardness} / tool ${blockTool(NETHER_BRICK_FENCE)} / minTier ${def.minTier} / ` +
+      `素手 ${breakTime(NETHER_BRICK_FENCE, NO_ITEM).toFixed(3)}s ` +
+      `ツルハシ ${breakTime(NETHER_BRICK_FENCE, WOOD_PICKAXE).toFixed(3)}s`,
+  );
+  // **素手では 1 個も落ちない**（木のフェンスは落ちる）。`minTier` を書いた効き目はここ。
+  check(
+    "素手では落ちない（木のフェンス 157 は素手でも落ちる）",
+    !canHarvest(NETHER_BRICK_FENCE, NO_ITEM) && !canHarvest(NETHER_BRICK_FENCE, WOOD_AXE) &&
+      canHarvest(NETHER_BRICK_FENCE, WOOD_PICKAXE) && canHarvest(FENCE, NO_ITEM),
+    `素手 ${canHarvest(NETHER_BRICK_FENCE, NO_ITEM)} / 木の斧 ${canHarvest(NETHER_BRICK_FENCE, WOOD_AXE)} / ` +
+      `木のツルハシ ${canHarvest(NETHER_BRICK_FENCE, WOOD_PICKAXE)} / 157 は素手 ${canHarvest(FENCE, NO_ITEM)}`,
+  );
+  // **`sound` は書かないこと**（既定が `"stone"`。元のネザーレンガ 48 も書いていない）。
+  check(
+    "音は石（sound を書いていないので既定。元のネザーレンガ 48 と同じ。木のフェンスは wood）",
+    def.sound === "stone" && def.sound === blockDef(NETHER_BRICK).sound && wood.sound === "wood",
+    `187 ${def.sound} / 48 ${blockDef(NETHER_BRICK).sound} / 157 ${wood.sound}`,
+  );
+
+  // --- 旗が 1 つも立っていない（157 と同じ。**表 1 本に聞くので数も出す**） ---
+  check(
+    "旗は 1 つも立っていない（spiky / sticky / slippery / climbable / bladed）・variantOf も replaceable も無い",
+    !isSpiky(NETHER_BRICK_FENCE) && !isSticky(NETHER_BRICK_FENCE) &&
+      !isSlippery(NETHER_BRICK_FENCE) && !isClimbable(NETHER_BRICK_FENCE) &&
+      !isBladed(NETHER_BRICK_FENCE) && def.variantOf === AIR && !def.replaceable &&
+      !stacksOnSelf(NETHER_BRICK_FENCE) && remainsAfterBreak(NETHER_BRICK_FENCE) === AIR,
+    `spiky ${isSpiky(NETHER_BRICK_FENCE)} sticky ${isSticky(NETHER_BRICK_FENCE)} ` +
+      `slippery ${isSlippery(NETHER_BRICK_FENCE)} climbable ${isClimbable(NETHER_BRICK_FENCE)} ` +
+      `bladed ${isBladed(NETHER_BRICK_FENCE)} / variantOf ${def.variantOf}`,
+  );
+
+  // --- 掘って出るもの（**自分が 1 個**。`DROPS` は 0 行で、既定の `baseBlock()`） ---
+  const drop = dropOf(NETHER_BRICK_FENCE);
+  const stacks = rollDrops(NETHER_BRICK_FENCE, 0.5, 0.5);
+  console.log(
+    `      dropOf(): ${itemName(drop.item)}(${drop.item}) x${drop.count} chance ${drop.chance} / ` +
+      `rollDrops(0.5, 0.5) の山 ${stacks.length} 個 ` +
+      `${stacks.map((s) => `${itemName(s.item)} x${s.count}`).join(" ")} / ` +
+      `baseBlock ${baseBlock(NETHER_BRICK_FENCE)}`,
+  );
+  check(
+    "壊すと自分が 1 個落ちる（DROPS に 1 行も書いていない = 既定の baseBlock）",
+    drop.item === NETHER_BRICK_FENCE && drop.count === 1 && drop.chance === 1 &&
+      baseBlock(NETHER_BRICK_FENCE) === NETHER_BRICK_FENCE && stacks.length === 1 &&
+      stacks[0].item === NETHER_BRICK_FENCE && stacks[0].count === 1 &&
+      drop.extra === undefined && drop.otherwise === undefined,
+    `${itemName(drop.item)} x${drop.count} / 山 ${stacks.length} 個`,
+  );
+
+  // --- アイテム 187（`items.ts` の for が自動で作る。手で足すと二重登録） ---
+  console.log(
+    `      アイテム ${NETHER_BRICK_FENCE}: 「${itemName(NETHER_BRICK_FENCE)}」 ` +
+      `placedBlock ${placedBlock(NETHER_BRICK_FENCE)} / 1 枠 ${itemStackLimit(NETHER_BRICK_FENCE)} 個 / ` +
+      `道具 ${toolOf(NETHER_BRICK_FENCE) === null ? "でない" : "である"} / ` +
+      `食べ物 ${foodOf(NETHER_BRICK_FENCE) === null ? "でない" : "である"}`,
+  );
+  check(
+    "アイテム 187 は「ネザーレンガのフェンス」で、置くと 187 が戻る（一覧にも出る）",
+    itemName(NETHER_BRICK_FENCE) === "ネザーレンガのフェンス" &&
+      placedBlock(NETHER_BRICK_FENCE) === NETHER_BRICK_FENCE &&
+      allItemIds().includes(NETHER_BRICK_FENCE) && toolOf(NETHER_BRICK_FENCE) === null &&
+      foodOf(NETHER_BRICK_FENCE) === null && itemName(NETHER_BRICK_FENCE) !== itemName(FENCE),
+    `${itemName(NETHER_BRICK_FENCE)} / placedBlock ${placedBlock(NETHER_BRICK_FENCE)} / ` +
+      `一覧に ${allItemIds().includes(NETHER_BRICK_FENCE)}`,
+  );
+
+  // --- 一覧に並ぶ色（**素直な写しは 48 と隔たり 0.0**。暗い赤紫へずらした値） ---
+  const dist = (a: number, b: number): number =>
+    Math.hypot(((a >> 16) & 255) - ((b >> 16) & 255), ((a >> 8) & 255) - ((b >> 8) & 255), (a & 255) - (b & 255));
+  let best = Infinity;
+  let who = "";
+  for (const other of allItemIds()) {
+    if (other === NETHER_BRICK_FENCE) continue;
+    const gap = dist(itemColor(NETHER_BRICK_FENCE), itemColor(other));
+    if (gap < best) {
+      best = gap;
+      who = itemName(other);
+    }
+  }
+  console.log(
+    `      色のいちばん近い相手: ネザーレンガのフェンス 0x${itemColor(NETHER_BRICK_FENCE).toString(16)} ` +
+      `↔ ${who} ${best.toFixed(1)}（元のネザーレンガ 48 0x${itemColor(NETHER_BRICK).toString(16)} とは ` +
+      `${dist(itemColor(NETHER_BRICK_FENCE), itemColor(NETHER_BRICK)).toFixed(1)}）`,
+  );
+  check(
+    "ネザーレンガのフェンスは既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）",
+    best >= 20,
+    `いちばん近い ${who} と ${best.toFixed(1)}`,
+  );
+  // **同じ形の 2 材質どうしは別の 1 件**（まとめると、どちらが詰まったか出力から読めない）。
+  const woodGap = dist(itemColor(NETHER_BRICK_FENCE), itemColor(FENCE));
+  console.log(
+    `      フェンス 2 材質どうし: 0x${itemColor(FENCE).toString(16)} ↔ ` +
+      `0x${itemColor(NETHER_BRICK_FENCE).toString(16)} = ${woodGap.toFixed(1)}`,
+  );
+  check(
+    "木のフェンス（157）とも一覧で見分けられる（同じ形の 2 材質なので別の 1 件として見る）",
+    woodGap >= 20,
+    `フェンス 2 材質どうし ${woodGap.toFixed(1)}`,
+  );
+  check(
+    "上面・側面・下面が同じ 1 色（top だけを書いている）",
+    def.top === def.side && def.side === def.bottom && def.top === 0x6e3746,
     `top 0x${def.top.toString(16)} / side 0x${def.side.toString(16)} / bottom 0x${def.bottom.toString(16)}`,
   );
 }

@@ -17,6 +17,7 @@ import {
   IRON_BLOCK,
   LADDER,
   NETHER_BRICK,
+  NETHER_BRICK_FENCE,
   NETHER_BRICK_SLAB,
   PLANK,
   PLANK_SLAB,
@@ -282,6 +283,18 @@ export const RECIPES: readonly Recipe[] = [
   // 戻りません（本棚と同じ、本家どおりの目減り。`rules/items-survival.md`）。
   // **形は棒だけの 3x2 なので、はしご（`["S.S","SSS","S.S"]`）とは別物。**
   { name: "フェンス", out: FENCE, count: 2, shape: ["SSS", "SSS"], key: { S: STICK } },
+
+  // ネザーレンガのフェンスはネザーレンガ 6 個で **6 本**（Minecraft Beta 1.9 と同じ）。
+  // **木のフェンスの `count: 2` を写さないこと** —— 本家でも本数が違います。
+  // **形は同じ 3x2** だが材料が別なので重複にはならない（`test/crafting.test.ts` が見張り）。
+  // **ネザーレンガそのもののレシピは足さないこと** —— 要塞から掘るだけです。
+  {
+    name: "ネザーレンガのフェンス",
+    out: NETHER_BRICK_FENCE,
+    count: 6,
+    shape: ["NNN", "NNN"],
+    key: { N: NETHER_BRICK },
+  },
 
   // はしごは棒 7 本で 3 個（Minecraft と同じ形・同じ個数）。3x3 なので作業台が要る。
   // 形はかまど・チェストの輪と似ているが**真ん中の列が縦に通っている**ので別物。

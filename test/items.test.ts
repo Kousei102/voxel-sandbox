@@ -7,6 +7,7 @@ import {
   GRASS,
   ICE,
   LEAVES,
+  NETHER_BRICK_FENCE,
   OBSIDIAN,
   SAPLING,
   SPRUCE_LEAVES,
@@ -589,15 +590,21 @@ export function run(): void {
     [VINE_XN, VINE_ZP, VINE_ZN].map((id) => `${id}:${ids.includes(id)}`).join(" "),
   );
   // **`MAX_ITEM_ID` そのものの突き合わせはここ**（金・ダイヤの防具の節から移した。
-  // 上限が 186 に伸びたので、あちらに `=== DIAMOND_BOOTS` を残すと `tsc` が TS2367 で
-  // 落ちる。`rules/testing.md`）。**上限はツタの向き違いの最後まで伸ばす** ——
-  // アイテムになるのは 183 だけだが、共有帯はブロックとアイテムで 1 本の番号列なので、
-  // 183 で止めると次に取る空き番号を数え違える。
-  console.log(`      MAX_ITEM_ID ${MAX_ITEM_ID}（ツタの大元 ${VINE} / 向き違いの最後 ${VINE_ZN}）`);
+  // 上限が動くたびに、古い番号を残すと `tsc` が TS2367 で落ちる。`rules/testing.md`）。
+  // **共有帯はブロックとアイテムで 1 本の番号列**なので、上限は**使った番号の
+  // 最後**まで伸ばす —— ツタで 183 に止めると次に取る空き番号を数え違えた。
+  // **いまの上限はネザーレンガのフェンス（ブロック 187）**（41 で伸びた。
+  // **上限が 186 から動いたので数え直した** —— ツタの 3 件はそのまま上に残っている）。
+  console.log(
+    `      MAX_ITEM_ID ${MAX_ITEM_ID}（ツタの大元 ${VINE} / 向き違いの最後 ${VINE_ZN} / ` +
+      `ネザーレンガのフェンス ${NETHER_BRICK_FENCE}）`,
+  );
   check(
-    "MAX_ITEM_ID はツタの向き違いの最後（186）まで伸びている",
-    MAX_ITEM_ID === VINE_ZN && ids.includes(VINE),
-    `MAX_ITEM_ID ${MAX_ITEM_ID} / 一覧に ツタ ${ids.includes(VINE)}`,
+    "MAX_ITEM_ID はネザーレンガのフェンス（187）まで伸びている（上限が動いたので数え直した）",
+    MAX_ITEM_ID === NETHER_BRICK_FENCE && ids.includes(VINE) &&
+      ids.includes(NETHER_BRICK_FENCE) && MAX_ITEM_ID > VINE_ZN,
+    `MAX_ITEM_ID ${MAX_ITEM_ID} / 一覧に ツタ ${ids.includes(VINE)} / ` +
+      `ネザーレンガのフェンス ${ids.includes(NETHER_BRICK_FENCE)}`,
   );
 
   // **緑は一覧でいちばん混んでいる帯**（草 0x6aa84f・葉 0x3f7a3a・トウヒの葉

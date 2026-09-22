@@ -630,6 +630,41 @@ export const VINE_XN = 184;
 export const VINE_ZP = 185;
 export const VINE_ZN = 186;
 
+/**
+ * ネザーレンガのフェンス（41・本家 Beta 1.9）。**2 つ目のフェンス**で、
+ * **形も当たり判定も `FENCE`(157) とまったく同じ配列を指します**
+ * （`FENCE_BOXES` / `FENCE_COLLISION_BOX`）。**写して 2 本目を作らないこと** ——
+ * 数値が 2 か所になると、片方だけ直したときに静かに食い違います。
+ *
+ * **157 から変えたのは 3 つだけ**:
+ *
+ * - **色**（一覧に出るのは `top` だけ。下の「色」）
+ * - **`tool: "pickaxe"` と `minTier: TIER_WOOD`**（元のネザーレンガ 48 の写し。
+ *   **斧ではありません** —— 本家も石の仲間で、**素手では落ちません**）
+ * - **`sound` を書かない**（既定が `"stone"`。48 も書いていません）
+ *
+ * **色は `0x6e3746`。** 素直な写し（48 の `0x392229`）は**一覧で隔たり 0.0**、
+ * 少し明るくした `0x4a2b33` でも**ソウルサンド(46) と 17.1** で判定（20）を割ります。
+ * 暗い赤紫へ寄せた `0x6e3746` なら**いちばん近いネザーラック(45) から 25.6**
+ * （フェンス 157 からは 96.1・ネザーレンガ 48 からは 64.0。`TUNING.md`）。
+ *
+ * **`mesher.ts` も `fenceConnects()` も `isTallCollision()` も ±0 行です** ——
+ * どちらも表 1 本（`model === "fence"` と `collision` の最大 y）に聞くので、
+ * **`id === FENCE` の形を書き足さないこと**（157 の上のコメントがそのまま掛かります）。
+ *
+ * **⚠ 本家では木のフェンスとネザーレンガのフェンスは繋がりませんが、ここでは繋がります。**
+ * `fenceConnects()` は「フェンスならどれでも」の表 1 本で、材質の分岐を入れると
+ * **`mesher.ts` とテストの表の 2 か所に材質が漏れます**（直すならそれだけで 1 周）。
+ *
+ * **レシピはネザーレンガ 6 個 → 6 本**（本家 Beta 1.9 と同じ。木のフェンスの
+ * 棒 6 → **2 本**を写さないこと）。**ネザーレンガそのもののレシピはありません** ——
+ * 要塞から掘るだけです。**自然生成もしません**（`fortress.ts` に 0 行）。
+ *
+ * **アイテム 187 は `items.ts` の for が自動で作ります**（`variantOf` を書かないので）。
+ * **`MAX_ITEM_ID` だけは手で伸ばすこと。**
+ */
+export const NETHER_BRICK_FENCE = 187;
+
 /** 上付きハーフ。見た目と当たり判定だけが違うので、大元は下付きのハーフ。 */
 export const STONE_SLAB_TOP = 64;
 export const COBBLE_SLAB_TOP = 65;
@@ -2082,6 +2117,27 @@ export const BLOCKS: readonly BlockDef[] = [
     hardness: 2,
     tool: "axe",
     sound: "wood",
+    model: "fence",
+    boxes: FENCE_BOXES,
+    collision: FENCE_COLLISION_BOX,
+  }),
+
+  // ネザーレンガのフェンス（上のコメント）。**157 の定義から変えたのは 3 つだけ**:
+  // **色** / **`tool: "pickaxe"` と `minTier: TIER_WOOD`**（元のネザーレンガ 48 の
+  // 写し。**斧ではない**）/ **`sound` を書かない**（既定が `"stone"`。48 も同じ）。
+  // **`boxes` と `collision` は 157 と同じ配列を指すこと** —— 写して 2 本目を作ると、
+  // 片方だけ直したときに見た目と当たり判定が静かに食い違う。
+  // **`blocksSky` / `replaceable` / `stacksOnSelf` / `variantOf` / `supportFace` /
+  // `spiky` / `sticky` は 1 つも書かないこと**（157 の上のコメントがそのまま掛かる）。
+  // **色**: 素直な写し（48 の 0x392229）は一覧で**隔たり 0.0**、`0x4a2b33` でも
+  // ソウルサンド(46) と 17.1 で判定（20）を割る。暗い赤紫へ寄せた `0x6e3746` なら
+  // いちばん近いネザーラック(45) から 25.6（`TUNING.md`）。
+  def(NETHER_BRICK_FENCE, "ネザーレンガのフェンス", { top: 0x6e3746 }, {
+    opaque: false,
+    solid: true,
+    hardness: 2,
+    tool: "pickaxe",
+    minTier: TIER_WOOD,
     model: "fence",
     boxes: FENCE_BOXES,
     collision: FENCE_COLLISION_BOX,
