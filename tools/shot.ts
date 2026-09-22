@@ -25,15 +25,20 @@ import {
   BROWN_MUSHROOM,
   CAKE,
   CLAY,
+  COAL_BLOCK,
+  COAL_ORE,
   COBBLE_SLAB,
   COBBLE_SLAB_TOP,
   COBWEB,
+  DIAMOND_BLOCK,
   DIRT,
   FARMLAND,
   FENCE,
   GLASS,
+  GOLD_BLOCK,
   GRASS,
   ICE,
+  IRON_BLOCK,
   LADDER,
   LADDER_XN,
   LADDER_ZN,
@@ -43,6 +48,7 @@ import {
   NETHER_BRICK_FENCE,
   NETHER_BRICK_SLAB,
   NETHER_BRICK_SLAB_TOP,
+  OBSIDIAN,
   PLANK,
   PLANK_SLAB,
   PLANK_SLAB_TOP,
@@ -836,6 +842,64 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
       camera: look(setup, new Vector3(4.5, y + 4.2, 8.5), new Vector3(0, y - 1, 0)),
       dayNight: skyOf(OVERWORLD, setup.time),
       note: `氷の板 7x7（-3..3,${y - 1},-3..3。下は 1 段空けて市松）/ 空を背にした氷 5,${y},0 ↔ ガラス 7,${y},0 / 石の上 -5,${y + 1},0`,
+    };
+  },
+
+  /**
+   * しまう立方体 4 つ（135 鉄 / 136 金 / 137 ダイヤ / **188 石炭**・42）。
+   * **本棚・クモの巣・ケーキ・氷と同じで自然には 1 個も生えない**ので、ここへ直に置く。
+   * **135..137 はこれまでどの場面にも 1 個も写っていなかった**ので、この場面が
+   * そこも埋める。見るのは 4 つ:
+   * **ほぼ黒い立方体（`0x100f0f`）の形が AO と陰影で読めるか** —— 面ごとの明るさが
+   * 付かないと 1 枚の黒い塊に潰れる（**ここが 42 でいちばん絵でしか分からない所**）/
+   * **隣の黒いもの（石炭鉱石 14・黒曜石 43）と見分けられるか**（一覧の隔たりは
+   * 108.8 と 42.2 だが、**絵では光と影が乗る**）/ **鉄・金・ダイヤと並べて
+   * 「しまった立方体の仲間」に見えるか** / **面の欠けと裏返りが無いか**。
+   *
+   * **カメラ寄り（`z` が大きい側）へ置くこと** —— `fence` の周に実測したとおり、
+   * `z` の小さいマスは手前の立方体に隠れて 1 画素も出ない（`HANDOFF.md`）。
+   * **石の台の上に 1 個だけ離して置く**のは、下が不透明で縁が読めるため（`ice` と同じ）。
+   */
+  oreblocks(setup) {
+    const { scene, world } = makeWorld(OVERWORLD, 3);
+    const pad = 7;
+    // **平らな台を作る**（`cake` / `ice` / `fence` と同じ理由。地形なりだと斜面に埋まる）。
+    let y = 0;
+    for (let dz = -pad; dz <= pad; dz++) {
+      for (let dx = -pad; dx <= pad; dx++) y = Math.max(y, world.surfaceY(dx, dz));
+    }
+    for (let dz = -pad; dz <= pad; dz++) {
+      for (let dx = -pad; dx <= pad; dx++) {
+        for (let h = y; h < y + 8; h++) world.setVoxel(dx, h, dz, AIR);
+        for (let h = y - 4; h < y; h++) world.setVoxel(dx, h, dz, DIRT);
+        world.setVoxel(dx, y - 1, dz, GRASS);
+      }
+    }
+    // **しまう立方体 4 つを 1 列に**（カメラ寄りの `z = 2`）。**石炭を端ではなく
+    // 鉄の隣に置く**ので、「明るい 3 つと黒い 1 つ」が 1 枚に並ぶ。
+    const stored = [COAL_BLOCK, IRON_BLOCK, GOLD_BLOCK, DIAMOND_BLOCK];
+    for (let i = 0; i < stored.length; i++) world.setVoxel(-2 + i, y, 2, stored[i]);
+    // **黒どうしを隣の列に**（石炭鉱石 14 と黒曜石 43）。**並べないと
+    // 「隣の黒と見分けられるか」は絵に 1 画素も出ない**（氷とガラスを並べたのと同じ理由）。
+    world.setVoxel(-2, y, 4, COAL_ORE);
+    world.setVoxel(-1, y, 4, COAL_BLOCK);
+    world.setVoxel(0, y, 4, OBSIDIAN);
+    // **石の台の上に 1 個だけ離して**（面の欠けと裏返り・AO の足場。下が不透明なので縁が読める）。
+    world.setVoxel(3, y, 0, STONE);
+    world.setVoxel(3, y + 1, 0, COAL_BLOCK);
+    // **2 個積んだものも 1 つ**。同じ黒どうしが接する面（上下）で AO が出るかが、
+    // **1 個だけだと 1 画素も出ない**（`ice` の 7x7 の板と同じ理由）。
+    world.setVoxel(-4, y, 2, COAL_BLOCK);
+    world.setVoxel(-4, y + 1, 2, COAL_BLOCK);
+    // **書き換えたらメッシュ化をもう一度流すこと**（`cake` / `ice` / `fence` と同じ）。
+    world.primeAround(0.5, 0.5, 3);
+    return {
+      scene,
+      // **斜め上から。** 真横だと上面が 1 画素も写らず、ほぼ黒い立方体は
+      // **上面と側面の明るさの差**でしか形が読めない（そこがこの場面の要）。
+      camera: look(setup, new Vector3(2.4, y + 3.4, 8.2), new Vector3(-0.6, y + 0.4, 2)),
+      dayNight: skyOf(OVERWORLD, setup.time),
+      note: `しまう立方体 4 つ 石炭/鉄/金/ダイヤ -2..1,${y},2 / 黒どうし 石炭鉱石・石炭ブロック・黒曜石 -2..0,${y},4 / 石の上 3,${y + 1},0 / 2 個積み -4,${y}..${y + 1},2`,
     };
   },
 

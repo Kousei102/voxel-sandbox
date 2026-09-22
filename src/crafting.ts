@@ -6,6 +6,7 @@ import {
   CAKE,
   CHEST,
   CLAY,
+  COAL_BLOCK,
   COBBLE,
   COBBLE_SLAB,
   COBBLE_STAIRS,
@@ -341,6 +342,11 @@ export const RECIPES: readonly Recipe[] = [
   { name: "鉄インゴット", out: IRON_INGOT, count: 9, ingredients: [IRON_BLOCK] },
   { name: "金インゴット", out: GOLD_INGOT, count: 9, ingredients: [GOLD_BLOCK] },
   { name: "ダイヤモンド", out: DIAMOND, count: 9, ingredients: [DIAMOND_BLOCK] },
+  // 石炭も同じ 9 ↔ 9（本家 1.6.1）。**違うのは `smelting.ts` の `FUEL` に 1 行ある
+  // ことだけ**で、石炭ブロック 1 個は 80 個ぶん = 石炭 10 個ぶん燃えます ——
+  // **しまうと 1 個ぶん得になる**のが本家どおり（`TUNING.md`）。
+  { name: "石炭ブロック", out: COAL_BLOCK, count: 1, shape: ["CCC", "CCC", "CCC"], key: { C: COAL } },
+  { name: "石炭", out: COAL, count: 9, ingredients: [COAL_BLOCK] },
 
   ...armorRecipes("革", LEATHER, LEATHER_HELMET, LEATHER_CHESTPLATE, LEATHER_LEGGINGS, LEATHER_BOOTS),
   ...armorRecipes("鉄", IRON_INGOT, IRON_HELMET, IRON_CHESTPLATE, IRON_LEGGINGS, IRON_BOOTS),

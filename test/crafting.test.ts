@@ -5,6 +5,7 @@ import {
   BROWN_MUSHROOM,
   CAKE,
   CLAY,
+  COAL_BLOCK,
   COBBLE,
   CRAFTING_TABLE,
   DIAMOND_BLOCK,
@@ -658,14 +659,17 @@ export function run(): void {
   const ladderIn2 = findRecipe(grid(2, ["S.", "SS"], P), 2);
   check("2x2 でははしごは作れない（作業台が要る）", ladderIn2 === null, ladderIn2?.name ?? "無し");
 
-  describe("鉱物をしまう／戻す（鉄・金・ダイヤ）");
+  describe("鉱物をしまう／戻す（鉄・金・ダイヤ・石炭）");
 
   // **9 個 → 1 個 → 9 個。** 倉庫の枠を 9 分の 1 にするためだけの機能なので、
   // **しまう数と戻る数が食い違ったら壊れます**（片方が 8 なら、しまって戻すだけで目減り）。
+  // **石炭（42）は表に 1 行足しただけ** —— レシピの形は 135..137 とまったく同じで、
+  // 違うのは `smelting.ts` の `FUEL` に 1 行あることだけ（そちらは `test/smelting.test.ts`）。
   const stored: [string, number, number][] = [
     ["鉄", IRON_INGOT, IRON_BLOCK],
     ["金", GOLD_INGOT, GOLD_BLOCK],
     ["ダイヤ", DIAMOND, DIAMOND_BLOCK],
+    ["石炭", COAL, COAL_BLOCK],
   ];
   for (const [name, ingot, block] of stored) {
     const key = { X: ingot, Z: block };
@@ -889,8 +893,8 @@ export function run(): void {
   // **本数も 1 件として見張る** —— レシピを足したのに表から漏れていたら、
   // 上の `findRecipe` だけでは「揃わないのが正しい」と読めてしまう。
   check(
-    "レシピは 83 本（ネザーレンガのフェンスで 1 本増えた。フェンスの材質が 2 つになったので数え直した）",
-    RECIPES.length === 83,
+    "レシピは 85 本（石炭ブロックのしまう／戻すで 2 本増えた。しまう材質が 4 つになったので数え直した）",
+    RECIPES.length === 85,
     `${RECIPES.length} 本`,
   );
 

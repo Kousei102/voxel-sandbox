@@ -2,6 +2,7 @@ import {
   BRICK,
   CACTUS,
   CLAY,
+  COAL_BLOCK,
   COBBLE,
   CRAFTING_TABLE,
   GRASS,
@@ -593,18 +594,20 @@ export function run(): void {
   // 上限が動くたびに、古い番号を残すと `tsc` が TS2367 で落ちる。`rules/testing.md`）。
   // **共有帯はブロックとアイテムで 1 本の番号列**なので、上限は**使った番号の
   // 最後**まで伸ばす —— ツタで 183 に止めると次に取る空き番号を数え違えた。
-  // **いまの上限はネザーレンガのフェンス（ブロック 187）**（41 で伸びた。
-  // **上限が 186 から動いたので数え直した** —— ツタの 3 件はそのまま上に残っている）。
+  // **いまの上限は石炭ブロック（ブロック 188）**（42 で伸びた。
+  // **上限が 187 から動いたので数え直した** —— ツタの 3 件もネザーレンガの
+  // フェンスも、そのまま上と一覧に残っている）。
   console.log(
     `      MAX_ITEM_ID ${MAX_ITEM_ID}（ツタの大元 ${VINE} / 向き違いの最後 ${VINE_ZN} / ` +
-      `ネザーレンガのフェンス ${NETHER_BRICK_FENCE}）`,
+      `ネザーレンガのフェンス ${NETHER_BRICK_FENCE} / 石炭ブロック ${COAL_BLOCK}）`,
   );
   check(
-    "MAX_ITEM_ID はネザーレンガのフェンス（187）まで伸びている（上限が動いたので数え直した）",
-    MAX_ITEM_ID === NETHER_BRICK_FENCE && ids.includes(VINE) &&
-      ids.includes(NETHER_BRICK_FENCE) && MAX_ITEM_ID > VINE_ZN,
+    "MAX_ITEM_ID は石炭ブロック（188）まで伸びている（上限が動いたので数え直した）",
+    MAX_ITEM_ID === COAL_BLOCK && ids.includes(VINE) &&
+      ids.includes(NETHER_BRICK_FENCE) && ids.includes(COAL_BLOCK) && MAX_ITEM_ID > VINE_ZN,
     `MAX_ITEM_ID ${MAX_ITEM_ID} / 一覧に ツタ ${ids.includes(VINE)} / ` +
-      `ネザーレンガのフェンス ${ids.includes(NETHER_BRICK_FENCE)}`,
+      `ネザーレンガのフェンス ${ids.includes(NETHER_BRICK_FENCE)} / ` +
+      `石炭ブロック ${ids.includes(COAL_BLOCK)}`,
   );
 
   // **緑は一覧でいちばん混んでいる帯**（草 0x6aa84f・葉 0x3f7a3a・トウヒの葉

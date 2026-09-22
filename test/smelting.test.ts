@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import {
   AIR,
+  COAL_BLOCK,
   COBBLE,
   FURNACE,
   FURNACE_LIT,
@@ -200,13 +201,55 @@ export function run(): void {
 
   // **`FUEL` に紛れ込んでいないこと**（革を燃料にすると、牛が薪になる）。
   // 表そのものを数える —— 「革が燃料でない」だけだと、別のものが紛れても緑になる。
-  // **数え直すのは可・ゆるめるのは禁じ手**（`>= 8` にしない）。木炭で 1 行増えて 9 行。
-  check("燃料の表は 9 行（木炭で 1 行増えた）", FUEL.size === 9, `${FUEL.size} 行`);
+  // **数え直すのは可・ゆるめるのは禁じ手**（`>= 8` にしない）。石炭ブロックで 1 行増えて 10 行。
+  check("燃料の表は 10 行（石炭ブロックで 1 行増えた）", FUEL.size === 10, `${FUEL.size} 行`);
+
+  // --- 石炭ブロック（188・42）--------------------------------------------------
+  // **秒ではなく「何個焼けるか」で見ること**（木炭と同じ理由）。本家と同じ 80 個ぶんで、
+  // **石炭 9 個でしまえるので 10 個ぶん = しまうと 1 個ぶん得になる**（`TUNING.md`）。
+  console.log(
+    `      石炭ブロック ${fuelTimeOf(COAL_BLOCK)} 秒 = ${fuelTimeOf(COAL_BLOCK) / SMELT_TIME} 個` +
+      `（石炭 ${fuelTimeOf(COAL)} 秒 = ${fuelTimeOf(COAL) / SMELT_TIME} 個 → ` +
+      `9 個しまって ${fuelTimeOf(COAL_BLOCK) / fuelTimeOf(COAL)} 個ぶん）`,
+  );
+  check(
+    "石炭ブロック 1 個で 80 個焼ける（石炭 10 個ぶん = 9 個しまって 1 個ぶん得）",
+    fuelTimeOf(COAL_BLOCK) / SMELT_TIME === 80 &&
+      fuelTimeOf(COAL_BLOCK) === fuelTimeOf(COAL) * 10,
+    `石炭ブロック ${fuelTimeOf(COAL_BLOCK)} 秒 / 石炭 ${fuelTimeOf(COAL)} 秒`,
+  );
+  // **焼けるものではないこと**（`SMELTING` に 1 行も足していない）。
+  check(
+    "石炭ブロックは焼けるものの表には入っていない（燃料の表だけ）",
+    isSmeltable(COAL_BLOCK) === false && isFuel(COAL_BLOCK),
+    `焼ける ${isSmeltable(COAL_BLOCK)} / 燃料 ${isFuel(COAL_BLOCK)}`,
+  );
 
   // **木から作れる燃料を必ず残すこと。** 石炭が見つかる前に鉄を焼けないと、
   // かまどを作った意味が最初の数十分ぶん遅れる。
   check("木から作れる燃料がある", fuelTimeOf(PLANK) > 0, `板 ${fuelTimeOf(PLANK)} 秒`);
-  check("石炭がいちばん長持ちする", fuelTimeOf(COAL) === Math.max(...FUEL.values()), `${fuelTimeOf(COAL)} 秒`);
+  // **1 件だったものを 2 件に割った**（ゆるめたのではない。**石炭ブロックが入って
+  // `Math.max(...FUEL.values())` が 80 → 800 へ動いたので数え直した** ——
+  // 表の最大値と突き合わせている件は、その表に大きい値を足すと落ちる。`rules/testing.md`）。
+  // **表そのものの最大**と、**1 個もののなかの最大**は別の守りで、どちらも残す。
+  const singles = [...FUEL.entries()].filter(([item]) => item !== COAL_BLOCK);
+  console.log(
+    `      表の最大 ${Math.max(...FUEL.values())} 秒（石炭ブロック ${fuelTimeOf(COAL_BLOCK)} 秒）/ ` +
+      `1 個ものの最大 ${Math.max(...singles.map(([, t]) => t))} 秒` +
+      `（石炭 ${fuelTimeOf(COAL)} 秒 / 木炭 ${fuelTimeOf(CHARCOAL)} 秒）`,
+  );
+  check(
+    "石炭ブロックがいちばん長持ちする（表の最大）",
+    fuelTimeOf(COAL_BLOCK) === Math.max(...FUEL.values()),
+    `${fuelTimeOf(COAL_BLOCK)} 秒 / 表の最大 ${Math.max(...FUEL.values())} 秒`,
+  );
+  check(
+    "1 個もののなかでは石炭と木炭がいちばん長持ちする（石炭ブロックを除いた最大）",
+    fuelTimeOf(COAL) === Math.max(...singles.map(([, t]) => t)) &&
+      fuelTimeOf(CHARCOAL) === fuelTimeOf(COAL),
+    `石炭 ${fuelTimeOf(COAL)} 秒 / 木炭 ${fuelTimeOf(CHARCOAL)} 秒 / ` +
+      `1 個ものの最大 ${Math.max(...singles.map(([, t]) => t))} 秒`,
+  );
   check("焼けないものは燃料でもない扱いにならない", fuelTimeOf(IRON_ORE) === 0);
 
   // 代用を本当に外したか。**片方だけ戻すと、精錬を飛ばせる抜け道になる。**

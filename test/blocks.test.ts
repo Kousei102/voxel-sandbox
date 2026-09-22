@@ -10,6 +10,8 @@ import {
   CACTUS,
   CAKE,
   CLAY,
+  COAL_BLOCK,
+  COAL_ORE,
   COBBLE_SLAB,
   COBWEB,
   DIAMOND_BLOCK,
@@ -45,6 +47,7 @@ import {
   NETHER_BRICK_SLAB,
   NETHER_BRICK_SLAB_TOP,
   NO_SUPPORT,
+  OBSIDIAN,
   PLANK,
   PLANK_SLAB,
   PLANK_SLAB_TOP,
@@ -136,6 +139,7 @@ import {
   BUCKET,
   CHARCOAL,
   CLAY_BALL,
+  COAL,
   COOKED_CHICKEN,
   DIAMOND,
   DIAMOND_BOOTS,
@@ -157,6 +161,7 @@ import {
   IRON_HELMET,
   IRON_INGOT,
   IRON_LEGGINGS,
+  IRON_PICKAXE,
   LAVA_BUCKET,
   LEATHER,
   LEATHER_BOOTS,
@@ -275,8 +280,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタ・ネザーレンガのフェンスの 66 個（187 まで。**フェンスの材質が 2 つになったので数え直した** —— 名指しの一覧はそのままで、末尾に 1 個足しただけ）",
-    sharedItems.length === 66 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタ・ネザーレンガのフェンス・石炭ブロックの 67 個（188 まで。**石炭ブロックが入ったので数え直した** —— 名指しの一覧はそのままで、末尾に 1 個足しただけ）",
+    sharedItems.length === 67 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -366,20 +371,23 @@ export function run(): void {
       sharedItems[64] === VINE &&
       // **187 も `items.ts` に 1 行も書かずに増えたブロック**（ネザーレンガの
       // フェンス。157 のフェンスと同じで `variantOf` が `AIR` なので for が同じ
-      // 番号のアイテムを作る）。**上限を持つのがブロック側なのは 11 度目**なので、
+      // 番号のアイテムを作る）。
+      sharedItems[65] === NETHER_BRICK_FENCE &&
+      // **188 も同じ**（石炭ブロック。135..137 の鉱物をしまう立方体と同じで
+      // `variantOf` が `AIR`）。**上限を持つのがブロック側なのは 12 度目**なので、
       // `MAX_ITEM_ID` の突き合わせをここで一緒に見る（伸ばし忘れは型では止まらない。
       // **比べる相手を新しい番号に直すこと** —— 古い番号のまま残すと `tsc` が
       // TS2367 で落ちます。`rules/testing.md`）。
-      sharedItems[65] === NETHER_BRICK_FENCE &&
-      MAX_ITEM_ID === NETHER_BRICK_FENCE,
+      sharedItems[66] === COAL_BLOCK &&
+      MAX_ITEM_ID === COAL_BLOCK,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 68（ネザーレンガのフェンス 187 で 1 個減った。番号を 1 つ取ったので数え直した）",
-    sharedFree === 68,
+    "111..255 の空きは 67（石炭ブロック 188 で 1 個減った。番号を 1 つ取ったので数え直した）",
+    sharedFree === 67,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1385,6 +1393,7 @@ export function run(): void {
   ices();
   fences();
   netherBrickFences();
+  coalBlocks();
   saplings();
   clay();
   brickNames();
@@ -3930,6 +3939,149 @@ function storedBlocks(): void {
     "3 つとも食べ物でも道具でもない",
     stored.every(([, block]) => foodOf(block) === null && toolOf(block) === null),
     stored.map(([name, block]) => `${name} ${foodOf(block) ? "食べ物" : "-"}${toolOf(block) ? "道具" : "-"}`).join(" / "),
+  );
+}
+
+/**
+ * 石炭ブロック（ブロック 188・42）。**鉱物をしまう立方体（135..137）とまったく同じ形**
+ * なのに**別の節にしてある**のは、上の `stored` の表に
+ * **「色は材料の色をそのまま写している」**の 1 件があるためです ——
+ * 石炭ブロックは**そこだけ写していない**（写すと一覧の隔たりが 0.0 になる）ので、
+ * **表に 4 行目として足すと必ず落ちます**（`AUTODEV-SPEC.md` の 5）。
+ *
+ * ここで見るのは 4 つ:
+ * **135..137 と同じ形か**（`model` / `variantOf` / `opaque` / `solid` / 硬さ / 道具 / 音）/
+ * **素手では 1 個も落ちないか**（`minTier: TIER_WOOD`。135..137 とは階層が違う）/
+ * **掘ると自分が 1 個戻るか**（`DROPS` に 0 行）/
+ * **一覧で石炭(65) と見分けられるか**（**色を写さなかった理由がここ**）。
+ *
+ * **燃料としての 800 秒は `test/smelting.test.ts`**（表の側なので、そちらで数える）。
+ */
+function coalBlocks(): void {
+  describe("石炭ブロック（ブロック 188）");
+
+  const d = blockDef(COAL_BLOCK);
+  const iron = blockDef(IRON_BLOCK);
+  console.log(
+    `      石炭ブロック(${COAL_BLOCK}): model ${d.model} / variantOf ${d.variantOf} / ` +
+      `opaque ${d.opaque} / solid ${d.solid} / 硬さ ${d.hardness} / ` +
+      `道具 ${blockTool(COAL_BLOCK)} 階層 ${d.minTier} / sound ${d.sound}\n` +
+      `      対照（鉄ブロック 135）: model ${iron.model} / 硬さ ${iron.hardness} / ` +
+      `階層 ${iron.minTier} / sound ${iron.sound}`,
+  );
+  check(
+    "立方体で向き違いではない（variantOf が AIR なのでアイテム 188 が自動で付く）",
+    d.model === "cube" && d.variantOf === AIR && d.model === iron.model &&
+      d.opaque && d.solid && d.opaque === iron.opaque && d.solid === iron.solid,
+    `model ${d.model} / variantOf ${d.variantOf} / opaque ${d.opaque} / solid ${d.solid}`,
+  );
+  check(
+    "音は石（sound を書いていないので既定。135..137 と同じ）",
+    d.sound === "stone" && d.sound === iron.sound,
+    `188 ${d.sound} / 135 ${iron.sound}`,
+  );
+
+  // --- 掘る速さと、素手で落ちるか（**数値を出してから判定する**）----------------
+  // 硬さ 5 は鉄ブロックと同じだが、**`minTier` は `TIER_WOOD`**（鉄は `TIER_STONE`）。
+  // **落ちない道具は `MISMATCH_FACTOR`(5) に丸ごと差し替わる**（`HARVEST_FACTOR`(1.5) に
+  // 掛かるのではない。`mining.ts` の `breakTime`）ので、素手は `5 × 5 / 1` = 25.0 秒。
+  // 木のツルハシは `5 × 1.5 / 2` = 3.75 秒・鉄のツルハシは `5 × 1.5 / 6` = 1.25 秒。
+  console.log(
+    `      素手 ${breakTime(COAL_BLOCK, NO_ITEM).toFixed(3)}s / ` +
+      `木のツルハシ ${breakTime(COAL_BLOCK, WOOD_PICKAXE).toFixed(3)}s / ` +
+      `鉄のツルハシ ${breakTime(COAL_BLOCK, IRON_PICKAXE).toFixed(3)}s\n` +
+      `      落ちるか: 素手 ${canHarvest(COAL_BLOCK, NO_ITEM)} / ` +
+      `木のツルハシ ${canHarvest(COAL_BLOCK, WOOD_PICKAXE)} / ` +
+      `対照（鉄ブロック 135）は木のツルハシで ${canHarvest(IRON_BLOCK, WOOD_PICKAXE)}`,
+  );
+  check(
+    "硬さ 5・ツルハシが適正・minTier は TIER_WOOD（素手 25.0 秒 / 木のツルハシ 3.75 秒 / 鉄のツルハシ 1.25 秒）",
+    d.hardness === 5 && d.hardness === iron.hardness &&
+      blockTool(COAL_BLOCK) === "pickaxe" && d.minTier === TIER_WOOD &&
+      breakTime(COAL_BLOCK, NO_ITEM) === 25 &&
+      breakTime(COAL_BLOCK, WOOD_PICKAXE) === 3.75 &&
+      breakTime(COAL_BLOCK, IRON_PICKAXE) === 1.25,
+    `硬さ ${d.hardness} / ${blockTool(COAL_BLOCK)} / minTier ${d.minTier} / ` +
+      `素手 ${breakTime(COAL_BLOCK, NO_ITEM).toFixed(3)}s ` +
+      `木 ${breakTime(COAL_BLOCK, WOOD_PICKAXE).toFixed(3)}s ` +
+      `鉄 ${breakTime(COAL_BLOCK, IRON_PICKAXE).toFixed(3)}s`,
+  );
+  // **素手では 1 個も落ちない**（鉄ブロック 135 は `TIER_STONE` なので木のツルハシでも落ちない ——
+  // **そこが 135..137 との分かれ目**なので、対照を 1 つ並べておく）。
+  check(
+    "素手では落ちない（木のツルハシでは落ちる。鉄ブロック 135 は木では落ちない）",
+    !canHarvest(COAL_BLOCK, NO_ITEM) && canHarvest(COAL_BLOCK, WOOD_PICKAXE) &&
+      !canHarvest(IRON_BLOCK, WOOD_PICKAXE),
+    `素手 ${canHarvest(COAL_BLOCK, NO_ITEM)} / 木 ${canHarvest(COAL_BLOCK, WOOD_PICKAXE)} / ` +
+      `135 を木で ${canHarvest(IRON_BLOCK, WOOD_PICKAXE)}`,
+  );
+
+  // --- 掘って出るもの（**自分が 1 個**。`DROPS` は 0 行で、既定の `baseBlock()`）---
+  const drop = rollDrop(COAL_BLOCK, 0.5);
+  const stacks = rollDrops(COAL_BLOCK, 0.5, 0.9);
+  console.log(
+    `      掘ると ${itemName(drop.item)}(${drop.item}) x${drop.count}（山 ${stacks.length} 個）/ ` +
+      `baseBlock ${baseBlock(COAL_BLOCK)} / アイテム名「${itemName(COAL_BLOCK)}」 ` +
+      `placedBlock ${placedBlock(COAL_BLOCK)} / 一覧に ${allItemIds().includes(COAL_BLOCK)}`,
+  );
+  check(
+    "掘ると自分が 1 個落ちる（DROPS に 1 行も書いていない = 既定の baseBlock）",
+    drop.item === COAL_BLOCK && drop.count === 1 && baseBlock(COAL_BLOCK) === COAL_BLOCK &&
+      stacks.length === 1 && stacks[0].item === COAL_BLOCK && stacks[0].count === 1,
+    `${itemName(drop.item)} x${drop.count} / 山 ${stacks.length} 個`,
+  );
+  // **石炭鉱石(14) を掘っても石炭ブロックは出ない**（`DROPS` に 1 行も足していない）。
+  check(
+    "石炭鉱石 14 は今までどおり石炭が落ちる（ドロップ表を書き換えていない）",
+    rollDrop(COAL_ORE, 0.5).item === COAL,
+    `石炭鉱石 → ${itemName(rollDrop(COAL_ORE, 0.5).item)}`,
+  );
+  check(
+    "アイテム 188 は「石炭ブロック」で、置くと 188 が戻る（一覧にも出る・食べ物でも道具でもない）",
+    itemName(COAL_BLOCK) === "石炭ブロック" && placedBlock(COAL_BLOCK) === COAL_BLOCK &&
+      allItemIds().includes(COAL_BLOCK) && toolOf(COAL_BLOCK) === null &&
+      foodOf(COAL_BLOCK) === null,
+    `${itemName(COAL_BLOCK)} / placedBlock ${placedBlock(COAL_BLOCK)} / ` +
+      `一覧に ${allItemIds().includes(COAL_BLOCK)}`,
+  );
+
+  // --- 一覧に並ぶ色（**材料の写し 0x23262b は隔たり 0.0**。本家の写し 0x100f0f）---
+  // **135..137 の「色は材料の色をそのまま写す」を写していない唯一のもの**なので、
+  // **いちばん近い相手と隔たりを出してから**判定する（ネザーレンガのフェンスと同じ形）。
+  const dist = (a: number, b: number): number =>
+    Math.hypot(((a >> 16) & 255) - ((b >> 16) & 255), ((a >> 8) & 255) - ((b >> 8) & 255), (a & 255) - (b & 255));
+  let best = Infinity;
+  let who = "";
+  for (const other of allItemIds()) {
+    if (other === COAL_BLOCK) continue;
+    const gap = dist(itemColor(COAL_BLOCK), itemColor(other));
+    if (gap < best) {
+      best = gap;
+      who = itemName(other);
+    }
+  }
+  console.log(
+    `      色のいちばん近い相手: 石炭ブロック 0x${itemColor(COAL_BLOCK).toString(16)} ↔ ` +
+      `${who} ${best.toFixed(1)}（材料の石炭 0x${itemColor(COAL).toString(16)} / ` +
+      `黒曜石 ${dist(itemColor(COAL_BLOCK), itemColor(OBSIDIAN)).toFixed(1)} / ` +
+      `石炭鉱石 ${dist(itemColor(COAL_BLOCK), itemColor(COAL_ORE)).toFixed(1)}）`,
+  );
+  check(
+    "石炭ブロックは既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）",
+    best >= 20,
+    `いちばん近い ${who} と ${best.toFixed(1)}`,
+  );
+  // **しまう元としまった先は別の 1 件**（まとめると、どちらが詰まったか出力から読めない）。
+  // **ここが「材料の色を写さなかった」理由そのもの** —— 写すと 0.0 になる。
+  const coalGap = dist(itemColor(COAL_BLOCK), itemColor(COAL));
+  console.log(
+    `      しまう元としまった先: 石炭 0x${itemColor(COAL).toString(16)} ↔ ` +
+      `石炭ブロック 0x${itemColor(COAL_BLOCK).toString(16)} = ${coalGap.toFixed(1)}`,
+  );
+  check(
+    "材料の石炭（65）とも一覧で見分けられる（色を写していないのはここが理由。写すと 0.0）",
+    coalGap >= 20 && itemColor(COAL_BLOCK) !== itemColor(COAL),
+    `石炭 ↔ 石炭ブロック ${coalGap.toFixed(1)}`,
   );
 }
 

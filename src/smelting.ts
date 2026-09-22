@@ -7,6 +7,7 @@
  */
 
 import {
+  COAL_BLOCK,
   COBBLE,
   CRAFTING_TABLE,
   GLASS,
@@ -91,8 +92,15 @@ export const FUEL: ReadonlyMap<number, number> = new Map([
   [COAL, SMELT_TIME * 8],
   // 木炭は**石炭とまったく同じ 8 個ぶん**（本家と同じ）。並べて書いてあるのは、
   // 片方だけ伸ばすと「どちらを使うべきか」が生まれてしまうため —— 本家でも同じ長さで、
-  // 違いは**手に入る道**（掘る / 木を焼く）だけ。**`Math.max(...FUEL.values())` は 80 のまま。**
+  // 違いは**手に入る道**（掘る / 木を焼く）だけ。**1 個もののなかではこの 80 秒が最長**
+  // （表そのものの最大は石炭ブロックの 800 秒。下の行）。
   [CHARCOAL, SMELT_TIME * 8],
+  // 石炭ブロック（188・42）は**本家と同じ 80 個ぶん = 800 秒**。石炭 9 個でしまえるので、
+  // **しまうと 1 個ぶん（10 秒）得になる**のが本家どおり（`TUNING.md`）。
+  // **これが `Math.max(...FUEL.values())` を 80 → 800 へ動かします** ——
+  // `test/smelting.test.ts` の「いちばん長持ちする」は**2 件に割ってあります**
+  // （表の最大値と突き合わせている件は、その表に大きい値を足すと落ちる。`rules/testing.md`）。
+  [COAL_BLOCK, SMELT_TIME * 80],
   [WOOD, SMELT_TIME * 1.5],
   [SPRUCE_WOOD, SMELT_TIME * 1.5],
   [PLANK, SMELT_TIME * 1.5],
