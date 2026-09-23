@@ -2,6 +2,7 @@ import { Scene } from "three";
 import {
   AIR,
   BED,
+  CACTUS,
   DIRT,
   FARMLAND,
   GRASS,
@@ -13,6 +14,7 @@ import {
   OBSIDIAN,
   PLANK,
   SAND,
+  SANDSTONE,
   SAPLING,
   SPRUCE_SAPLING,
   STONE,
@@ -465,6 +467,44 @@ export function run(): void {
       blocked.kind === "blocked" && blocked.message.includes("土か草の上にしか") &&
         blocked.message.includes(blockName(SPRUCE_SAPLING)),
       blocked.kind === "blocked" ? blocked.message : blocked.kind,
+    );
+  }
+
+  // --- サボテンは砂の上にだけ立つ（44） --------------------------------------
+  // 苗木の節と同じ形。落としているのは `blocks.ts` の `supportsBlock()` の 1 行
+  // （`needsSand` の表）で、**`placing.ts` は 1 行も直していません。**
+  {
+    const floors: [string, number, boolean][] = [
+      ["砂", SAND, true],
+      ["草", GRASS, false],
+      ["土", DIRT, false],
+      ["石", STONE, false],
+      ["砂岩", SANDSTONE, false],
+    ];
+    const lines: string[] = [];
+    const wrong: string[] = [];
+    let grassMessage = "";
+    for (const [name, floor, want] of floors) {
+      const slab = new Slab();
+      slab.fill(-2, 2, 1, 10, -2, 2, floor);
+      const out = tryPlace(slab, nobody, aimAt(0, 10, 0, floor), 0, CACTUS);
+      const placed = out.kind === "placed";
+      lines.push(`${name} ${out.kind}${out.kind === "blocked" ? `「${out.message}」` : ""}`);
+      if (floor === GRASS && out.kind === "blocked") grassMessage = out.message;
+      if (placed !== want || slab.getVoxel(0, 11, 0) !== (want ? CACTUS : AIR)) {
+        wrong.push(`${name}(${out.kind}/${slab.getVoxel(0, 11, 0)})`);
+      }
+    }
+    console.log(`      サボテンを置く: ${lines.join(" / ")}`);
+    check(
+      "サボテンは砂の上にだけ立つ（草・土・石・砂岩の上には立たず、マスも空のまま）",
+      wrong.length === 0,
+      wrong.join(" / ") || "5 通りとも表どおり",
+    );
+    check(
+      "草の上に置こうとすると「砂の上にしか」と言い、サボテンの名前を含む",
+      grassMessage.includes("砂の上にしか") && grassMessage.includes(blockName(CACTUS)),
+      grassMessage || "文が出ていない",
     );
   }
 

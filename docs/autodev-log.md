@@ -4391,3 +4391,34 @@ HEAD と **md5 が一致**しました（`c4d0609d…`。**ビット同一**）�
 ### 決まりごと（層 2）: 0 件
 
 `src/**` を 1 行も触っていないので、踏んだ落とし穴がありません。
+
+## AUTODEV 120（C の周・2026-09-23・クラウドの無人の周）: 44 サボテンは砂の上だけ（ID 0 個）
+
+### 取ったもの
+
+**`AUTODEV-SPEC.md`（44）をそのまま実装。** `blocks.ts` に `needsSoil` / `soil` と同じ形の
+2 組目 `needsSand` / `sand`（旗 2 つ・表 `NEEDS_SAND` / `SAND_GROUND`・関数 `needsSand()` /
+`isSand()`）と、`supportsBlock()` の 1 行（`stacksOnSelf` の行より後）・`supportHint()` の 1 行。
+`def(CACTUS)` に `needsSand: true`、`def(SAND)` に `sand: true`。
+**`main.ts` / `world.ts` / `placing.ts` / 生成は 0 行。** 実装はサブエージェントを使わず親が書いた
+（差分 40 行で済むため）。点検（C-2）も親が `git diff` を読んで行った。
+
+- テスト: `test/blocks.test.ts` に「サボテンは砂の上だけ（44）」の節（12 件。本物の `World` で
+  草の上は置けない・砂の上に 2 段・根元の砂を土にすると 2 段とも落ちる）と、ツタの旗の表に
+  `needsSand` を 1 行（狭めるほう）。`test/placing.test.ts` に 5 通りの一覧と文の 2 件
+- `npm test` **3914 → 3927**（+13）すべて緑 / typecheck・build 緑 / bench は不要（生成・メッシュ化 ±0）
+- **撮った絵**: `npm run shot -- cactus`。**直す前と md5 が同一**（`7f1260…ea89`）で、`Read` で
+  置いた 2 本が 3 段・自然の 1 本が 1 段のまま砂の台に立っているのを見た。**生成の
+  「サボテンが浮いていない」は 0 本のまま緑**
+
+### 差し戻し: 0 回 / 見送ったもの: 0 件
+
+### 枠
+
+ID 0 個（**共有帯の空き 67・1..63 の空き 7。次に取るのは 189**）/ `main.ts` 1450 行（±0）/
+`SaveData` version 1（±0）/ キューの未着手 9 → 8 件。
+
+### 決まりごと（層 2）: 1 件
+
+`rules/blocks-shapes.md` の `supportsBlock()` の段に「狭める表は 2 組・`stacksOnSelf` の行より
+後・両方付けない・既存のセーブは消さない」を 1 段。

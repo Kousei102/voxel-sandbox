@@ -1152,6 +1152,17 @@ export interface BlockDef {
    */
   readonly soil: boolean;
   /**
+   * **真下が砂でないと立てない**（サボテン。44）。`needsSoil` とまったく同じ形の
+   * 2 組目で、効くのは `supportsBlock()` と `supportHint()` の 1 行ずつだけ。
+   * **`stacksOnSelf` の行より後に効く**ので、サボテンの上のサボテンは今までどおり立つ。
+   */
+  readonly needsSand: boolean;
+  /**
+   * 「砂」の側か（砂だけ。砂岩は本家でも入らない）。**`needsSand` の相手**で、
+   * 引くのは `isSand()` だけ。**`id === SAND` と書かないこと**（`soil` と同じ表 1 本の形）。
+   */
+  readonly sand: boolean;
+  /**
    * 見た目だけが違う別置き版なら、その大元のブロック。0 なら大元そのもの。
    * アイテムもドロップも名前も大元に揃うので、置き方を増やしても
    * アイテム欄が増えない。
@@ -1310,6 +1321,8 @@ function def(
     needsSoil: opts.needsSoil ?? false,
     hangsBelow: opts.hangsBelow ?? false,
     soil: opts.soil ?? false,
+    needsSand: opts.needsSand ?? false,
+    sand: opts.sand ?? false,
     variantOf: opts.variantOf ?? AIR,
   };
 }
@@ -1560,7 +1573,7 @@ export const BLOCKS: readonly BlockDef[] = [
   def(DIRT, "土", { top: 0x6b533a }, { hardness: 0.5, tool: "shovel", sound: "dirt", soil: true }),
   def(STONE, "石", { top: 0x8a8f96 }, { hardness: 1.5, tool: "pickaxe", minTier: TIER_WOOD }),
   def(COBBLE, "丸石", { top: 0x767b82 }, { hardness: 2, tool: "pickaxe", minTier: TIER_WOOD }),
-  def(SAND, "砂", { top: 0xd8c99a }, { hardness: 0.5, tool: "shovel", sound: "sand", falls: true }),
+  def(SAND, "砂", { top: 0xd8c99a }, { hardness: 0.5, tool: "shovel", sound: "sand", falls: true, sand: true }),
   def(
     WATER,
     "水",
@@ -1651,6 +1664,8 @@ export const BLOCKS: readonly BlockDef[] = [
     model: "boxes",
     boxes: CACTUS_BOX,
     supportFace: FACE_YN,
+    // **真下が砂のときだけ立つ**（44。本家どおり砂岩は不可）。`needsSoil` と同じ形の表。
+    needsSand: true,
     // 触れているあいだ刺さる。**上に立つぶんは痛くない**（箱の上面を削ると
     // 積んだサボテンの継ぎ目に出るので、そこは本家と違えてある。`TUNING.md`）
     spiky: true,
@@ -2317,6 +2332,10 @@ const NEEDS_SOIL = new Uint8Array(ID_LIMIT);
 const HANGS_BELOW = new Uint8Array(ID_LIMIT);
 /** 1 = 「土」の側（土・草・耕地）。`NEEDS_SOIL` の相手で、引くのは `isSoil()` だけ。 */
 const SOIL = new Uint8Array(ID_LIMIT);
+/** 1 = 真下が砂でないと立てない（サボテン）。引くのは `supportsBlock()` と `supportHint()`。 */
+const NEEDS_SAND = new Uint8Array(ID_LIMIT);
+/** 1 = 「砂」の側（砂だけ）。`NEEDS_SAND` の相手で、引くのは `isSand()` だけ。 */
+const SAND_GROUND = new Uint8Array(ID_LIMIT);
 /**
  * 1 = 当たり判定が 1 マスより高い（フェンス）。**手で旗を書かず、`collision` の
  * 最大 y > 1 から立てる**（2 か所に書くと必ず食い違う）。引くのは `physics.ts` の
@@ -2349,6 +2368,8 @@ for (const block of BLOCKS) {
   NEEDS_SOIL[block.id] = block.needsSoil ? 1 : 0;
   HANGS_BELOW[block.id] = block.hangsBelow ? 1 : 0;
   SOIL[block.id] = block.soil ? 1 : 0;
+  NEEDS_SAND[block.id] = block.needsSand ? 1 : 0;
+  SAND_GROUND[block.id] = block.sand ? 1 : 0;
   // **`solid` なブロックだけ**（通り抜けられるブロックの箱は当たり判定に使われない）。
   TALL_COLLISION[block.id] =
     block.solid && block.collision.some((b) => b[4] > 1) ? 1 : 0;
@@ -2761,6 +2782,7 @@ export function vineVariant(face: number, supporter: number = AIR): number {
  */
 export function supportHint(base: number): string {
   if (needsSoil(base)) return "土か草の上";
+  if (needsSand(base)) return "砂の上";
   const onFloor = placedVariant(base, { support: FACE_YN, hitY: 0, facing: FACE_XP });
   return onFloor === AIR ? "壁" : "床か壁";
 }
@@ -2814,6 +2836,19 @@ export function isSoil(id: number): boolean {
 }
 
 /**
+ * 真下が砂でないと立てないブロックか（サボテン。44）。**`id === CACTUS` と書かないこと** ——
+ * `needsSoil()` と同じで、表 1 本に聞く。
+ */
+export function needsSand(id: number): boolean {
+  return NEEDS_SAND[id] === 1;
+}
+
+/** サボテンが立てる「砂」か（砂だけ）。**表 1 本**（`needsSand()` の相手）。 */
+export function isSand(id: number): boolean {
+  return SAND_GROUND[id] === 1;
+}
+
+/**
  * `supporter` は、`face` の側に `id` を置くだけの支えになれるか。
  * **置く側（`World.canPlaceAt`）と壊す側（`World.breakUnsupported`）は必ずこれを通すこと。**
  *
@@ -2828,6 +2863,9 @@ export function supportsBlock(supporter: number, face: number, id: number): bool
   // 土（土・草・耕地）でなければ落とす —— 石でも板でも立ってしまうのを止める。
   // **壊す側もここを通る**ので、真下の土を掘れば苗木も一緒に壊れて落ちる。
   if (needsSoil(id) && !isSoil(supporter)) return false;
+  // 同じ形の 2 組目（サボテンは砂の上だけ。44）。**上の `stacksOnSelf` の行より後に
+  // 置くこと** —— 先に置くとサボテンの上のサボテンが落ち、伸びも止まる。
+  if (needsSand(id) && !isSand(supporter)) return false;
   // **広げるほうの例外がもう 1 つ**（ツタ。34b）。真上の同じツタにはぶら下がれる ——
   // **`face` を必ず見ること**（見ないと横のツタにも貼り付いて、空中へ横に伸びます）。
   // `baseBlock()` で比べるのは、向き違い 4 つが混ざった列でもぶら下がれるようにするため。

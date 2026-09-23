@@ -55,6 +55,7 @@ import {
   RED_MUSHROOM,
   SAND,
   SAPLING,
+  SANDSTONE,
   SANDSTONE_SLAB,
   SHARED_ID_START,
   SNOW,
@@ -113,6 +114,8 @@ import {
   remainsAfterBreak,
   liquidFog,
   needsSoil,
+  needsSand,
+  isSand,
   placeSpot,
   placedVariant,
   shapeBoxes,
@@ -1383,6 +1386,7 @@ export function run(): void {
   bowlAndStew();
   sugarCane(world, ground);
   cactusStack(world, ground);
+  cactusOnSand(world, ground);
   ladders();
   vines(world, ground);
   apples();
@@ -3006,6 +3010,7 @@ function vines(world: World, ground: number): void {
     ["bladed", isBladed],
     ["stacksOnSelf", stacksOnSelf],
     ["needsSoil", needsSoil],
+    ["needsSand", needsSand],
     ["replaceable", isReplaceable],
     ["slippery", isSlippery],
     ["sticky", isSticky],
@@ -3024,9 +3029,9 @@ function vines(world: World, ground: number): void {
     all.map((id) => `${id}:${isClimbable(id)}/${isBladed(id)}`).join(" "),
   );
   check(
-    "stacksOnSelf も needsSoil も replaceable も slippery も sticky も spiky も付いていない",
+    "stacksOnSelf も needsSoil も needsSand も replaceable も slippery も sticky も spiky も付いていない",
     all.every((id) =>
-      !stacksOnSelf(id) && !needsSoil(id) && !isReplaceable(id) &&
+      !stacksOnSelf(id) && !needsSoil(id) && !needsSand(id) && !isReplaceable(id) &&
       !isSlippery(id) && !isSticky(id) && !isSpiky(id)) &&
       isReplaceable(TALL_GRASS),
     all.map((id) => `${id}:${stacksOnSelf(id)}/${needsSoil(id)}/${isReplaceable(id)}`).join(" "),
@@ -3410,6 +3415,99 @@ function cactusStack(world: World, ground: number): void {
       `${stacked} 段 / 合図 ${broke} 回 / 2 段目 ${world.getVoxel(cx, ground + 1, cz)} / ` +
         `3 段目 ${world.getVoxel(cx, ground + 2, cz)}`,
     );
+  }
+}
+
+/**
+ * **サボテンは砂の上だけ**（44・2026-09-23）。苗木（30a）の `needsSoil` / `soil` と
+ * まったく同じ形の 2 組目（`needsSand` / `sand`）で、効くのは `supportsBlock()` の 1 行。
+ * **その 1 行は `stacksOnSelf` の行より後**なので、サボテンの上のサボテンは立ったまま。
+ *
+ * ここも**本物の `World`** で見ます（`crops.test.ts` の `Field` は `canPlaceAt` を持たない）。
+ */
+function cactusOnSand(world: World, ground: number): void {
+  describe("サボテンは砂の上だけ（44）");
+
+  // 表を出してから判定する。
+  const sandNeeders = BLOCKS.filter((b) => needsSand(b.id)).map((b) => b.name);
+  const sands = BLOCKS.filter((b) => isSand(b.id)).map((b) => b.name);
+  const both = BLOCKS.filter((b) => needsSand(b.id) && needsSoil(b.id)).map((b) => b.name);
+  console.log(
+    `      needsSand: ${sandNeeders.join(",") || "なし"} / isSand: ${sands.join(",") || "なし"} / ` +
+      `needsSand と needsSoil の両方: ${both.join(",") || "なし"}`,
+  );
+  check("needsSand が真なのはサボテンだけ",
+    sandNeeders.length === 1 && needsSand(CACTUS), sandNeeders.join(","));
+  check("isSand が真なのは砂だけ（砂岩は入らない）",
+    sands.length === 1 && isSand(SAND) && !isSand(SANDSTONE), sands.join(","));
+  check("needsSand と needsSoil が両方真のブロックは無い", both.length === 0, both.join(","));
+
+  // 真理値表を 1 行に出してから判定する。
+  const grounds: [string, number][] = [
+    ["砂", SAND], ["草", GRASS], ["土", DIRT], ["石", STONE], ["砂岩", SANDSTONE], ["板", PLANK],
+  ];
+  const table = grounds.map(([n, id]) => [n, supportsBlock(id, FACE_YP, CACTUS)] as const);
+  console.log(
+    `      supportsBlock(〜, FACE_YP, サボテン): ${table.map(([n, v]) => `${n} ${v}`).join(" / ")}` +
+      ` / サボテンの上 ${supportsBlock(CACTUS, FACE_YP, CACTUS)}`,
+  );
+  check("砂の上にはサボテンが立つ", supportsBlock(SAND, FACE_YP, CACTUS));
+  check(
+    "草・土・石・砂岩・板の上にはサボテンが立たない",
+    table.slice(1).every(([, v]) => !v),
+    table.map(([n, v]) => `${n}:${v}`).join(" "),
+  );
+  check("サボテンの上のサボテンは今までどおり立つ", supportsBlock(CACTUS, FACE_YP, CACTUS));
+
+  // 対照: 苗木（30a）と松明（canSupport）の線が動いていない。
+  console.log(
+    `      対照: 苗木 草 ${supportsBlock(GRASS, FACE_YP, SAPLING)} / 砂 ${supportsBlock(SAND, FACE_YP, SAPLING)}` +
+      ` / 松明 石 ${supportsBlock(STONE, FACE_YP, TORCH)}`,
+  );
+  check(
+    "苗木は草の上に立ち砂の上には立たない・石の上の松明は立つ（対照）",
+    supportsBlock(GRASS, FACE_YP, SAPLING) && !supportsBlock(SAND, FACE_YP, SAPLING) &&
+      supportsBlock(STONE, FACE_YP, TORCH),
+  );
+
+  // 置けない理由の文。
+  console.log(
+    `      supportHint: サボテン「${supportHint(CACTUS)}」/ 苗木「${supportHint(SAPLING)}」/ 松明「${supportHint(TORCH)}」`,
+  );
+  check(
+    "supportHint はサボテンが「砂の上」・苗木は「土か草の上」・松明は「床か壁」のまま",
+    supportHint(CACTUS) === "砂の上" && supportHint(SAPLING) === "土か草の上" &&
+      supportHint(TORCH) === "床か壁",
+  );
+
+  // 本物の `World` で置く・下を置き換える。
+  {
+    const cx = 9;
+    const cz = 7;
+    for (let y = ground; y < ground + 4; y++) world.setVoxel(cx, y, cz, AIR);
+    world.setVoxel(cx, ground - 1, cz, GRASS);
+    const onGrass = world.setVoxel(cx, ground, cz, CACTUS);
+    const afterGrass = world.getVoxel(cx, ground, cz);
+    world.setVoxel(cx, ground - 1, cz, SAND);
+    const onSand = world.setVoxel(cx, ground, cz, CACTUS);
+    const second = world.setVoxel(cx, ground + 1, cz, CACTUS);
+    let broke = 0;
+    world.onAutoBreak = (_x, _y, _z, id) => { if (id === CACTUS) broke++; };
+    world.setVoxel(cx, ground - 1, cz, DIRT); // 根元の砂を土に置き換える
+    world.onAutoBreak = undefined;
+    const after = [0, 1].map((k) => world.getVoxel(cx, ground + k, cz));
+    console.log(
+      `      World: 草の上 ${onGrass}（マス ${afterGrass}）/ 砂の上 ${onSand} / 2 段目 ${second} / ` +
+        `砂を土にしたあと ${after.join(",")} / 落ちた合図 ${broke} 回`,
+    );
+    check("本物の World で草の上には置けず、マスは空気のまま", !onGrass && afterGrass === AIR);
+    check("本物の World で砂の上には 2 段積める", onSand && second);
+    check(
+      "根元の砂を土に置き換えると 2 段とも落ちる",
+      broke === 2 && after.every((v) => v === AIR),
+      `合図 ${broke} 回 / ${after.join(",")}`,
+    );
+    world.setVoxel(cx, ground - 1, cz, GRASS);
   }
 }
 
