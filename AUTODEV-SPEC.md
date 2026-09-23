@@ -1,119 +1,107 @@
-# 仕様: 投げた卵からヒヨコが湧く（キューの 43・**ID 0 個**）
+# 仕様: サボテンは砂の上にしか置けない（キューの 44・**ID 0 個**）
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-**この 1 件だけコードで数え直しました**（B の周の決まり）: 孵る道は `src/**` に**1 本もありません**。
-`projectiles.onHitBlock`（`main.ts` 255 行）は `shatterCrystal()` を呼ぶだけ、`mobs.ts` に
-`hatch` も `egg` も 1 語もありません（`EGG`(129) は鶏の `laying` とケーキのレシピだけ）。
-`rules/projectiles.md` の 36 行が「**1/8 でヒヨコが孵るは入っていません**」と書いたままです。
+**この 1 件だけコードで数え直しました**（B の周の決まり）: 入っていません。`def(CACTUS)`
+（`blocks.ts` 1647 行）は `supportFace: FACE_YN` と `stacksOnSelf: true` だけで、**土の類を選ぶ
+表は `needsSoil`（苗木 2 種）しかありません**。`supportsBlock()`（2825 行）は `canSupport()` に
+落ちるので、**石でも板でも草でも立ちます**。**自然生成は触らなくてよい** —— 砂漠の木の枠に
+立てていて（`worldgen.ts` 265 行・`biomes.ts` の砂漠は `surface: SAND`）、`test/worldgen.test.ts`
+の「サボテンが浮いていない」（1063 行）が**根元の下が `SAND` であることを既に見ています**。
 
 ## 1. 何を足すか / 完了の判定
 
-**割れた卵から 1/8 で鶏が 1 羽湧く**（本家 Alpha 1.0.14）。**本家は「ヒヨコ」ですが、ここでは
-大人の鶏**です —— **子モブの仕組み（小さい姿・育つ時間）が 1 つも無く**、足すと
-`mobrender.ts` / `mobmesh.ts` の話になって 1 周で閉じません（`rules/projectiles.md` の但し書き）。
-**完了**: `npm test` に**「投げた卵から湧く（43）」の節**が増えて**すべて緑**
-（**+12〜16 件。3897 → 3910 あたり**）。**数え直す既存の件は 0 件の見込み**（ID も表も動かさないため）。
-
-**⚠ `main.ts` は ±0 行で閉じること**（いま 1450 行）。呼び出しを 1 行足し、**真上の 7 行の
-コメントを 6 行に書き直して相殺します**（下の 4）。**だから `AUTODEV.md` の停止条件 2 には
-当たりません** —— `main.ts` を割ってよいかの人の判断は、**待ったまま持ち越し**です。
+**サボテンは真下が砂のときだけ立つ**（本家 Alpha）。置く側（`World.canPlaceAt`）も壊す側
+（`World.breakUnsupported`）も `supportsBlock()` を通るので、**真下の砂を別のブロックに
+置き換えるとサボテンが壊れて落ちます**（苗木と同じ 1 行で両方が済む形）。**サボテンの上の
+サボテン（積む・伸びる）は今までどおり**。置けないときの文は「サボテン は**砂の上**にしか
+付けられません」。
+**完了**: `npm test` に**「サボテンは砂の上だけ（44）」の節**が増えて**すべて緑**
+（**+10〜14 件。3914 → 3926 あたり**）。**数え直す既存の件は 0 件の見込み**（既存のサボテンの
+テストはどれも砂の上に立てています —— `test/blocks.test.ts` 3391 行 / `tools/shot.ts` の `cactus`）。
 
 ## 2. 触るファイル / 触らないファイル
 
-**触る**: `src/mobs.ts`（**表 1 本 + 定数 1 つ + `hatch()` 1 本**）/ `src/main.ts`（**±0 行**）/
-`test/mobs.test.ts`（節 1 つ）/ `test/ui.test.ts`（`routed` に 1 件）/ `rules/projectiles.md`（36〜37 行）/
-`rules/mobs.md`（1 段）/ `TUNING.md` / `AUTODEV-QUEUE.md` / `docs/autodev-log.md` / `HANDOFF.md`。
+**触る**: `src/blocks.ts`（**旗 2 つ・表 2 本・関数 2 本・`supportsBlock()` 1 行・`supportHint()` 1 行・
+`def(CACTUS)` と `def(SAND)` に 1 行ずつ**）/ `test/blocks.test.ts`（節 1 つ + 3004 行の旗の表に 1 行）/
+`test/placing.test.ts`（節 1 つ）/ `rules/blocks-shapes.md`（1 段）/ `TUNING.md` / `AUTODEV-QUEUE.md` /
+`docs/autodev-log.md` / `HANDOFF.md`。
 
-**触らない**: **`src/projectiles.ts`（1 行も）** —— 卵の 8 つの値は雪玉と突き合わせてあります。
-ほかに `src/items.ts` / `src/use.ts` / `src/mobrender.ts` / `src/mobmesh.ts` / `src/drops.ts` /
-`src/worldgen.ts` / `ROADMAP.md` の予約表 /
-**`CHICKEN` の定義（`laying` も `drop` も `size` も）** / **`hitByProjectile()` の引数** / `SaveData`。
+**触らない**: **`src/main.ts`（0 行）** / **`src/world.ts`**（`canPlaceAt` も `breakUnsupported` も
+`supportsBlock()` を通すので 1 行も要らない）/ **`src/placing.ts`**（文は `supportHint()` から出る）/
+`src/worldgen.ts` / `src/treeshape.ts` / `src/biomes.ts`（**生成は砂の上に立て済み**）/
+`src/crops.ts`（伸びるのは「サボテンの上のサボテン」で、`stacksOnSelf` の行が先に真を返す）/
+**`canSupport()`**（壁掛けの松明とベッドの足場。`rules/blocks-shapes.md`）/ `SaveData` /
+`ROADMAP.md` の予約表 / `tools/shot.ts`（`cactus` の場面は元から砂の台）。
 
-**先に引いて読むこと**（層 2 は自動では読み込まれません。`grep -l '"src/mobs.ts"' rules/*.md`）:
-`mobs` / `projectiles` / `testing` / `dom-ui` と、**`main.ts` に当たる 8 本**（`beds` /
-`blocks-shapes` / `dimensions` / `drops` / `items-survival` / `stateful-blocks` / `use` / `vitals`）。
+**先に引いて読むこと**（`grep -l '"src/blocks.ts"' rules/*.md` ほか）: `blocks-shapes` / `beds` /
+`items-survival` / `testing`（`test/**` を触るので）。
 
 ## 3. 使う ID
 
-**0 個。** ブロックもアイテムも 1 つも足しません（**次に取るのは 189 のまま**）。**`ROADMAP.md` の予約表は 1 行も動かないのが正しい**ので、書き足さないこと。
+**0 個。** ブロックもアイテムも足しません（**次に取るのは 189 のまま**。予約表は動かさない）。
 
 ## 4. 判断をどこに置くか
 
-**新しく「確かめられないもの」は 1 つも足しません**（`unverifiable-pair` は要りません）。
-判断は**全部 `mobs.ts`**（湧き・確率・音は元からあちらの持ち物）で、`main.ts` は繋ぐだけです。
+**全部 `blocks.ts` の表**です（**新しい「確かめられないもの」は 0 個**。`unverifiable-pair` は不要）。
+**`needsSoil` / `soil`（30a）とまったく同じ形をもう 1 組**作ります:
 
-`src/mobs.ts` に 3 つ（**`MOBS` の表の近く**に定数 2 つ、`hitByProjectile()` の隣に `hatch()`）:
+- `BlockDef` に `readonly needsSand: boolean`（**真下が砂でなければ立てない**）と
+  `readonly sand: boolean`（**`needsSand` の相手**）。`def()` の既定はどちらも `false`
+- 表 `NEEDS_SAND` / `SAND_GROUND`（`Uint8Array(ID_LIMIT)`。`NEEDS_SOIL` / `SOIL` の隣）と、
+  引く関数 `needsSand(id)` / `isSand(id)`（`needsSoil()` / `isSoil()` の隣）
+- `def(CACTUS)` に `needsSand: true`、`def(SAND)` に `sand: true`（**砂岩・赤い砂は足さない**。
+  本家の赤い砂はここに無く、砂岩の上には本家でも立ちません）
+- `supportsBlock()` に 1 行、**`stacksOnSelf` の行より後・`needsSoil` の行の隣**:
+  `if (needsSand(id) && !isSand(supporter)) return false;`
+  —— **この順を入れ替えないこと**（先に置くとサボテンの上のサボテンが落ち、伸びも止まる）
+- `supportHint()` に 1 行（`needsSoil` の行の隣）: `if (needsSand(base)) return "砂の上";`
 
-```ts
-/** 割れた飛び道具から湧くもの。**表 1 本**（`hostileFor()` と同じ作法で `if` の列にしない）。 */
-export const HATCHES: Partial<Record<ProjectileKind, MobKind>> = { egg: "chicken" };
-export const HATCH_CHANCE = 1 / 8;                       // 本家の値そのまま
-
-hatch(shot: Projectile, world: World, ctx: MobContext, random = ctx.random ?? Math.random): Mob | null
-```
-
-`hatch()` の中はこの順（**1 つでも入れ替えないこと**。テストがこの順に乗ります）:
-
-1. `const kind = HATCHES[shot.kind]; if (!kind) return null;` —— **`shot.kind === "egg"` と書かないこと**
-2. `if (this.list.length >= MAX_MOBS) return null;` —— 卵を投げ続けてフレームの予算を割らせない
-3. `if (random() >= HATCH_CHANCE) return null;`
-4. `if (boxBlocked(world, x, y, z, MOBS[kind].size)) return null;` —— **壁の中に湧かせない**
-   （`trySpawn()` と同じ 1 本。`boxBlocked` も `columnOf` も `mobs.ts` に import 済み）
-5. `this.onSound?.("mobsay", MOBS[kind].voice);` → `return this.spawn(kind, x, y, z, random() * Math.PI * 2, random);`
-
-**場所は `shot.position` をそのまま**（卵の中心。`spawn()` は足元の中心ですが、卵の半分は
-0.125m なので差は見えず、重力で落ちます）。**未生成の列の心配は要りません**（`projectiles.ts`
-はそこでは動かさないので（479 行）、当たりの合図自体が出ません）。
-
-`src/main.ts` は `onHitBlock` の**先頭に 1 行**（`shatterCrystal()` の前）:
-
-```ts
-  mobs.hatch(shot, world, mobContext());
-```
-
-**真上の 7 行（248〜254）のコメントを 6 行に書き直して ±0 行にすること。** 中身は
-「効くのは 2 つ（クリスタルが砕けるか・卵から湧くか）で、**どちらも判断は向こう側**」と、
-いまの「砕いた弾はその場から消す」の 2 段。**`1 / 8` も `"egg"` も `"chicken"` も
-`main.ts` に書かないこと。**
+**`id === CACTUS` / `supporter === SAND` と書かないこと**（`isSoil()` と同じ表 1 本の作法）。
 
 ## 5. 書くテスト（**値を出力してから判定する**）
 
-`test/mobs.test.ts` に**「投げた卵から湧く（43）」の節**を 1 つ（`describe()` から。
-弾は `new Projectiles().spawn("egg", …)` で作る —— 2359 行の書き方を写す。乱数は `seeded()`）:
+`test/blocks.test.ts` に**「サボテンは砂の上だけ（44）」の節**（`describe()` から。`cactusStack()`
+の隣に関数 1 本。**本物の `World` を使うこと** —— `crops.test.ts` の `Field` は `canPlaceAt` を
+持たないので、足し忘れても緑のままです。3363 行の注意）:
 
-- **表と確率を出してから**: `HATCHES.egg === "chicken"` / `HATCHES.snowball === undefined` /
-  `HATCH_CHANCE === 1 / 8`
-- **境界を値で**: `random` が `() => 0.124` なら湧き、`() => 0.126` なら湧かない
-- **実測の率**: 8000 回呼んで**湧いた数と率を出してから** `0.125 ± 0.02`。**`seeded()` なので
-  決定的**です（通る種を選んでよい。**窓を広げるのは最後の手段**）
-- **雪玉と矢では 1 羽も湧かない**（1000 回ずつ回して 0 件を出す）
-- **湧いたのは鶏**（`kind === "chicken"` / 体力 4）で、**場所は割れた所**（`shot.position` と ±0.001）
-- **石で埋めた所では湧かない**（1000 回で 0 件。`boxBlocked` が効いていること）
-- **`MAX_MOBS`(40) まで埋めたら湧かない**（1000 回で 0 件）
-- **音は `"mobsay"` が鶏の声（1.8）で 1 回**・**`onDrop` は 1 回も鳴らない**（湧くのであって落ちない）
+- **表を出してから**: `needsSand` が真のブロックの名前一覧 → **サボテンだけ**。`isSand` が真の
+  一覧 → **砂だけ**。`needsSand` と `needsSoil` が両方真のブロックは **0 個**
+- **真理値表を 1 行に出してから**: `supportsBlock(砂, FACE_YP, サボテン)` 真 /
+  草・土・石・砂岩・板で偽 / **`supportsBlock(サボテン, FACE_YP, サボテン)` は真のまま**
+- **対照**: `supportsBlock(草, FACE_YP, 苗木)` 真・`supportsBlock(砂, FACE_YP, 苗木)` 偽（30a の線が
+  動いていない）/ `supportsBlock(石, FACE_YP, 松明)` 真（`canSupport()` をゆるめても狭めてもいない）
+- **本物の `World` で**: 草の上に `setVoxel(CACTUS)` は `false` でマスは `AIR` のまま / 砂の上は `true` /
+  **砂の上に 2 段積んでから、根元の砂を土に置き換えると 2 段とも落ちる**（`onAutoBreak` が 2 回）
+- `supportHint(CACTUS) === "砂の上"` / 苗木は `"土か草の上"` のまま / 松明は `"床か壁"` のまま
+- 3004 行の旗の表に `["needsSand", needsSand]` を足し、その下の「付いていない」判定にも
+  `!needsSand(id)` を足す（**判定を狭めるほうの変更なので可**。ゆるめないこと）
 
-`test/ui.test.ts` の `routed` に **`["卵からヒヨコ", "mobs.hatch("]`** を 1 件（理由のコメント付き。
-**外すと、配線を落としても緑のまま通ります**）。**行数の判定は `<= 1500` のまま**にすること。
+`test/placing.test.ts` の 423 行の節の**隣に 1 節**（同じ書き方。`Slab` と `tryPlace`）:
+**砂・草・土・石・砂岩の 5 通りを一覧で出してから**、砂だけ `placed`・残りは `blocked` で
+**マスが空のまま** / 草の上の文が **「砂の上にしか」**を含み `blockName(CACTUS)` を含む。
 
 ## 6. このタスク固有の禁じ手
 
-- **`main.ts` を 1 行も増やさないこと**（+1 行の呼び出しと −1 行のコメントで ±0。増えたら仕様違反）
-- **`projectiles.ts` に 1 行も書かないこと**（表も `onHitTarget` も。卵の 8 つの値は雪玉と対）
-- **当たった相手（モブ）では孵らせないこと** —— `hitByProjectile()` に `world` を足すと
-  配線とテスト 5 か所が動きます。**本家と違う点**として `TUNING.md` に 1 行
-- **子モブ（ヒヨコの姿・大きさ・育ち）を足さないこと** / **`CHICKEN` の表を書き換えないこと**
-- **`SaveData.version` は 1 のまま** / **テストの判定をゆるめないこと**
+- **`canSupport()` を 1 文字も触らないこと** / **`main.ts` / `world.ts` / `placing.ts` に 1 行も書かないこと**
+- **生成（`worldgen.ts` / `treeshape.ts` / `biomes.ts`）を触らないこと** —— 立て済みです。
+  **もし上の「サボテンが浮いていない」が赤くなったら、生成を直さずに止めて `HANDOFF.md` に書くこと**
+- **「横に固いブロックがあると壊れる」は足さないこと**（37 で見送った別件。1 周 1 件）
+- **サトウキビ（45）に手を出さないこと** —— 砂の表を流用したくなっても次の周です
+- **既存のセーブの扱いを変えないこと**: 草の上に置いてあったサボテンは `createChunk` が差分を
+  直に書くので**そのまま残ります**（真下が書き換わったときにだけ落ちる）。**消して回る処理を
+  足さないこと**（`TUNING.md` に 1 行書く）
+- `SaveData.version` は 1 のまま / **テストの判定をゆるめないこと**
 
 ## 7. 終了条件
 
 - `npm run typecheck` 緑 / **`npm test` すべて緑** / `npm run build` 緑。**`bench` は不要**
-  （生成もメッシュ化も 1 行も触らない）
-- **C-3**: **新しい見た目は 0 個**（湧くのは今までどおりの鶏）。それでも
-  **`npm run shot -- mobs --size 900x900` を 1 枚撮って `Read` で見ること**（1〜2 秒。
-  鶏の形と面が前の周のまま出ていること）。**ブラウザ（`browsershot.mjs`）は要りません**
-- **コミット 1 つを `master` へ push** / `AUTODEV-QUEUE.md` の 43 の行を消す / この仕様書を
-  **`状態: 済`** に / **`rules/projectiles.md` の 36〜37 行を直す**（「入っていません」→ 入った。
-  `mobs.ts` の `hatch()`）/ `rules/mobs.md` に 1 段 / **`TUNING.md` に 1 節**（**1/8**・
-  **大人の鶏**・**相手に当たったときは孵らない**）/ `docs/autodev-log.md` に 1 節 / **`HANDOFF.md` を書き直す**
+  （生成もメッシュ化も触らない）
+- **C-3**: **見た目は 1 つも変わりません**が、**`npm run shot -- cactus` を 1 枚撮って `Read` で見ること**
+  （置いた 2 本が 3 段・自然の 1 本が 1 段のまま、砂の台に立っていること。**直す前にも 1 枚撮って
+  `md5sum` を比べれば足ります**）。ブラウザ（`browsershot.mjs`）は要りません
+- **コミット 1 つを `master` へ push** / `AUTODEV-QUEUE.md` の 44 の行を消す / この仕様書を
+  **`状態: 済`** に / `rules/blocks-shapes.md` に 1 段（**支えを狭める表が 2 組になった**こと・
+  **`stacksOnSelf` の行より後に置く理由**）/ **`TUNING.md` に 1 節**（砂だけ・砂岩は不可・
+  既存のセーブは消さない）/ `docs/autodev-log.md` に 1 節 / **`HANDOFF.md` を書き直す**
