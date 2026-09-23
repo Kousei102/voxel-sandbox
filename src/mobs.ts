@@ -1492,6 +1492,18 @@ export function hostileFor(ground: number, random: () => number): MobKind | null
 }
 
 /**
+ * 割れた飛び道具から湧くもの。**表 1 本**（`hostileFor()` と同じ作法で、
+ * `shot.kind === "egg"` のような `if` の列にしないこと —— 孵るものが増えるたびに
+ * `hatch()` の中に分岐が 1 本ずつ生える）。
+ *
+ * **本家は「ヒヨコ」だが、ここでは大人の鶏。** 子モブの仕組み（小さい姿・育つ時間）が
+ * 1 つも無く、足すと `mobrender.ts` / `mobmesh.ts` の話になる（`TUNING.md`）。
+ */
+export const HATCHES: Partial<Record<ProjectileKind, MobKind>> = { egg: "chicken" };
+/** 孵る率。本家の値（Alpha 1.0.14）そのまま。 */
+export const HATCH_CHANCE = 1 / 8;
+
+/**
  * 重み（`MobDef.spawnWeight`）つきの抽選。候補が空なら null。
  *
  * **受動と敵対で共有すること。** 均等割りだったころ、エンダーマンを足した瞬間に
@@ -2837,6 +2849,33 @@ export class Mobs {
     for (const stack of dropsFor(mob, def, random)) {
       this.onDrop?.(stack.item, stack.count, mob.position.x, mob.position.y, mob.position.z);
     }
+  }
+
+  /**
+   * 割れた飛び道具から湧く（卵 → 鶏。本家 Alpha 1.0.14 の 1/8）。
+   *
+   * **`projectiles.ts` は 1 行も知らない。** あちらは「当たった」ことだけを
+   * `onHitBlock` で外へ渡し、何が起きるかはここが決める（`hitByProjectile()` と同じ筋）。
+   * `main.ts` は `mobs.hatch(shot, world, mobContext())` の 1 行だけで、
+   * **`1 / 8` も `"egg"` も `"chicken"` もあちらには書かない。**
+   *
+   * **当たった相手（モブ）では孵らない** —— `hitByProjectile()` に `world` を足すと
+   * 配線とテストの 5 か所が動く。本家と違う点として `TUNING.md` に 1 行。
+   */
+  hatch(shot: Projectile, world: World, ctx: MobContext, random = ctx.random ?? Math.random): Mob | null {
+    // **表で引くこと**（`shot.kind === "egg"` と書かない）。孵らない弾はここで返る。
+    const kind = HATCHES[shot.kind];
+    if (!kind) return null;
+    // 卵を投げ続けてフレームの予算を割らせない（`trySpawn()` と同じ上限）。
+    if (this.list.length >= MAX_MOBS) return null;
+    if (random() >= HATCH_CHANCE) return null;
+    // 壁の中に湧かせない。**`trySpawn()` とまったく同じ 1 本**（形のあるブロックも見る）。
+    const { x, y, z } = shot.position;
+    if (boxBlocked(world, x, y, z, MOBS[kind].size)) return null;
+
+    this.onSound?.("mobsay", MOBS[kind].voice);
+    // 場所は割れた所そのまま（卵の半分は 0.125m なので足元との差は見えず、重力で落ちる）。
+    return this.spawn(kind, x, y, z, random() * Math.PI * 2, random);
   }
 
   /**

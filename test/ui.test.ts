@@ -227,6 +227,10 @@ function mainStaysWiring(): void {
     // 部位の表（`items.ts` の `ARMORS`）と合計の出し方（`inventory.armorPoints`）が
     // 2 か所に分かれる。** 外すと着ても固くならず、殴られてみるまで気付けない。
     ["防具点を貼る", "armorPoints"],
+    // 割れた卵から鶏が湧く配線。**外すと、`mobs.ts` 側の `hatch()` が全部緑のまま
+    // 1 度も呼ばれない**（`1 / 8` も `"egg"` も `main.ts` には書かないので、
+    // 抜けても型では止まらない）。**呼び出しの形で並べること**（上の 2-12 の偽陽性）。
+    ["卵からヒヨコ", "mobs.hatch("],
   ];
   const inlined = routed.filter(([, call]) => !source.includes(call));
   check(

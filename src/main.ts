@@ -246,13 +246,13 @@ mobs.onSound = (sfx, pitch) => audio.play(sfx, "none", pitch);
 projectiles.onHitTarget = (shot, target) => mobs.hitByProjectile(shot, target, mobContext());
 
 /**
- * 飛んでいるものがブロックに当たった。**いまのところ効くのはエンドクリスタルだけ**
- * （砕けるかどうかも、そのマスに何があるかも `crystals.ts` が見る）。
- *
- * 砕いた弾はその場から消す —— 矢は本来ブロックに刺さって止まるので、
- * 消さないと**当てた相手だけが消えて、矢が空中に浮いたまま残る。**
+ * 飛んでいるものがブロックに当たった。**効くのは 2 つ**（クリスタルが砕けるか・
+ * 卵から湧くか）で、**どちらも判断は向こう側**（`crystals.ts` / `mobs.ts`）。
+ * 砕いた弾はその場から消す —— 矢は本来刺さって止まるので、消さないと
+ * **当てた相手だけが消えて、矢が空中に浮いたまま残る。**
  */
 projectiles.onHitBlock = (shot, x, y, z) => {
+  mobs.hatch(shot, world, mobContext());
   const broken = shatterCrystal(world, x, y, z);
   if (broken === AIR) return;
   projectiles.remove(shot);

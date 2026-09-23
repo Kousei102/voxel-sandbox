@@ -43,6 +43,8 @@ import {
   ATTACK_RANGE,
   BOSSES,
   DESPAWN_DISTANCE,
+  HATCHES,
+  HATCH_CHANCE,
   HOSTILE_LIGHT_MAX,
   HOSTILE_SIGHT,
   MAX_HOSTILE,
@@ -3896,5 +3898,122 @@ export function run(): void {
     check("縦に離れていれば数えない", !above.hostileNear(0, 10, 0, 4));
 
     check("1 体も居なければ false", !new Mobs().hostileNear(0, 10, 0, 8));
+  }
+
+  describe("投げた卵から湧く（43）");
+
+  {
+    // **表と確率を先に出す。** `shot.kind === "egg"` と書くと、孵るものが増えるたびに
+    // `hatch()` の中に分岐が 1 本ずつ生える（`hostileFor()` と同じ作法）。
+    const table = Object.entries(HATCHES).map(([kind, mob]) => `${kind} → ${mob}`).join(" / ");
+    console.log(`      表: ${table} / 率 ${HATCH_CHANCE}（1/${Math.round(1 / HATCH_CHANCE)}）`);
+    check("卵からは鶏が湧く", HATCHES.egg === "chicken", `${HATCHES.egg}`);
+    check("雪玉は表に無い", HATCHES.snowball === undefined, `${HATCHES.snowball}`);
+    check("率は本家の 1/8", HATCH_CHANCE === 1 / 8, `${HATCH_CHANCE}`);
+  }
+
+  {
+    const arena = quiet(flatGrass());
+    const world = arena.asWorld();
+    const c = ctx();
+    const flying = new Projectiles();
+    // 割れた卵 1 個。**位置は空中**（草の床 y=10 の上）。撃ち下ろしの向きは弾道に
+    // 効くだけで、`hatch()` が見るのは `kind` と `position` の 2 つだけ。
+    const shot = flying.spawn("egg", 0.5, 12, 0.5, 0, -1, 0, PLAYER_OWNER)!;
+
+    // --- 境目を値で（`random()` が `HATCH_CHANCE` 未満なら湧く） ---
+    const under = new Mobs().hatch(shot, world, c, () => 0.124);
+    const over = new Mobs().hatch(shot, world, c, () => 0.126);
+    console.log(
+      `      境目: 0.124 → ${under ? under.kind : "湧かない"} / 0.126 → ${over ? over.kind : "湧かない"}`,
+    );
+    check("0.124 なら湧く", under !== null && under.kind === "chicken", `${under?.kind}`);
+    check("0.126 なら湧かない", over === null, `${over?.kind ?? "湧かない"}`);
+
+    // --- 湧いたのは大人の鶏で、場所は割れた所 ---
+    // **本家の「ヒヨコ」ではない**（子モブの仕組みが 1 つも無い。`TUNING.md`）。
+    const born = new Mobs().hatch(shot, world, c, () => 0)!;
+    console.log(
+      `      湧いたもの: ${MOBS[born.kind].name}(${born.kind}) 体力 ${born.health} / ` +
+        `位置 (${born.position.x}, ${born.position.y}, ${born.position.z})`,
+    );
+    check("湧くのは鶏", born.kind === "chicken", born.kind);
+    check("大人の鶏の体力（4）で湧く", born.health === MOBS.chicken.maxHealth, `${born.health}`);
+    check(
+      "場所は割れた所",
+      born.position.distanceTo(shot.position) < 0.001,
+      `${born.position.distanceTo(shot.position).toFixed(4)} m`,
+    );
+
+    // --- 実測の率（**乱数は 1 本を回し続けること**。`rules/testing.md`） ---
+    const roll = seeded(1013);
+    const pack = new Mobs();
+    const TRIES = 8000;
+    let hatched = 0;
+    for (let i = 0; i < TRIES; i++) {
+      if (pack.hatch(shot, world, c, roll)) {
+        hatched++;
+        // **上限（`MAX_MOBS`）に当てないこと** —— 当てた先は下の別件で測る。
+        pack.clear();
+      }
+    }
+    const rate = hatched / TRIES;
+    console.log(`      ${TRIES} 回投げて ${hatched} 羽（${(rate * 100).toFixed(2)}%）`);
+    check("実測の率は 1/8 のあたり", Math.abs(rate - HATCH_CHANCE) <= 0.02, `${rate.toFixed(4)}`);
+
+    // --- 雪玉と矢では 1 羽も湧かない（表に無いものは早返り） ---
+    const snowball = flying.spawn("snowball", 0.5, 12, 0.5, 0, -1, 0, PLAYER_OWNER)!;
+    const arrow = flying.spawn("arrow", 0.5, 12, 0.5, 0, -1, 0, PLAYER_OWNER, 4)!;
+    let fromSnow = 0;
+    let fromArrow = 0;
+    for (let i = 0; i < 1000; i++) {
+      if (pack.hatch(snowball, world, c, roll)) fromSnow++;
+      if (pack.hatch(arrow, world, c, roll)) fromArrow++;
+    }
+    console.log(`      1000 回ずつ: 雪玉 ${fromSnow} 羽 / 矢 ${fromArrow} 羽`);
+    check("雪玉からは湧かない", fromSnow === 0, `${fromSnow} 羽`);
+    check("矢からは湧かない", fromArrow === 0, `${fromArrow} 羽`);
+
+    // --- 壁の中では湧かない（`boxBlocked` が効いていること） ---
+    const solid = new Arena();
+    solid.fill(-4, 4, 0, 20, -4, 4, STONE);
+    const walled = new Mobs();
+    let inStone = 0;
+    for (let i = 0; i < 1000; i++) {
+      if (walled.hatch(shot, solid.asWorld(), c, roll)) inStone++;
+    }
+    console.log(`      石で埋めた所で 1000 回: ${inStone} 羽`);
+    check("石の中では湧かない", inStone === 0, `${inStone} 羽`);
+
+    // --- 上限（`MAX_MOBS`）まで埋めたら湧かない ---
+    const full = new Mobs();
+    for (let i = 0; i < MAX_MOBS; i++) full.spawn("chicken", 0.5, 11, 0.5, 0, seeded(1021 + i));
+    let overflow = 0;
+    for (let i = 0; i < 1000; i++) {
+      if (full.hatch(shot, world, c, roll)) overflow++;
+    }
+    console.log(`      ${MAX_MOBS} 体まで埋めて 1000 回: ${overflow} 羽（いま ${full.count} 体）`);
+    check("上限まで埋まっていたら湧かない", overflow === 0, `${overflow} 羽`);
+    check("上限を超えて増えていない", full.count === MAX_MOBS, `${full.count} 体`);
+
+    // --- 音は鶏の声で 1 回・落とし物は 1 回も鳴らない（湧くのであって落ちない） ---
+    const noisy = new Mobs();
+    const heard: string[] = [];
+    let drops = 0;
+    noisy.onSound = (sfx: Sfx, pitch: number) => heard.push(`${sfx}@${pitch}`);
+    noisy.onDrop = () => drops++;
+    noisy.hatch(shot, world, c, () => 0);
+    const quietRun = new Mobs();
+    const silent: string[] = [];
+    quietRun.onSound = (sfx: Sfx, pitch: number) => silent.push(`${sfx}@${pitch}`);
+    quietRun.hatch(shot, world, c, () => 0.5);
+    console.log(`      湧いたとき: ${heard.join(" ") || "無音"} / 湧かなかったとき: ${silent.join(" ") || "無音"}`);
+    check(
+      "湧いたら鶏の声が 1 回",
+      heard.length === 1 && heard[0] === `mobsay@${MOBS.chicken.voice}`,
+      heard.join(" "),
+    );
+    check("落とし物は 1 回も鳴らない", drops === 0, `${drops} 件`);
+    check("湧かなかったときは無音", silent.length === 0, silent.join(" "));
   }
 }
