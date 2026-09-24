@@ -1,42 +1,43 @@
-# 仕様: サボテンは砂の上にしか置けない（キューの 44・**ID 0 個**）
+# 仕様: サトウキビは水辺の土・草・砂の上にしか置けない（キューの 45・**ID 0 個**）
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-**この 1 件だけコードで数え直しました**（B の周の決まり）: 入っていません。`def(CACTUS)`
-（`blocks.ts` 1647 行）は `supportFace: FACE_YN` と `stacksOnSelf: true` だけで、**土の類を選ぶ
-表は `needsSoil`（苗木 2 種）しかありません**。`supportsBlock()`（2825 行）は `canSupport()` に
-落ちるので、**石でも板でも草でも立ちます**。**自然生成は触らなくてよい** —— 砂漠の木の枠に
-立てていて（`worldgen.ts` 265 行・`biomes.ts` の砂漠は `surface: SAND`）、`test/worldgen.test.ts`
-の「サボテンが浮いていない」（1063 行）が**根元の下が `SAND` であることを既に見ています**。
+**この 1 件だけコードで数え直しました**（B の周の決まり）: 入っていません。`def(SUGAR_CANE)`
+（`blocks.ts` 2022 行）は `supportFace: FACE_YN` と `stacksOnSelf: true` だけで、`supportsBlock()`
+（2860 行）は `canSupport()` に落ちるので**石の上にも立ち、水も見ていません**
+（`test/blocks.test.ts` 3296 行が「石の上のサトウキビ」を**真**として見張っているほど）。
+**「横が水」は `supportsBlock()`（真下の 1 マスしか受け取らない）では見られない**ので、
+`World.canPlaceAt()`（`world.ts` 213 行）と、その写しの `test/arena.ts` の `canPlaceAt()`（114 行）に
+1 か所ずつ足します。**生成は触りません** —— 浜のサトウキビは水面 y40 より 1 段上の y41 に
+立っていて水際を見ていません（`rules/worldgen.md` 138 行。**自然のものは水辺でなくても残ります**）。
 
 ## 1. 何を足すか / 完了の判定
 
-**サボテンは真下が砂のときだけ立つ**（本家 Alpha）。置く側（`World.canPlaceAt`）も壊す側
-（`World.breakUnsupported`）も `supportsBlock()` を通るので、**真下の砂を別のブロックに
-置き換えるとサボテンが壊れて落ちます**（苗木と同じ 1 行で両方が済む形）。**サボテンの上の
-サボテン（積む・伸びる）は今までどおり**。置けないときの文は「サボテン は**砂の上**にしか
-付けられません」。
-**完了**: `npm test` に**「サボテンは砂の上だけ（44）」の節**が増えて**すべて緑**
-（**+10〜14 件。3914 → 3926 あたり**）。**数え直す既存の件は 0 件の見込み**（既存のサボテンの
-テストはどれも砂の上に立てています —— `test/blocks.test.ts` 3391 行 / `tools/shot.ts` の `cactus`）。
+**サトウキビの根元（自分の上に積んだ段ではない 1 段目）は、真下が土・草・砂で、かつ
+その真下のマスの横 4 マス（±X・±Z、同じ高さ）のどれかが水のときだけ立つ**（本家 Alpha）。
+**耕地・砂岩・石は不可**（本家 Java どおり）。**積んだ 2 段目より上は今までどおり**
+（真下がサトウキビなら水を見ない）。真下の土を掘る・砂を置き換えると落ちるのは
+`supportsBlock()` を通るので自動で揃います。置けないときの文は
+「サトウキビ は**水辺の土・草・砂の上**にしか付けられません」。
+**完了**: `npm test` に**「サトウキビは水辺だけ（45）」の節**が増えて**すべて緑**
+（**+12〜16 件。3927 → 3941 あたり**）。**書き換える既存の件は 3 か所**（下の 5.）。
 
 ## 2. 触るファイル / 触らないファイル
 
-**触る**: `src/blocks.ts`（**旗 2 つ・表 2 本・関数 2 本・`supportsBlock()` 1 行・`supportHint()` 1 行・
-`def(CACTUS)` と `def(SAND)` に 1 行ずつ**）/ `test/blocks.test.ts`（節 1 つ + 3004 行の旗の表に 1 行）/
-`test/placing.test.ts`（節 1 つ）/ `rules/blocks-shapes.md`（1 段）/ `TUNING.md` / `AUTODEV-QUEUE.md` /
-`docs/autodev-log.md` / `HANDOFF.md`。
+**触る**: `src/blocks.ts`（旗 3 つ・表 3 本・引く関数 3 本・純関数 1 本・`supportsBlock()` 1 行・
+`supportHint()` 1 行・`def(SUGAR_CANE)` / `def(GRASS)` / `def(DIRT)` / `def(SAND)` / `def(WATER)` に 1 行ずつ）/
+**`src/world.ts`（`canPlaceAt()` に 3〜5 行だけ）** / `test/arena.ts`（`canPlaceAt()` に同じ 3〜5 行）/
+`test/blocks.test.ts` / `test/placing.test.ts` / `rules/blocks-shapes.md` / `TUNING.md` /
+`AUTODEV-QUEUE.md` / `docs/autodev-log.md` / `HANDOFF.md`。
 
-**触らない**: **`src/main.ts`（0 行）** / **`src/world.ts`**（`canPlaceAt` も `breakUnsupported` も
-`supportsBlock()` を通すので 1 行も要らない）/ **`src/placing.ts`**（文は `supportHint()` から出る）/
-`src/worldgen.ts` / `src/treeshape.ts` / `src/biomes.ts`（**生成は砂の上に立て済み**）/
-`src/crops.ts`（伸びるのは「サボテンの上のサボテン」で、`stacksOnSelf` の行が先に真を返す）/
-**`canSupport()`**（壁掛けの松明とベッドの足場。`rules/blocks-shapes.md`）/ `SaveData` /
-`ROADMAP.md` の予約表 / `tools/shot.ts`（`cactus` の場面は元から砂の台）。
+**触らない**: **`src/main.ts`（0 行）** / `src/placing.ts`（文は `supportHint()` から出る）/ `src/crops.ts`（伸びるのは
+積んだ段で水を見ない）/ **生成**（`worldgen.ts` / `biomes.ts` / `treeshape.ts`）/ **`canSupport()`** /
+`World.breakUnsupported()`（`canPlaceAt()` に聞くので 0 行）/ `SaveData` / 予約表 / `tools/shot.ts`。
 
-**先に引いて読むこと**（`grep -l '"src/blocks.ts"' rules/*.md` ほか）: `blocks-shapes` / `beds` /
-`items-survival` / `testing`（`test/**` を触るので）。
+**先に引いて読むこと**: `grep -l '"src/blocks.ts"' rules/*.md`（`blocks-shapes` / `beds` / `items-survival`）
+と `grep -l '"src/world.ts"' rules/*.md`（`lighting` / `meshing-render`）と `testing`（`test/**` を触るので）。
+**とくに `rules/blocks-shapes.md` の「狭める表は 2 組あります」の段**（3 組目はこの形で足せ、と書いてある）。
 
 ## 3. 使う ID
 
@@ -44,64 +45,74 @@
 
 ## 4. 判断をどこに置くか
 
-**全部 `blocks.ts` の表**です（**新しい「確かめられないもの」は 0 個**。`unverifiable-pair` は不要）。
-**`needsSoil` / `soil`（30a）とまったく同じ形をもう 1 組**作ります:
+**判断は全部 `blocks.ts`。`world.ts` と `arena.ts` は 4 マスを読んで渡すだけ**（新しい
+「確かめられないもの」は 0 個。`unverifiable-pair` は不要。スキルは使わない）。
 
-- `BlockDef` に `readonly needsSand: boolean`（**真下が砂でなければ立てない**）と
-  `readonly sand: boolean`（**`needsSand` の相手**）。`def()` の既定はどちらも `false`
-- 表 `NEEDS_SAND` / `SAND_GROUND`（`Uint8Array(ID_LIMIT)`。`NEEDS_SOIL` / `SOIL` の隣）と、
-  引く関数 `needsSand(id)` / `isSand(id)`（`needsSoil()` / `isSoil()` の隣）
-- `def(CACTUS)` に `needsSand: true`、`def(SAND)` に `sand: true`（**砂岩・赤い砂は足さない**。
-  本家の赤い砂はここに無く、砂岩の上には本家でも立ちません）
-- `supportsBlock()` に 1 行、**`stacksOnSelf` の行より後・`needsSoil` の行の隣**:
-  `if (needsSand(id) && !isSand(supporter)) return false;`
-  —— **この順を入れ替えないこと**（先に置くとサボテンの上のサボテンが落ち、伸びも止まる）
-- `supportHint()` に 1 行（`needsSoil` の行の隣）: `if (needsSand(base)) return "砂の上";`
-
-**`id === CACTUS` / `supporter === SAND` と書かないこと**（`isSoil()` と同じ表 1 本の作法）。
+- **床: 3 組目の狭める表** `needsBank` / `bank`（`needsSoil` / `soil`・`needsSand` / `sand` と同じ形）。
+  `bank: true` は**草・土・砂の 3 つだけ**（耕地は `soil` でも `bank` にしない）。`needsBank: true` はサトウキビ。
+  `supportsBlock()` に **`needsSand` の行の隣・`stacksOnSelf` の行より後**で
+  `if (needsBank(id) && !isBank(supporter)) return false;`
+  —— **`needsSoil` や `needsSand` をサトウキビに付けて済ませないこと**（両方付けるとどこにも立たない）
+- **水: 旗 1 組** `needsWater`（サトウキビ）/ `wetsBank`（**水 `WATER` だけ**。溶岩・氷は付けない）と、
+  **純関数 1 本** `waterBesideOk(id: number, below: number, besideBelow: readonly number[]): boolean`:
+  `!needsWater(id)` なら真 / **`below === id && stacksOnSelf(id)` なら真（積んだ段）** /
+  それ以外は `besideBelow` のどれかが `wetsBank` なら真。**`id === SUGAR_CANE` / `=== WATER` と書かないこと**
+- **`World.canPlaceAt()`**: `supportFaces()` の for の**前**に 1 か所、
+  `if (needsWater(id) && !waterBesideOk(id, 真下, [真下の ±X, ±Z の 4 マス])) return false;`。
+  **`needsWater(id) &&` で先に切ること**（`canPlaceAt` は `breakUnsupported` から全隣接で呼ばれる。
+  サトウキビ以外で配列を作らない）。4 方向は `OFFSETS` の水平 4 面から引いてよい
+- **`test/arena.ts` の `canPlaceAt()`** にもまったく同じ行（**「`World.canPlaceAt()` と同じ式」の写しは
+  ここ 1 か所だけ**、とコメントにあるとおり。忘れると `placing.test.ts` だけ本物と食い違います）
+- `supportHint()` の**先頭**に `if (needsWater(base)) return "水辺の土・草・砂の上";`
 
 ## 5. 書くテスト（**値を出力してから判定する**）
 
-`test/blocks.test.ts` に**「サボテンは砂の上だけ（44）」の節**（`describe()` から。`cactusStack()`
-の隣に関数 1 本。**本物の `World` を使うこと** —— `crops.test.ts` の `Field` は `canPlaceAt` を
-持たないので、足し忘れても緑のままです。3363 行の注意）:
+**新しい節**「サトウキビは水辺だけ（45）」を `test/blocks.test.ts` に（サボテンの 44 の節の隣。**本物の `World`**）:
 
-- **表を出してから**: `needsSand` が真のブロックの名前一覧 → **サボテンだけ**。`isSand` が真の
-  一覧 → **砂だけ**。`needsSand` と `needsSoil` が両方真のブロックは **0 個**
-- **真理値表を 1 行に出してから**: `supportsBlock(砂, FACE_YP, サボテン)` 真 /
-  草・土・石・砂岩・板で偽 / **`supportsBlock(サボテン, FACE_YP, サボテン)` は真のまま**
-- **対照**: `supportsBlock(草, FACE_YP, 苗木)` 真・`supportsBlock(砂, FACE_YP, 苗木)` 偽（30a の線が
-  動いていない）/ `supportsBlock(石, FACE_YP, 松明)` 真（`canSupport()` をゆるめても狭めてもいない）
-- **本物の `World` で**: 草の上に `setVoxel(CACTUS)` は `false` でマスは `AIR` のまま / 砂の上は `true` /
-  **砂の上に 2 段積んでから、根元の砂を土に置き換えると 2 段とも落ちる**（`onAutoBreak` が 2 回）
-- `supportHint(CACTUS) === "砂の上"` / 苗木は `"土か草の上"` のまま / 松明は `"床か壁"` のまま
-- 3004 行の旗の表に `["needsSand", needsSand]` を足し、その下の「付いていない」判定にも
-  `!needsSand(id)` を足す（**判定を狭めるほうの変更なので可**。ゆるめないこと）
+- **表を出してから**: `needsBank` 真の一覧 → **サトウキビだけ** / `isBank` 真 → **草・土・砂だけ**
+  （耕地・砂岩が入っていない）/ `needsWater` 真 → サトウキビだけ / `wetsBank` 真 → **水だけ** /
+  **`needsSoil`・`needsSand`・`needsBank` のうち 2 つ以上が真のブロックは 0 個**（44 の「両方真」を 3 本に広げる。狭めるほう）
+- **真理値表を 1 行に出してから** `supportsBlock(床, FACE_YP, サトウキビ)`: 草・土・砂 真 / 石・砂岩・耕地・板 偽 /
+  **サトウキビの上 真のまま**。対照: 苗木（草 真・砂 偽）とサボテン（砂 真・草 偽）が動いていない
+- **`waterBesideOk` の表を出してから**: 横に水 1 つ 真 / 横が全部空気 偽 / 横が溶岩だけ 偽 /
+  **真下がサトウキビなら横に水が無くても 真** / サトウキビ以外（松明）は何でも 真
+- **本物の `World` で**: 砂の横に水を置いて 1 段目 `true` / **水の無い砂** `false` でマスは `AIR` のまま /
+  **斜めだけに水**（`(+1, 下, +1)`）は `false` / **水が 1 段上（根元と同じ高さ）だけ**でも `false` /
+  水辺に 3 段積んでから**根元の砂を石に置き換えると 3 段とも落ちる**（`onAutoBreak` が 3 回）
+- `supportHint(SUGAR_CANE) === "水辺の土・草・砂の上"` / 苗木 `"土か草の上"`・サボテン `"砂の上"` のまま
+- 3013 行の旗の表に `needsBank` / `needsWater` を足し、その下の「付いていない」判定にも足す
 
-`test/placing.test.ts` の 423 行の節の**隣に 1 節**（同じ書き方。`Slab` と `tryPlace`）:
-**砂・草・土・石・砂岩の 5 通りを一覧で出してから**、砂だけ `placed`・残りは `blocked` で
-**マスが空のまま** / 草の上の文が **「砂の上にしか」**を含み `blockName(CACTUS)` を含む。
+**書き換える既存の件（3 か所。どれも「水辺に立てる」準備を足すだけで、判定はゆるめない）**:
+
+1. `test/blocks.test.ts` 3296 行「石の上のサトウキビ」→ **偽を期待**に変え、見出しも
+   「石の上のサトウキビは置けない」へ（**仕様どおりに狭まった**ことを `console.log` に出す）
+2. 同 3322 行の 3 段積み: 砂 `(cx, ground-1, cz)` の横 `(cx+1, ground-1, cz)` に `WATER` を 1 つ置く
+   （**それ以外の判定と回数は変えない**）
+3. `test/placing.test.ts` 186 行の `beach()`: `slab.fill(-4, 4, 10, 10, 1, 1, WATER)` を 1 行
+   （y10 の z=1 の列を水にする → `(0,10,0)` と `(1,10,0)` の砂が水辺になる。**3 つの判定はそのまま**）
+
+`test/placing.test.ts` にも 1 節（44 の節の隣。`Slab` と `tryPlace`）: **水辺の砂・草・土 / 水の無い砂 /
+水辺の石 / 水辺の耕地**の 6 通りを一覧で出してから、前 3 つだけ `placed`、残りは `blocked` で
+マスが空のまま / 文が「**水辺の**」と `blockName(SUGAR_CANE)` を含む。
 
 ## 6. このタスク固有の禁じ手
 
-- **`canSupport()` を 1 文字も触らないこと** / **`main.ts` / `world.ts` / `placing.ts` に 1 行も書かないこと**
-- **生成（`worldgen.ts` / `treeshape.ts` / `biomes.ts`）を触らないこと** —— 立て済みです。
-  **もし上の「サボテンが浮いていない」が赤くなったら、生成を直さずに止めて `HANDOFF.md` に書くこと**
-- **「横に固いブロックがあると壊れる」は足さないこと**（37 で見送った別件。1 周 1 件）
-- **サトウキビ（45）に手を出さないこと** —— 砂の表を流用したくなっても次の周です
-- **既存のセーブの扱いを変えないこと**: 草の上に置いてあったサボテンは `createChunk` が差分を
-  直に書くので**そのまま残ります**（真下が書き換わったときにだけ落ちる）。**消して回る処理を
-  足さないこと**（`TUNING.md` に 1 行書く）
-- `SaveData.version` は 1 のまま / **テストの判定をゆるめないこと**
+- **`canSupport()` を 1 文字も触らないこと** / `main.ts` / `placing.ts` / `crops.ts` に 1 行も書かないこと
+- **`world.ts` に判断を書かないこと** —— 読むのは 5 マス、決めるのは `waterBesideOk()`。
+  `canPlaceAt()` 以外（`breakUnsupported` ほか）は 1 行も触らない
+- **「水を汲むと横のサトウキビが落ちる」は足さないこと**（`breakUnsupported` は面で接する隣しか
+  見ないので、斜め上を見る話になる。**本家とは違うまま**。`TUNING.md` に 1 行・見送りは `docs/autodev-log.md`）
+- **生成を触らないこと**（浜のサトウキビは水辺でないまま残る。**消して回らない**。既存のセーブも同じ）
+- **苗木・サボテンの表（`soil` / `sand`）にサトウキビを混ぜないこと**（混ぜると苗木が砂に立つ）
+- **キノコ（46）に手を出さないこと**（1 周 1 件）/ `SaveData.version` は 1 のまま / **判定をゆるめないこと**
 
 ## 7. 終了条件
 
-- `npm run typecheck` 緑 / **`npm test` すべて緑** / `npm run build` 緑。**`bench` は不要**
-  （生成もメッシュ化も触らない）
-- **C-3**: **見た目は 1 つも変わりません**が、**`npm run shot -- cactus` を 1 枚撮って `Read` で見ること**
-  （置いた 2 本が 3 段・自然の 1 本が 1 段のまま、砂の台に立っていること。**直す前にも 1 枚撮って
-  `md5sum` を比べれば足ります**）。ブラウザ（`browsershot.mjs`）は要りません
-- **コミット 1 つを `master` へ push** / `AUTODEV-QUEUE.md` の 44 の行を消す / この仕様書を
-  **`状態: 済`** に / `rules/blocks-shapes.md` に 1 段（**支えを狭める表が 2 組になった**こと・
-  **`stacksOnSelf` の行より後に置く理由**）/ **`TUNING.md` に 1 節**（砂だけ・砂岩は不可・
-  既存のセーブは消さない）/ `docs/autodev-log.md` に 1 節 / **`HANDOFF.md` を書き直す**
+- `npm run typecheck` / **`npm test`** / `npm run build` 緑。**`bench` は不要**（生成もメッシュ化も触らない）
+- **C-3**: 見た目は変わらないので、**`npm run shot -- terrain` を直す前と後に 1 枚ずつ撮って
+  `md5sum` を比べる**（同一のはず。違ったら `Read` で見て理由を書く）
+- **コミット 1 つを `master` へ push** / キューの 45 を消す / この仕様書を **`状態: 済`** /
+  `rules/blocks-shapes.md` に 1 段（**狭める表が 3 組になった**・**横を見る条件は `supportsBlock()` の外、
+  `canPlaceAt()` の 1 行と純関数**・**`arena.ts` の写しも一緒に直す**）/ `TUNING.md` に 1 節
+  （草・土・砂 / 耕地不可 / 水を汲んでも落ちない / 自然の浜は水辺でないまま）/
+  `docs/autodev-log.md` に 1 節 / **`HANDOFF.md` を書き直す**
