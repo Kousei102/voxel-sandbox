@@ -4422,3 +4422,34 @@ ID 0 個（**共有帯の空き 67・1..63 の空き 7。次に取るのは 189*
 
 `rules/blocks-shapes.md` の `supportsBlock()` の段に「狭める表は 2 組・`stacksOnSelf` の行より
 後・両方付けない・既存のセーブは消さない」を 1 段。
+
+## AUTODEV 122（C の周・2026-09-24・クラウドの無人の周）: 45 サトウキビは水辺だけ（ID 0 個）
+
+### 取ったもの
+
+**`AUTODEV-SPEC.md`（45）をそのまま実装。** `blocks.ts` に 3 組目の狭める表 `needsBank` / `bank`
+（草・土・砂）と、水の旗 `needsWater` / `wetsBank`（水だけ）・純関数 `waterBesideOk()`、
+`supportsBlock()` の 1 行・`supportHint()` の 1 行。`World.canPlaceAt()` と写しの
+`test/arena.ts` の `canPlaceAt()` に 5 マスを読んで渡す 1 か所ずつ。
+**`main.ts` / `placing.ts` / `crops.ts` / 生成は 0 行。** 実装はサブエージェントを使わず親が書いた。
+点検（C-2）も親が `git diff` を読んで行った（既存の判定はゆるめていない。石の上は偽へ狭まった）。
+
+- テスト: `test/blocks.test.ts` に「サトウキビは水辺だけ（45）」の節（15 件。本物の `World` で
+  水の無い砂・斜めだけ・1 段上だけは置けない / 水辺に 3 段 / 根元を石にすると 3 段落ちる）。
+  既存 3 か所を「水辺に立てる」準備を足して書き換え。`test/placing.test.ts` に 6 通りの一覧と文の 2 件
+- `npm test` **3927 → 3944**（+17）すべて緑 / typecheck・build 緑 / bench は不要（生成・メッシュ化 ±0）
+- **撮った絵**: `npm run shot -- terrain` を直す前と後で **md5 が同一**（`f4077e98…a997aa8`）
+
+### 差し戻し: 0 回 / 見送ったもの: 1 件
+
+- **水を汲むと横のサトウキビが落ちる**: `breakUnsupported` が面で接する隣しか見ず、斜め上に届かない（仕様書の 6.）
+
+### 枠
+
+ID 0 個（**共有帯の空き 67・1..63 の空き 7。次に取るのは 189**）/ `main.ts` 1450 行（±0）/
+`SaveData` version 1（±0）/ キューの未着手 8 → 7 件。
+
+### 決まりごと（層 2）: 1 件
+
+`rules/blocks-shapes.md` の狭める表の段を「3 組」に直し、「真下以外を見る条件は `canPlaceAt()` の
+1 行と純関数」「`arena.ts` の写しも直す」「既存のテストは準備を足して通す」の 3 点を足した。

@@ -1,5 +1,13 @@
 import { readFileSync } from "node:fs";
-import { AIR, BEDROCK, oppositeFace, supportFaces, supportsBlock } from "../src/blocks";
+import {
+  AIR,
+  BEDROCK,
+  needsWater,
+  oppositeFace,
+  supportFaces,
+  supportsBlock,
+  waterBesideOk,
+} from "../src/blocks";
 import { WORLD_HEIGHT } from "../src/constants";
 import { OFFSETS, SKY_LIGHT } from "../src/lighting";
 import type { World } from "../src/world";
@@ -114,6 +122,19 @@ export class Slab {
   canPlaceAt(x: number, y: number, z: number, id: number): boolean {
     const faces = supportFaces(id);
     if (faces.length === 0) return true;
+    // 「真下の横が水」（サトウキビ。45）。**`World.canPlaceAt()` と同じ 5 マス・同じ関数**。
+    const b = y - 1;
+    if (
+      needsWater(id) &&
+      !waterBesideOk(id, this.getVoxel(x, b, z), [
+        this.getVoxel(x + 1, b, z),
+        this.getVoxel(x - 1, b, z),
+        this.getVoxel(x, b, z + 1),
+        this.getVoxel(x, b, z - 1),
+      ])
+    ) {
+      return false;
+    }
     for (const face of faces) {
       const [dx, dy, dz] = OFFSETS[face];
       if (supportsBlock(this.getVoxel(x + dx, y + dy, z + dz), oppositeFace(face), id)) {

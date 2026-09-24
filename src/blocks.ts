@@ -1163,6 +1163,22 @@ export interface BlockDef {
    */
   readonly sand: boolean;
   /**
+   * **真下が草・土・砂でないと立てない**（サトウキビ。45）。`needsSoil` / `needsSand` と
+   * 同じ形の 3 組目で、効くのは `supportsBlock()` と `supportHint()` の 1 行ずつだけ。
+   * **`needsSoil` と `needsSand` を両方付けて済ませないこと**（どこにも立たなくなる）。
+   */
+  readonly needsBank: boolean;
+  /** 「岸」の側か（草・土・砂。耕地は入らない）。**`needsBank` の相手**で、引くのは `isBank()` だけ。 */
+  readonly bank: boolean;
+  /**
+   * **根元の真下の横 4 マスのどれかが水でないと立てない**（サトウキビ。45）。
+   * 横は `supportsBlock()`（真下の 1 マスしか受け取らない）では見られないので、
+   * 判断は純関数 `waterBesideOk()`、4 マスを読むのは `World.canPlaceAt()` の 1 行だけ。
+   */
+  readonly needsWater: boolean;
+  /** `needsWater` の床を濡らす側か（水だけ。溶岩・氷は入らない）。引くのは `waterBesideOk()` だけ。 */
+  readonly wetsBank: boolean;
+  /**
    * 見た目だけが違う別置き版なら、その大元のブロック。0 なら大元そのもの。
    * アイテムもドロップも名前も大元に揃うので、置き方を増やしても
    * アイテム欄が増えない。
@@ -1323,6 +1339,10 @@ function def(
     soil: opts.soil ?? false,
     needsSand: opts.needsSand ?? false,
     sand: opts.sand ?? false,
+    needsBank: opts.needsBank ?? false,
+    bank: opts.bank ?? false,
+    needsWater: opts.needsWater ?? false,
+    wetsBank: opts.wetsBank ?? false,
     variantOf: opts.variantOf ?? AIR,
   };
 }
@@ -1568,12 +1588,13 @@ function portalPair(): BlockDef[] {
 export const BLOCKS: readonly BlockDef[] = [
   def(AIR, "Air", { top: 0x000000 }, { opaque: false, solid: false, alpha: 0, replaceable: true, sound: "none" }),
   // **`soil: true` の 3 つ**（草・土と、下の耕地）。苗木がこの上にだけ立つ
-  // （`needsSoil` の相手。`isSoil()` が引く表 1 本）。
-  def(GRASS, "草", { top: 0x6aa84f, side: 0x7a6444, bottom: 0x6b533a }, { hardness: 0.6, tool: "shovel", sound: "grass", soil: true }),
-  def(DIRT, "土", { top: 0x6b533a }, { hardness: 0.5, tool: "shovel", sound: "dirt", soil: true }),
+  // （`needsSoil` の相手。`isSoil()` が引く表 1 本）。**`bank: true` は草・土・砂の 3 つ**
+  // （サトウキビの床。45。耕地は `soil` でも `bank` にしない）。
+  def(GRASS, "草", { top: 0x6aa84f, side: 0x7a6444, bottom: 0x6b533a }, { hardness: 0.6, tool: "shovel", sound: "grass", soil: true, bank: true }),
+  def(DIRT, "土", { top: 0x6b533a }, { hardness: 0.5, tool: "shovel", sound: "dirt", soil: true, bank: true }),
   def(STONE, "石", { top: 0x8a8f96 }, { hardness: 1.5, tool: "pickaxe", minTier: TIER_WOOD }),
   def(COBBLE, "丸石", { top: 0x767b82 }, { hardness: 2, tool: "pickaxe", minTier: TIER_WOOD }),
-  def(SAND, "砂", { top: 0xd8c99a }, { hardness: 0.5, tool: "shovel", sound: "sand", falls: true, sand: true }),
+  def(SAND, "砂", { top: 0xd8c99a }, { hardness: 0.5, tool: "shovel", sound: "sand", falls: true, sand: true, bank: true }),
   def(
     WATER,
     "水",
@@ -1589,6 +1610,8 @@ export const BLOCKS: readonly BlockDef[] = [
       alpha: 0.72,
       hardness: UNBREAKABLE,
       liquid: true,
+      // **サトウキビの床を濡らす側**（45。`needsWater` の相手。溶岩・氷には付けない）。
+      wetsBank: true,
       // 22 マス先まで見える。夜は暗くなる（daylit）。
       fog: { color: 0x1b4f8c, near: 0.1, far: 22, daylit: true },
     },
@@ -2028,6 +2051,10 @@ export const BLOCKS: readonly BlockDef[] = [
     boxes: CANE_BOX,
     supportFace: FACE_YN,
     stacksOnSelf: true,
+    // **根元は水辺の草・土・砂の上だけ**（45）。床は `needsBank`、横の水は `needsWater`
+    // （`waterBesideOk()`。`World.canPlaceAt()` が 4 マスを読んで渡す）。
+    needsBank: true,
+    needsWater: true,
   }),
 
   // はしご（上のコメント）。**壁掛けの松明と同じ形**で、違うのは見た目
@@ -2336,6 +2363,14 @@ const SOIL = new Uint8Array(ID_LIMIT);
 const NEEDS_SAND = new Uint8Array(ID_LIMIT);
 /** 1 = 「砂」の側（砂だけ）。`NEEDS_SAND` の相手で、引くのは `isSand()` だけ。 */
 const SAND_GROUND = new Uint8Array(ID_LIMIT);
+/** 1 = 真下が草・土・砂でないと立てない（サトウキビ）。引くのは `supportsBlock()` と `supportHint()`。 */
+const NEEDS_BANK = new Uint8Array(ID_LIMIT);
+/** 1 = 「岸」の側（草・土・砂）。`NEEDS_BANK` の相手で、引くのは `isBank()` だけ。 */
+const BANK = new Uint8Array(ID_LIMIT);
+/** 1 = 真下の横 4 マスに水が要る（サトウキビ）。引くのは `waterBesideOk()` と `supportHint()`。 */
+const NEEDS_WATER = new Uint8Array(ID_LIMIT);
+/** 1 = `NEEDS_WATER` の床を濡らす（水だけ）。引くのは `waterBesideOk()` だけ。 */
+const WETS_BANK = new Uint8Array(ID_LIMIT);
 /**
  * 1 = 当たり判定が 1 マスより高い（フェンス）。**手で旗を書かず、`collision` の
  * 最大 y > 1 から立てる**（2 か所に書くと必ず食い違う）。引くのは `physics.ts` の
@@ -2370,6 +2405,10 @@ for (const block of BLOCKS) {
   SOIL[block.id] = block.soil ? 1 : 0;
   NEEDS_SAND[block.id] = block.needsSand ? 1 : 0;
   SAND_GROUND[block.id] = block.sand ? 1 : 0;
+  NEEDS_BANK[block.id] = block.needsBank ? 1 : 0;
+  BANK[block.id] = block.bank ? 1 : 0;
+  NEEDS_WATER[block.id] = block.needsWater ? 1 : 0;
+  WETS_BANK[block.id] = block.wetsBank ? 1 : 0;
   // **`solid` なブロックだけ**（通り抜けられるブロックの箱は当たり判定に使われない）。
   TALL_COLLISION[block.id] =
     block.solid && block.collision.some((b) => b[4] > 1) ? 1 : 0;
@@ -2781,6 +2820,7 @@ export function vineVariant(face: number, supporter: number = AIR): number {
  * 嘘になる（石の床を狙っても置けない）ので、**ここも表（`needsSoil()`）から出す。**
  */
 export function supportHint(base: number): string {
+  if (needsWater(base)) return "水辺の土・草・砂の上";
   if (needsSoil(base)) return "土か草の上";
   if (needsSand(base)) return "砂の上";
   const onFloor = placedVariant(base, { support: FACE_YN, hitY: 0, facing: FACE_XP });
@@ -2849,6 +2889,45 @@ export function isSand(id: number): boolean {
 }
 
 /**
+ * 真下が草・土・砂でないと立てないブロックか（サトウキビ。45）。**`id === SUGAR_CANE` と
+ * 書かないこと** —— `needsSoil()` / `needsSand()` と同じ 3 組目の表 1 本に聞く。
+ */
+export function needsBank(id: number): boolean {
+  return NEEDS_BANK[id] === 1;
+}
+
+/** サトウキビが立てる「岸」か（草・土・砂。耕地は入らない）。**表 1 本**（`needsBank()` の相手）。 */
+export function isBank(id: number): boolean {
+  return BANK[id] === 1;
+}
+
+/** 根元の真下の横に水が要るブロックか（サトウキビ。45）。表 1 本。 */
+export function needsWater(id: number): boolean {
+  return NEEDS_WATER[id] === 1;
+}
+
+/** `needsWater` の床を濡らすブロックか（水だけ）。表 1 本。 */
+export function wetsBank(id: number): boolean {
+  return WETS_BANK[id] === 1;
+}
+
+/**
+ * `id` を真下 `below` の上に置くとき、「横が水」の条件を満たすか（45）。
+ * `besideBelow` は**真下のマスの横 4 マス（±X・±Z、同じ高さ）**で、読むのは
+ * `World.canPlaceAt()`（と写しの `test/arena.ts`）の 1 行だけ。**判断はここだけ**。
+ *
+ * - `needsWater` でないブロックは何でも真
+ * - **積んだ段**（真下が自分で `stacksOnSelf`）は水を見ない —— 2 段目より上は今までどおり
+ * - それ以外は、横 4 マスのどれかが `wetsBank`（水）なら真。斜めと 1 段上は見ない
+ */
+export function waterBesideOk(id: number, below: number, besideBelow: readonly number[]): boolean {
+  if (!needsWater(id)) return true;
+  if (below === id && stacksOnSelf(id)) return true;
+  for (const b of besideBelow) if (wetsBank(b)) return true;
+  return false;
+}
+
+/**
  * `supporter` は、`face` の側に `id` を置くだけの支えになれるか。
  * **置く側（`World.canPlaceAt`）と壊す側（`World.breakUnsupported`）は必ずこれを通すこと。**
  *
@@ -2866,6 +2945,9 @@ export function supportsBlock(supporter: number, face: number, id: number): bool
   // 同じ形の 2 組目（サボテンは砂の上だけ。44）。**上の `stacksOnSelf` の行より後に
   // 置くこと** —— 先に置くとサボテンの上のサボテンが落ち、伸びも止まる。
   if (needsSand(id) && !isSand(supporter)) return false;
+  // 3 組目（サトウキビは草・土・砂の上だけ。45）。同じく `stacksOnSelf` の行より後。
+  // **横の水はここでは見られない**（真下しか受け取らない）ので `waterBesideOk()` の側。
+  if (needsBank(id) && !isBank(supporter)) return false;
   // **広げるほうの例外がもう 1 つ**（ツタ。34b）。真上の同じツタにはぶら下がれる ——
   // **`face` を必ず見ること**（見ないと横のツタにも貼り付いて、空中へ横に伸びます）。
   // `baseBlock()` で比べるのは、向き違い 4 つが混ざった列でもぶら下がれるようにするため。

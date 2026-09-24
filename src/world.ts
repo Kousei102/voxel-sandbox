@@ -7,9 +7,11 @@ import {
   blockEmission,
   blocksSky,
   isOpaque,
+  needsWater,
   oppositeFace,
   supportFaces,
   supportsBlock,
+  waterBesideOk,
 } from "./blocks";
 import { Chunk, chunkKey, localIndex } from "./chunk";
 import {
@@ -216,6 +218,21 @@ export class World {
     // 見ないこと**（2 つ目の候補が消えて、垂れたツタが置けなくなる）。
     const faces = supportFaces(id);
     if (faces.length === 0) return true;
+    // **「真下の横が水」（サトウキビ。45）は `supportsBlock()` では見られない**ので、
+    // 5 マスを読んで `waterBesideOk()` に渡すだけ（判断はあちら）。`needsWater` で先に切る ——
+    // `breakUnsupported` から全隣接で呼ばれるので、ほかのブロックで配列を作らない。
+    const b = wy - 1;
+    if (
+      needsWater(id) &&
+      !waterBesideOk(id, this.getVoxel(wx, b, wz), [
+        this.getVoxel(wx + 1, b, wz),
+        this.getVoxel(wx - 1, b, wz),
+        this.getVoxel(wx, b, wz + 1),
+        this.getVoxel(wx, b, wz - 1),
+      ])
+    ) {
+      return false;
+    }
     for (const face of faces) {
       const [dx, dy, dz] = OFFSETS[face];
       // 支えになる側から見ると、こちらを向いた面が埋まっている必要がある。

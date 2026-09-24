@@ -116,6 +116,11 @@ import {
   needsSoil,
   needsSand,
   isSand,
+  needsBank,
+  isBank,
+  needsWater,
+  wetsBank,
+  waterBesideOk,
   placeSpot,
   placedVariant,
   shapeBoxes,
@@ -1387,6 +1392,7 @@ export function run(): void {
   sugarCane(world, ground);
   cactusStack(world, ground);
   cactusOnSand(world, ground);
+  caneByWater(world, ground);
   ladders();
   vines(world, ground);
   apples();
@@ -3011,6 +3017,8 @@ function vines(world: World, ground: number): void {
     ["stacksOnSelf", stacksOnSelf],
     ["needsSoil", needsSoil],
     ["needsSand", needsSand],
+    ["needsBank", needsBank],
+    ["needsWater", needsWater],
     ["replaceable", isReplaceable],
     ["slippery", isSlippery],
     ["sticky", isSticky],
@@ -3029,9 +3037,10 @@ function vines(world: World, ground: number): void {
     all.map((id) => `${id}:${isClimbable(id)}/${isBladed(id)}`).join(" "),
   );
   check(
-    "stacksOnSelf も needsSoil も needsSand も replaceable も slippery も sticky も spiky も付いていない",
+    "stacksOnSelf も needsSoil も needsSand も needsBank も needsWater も replaceable も slippery も sticky も spiky も付いていない",
     all.every((id) =>
-      !stacksOnSelf(id) && !needsSoil(id) && !needsSand(id) && !isReplaceable(id) &&
+      !stacksOnSelf(id) && !needsSoil(id) && !needsSand(id) && !needsBank(id) &&
+      !needsWater(id) && !isReplaceable(id) &&
       !isSlippery(id) && !isSticky(id) && !isSpiky(id)) &&
       isReplaceable(TALL_GRASS),
     all.map((id) => `${id}:${stacksOnSelf(id)}/${needsSoil(id)}/${isReplaceable(id)}`).join(" "),
@@ -3293,7 +3302,7 @@ function sugarCane(world: World, ground: number): void {
   const supportCases: [string, number, number][] = [
     ["サトウキビの上のサトウキビ", SUGAR_CANE, SUGAR_CANE],
     ["サトウキビの上の松明", SUGAR_CANE, TORCH],
-    ["石の上のサトウキビ", STONE, SUGAR_CANE],
+    ["石の上のサトウキビ（45 で置けなくなった）", STONE, SUGAR_CANE],
     ["空気の上のサトウキビ", AIR, SUGAR_CANE],
   ];
   console.log(
@@ -3311,8 +3320,8 @@ function sugarCane(world: World, ground: number): void {
       `canSupport ${canSupport(SUGAR_CANE, FACE_YP)} / stacksOnSelf ${stacksOnSelf(SUGAR_CANE)}`,
   );
   check(
-    "サトウキビの上の松明は置けない・石の上のサトウキビは置ける・空気の上は置けない",
-    !supportsBlock(SUGAR_CANE, FACE_YP, TORCH) && supportsBlock(STONE, FACE_YP, SUGAR_CANE) &&
+    "サトウキビの上の松明は置けない・石の上のサトウキビは置けない（45）・空気の上は置けない",
+    !supportsBlock(SUGAR_CANE, FACE_YP, TORCH) && !supportsBlock(STONE, FACE_YP, SUGAR_CANE) &&
       !supportsBlock(AIR, FACE_YP, SUGAR_CANE) && !stacksOnSelf(TALL_GRASS),
     `松明 ${supportsBlock(SUGAR_CANE, FACE_YP, TORCH)} / 石 ${supportsBlock(STONE, FACE_YP, SUGAR_CANE)} / ` +
       `空気 ${supportsBlock(AIR, FACE_YP, SUGAR_CANE)} / 草むら stacksOnSelf ${stacksOnSelf(TALL_GRASS)}`,
@@ -3326,6 +3335,8 @@ function sugarCane(world: World, ground: number): void {
     const cx = 5;
     const cz = 5;
     world.setVoxel(cx, ground - 1, cz, SAND);
+    // **水辺に立てる**（45。根元の砂の横 +X に水を 1 つ）。判定と回数は変えない。
+    world.setVoxel(cx + 1, ground - 1, cz, WATER);
     for (let y = ground; y < ground + 5; y++) world.setVoxel(cx, y, cz, AIR);
     let stacked = 0;
     for (let k = 0; k < 3; k++) {
@@ -3508,6 +3519,143 @@ function cactusOnSand(world: World, ground: number): void {
       `合図 ${broke} 回 / ${after.join(",")}`,
     );
     world.setVoxel(cx, ground - 1, cz, GRASS);
+  }
+}
+
+/**
+ * **サトウキビは水辺だけ**（45・2026-09-24）。床は 3 組目の狭める表（`needsBank` / `bank`。
+ * 草・土・砂）で `supportsBlock()` の 1 行、**横の水は `supportsBlock()` の外**で、
+ * 判断は純関数 `waterBesideOk()`、読むのは `World.canPlaceAt()` の 1 か所だけ。
+ * ここも**本物の `World`** で見ます（写しの `test/arena.ts` は `placing.test.ts` が見る）。
+ */
+function caneByWater(world: World, ground: number): void {
+  describe("サトウキビは水辺だけ（45）");
+
+  // 表を出してから判定する。
+  const names = (f: (id: number) => boolean): string[] =>
+    BLOCKS.filter((b) => f(b.id)).map((b) => b.name);
+  const bankNeeders = names(needsBank);
+  const banks = names(isBank);
+  const waterNeeders = names(needsWater);
+  const wets = names(wetsBank);
+  const twoOrMore = names((id) =>
+    [needsSoil(id), needsSand(id), needsBank(id)].filter(Boolean).length >= 2);
+  console.log(
+    `      needsBank: ${bankNeeders.join(",") || "なし"} / isBank: ${banks.join(",") || "なし"} / ` +
+      `needsWater: ${waterNeeders.join(",") || "なし"} / wetsBank: ${wets.join(",") || "なし"} / ` +
+      `狭める表が 2 つ以上: ${twoOrMore.join(",") || "なし"}`,
+  );
+  check("needsBank が真なのはサトウキビだけ",
+    bankNeeders.length === 1 && needsBank(SUGAR_CANE), bankNeeders.join(","));
+  check(
+    "isBank が真なのは草・土・砂だけ（耕地・砂岩は入らない）",
+    banks.length === 3 && isBank(GRASS) && isBank(DIRT) && isBank(SAND) &&
+      !isBank(FARMLAND) && !isBank(SANDSTONE),
+    banks.join(","),
+  );
+  check("needsWater が真なのはサトウキビだけ",
+    waterNeeders.length === 1 && needsWater(SUGAR_CANE), waterNeeders.join(","));
+  check("wetsBank が真なのは水だけ（溶岩・氷は入らない）",
+    wets.length === 1 && wetsBank(WATER) && !wetsBank(LAVA) && !wetsBank(ICE), wets.join(","));
+  check("needsSoil・needsSand・needsBank のうち 2 つ以上が真のブロックは無い",
+    twoOrMore.length === 0, twoOrMore.join(","));
+
+  // 真理値表を 1 行に出してから判定する（床だけ。水は下の `waterBesideOk`）。
+  const grounds: [string, number][] = [
+    ["草", GRASS], ["土", DIRT], ["砂", SAND],
+    ["石", STONE], ["砂岩", SANDSTONE], ["耕地", FARMLAND], ["板", PLANK],
+  ];
+  const table = grounds.map(([n, id]) => [n, supportsBlock(id, FACE_YP, SUGAR_CANE)] as const);
+  console.log(
+    `      supportsBlock(〜, FACE_YP, サトウキビ): ${table.map(([n, v]) => `${n} ${v}`).join(" / ")}` +
+      ` / サトウキビの上 ${supportsBlock(SUGAR_CANE, FACE_YP, SUGAR_CANE)}`,
+  );
+  check("草・土・砂の上にはサトウキビが立つ", table.slice(0, 3).every(([, v]) => v),
+    table.map(([n, v]) => `${n}:${v}`).join(" "));
+  check("石・砂岩・耕地・板の上にはサトウキビが立たない", table.slice(3).every(([, v]) => !v),
+    table.map(([n, v]) => `${n}:${v}`).join(" "));
+  check("サトウキビの上のサトウキビは今までどおり立つ", supportsBlock(SUGAR_CANE, FACE_YP, SUGAR_CANE));
+  console.log(
+    `      対照: 苗木 草 ${supportsBlock(GRASS, FACE_YP, SAPLING)} / 砂 ${supportsBlock(SAND, FACE_YP, SAPLING)}` +
+      ` ｜ サボテン 砂 ${supportsBlock(SAND, FACE_YP, CACTUS)} / 草 ${supportsBlock(GRASS, FACE_YP, CACTUS)}`,
+  );
+  check(
+    "苗木（草 真・砂 偽）とサボテン（砂 真・草 偽）は動いていない（対照）",
+    supportsBlock(GRASS, FACE_YP, SAPLING) && !supportsBlock(SAND, FACE_YP, SAPLING) &&
+      supportsBlock(SAND, FACE_YP, CACTUS) && !supportsBlock(GRASS, FACE_YP, CACTUS),
+  );
+
+  // `waterBesideOk` の表を出してから判定する。
+  const A = AIR;
+  const cases: [string, boolean, boolean][] = [
+    ["横に水 1 つ", waterBesideOk(SUGAR_CANE, SAND, [A, WATER, A, A]), true],
+    ["横が全部空気", waterBesideOk(SUGAR_CANE, SAND, [A, A, A, A]), false],
+    ["横が溶岩だけ", waterBesideOk(SUGAR_CANE, SAND, [LAVA, LAVA, A, A]), false],
+    ["横が氷だけ", waterBesideOk(SUGAR_CANE, SAND, [ICE, A, A, A]), false],
+    ["真下がサトウキビ（積んだ段）", waterBesideOk(SUGAR_CANE, SUGAR_CANE, [A, A, A, A]), true],
+    ["松明（水を見ない）", waterBesideOk(TORCH, STONE, [A, A, A, A]), true],
+  ];
+  console.log(`      waterBesideOk: ${cases.map(([n, v]) => `${n} ${v}`).join(" / ")}`);
+  check("waterBesideOk の 6 通りが期待どおり", cases.every(([, v, want]) => v === want),
+    cases.filter(([, v, want]) => v !== want).map(([n]) => n).join(","));
+
+  // 置けない理由の文。
+  console.log(
+    `      supportHint: サトウキビ「${supportHint(SUGAR_CANE)}」/ 苗木「${supportHint(SAPLING)}」/ ` +
+      `サボテン「${supportHint(CACTUS)}」`,
+  );
+  check(
+    "supportHint はサトウキビが「水辺の土・草・砂の上」・苗木とサボテンはそのまま",
+    supportHint(SUGAR_CANE) === "水辺の土・草・砂の上" && supportHint(SAPLING) === "土か草の上" &&
+      supportHint(CACTUS) === "砂の上",
+  );
+
+  // 本物の `World` で置く。根元 (cx, ground, cz)・床 (cx, ground-1, cz)。
+  {
+    const cx = 11;
+    const cz = 11;
+    const clear = (): void => {
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dz = -1; dz <= 1; dz++) {
+          world.setVoxel(cx + dx, ground - 1, cz + dz, SAND);
+          for (let y = ground; y < ground + 4; y++) world.setVoxel(cx + dx, y, cz + dz, AIR);
+        }
+      }
+    };
+    clear();
+    const dry = world.setVoxel(cx, ground, cz, SUGAR_CANE);
+    const dryCell = world.getVoxel(cx, ground, cz);
+    world.setVoxel(cx + 1, ground - 1, cz + 1, WATER); // 斜めだけ
+    const diagonal = world.setVoxel(cx, ground, cz, SUGAR_CANE);
+    clear();
+    world.setVoxel(cx + 1, ground, cz, WATER); // 1 段上（根元と同じ高さ）だけ
+    const above = world.setVoxel(cx, ground, cz, SUGAR_CANE);
+    clear();
+    world.setVoxel(cx - 1, ground - 1, cz, WATER); // 床の横 -X
+    const wet = world.setVoxel(cx, ground, cz, SUGAR_CANE);
+    const second = world.setVoxel(cx, ground + 1, cz, SUGAR_CANE);
+    const third = world.setVoxel(cx, ground + 2, cz, SUGAR_CANE);
+    let broke = 0;
+    world.onAutoBreak = (_x, _y, _z, id) => { if (id === SUGAR_CANE) broke++; };
+    world.setVoxel(cx, ground - 1, cz, STONE); // 根元の砂を石に置き換える
+    world.onAutoBreak = undefined;
+    const after = [0, 1, 2].map((k) => world.getVoxel(cx, ground + k, cz));
+    console.log(
+      `      World: 水の無い砂 ${dry}（マス ${dryCell}）/ 斜めだけ水 ${diagonal} / 1 段上だけ水 ${above} / ` +
+        `水辺の砂 ${wet}・2 段目 ${second}・3 段目 ${third} / 砂を石にしたあと ${after.join(",")} / ` +
+        `落ちた合図 ${broke} 回`,
+    );
+    check("本物の World で水の無い砂には置けず、マスは空気のまま", !dry && dryCell === AIR);
+    check("斜めだけに水・1 段上だけに水では置けない", !diagonal && !above);
+    check("水辺の砂には 1 段目が置けて 3 段まで積める", wet && second && third);
+    check(
+      "根元の砂を石に置き換えると 3 段とも落ちる（合図 3 回）",
+      broke === 3 && after.every((v) => v === AIR),
+      `合図 ${broke} 回 / ${after.join(",")}`,
+    );
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) world.setVoxel(cx + dx, ground - 1, cz + dz, GRASS);
+    }
   }
 }
 

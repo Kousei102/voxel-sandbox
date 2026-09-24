@@ -186,6 +186,8 @@ export function run(): void {
   function beach(tall: number): Slab {
     const slab = new Slab();
     slab.fill(-4, 4, 1, 10, -4, 4, SAND);
+    // **水辺にする**（45）。y10 の z=1 の列を水に —— (0,10,0) と (1,10,0) の砂が水辺になる。
+    slab.fill(-4, 4, 10, 10, 1, 1, WATER);
     if (tall > 0) slab.fill(0, 0, 11, 10 + tall, 0, 0, SUGAR_CANE);
     return slab;
   }
@@ -505,6 +507,46 @@ export function run(): void {
       "草の上に置こうとすると「砂の上にしか」と言い、サボテンの名前を含む",
       grassMessage.includes("砂の上にしか") && grassMessage.includes(blockName(CACTUS)),
       grassMessage || "文が出ていない",
+    );
+  }
+
+  // --- サトウキビは水辺の土・草・砂の上だけ（45） ----------------------------
+  // 床は `supportsBlock()` の 1 行（`needsBank`）、横の水は `Slab.canPlaceAt()` の 1 行
+  // （`waterBesideOk()`。本物の `World.canPlaceAt()` の写し）。**`placing.ts` は 0 行。**
+  {
+    const floors: [string, number, boolean, boolean][] = [
+      ["水辺の砂", SAND, true, true],
+      ["水辺の草", GRASS, true, true],
+      ["水辺の土", DIRT, true, true],
+      ["水の無い砂", SAND, false, false],
+      ["水辺の石", STONE, true, false],
+      ["水辺の耕地", FARMLAND, true, false],
+    ];
+    const lines: string[] = [];
+    const wrong: string[] = [];
+    let dryMessage = "";
+    for (const [name, floor, wet, want] of floors) {
+      const slab = new Slab();
+      slab.fill(-2, 2, 1, 10, -2, 2, floor);
+      if (wet) slab.fill(1, 1, 10, 10, 0, 0, WATER);
+      const out = tryPlace(slab, nobody, aimAt(0, 10, 0, floor), 0, SUGAR_CANE);
+      const placed = out.kind === "placed";
+      lines.push(`${name} ${out.kind}${out.kind === "blocked" ? `「${out.message}」` : ""}`);
+      if (name === "水の無い砂" && out.kind === "blocked") dryMessage = out.message;
+      if (placed !== want || slab.getVoxel(0, 11, 0) !== (want ? SUGAR_CANE : AIR)) {
+        wrong.push(`${name}(${out.kind}/${slab.getVoxel(0, 11, 0)})`);
+      }
+    }
+    console.log(`      サトウキビを置く: ${lines.join(" / ")}`);
+    check(
+      "サトウキビは水辺の砂・草・土にだけ立つ（水の無い砂・水辺の石・耕地は blocked でマスも空）",
+      wrong.length === 0,
+      wrong.join(" / ") || "6 通りとも表どおり",
+    );
+    check(
+      "水の無い砂に置こうとすると「水辺の」と言い、サトウキビの名前を含む",
+      dryMessage.includes("水辺の") && dryMessage.includes(blockName(SUGAR_CANE)),
+      dryMessage || "文が出ていない",
     );
   }
 
