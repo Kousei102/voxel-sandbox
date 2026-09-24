@@ -134,6 +134,8 @@ import {
   vineVariant,
 } from "../src/blocks";
 import { MAX_LIGHT } from "../src/constants";
+import { Crops, MUSHROOM_SPREAD_SECONDS } from "../src/crops";
+import { BLOCK_LIGHT, SKY_LIGHT } from "../src/lighting";
 import { PLAYER_SIZE } from "../src/physics";
 import {
   APPLE,
@@ -1393,6 +1395,7 @@ export function run(): void {
   cactusStack(world, ground);
   cactusOnSand(world, ground);
   caneByWater(world, ground);
+  mushroomSpreadInWorld(world);
   ladders();
   vines(world, ground);
   apples();
@@ -3528,6 +3531,76 @@ function cactusOnSand(world: World, ground: number): void {
  * 判断は純関数 `waterBesideOk()`、読むのは `World.canPlaceAt()` の 1 か所だけ。
  * ここも**本物の `World`** で見ます（写しの `test/arena.ts` は `placing.test.ts` が見る）。
  */
+/**
+ * **本物の `World` でキノコが広がる（46）。** `test/crops.test.ts` の偽の `Field` は
+ * `canPlaceAt` も本物の明るさも持たないので、「テストだけが緑」を止める 1 件
+ * （`rules/stateful-blocks.md` のサボテンの件と同じ理由）。石で閉じた箱（中 3x2x3）の
+ * 中では増え、屋根の無い地表（空 15）では増えない。
+ */
+function mushroomSpreadInWorld(world: World): void {
+  describe("本物の World でキノコが広がる（46）");
+
+  /** (cx, y, cz) を中心に x/z ±2・y ±2 の赤キノコの本数。 */
+  const reds = (cx: number, y: number, cz: number): number => {
+    let n = 0;
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dz = -2; dz <= 2; dz++) {
+        for (let dx = -2; dx <= 2; dx++) if (world.getVoxel(cx + dx, y + dy, cz + dz) === RED_MUSHROOM) n++;
+      }
+    }
+    return n;
+  };
+  const lightAt = (x: number, y: number, z: number): string =>
+    `空 ${world.getLight(x, y, z, SKY_LIGHT)}・ブロック ${world.getLight(x, y, z, BLOCK_LIGHT)}`;
+
+  // 箱: 外 5x4x5（x 20..24・z -12..-8）、中 3x2x3。**中を先に空けてから壁と屋根を置く。**
+  const bx = 22;
+  const bz = -10;
+  const by = world.surfaceY(bx, bz) + 3;
+  for (let y = by - 1; y <= by + 2; y++) {
+    for (let z = bz - 2; z <= bz + 2; z++) {
+      for (let x = bx - 2; x <= bx + 2; x++) {
+        const inside = Math.abs(x - bx) <= 1 && Math.abs(z - bz) <= 1 && y >= by && y <= by + 1;
+        world.setVoxel(x, y, z, inside ? AIR : STONE);
+      }
+    }
+  }
+  const boxPlaced = world.setVoxel(bx, by, bz, RED_MUSHROOM);
+  const boxCrops = new Crops();
+  boxCrops.notePlaced({ x: bx, y: by, z: bz }, RED_MUSHROOM, world);
+  const boxLight = lightAt(bx + 1, by, bz);
+  boxCrops.update(MUSHROOM_SPREAD_SECONDS, world);
+  const inBox = reds(bx, by, bz);
+
+  // 対照: 屋根の無い地表の石の上（x 26..28 は箱から離す。上は 12 マス空ける）。
+  const ox = 27;
+  const oz = -10;
+  const oy = world.surfaceY(ox, oz) + 1;
+  for (let z = oz - 1; z <= oz + 1; z++) {
+    for (let x = ox - 1; x <= ox + 1; x++) {
+      world.setVoxel(x, oy - 1, z, STONE);
+      for (let y = oy; y < oy + 12; y++) world.setVoxel(x, y, z, AIR);
+    }
+  }
+  const openPlaced = world.setVoxel(ox, oy, oz, RED_MUSHROOM);
+  const openCrops = new Crops();
+  openCrops.notePlaced({ x: ox, y: oy, z: oz }, RED_MUSHROOM, world);
+  const openLight = lightAt(ox + 1, oy, oz);
+  openCrops.update(MUSHROOM_SPREAD_SECONDS, world);
+  const inOpen = reds(ox, oy, oz);
+
+  console.log(
+    `      閉じた箱（y=${by}）: 置けた ${boxPlaced} / 隣の明るさ ${boxLight} / ${MUSHROOM_SPREAD_SECONDS} 秒後 ${inBox} 本` +
+      ` / 地表（y=${oy}）: 置けた ${openPlaced} / 隣の明るさ ${openLight} / ${inOpen} 本`,
+  );
+  check(
+    "石で閉じた箱の中では赤キノコが 2 本に増える",
+    boxPlaced && inBox === 2 && boxCrops.count === 2,
+    `${inBox} 本 / 覚えている ${boxCrops.count} 本 / ${boxLight}`,
+  );
+  check("屋根の無い地表（空 15）では 1 本のまま", openPlaced && inOpen === 1, `${inOpen} 本 / ${openLight}`);
+}
+
 function caneByWater(world: World, ground: number): void {
   describe("サトウキビは水辺だけ（45）");
 

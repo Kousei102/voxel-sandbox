@@ -8,12 +8,14 @@
 
 import {
   AIR,
+  BROWN_MUSHROOM,
   CACTUS,
   CACTUS_HEIGHT_MAX,
   CANE_HEIGHT_MAX,
   DIRT,
   FARMLAND,
   LEAVES,
+  RED_MUSHROOM,
   SAND,
   SAPLING,
   SPRUCE_LEAVES,
@@ -32,10 +34,16 @@ import {
   CANE_GROW_SECONDS,
   Crops,
   GROW_SECONDS,
+  MUSHROOM_CROWD_LIMIT,
+  MUSHROOM_CROWD_RADIUS,
+  MUSHROOM_MAX_LIGHT,
+  MUSHROOM_SPREAD_SECONDS,
   SAPLING_GROW_SECONDS,
   cropKey,
+  mushroomSpreadStart,
   type CropWorld,
 } from "../src/crops";
+import { BLOCK_LIGHT, SKY_LIGHT, type LightChannel } from "../src/lighting";
 import { grownTreeHeight } from "../src/treeshape";
 import { sourceOf } from "./arena";
 import { check, describe } from "./harness";
@@ -77,6 +85,16 @@ class Field implements CropWorld {
   hasColumn(cx: number, cz: number): boolean {
     return !this.unloaded.has(`${cx},${cz}`);
   }
+
+  /**
+   * 明るさの表（キー `"x,y,z,ch"`）。**無ければ 0 = 真っ暗。** 読むのはキノコ（46）だけで、
+   * それより前の件は 1 つも明るさを見ない。
+   */
+  readonly light = new Map<string, number>();
+
+  getLight(x: number, y: number, z: number, channel: LightChannel): number {
+    return this.light.get(`${x},${y},${z},${channel}`) ?? 0;
+  }
 }
 
 /**
@@ -104,6 +122,262 @@ function cactusHeight(field: Field, x: number, y: number, z: number): number {
 function planted(field: Field, x = 0, y = 40, z = 0): void {
   field.set(x, y - 1, z, FARMLAND);
   field.set(x, y, z, WHEAT_CROP);
+}
+
+/** 石の床（y = 39・x/z ±`half`）とその上 (0,40,0) のキノコ。`note` なら置いたと伝える。 */
+function mushroomBoard(id: number, half = 2, note = true): { field: Field; crops: Crops } {
+  const field = new Field();
+  const crops = new Crops();
+  for (let x = -half; x <= half; x++) {
+    for (let z = -half; z <= half; z++) field.set(x, 39, z, STONE);
+  }
+  field.set(0, 40, 0, id);
+  if (note) crops.notePlaced({ x: 0, y: 40, z: 0 }, id, field);
+  return { field, crops };
+}
+
+/** (cx,40,cz) を中心に x/z ±5・y 38..42 にある `id` の座標（中心も含む）。 */
+function mushroomCells(field: Field, id: number, cx = 0, cz = 0): [number, number, number][] {
+  const out: [number, number, number][] = [];
+  for (let y = 38; y <= 42; y++) {
+    for (let z = cz - 5; z <= cz + 5; z++) {
+      for (let x = cx - 5; x <= cx + 5; x++) {
+        if (field.getVoxel(x, y, z) === id) out.push([x, y, z]);
+      }
+    }
+  }
+  return out;
+}
+
+/** (0,40,0) の周り 26 マスの明るさを、その通り道（`channel`）だけ `value` にする。 */
+function lightAround(field: Field, channel: LightChannel, value: number): void {
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) field.light.set(`${dx},${40 + dy},${dz},${channel}`, value);
+    }
+  }
+}
+
+/**
+ * **キノコが暗い所で広がる（46）。** 置いたキノコだけが、`MUSHROOM_SPREAD_SECONDS` ごとに
+ * 周り 26 マスの 1 マスへ同じ種類を 1 本増やす。**乱数ではなく座標で**場所を決めるので、
+ * どのマスに生えるかまで固定して見られる。
+ */
+function mushrooms(): void {
+  describe("キノコが暗い所で広がる（46）");
+  console.log(
+    `      MUSHROOM_SPREAD_SECONDS ${MUSHROOM_SPREAD_SECONDS} 秒 / MUSHROOM_MAX_LIGHT ${MUSHROOM_MAX_LIGHT} / ` +
+      `MUSHROOM_CROWD_LIMIT ${MUSHROOM_CROWD_LIMIT} 本 / MUSHROOM_CROWD_RADIUS ${MUSHROOM_CROWD_RADIUS}`,
+  );
+
+  {
+    const red = mushroomBoard(RED_MUSHROOM);
+    const brown = mushroomBoard(BROWN_MUSHROOM);
+    console.log(`      置いたあと: 赤 ${red.crops.peek(0, 40, 0)} / 茶 ${brown.crops.peek(0, 40, 0)}`);
+    check(
+      "置いたキノコは赤・茶とも置いたマスを覚える",
+      red.crops.peek(0, 40, 0) === 0 && brown.crops.peek(0, 40, 0) === 0 &&
+        red.crops.count === 1 && brown.crops.count === 1,
+      `赤 ${red.crops.peek(0, 40, 0)} / 茶 ${brown.crops.peek(0, 40, 0)}`,
+    );
+  }
+
+  {
+    // a. **1 秒手前は増えない・ちょうどで 1 本**（境目の手前で止める。`rules/testing.md`）。
+    const { field, crops } = mushroomBoard(RED_MUSHROOM);
+    const early = crops.update(MUSHROOM_SPREAD_SECONDS - 1, field);
+    const before = mushroomCells(field, RED_MUSHROOM).length;
+    const spread = crops.update(1, field);
+    const cells = mushroomCells(field, RED_MUSHROOM);
+    const born = cells.find(([x, y, z]) => x !== 0 || y !== 40 || z !== 0);
+    console.log(
+      `      ${MUSHROOM_SPREAD_SECONDS - 1} 秒: ${before} 本（合図 ${early}）→ +1 秒: ${cells.length} 本` +
+        `（合図 ${spread}）/ 増えた所 ${born?.join(",")} / 覚えている ${crops.count} 本`,
+    );
+    check("1 秒手前では増えず合図も出ない", before === 1 && early === false, `${before} 本 / ${early}`);
+    check("ちょうどで 1 本増えて合図を出す", cells.length === 2 && spread === true, `${cells.length} 本 / ${spread}`);
+    const [bx, by, bz] = born ?? [99, 99, 99];
+    check(
+      "増えた 1 本は周り 1 マス以内・真下が石・覚えている",
+      Math.abs(bx) <= 1 && Math.abs(by - 40) <= 1 && Math.abs(bz) <= 1 &&
+        field.getVoxel(bx, by - 1, bz) === STONE && crops.peek(bx, by, bz) === 0 && crops.count === 2,
+      `${born?.join(",")} / 真下 ${field.getVoxel(bx, by - 1, bz)} / 覚え ${crops.peek(bx, by, bz)}`,
+    );
+    check("増やした親の秒数は 0 に戻る", crops.peek(0, 40, 0) === 0, `${crops.peek(0, 40, 0)}`);
+  }
+
+  {
+    // b. **自然に生えたキノコは広がらない**（印が無い）。表が空だと `update()` が先頭で
+    // 返るので、置いたぶんを離れた所に 1 本立てて「回っているのに増えない」を見る。
+    const { field, crops } = mushroomBoard(RED_MUSHROOM, 2, false);
+    for (let x = 38; x <= 42; x++) for (let z = -2; z <= 2; z++) field.set(x, 39, z, STONE);
+    field.set(40, 40, 0, RED_MUSHROOM);
+    crops.notePlaced({ x: 40, y: 40, z: 0 }, RED_MUSHROOM, field);
+    crops.update(MUSHROOM_SPREAD_SECONDS, field);
+    crops.update(MUSHROOM_SPREAD_SECONDS, field);
+    const natural = mushroomCells(field, RED_MUSHROOM, 0, 0).length;
+    const placed = mushroomCells(field, RED_MUSHROOM, 40, 0).length;
+    console.log(`      自然に生えたぶん ${natural} 本 / 置いたぶん ${placed} 本 / 覚えている ${crops.count} 本`);
+    check(
+      "印の無いキノコは広がらない（置いたぶんは広がっている）",
+      natural === 1 && placed >= 2 && crops.peek(0, 40, 0) === null,
+      `自然 ${natural} / 置いた ${placed}`,
+    );
+  }
+
+  {
+    // c. **明るさの境**。空 13 / 空 12 / ブロック 13（空 0）を 1 行に出してから判定する。
+    const rows: string[] = [];
+    const tryLight = (sky: number, block: number): number => {
+      const { field, crops } = mushroomBoard(RED_MUSHROOM);
+      lightAround(field, SKY_LIGHT, sky);
+      lightAround(field, BLOCK_LIGHT, block);
+      crops.update(MUSHROOM_SPREAD_SECONDS, field);
+      const n = mushroomCells(field, RED_MUSHROOM).length;
+      rows.push(`空 ${sky}・ブロック ${block} → ${n} 本`);
+      return n;
+    };
+    const sky13 = tryLight(13, 0);
+    const sky12 = tryLight(12, 0);
+    const block13 = tryLight(0, 13);
+    console.log(`      明るさの境: ${rows.join(" / ")}`);
+    check("空の明るさ 13 では増えない", sky13 === 1, `${sky13} 本`);
+    check(`空の明るさ ${MUSHROOM_MAX_LIGHT} なら増える`, sky12 === 2, `${sky12} 本`);
+    check("ブロック光 13（空 0）でも増えない（大きいほうを見ている）", block13 === 1, `${block13} 本`);
+  }
+
+  {
+    // d. **混み具合**。9x3x9 の四隅に足して、自分込みで 5 本 / 4 本 / 別の種類 4 本。
+    const corners: [number, number][] = [[4, 4], [-4, 4], [4, -4], [-4, -4]];
+    const tryCrowd = (extra: number, id: number): number => {
+      const { field, crops } = mushroomBoard(RED_MUSHROOM);
+      for (const [x, z] of corners.slice(0, extra)) field.set(x, 40, z, id);
+      crops.update(MUSHROOM_SPREAD_SECONDS, field);
+      return mushroomCells(field, RED_MUSHROOM).length - (id === RED_MUSHROOM ? extra : 0);
+    };
+    const five = tryCrowd(4, RED_MUSHROOM);
+    const four = tryCrowd(3, RED_MUSHROOM);
+    const brown = tryCrowd(4, BROWN_MUSHROOM);
+    console.log(`      混み具合（中央の周りの赤）: 計 5 本 → ${five} / 計 4 本 → ${four} / 茶 4 本を足す → ${brown}`);
+    check(`同じ種類が計 ${MUSHROOM_CROWD_LIMIT} 本あれば増えない`, five === 1, `${five} 本`);
+    check("計 4 本なら増える", four === 2, `${four} 本`);
+    check("別の種類（茶）は数えない", brown === 2, `${brown} 本`);
+  }
+
+  {
+    // e. **床の無い所には生えない**（真下が空気）。支えの石 1 枚だけ。
+    const field = new Field();
+    const crops = new Crops();
+    field.set(0, 39, 0, STONE);
+    field.set(0, 40, 0, RED_MUSHROOM);
+    crops.notePlaced({ x: 0, y: 40, z: 0 }, RED_MUSHROOM, field);
+    const changed = crops.update(MUSHROOM_SPREAD_SECONDS, field);
+    const n = mushroomCells(field, RED_MUSHROOM).length;
+    console.log(`      床の無い所: ${n} 本 / 書き込み ${field.writes} 回 / 秒数 ${crops.peek(0, 40, 0)} / 合図 ${changed}`);
+    check(
+      "真下が空気のマスには生えず、秒数は 0 に戻る",
+      n === 1 && field.writes === 0 && changed === false && crops.peek(0, 40, 0) === 0,
+      `${n} 本 / ${field.writes} 回 / ${crops.peek(0, 40, 0)}`,
+    );
+  }
+
+  {
+    // f. **決まった場所**。同じ盤面なら毎回同じマス。
+    const a = mushroomBoard(RED_MUSHROOM);
+    const b = mushroomBoard(RED_MUSHROOM);
+    a.crops.update(MUSHROOM_SPREAD_SECONDS, a.field);
+    b.crops.update(MUSHROOM_SPREAD_SECONDS, b.field);
+    const ca = mushroomCells(a.field, RED_MUSHROOM).map((c) => c.join(",")).join(" ");
+    const cb = mushroomCells(b.field, RED_MUSHROOM).map((c) => c.join(",")).join(" ");
+    console.log(`      同じ盤面 2 つ: ${ca} / ${cb}`);
+    check("同じ盤面なら同じ座標に生える", ca === cb && ca.split(" ").length === 2, `${ca} / ${cb}`);
+
+    const pts: [number, number, number][] = [];
+    for (let i = 0; i < 20; i++) pts.push([(i - 10) * 37, (i * 13) % 128, (7 - i) * 1001]);
+    const starts = pts.map(([x, y, z]) => mushroomSpreadStart(x, y, z));
+    console.log(`      mushroomSpreadStart（20 点）: ${starts.join(",")}`);
+    check(
+      "mushroomSpreadStart は負の座標でも 0..25 の整数",
+      starts.every((s) => Number.isInteger(s) && s >= 0 && s <= 25),
+      starts.join(","),
+    );
+    check("mushroomSpreadStart は場所ごとに散る（20 点で 5 通り以上）", new Set(starts).size >= 5, `${new Set(starts).size} 通り`);
+  }
+
+  {
+    // g. **上限で止まる**。床 3x3 で 20 周回しても 5 本で止まる。
+    const { field, crops } = mushroomBoard(RED_MUSHROOM, 1);
+    const counts: number[] = [];
+    for (let i = 0; i < 20; i++) {
+      crops.update(MUSHROOM_SPREAD_SECONDS, field);
+      counts.push(mushroomCells(field, RED_MUSHROOM).length);
+    }
+    console.log(`      床 3x3 で 20 周の本数: ${counts.join(",")} / 覚えている ${crops.count} 本`);
+    check(
+      `${MUSHROOM_CROWD_LIMIT} 本で止まって ${MUSHROOM_CROWD_LIMIT + 1} 本にならない`,
+      Math.max(...counts) === MUSHROOM_CROWD_LIMIT && counts[counts.length - 1] === MUSHROOM_CROWD_LIMIT,
+      counts.join(","),
+    );
+  }
+
+  {
+    // h. **混み具合を数える 4 隅の列が未読み込みなら持ち越す**（戻すと次の update(0) で増える）。
+    const { field, crops } = mushroomBoard(RED_MUSHROOM);
+    field.unloaded.add("-1,-1"); // (-4,-4) の列
+    const changed = crops.update(MUSHROOM_SPREAD_SECONDS, field);
+    const held = mushroomCells(field, RED_MUSHROOM).length;
+    const carried = crops.peek(0, 40, 0) ?? 0;
+    const heldWrites = field.writes;
+    field.unloaded.clear();
+    const freed = crops.update(0, field);
+    const after = mushroomCells(field, RED_MUSHROOM).length;
+    console.log(
+      `      隅の列が未読み込み: ${held} 本 / 秒数 ${carried} / 書き込み ${heldWrites} 回 / 合図 ${changed}` +
+        ` → 戻したあと ${after} 本（合図 ${freed}）`,
+    );
+    check(
+      "隅の列が未読み込みの間は書かず秒数を持ち越し、戻すと次の update(0) で増える",
+      held === 1 && heldWrites === 0 && changed === false && carried >= MUSHROOM_SPREAD_SECONDS &&
+        after === 2 && freed === true,
+      `${held} → ${after} 本 / 秒数 ${carried} / 書き込み ${heldWrites}`,
+    );
+  }
+
+  {
+    // i. **書けなかったら持ち越す**（`frozen`）。
+    const { field, crops } = mushroomBoard(RED_MUSHROOM);
+    field.frozen = true;
+    const first = crops.update(MUSHROOM_SPREAD_SECONDS, field);
+    const carried = crops.peek(0, 40, 0) ?? 0;
+    const frozenCount = crops.count;
+    field.frozen = false;
+    const second = crops.update(0, field);
+    const after = mushroomCells(field, RED_MUSHROOM).length;
+    console.log(`      書けない番: 秒数 ${carried} / 覚え ${frozenCount} 本 / 合図 ${first} → 次: ${after} 本（${second}）`);
+    check(
+      "書き込みが落ちたら秒数を持ち越し、次のフレームで増える",
+      first === false && carried >= MUSHROOM_SPREAD_SECONDS && frozenCount === 1 && second === true && after === 2,
+      `${carried} / ${frozenCount} 本 / ${after} 本`,
+    );
+  }
+
+  {
+    // j. **掘られたら忘れる**（「それ以外」の枝）と、**セーブに増えた 1 本も載る**。
+    const dug = mushroomBoard(BROWN_MUSHROOM);
+    dug.field.set(0, 40, 0, AIR);
+    const forgot = dug.crops.update(1, dug.field);
+    check("掘られたキノコは忘れる", dug.crops.count === 0 && forgot === true, `${dug.crops.count} 本`);
+
+    const { field, crops } = mushroomBoard(BROWN_MUSHROOM);
+    crops.update(MUSHROOM_SPREAD_SECONDS, field);
+    const raw = crops.serialize() ?? {};
+    console.log(`      広がったあとのセーブ: ${JSON.stringify(raw)}`);
+    check(
+      "増えた 1 本もセーブに載る（キー 2 つ）",
+      Object.keys(raw).length === 2 && raw["0,40,0"] === 0,
+      JSON.stringify(raw),
+    );
+  }
 }
 
 export function run(): void {
@@ -835,5 +1109,11 @@ export function run(): void {
     const main = sourceOf("src/main.ts");
     check("main.ts に GROW_SECONDS が無い", !main.includes("GROW_SECONDS"));
     check("main.ts に 育つ秒数（180）が無い", !/\b180\b/.test(main));
+    // キノコ（46）も同じ。**秒数を持つのは crops.ts だけ。**
+    check("main.ts に MUSHROOM_SPREAD_SECONDS が無い", !main.includes("MUSHROOM_SPREAD_SECONDS"));
+    check("main.ts に 広がる秒数（280）が無い", !/\b280\b/.test(main));
   }
+
+  // 節を分けて最後に回す（上の見張りまでが「育つ苗」の節）。
+  mushrooms();
 }

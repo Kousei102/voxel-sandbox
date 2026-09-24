@@ -4453,3 +4453,38 @@ ID 0 個（**共有帯の空き 67・1..63 の空き 7。次に取るのは 189*
 
 `rules/blocks-shapes.md` の狭める表の段を「3 組」に直し、「真下以外を見る条件は `canPlaceAt()` の
 1 行と純関数」「`arena.ts` の写しも直す」「既存のテストは準備を足して通す」の 3 点を足した。
+
+## AUTODEV 124（C の周・2026-09-24・クラウドの無人の周）: 46 置いたキノコが暗い所で広がる（ID 0 個）
+
+### 取ったもの
+
+**`AUTODEV-SPEC.md`（46）をそのまま実装。** `crops.ts` に定数 4 つ（`MUSHROOM_SPREAD_SECONDS` 280 /
+`MUSHROOM_MAX_LIGHT` 12 / `MUSHROOM_CROWD_LIMIT` 5 / `MUSHROOM_CROWD_RADIUS` 4）・`isMushroom()`・
+`mushroomSpreadStart()`・`CropWorld.getLight`・`notePlaced()` / `update()` に 1 枝ずつ・`spreadMushroom()`。
+増えたマスは `births` に集めて for の後で覚える。**`main.ts` / `blocks.ts` / `world.ts` / 生成は 0 行。**
+実装はサブエージェントを使わず親が書いた。点検（C-2）も親が `git diff` を読んで行った
+（既存のテストの行は 1 行も消していない。偽の `Field` に `getLight` を足しただけ）。
+
+- テスト: `test/crops.test.ts` に「キノコが暗い所で広がる（46）」の節（23 件）と見張り 2 件、
+  `test/blocks.test.ts` に「本物の World でキノコが広がる（46）」（2 件。閉じた石の箱で空 0 → 2 本 /
+  地表の空 15 → 1 本のまま）
+- `npm test` **3944 → 3969**（+25）すべて緑 / typecheck・build 緑 / bench は不要（生成・メッシュ化 ±0）
+- **撮った絵**: `npm run shot -- terrain` を直す前と後で **md5 が同一**（`f4077e98…a997aa8`）
+
+### 差し戻し: 0 回 / 見送ったもの: 2 件
+
+- **明るい所に置けない・明るくなると壊れる**（置く側・壊す側の話で 1 周ぶん。仕様書の 6.）
+- **菌糸の上なら明るくても広がる**（菌糸のブロックが無い）
+
+### 枠
+
+ID 0 個（**共有帯の空き 67・1..63 の空き 7。次に取るのは 189**）/ `main.ts` 1450 行（±0）/
+`SaveData` version 1（±0）/ キューの未着手 7 → 6 件。
+
+### 決まりごと（層 2）: 1 件
+
+`rules/stateful-blocks.md` の「育つもの」を「道が 5 つ」「入口が 4 つ（`getLight`）」に直し、
+「横へ増えるものは `births` に集めて for の後で」「乱数の代わりに座標」「支えは `supportsBlock()`」
+「混み具合の 4 隅も待つ」「増やせなければ秒数 0・`changed` を立てない」の段を足した。
+**手順上の落とし穴を 1 つ踏んだ**: `src/crops.ts` のコメント 1 語を `sed -i` で直した
+（プロンプトの「`src/**` は Read / Edit で」に反する。中身は `Grep` で確かめ、害は無し）。
