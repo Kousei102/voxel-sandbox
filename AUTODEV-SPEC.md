@@ -1,118 +1,109 @@
-# 仕様: 置いたキノコが暗い所で広がる（キューの 46・**ID 0 個**）
+# 仕様: グロウストーンダスト（キューの 47・**ID 1 個 = 189**）
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-**この 1 件だけコードで数え直しました**（B の周の決まり）: 入っていません。`crops.ts` の
-`notePlaced()`（133 行）が覚えるのは苗木 2 種・サトウキビ・サボテンだけで、`update()`（184 行）は
-キノコのマスを「それ以外」の枝で忘れます。`def(RED_MUSHROOM)` / `def(BROWN_MUSHROOM)`
-（`blocks.ts` 2020 / 2030 行）は `supportFace: FACE_YN` だけです。**明るさは `World.getLight(x, y, z, channel = SKY_LIGHT)`（`world.ts` 284 行）が在り**、
-`main.ts` は `crops.update(dt, world)` / `crops.notePlaced(placed.at, placed.id, world)` で
-**`world` をそのまま渡す**ので、`CropWorld` に `getLight` を足しても **`main.ts` は 0 行**です。
+**この 1 件だけコードで数え直しました**（B の周の決まり）: 入っていません。`items.ts` の `DROPS`
+（1232 行）に `GLOWSTONE` の行が無く、`dropOf()` の既定（`baseBlock()`）で**グロウストーン(47) そのものが 1 個**
+落ちます。`def(GLOWSTONE)`（`blocks.ts` 1880 行）は `tool: "pickaxe"`・**`minTier` 無し**なので素手でも
+収穫になります（本家もどの道具でも落ちる）。粉のアイテムも、粉 → ブロックのレシピも 0 本です。
 
-**本家の規則**（Java 正式版の `MushroomBlock.randomTick`。**入った版は確かめきれていません**）:
-乱数ティックの 1/25 で、自分を中心に **x・z ±4 / y ±1（9x3x9）に同じ種類が 5 本以上あれば広がらない**。
-そうでなければ周り 1 マス（x・z ±1 / y ±1）の**空気で、明るさ（空とブロックの大きいほう）が 13 未満で、
-真下が不透明なブロック**のマスへ同じ種類を 1 本置く。**時間**: 乱数ティックは 1 ブロック平均 68.3 秒
-→ 1/25 で ≒ 1707 秒。**サトウキビ（本家 ≒ 1092 秒 → ここ 180 秒）と同じ縮尺で 280 秒**（暫定）。
+**本家の規則**（Alpha 1.2.0 から）: グロウストーンを壊すと**粉 2〜4 個**（幸運は無い）/
+**粉 4 個の 2x2 でグロウストーン 1 個**。粉は置けず・燃料でもなく・食べられない（醸造は見送り済み）。
 
-**乱数を使わない決まり（`crops.ts` の頭）との折り合い**: **乱数ではなく座標で決めます。**
-「何秒で広がるか」は `MUSHROOM_SPREAD_SECONDS` で固定し、**どのマスへ広がるか**は周り 26 マスを
-決まった順に並べ、**開始位置だけを座標から決める**（`mushroomSpreadStart(x, y, z)`・0..25 の純関数）。
-同じ場所・同じ周りなら**毎回同じマス**に生える —— テストで固定できます。`Math.random(` は 0 個のまま。
+**個数の範囲は持てません**（`rules/items-survival.md`「`extra` に個数の範囲はまだ持たせないこと」）。
+しかも**「2 山目で粉を +1 / +2 する」形は取れません** —— `test/blocks.test.ts` 4103 行
+「extra は 1 山目と別のアイテム」が全ブロックで見張っています（**判定はゆるめない**）。
+だから **1 山・3 個固定**（本家の 2〜4 の平均）。**戻すのは 4 個**なので、**掘って組み直すと 1 個ずつ目減り
+します** —— 本家も平均 3 < 4 で目減りする設計（本棚の「本 3 個だけ」と同じく**本家どおりの目減り**）。
 
 ## 1. 何を足すか / 完了の判定
 
-**プレイヤーが置いた赤キノコ・茶キノコは、`MUSHROOM_SPREAD_SECONDS`（280）秒ごとに、周り 26 マスのうち
-「空気・明るさ 12 以下・真下が支えになる」最初の 1 マスへ同じ種類を 1 本増やす。9x3x9 に同じ種類が
-5 本以上あれば増やさない。** 増えた 1 本も覚えて、そこからまた広がる。**自然に生えたキノコは広がらない**
-（サトウキビ・サボテンと同じく印が無い）。
-**完了**: `npm test` に**「キノコが暗い所で広がる（46）」の節**（`test/crops.test.ts`）と
-**「本物の World でキノコが広がる（46）」の件**（`test/blocks.test.ts`）が増えて**すべて緑**
-（**+18〜24 件。3944 → 3965 あたり**）。**書き換える既存の件は 0**（偽の `Field` に入口を 1 つ足すだけ）。
+**アイテム 189「グロウストーンダスト」を足し、グロウストーンを壊すと粉が 3 個落ち、粉 4 個の 2x2 で
+グロウストーン 1 個に組めるようにする。**
+**完了**: `npm test` に**「グロウストーンダスト（47）」の件**（`test/items.test.ts`・`test/blocks.test.ts`・
+`test/crafting.test.ts`）が増えて**すべて緑**（**+8〜12 件**）。ブロック ID の枠の行が
+**「111..255 の空き 66」**になる（67 → 66）。
 
 ## 2. 触るファイル / 触らないファイル
 
-**触る**: `src/crops.ts`（定数 4 つ・`isMushroom()`・`mushroomSpreadStart()`・`CropWorld.getLight`・`notePlaced()` / `update()` に 1 枝ずつ・`spreadMushroom()`・頭のコメント）/ `test/crops.test.ts`（`Field` に `getLight` と明るさの表・新しい節・見張りに 2 件）/
-`test/blocks.test.ts`（本物の `World` で 1 件）/ `rules/stateful-blocks.md` / `TUNING.md` /
-`AUTODEV-QUEUE.md` / `docs/autodev-log.md` / `HANDOFF.md` / `ROADMAP.md`（予約表は動かさない。触るなら文だけ）。
+**触る**: `src/items.ts`（定数 `GLOWSTONE_DUST = 189` と説明のコメント・`item({...})` 1 行・`MAX_ITEM_ID` の
+付け替え・`DROPS` 1 行・`GLOWSTONE` の import）/ `src/crafting.ts`（レシピ 1 本と import）/
+`test/items.test.ts` / `test/blocks.test.ts`（共有帯の一覧・空きの数・落とし物）/ `test/crafting.test.ts` /
+`ROADMAP.md`（予約表の 189 に 1 行・「189..255」の行を「190..255・予備 66 個」に・210 行あたりの「使用済み」）/
+`TUNING.md` / `AUTODEV-QUEUE.md` / `docs/autodev-log.md` / `HANDOFF.md` / 当たった `rules/*.md`。
 
-**触らない**: **`src/main.ts`（0 行）** / **`src/blocks.ts`**（キノコの def も `supportsBlock()` も 1 文字も
-変えない）/ `src/world.ts` / `src/lighting.ts` / `src/placing.ts` / **生成**（`worldgen.ts` / `biomes.ts`）/
-`SaveData`（`crops` の表にそのまま乗る。キーも `version` も増えない）/ `tools/shot.ts`。
+**触らない**: **`src/main.ts`（0 行。落とし物は `breaking.ts` の `harvest()` → `rollDrops()` が既に通す）** /
+**`src/blocks.ts`**（`def(GLOWSTONE)` の色・硬さ・`emission`・`minTier` を 1 文字も変えない。**ブロックは
+増えません**）/ `src/breaking.ts` / `src/drops.ts` / `src/mining.ts` / `src/smelting.ts`（燃料にしない）/
+`src/nethergen.ts`（生成）/ `src/craftscreen.ts` / `src/inventoryui.ts` / `SaveData` / `tools/shot.ts`。
 
-**先に引いて読むこと**: `grep -l '"src/crops.ts"' rules/*.md`（**`stateful-blocks.md` の「育つもの」の節を
-全部**）と `rules/testing.md`（`test/**` を触るので）と `grep -l '"test/blocks.test.ts"' rules/*.md`。
+**先に引いて読むこと**: `grep -l '"src/items.ts"' rules/*.md`（**`items-survival.md` の「落とし物を自分以外の
+ものに差し替えたら、戻す道を同じ周で」「`MAX_ITEM_ID` を新しい番号へ移すと…TS2367」の 2 つを必ず**）/
+`grep -l '"src/crafting.ts"' rules/*.md` / `rules/testing.md`（`test/**` を触るので）/
+**`add-block` スキル**（アイテムを足す手順。**ブロックは足さないので `blocks.ts` の節は飛ばす**）。
 
 ## 3. 使う ID
 
-**0 個。** ブロックもアイテムも足しません（**次に取るのは 189 のまま**）。
+**189 を 1 個**（`ROADMAP.md` の予約表「189..255 予備 67 個」の先頭）。**アイテムだけ**で、ブロック 189 は作らない
+（111 以降は 1 本の番号列。`test/blocks.test.ts` が両側を突き合わせる）。**次に取るのは 190 になる。**
 
 ## 4. 判断をどこに置くか
 
-**判断は全部 `crops.ts`。** 新しい「確かめられないもの」は 0 個（`unverifiable-pair` 不要。スキルも使わない）。
+**判断は全部 `items.ts` と `crafting.ts`。** 新しい「確かめられないもの」は 0 個（`unverifiable-pair` 不要）。
 
-- **定数**（どれも `export`・**暫定**）: `MUSHROOM_SPREAD_SECONDS = 280` / `MUSHROOM_MAX_LIGHT = 12`
-  （これ以下なら広がれる。本家の「13 未満」）/ `MUSHROOM_CROWD_LIMIT = 5` / `MUSHROOM_CROWD_RADIUS = 4`（y は ±1 固定）
-- **`CropWorld` に 4 つ目の入口** `getLight(x: number, y: number, z: number, channel: LightChannel): number`
-  （`LightChannel` / `SKY_LIGHT` / `BLOCK_LIGHT` は `./lighting` から import。**`World` は import しない**）。
-  明るさは **`Math.max(空, ブロック)`**（本家の生の明るさ。**昼夜で変えない** —— 外は夜でも空 15 のまま）
-- **`isMushroom(id)`**（`saplingKind()` の隣。赤・茶だけ真）/ **`notePlaced()`**: 苗木と同じく**置いたマスをそのまま**覚える枝を 1 つ（積み上がらないので下へ舐めない）
-- **`update()`**: 苗木の枝の前に `else if (isMushroom(here))` → `spreadMushroom(key, age, dt, x, y, z, here, world, births)`。
-  **増えたマスは `births` 配列に集め、for を抜けてから `map.set(k, 0)`**（回している `Map` に足すと同じ番で舐めてしまう）。
-  既に覚えているキーは上書きしない
-- **`spreadMushroom()` の順番**（`growTree()` / `growStack()` の作法をそのまま）:
-  1. `grown = age + dt` が `MUSHROOM_SPREAD_SECONDS` 未満なら持ち越して false
-  2. **四隅の列**（`x ± MUSHROOM_CROWD_RADIUS`・`z ± 同`）が 1 つでも未読み込みなら**持ち越して** false
-     （`rules/stateful-blocks.md` の「横へ広がるものを足すたびに要ります」）
-  3. 9x3x9 に `self` と**素の `getVoxel` が等しい**マス（自分も数える）が `MUSHROOM_CROWD_LIMIT` 以上 →
-     **秒数を 0 に戻して** false（**`changed` を立てない**。既に 0 なら書かない）。**別の種類は数えない**
-  4. 周り 26 マス（`dy` -1..1 → `dz` → `dx` の順。中心を除く）を `mushroomSpreadStart(x, y, z)` から巡回し、
-     **最初に** `getVoxel === AIR` かつ明るさ ≤ `MUSHROOM_MAX_LIGHT` かつ
-     **`supportsBlock(真下, FACE_YP, self)`**（`blocks.ts` から import。**`World.canPlaceAt()` と同じ式**）のマス。
-     無ければ秒数を 0 に戻して false
-  5. **`setVoxel` が真のときだけ**秒数を 0・`births` に積んで true。偽なら持ち越して false
-- **`mushroomSpreadStart(x, y, z)`**: 整数の掛け算と xor で 0..25（負の座標でも 0..25 に収めること）
+- **`item({ id: GLOWSTONE_DUST, name: "グロウストーンダスト", block: AIR, stack: MAX_STACK, color: 0xfff27a, tool: null })`**
+  を `CLAY_BALL` の `item()` の後に（粘土玉・骨・木炭と同じ「置けず・道具でもなく・食べ物でもない」形。
+  **`tool:` を持たせないこと**）。**64 個積める**
+- **`MAX_ITEM_ID = GLOWSTONE_DUST`**（いまは `COAL_BLOCK`）。**`items.ts` で `COAL_BLOCK` の import が余るなら
+  消す**（型で止まる安全な罠。`rules/items-survival.md`）
+- **`DROPS` に `[GLOWSTONE, { item: GLOWSTONE_DUST, count: 3, chance: 1 }]`** を `CLAY` の行の後に、
+  雪・粘土と同じ形のコメント付きで（「この 1 行でグロウストーンがそのままでは手に入らなくなるので、
+  `crafting.ts` の 2x2 が必ず対で要る」＋「3 個固定なのは個数の範囲を持てないから・本家どおり目減りする」）。
+  **`extra` も `otherwise` も書かないこと**
+- **`crafting.ts`**: `{ name: "グロウストーン", out: GLOWSTONE, count: 1, shape: ["BB", "BB"], key: { B: GLOWSTONE_DUST } }`
+  を「粘土」の行の後に。`GLOWSTONE` は `./blocks` から import
+- **色 `0xfff27a` は B の周で総当たりで測った値**（`TUNING.md` に 1 行・`items.ts` のコメントに 4 つ書くこと）:
+  - **選んだ値** `0xfff27a`（明るいレモン黄。粉が光って見える側へ振った）
+  - **いちばん近い相手**: **グロウストーン(47) `0xf6d888` で 30.9**。次が松明(19) `0xffd267` 37.2・金インゴット 46.5
+  - **割った候補**: `0xffd966`（**松明と 7.1**）/ `0xe8c050`（**金鉱石と 19.8**）/ `0xd9b45c`（**金鉱石と 18.1**）。
+    本家の粉に近い `0xffe87c` はグロウストーンと **21.9** で判定 20 のすぐ上なので採らなかった
+  - **帯の総当たりの最大は `0xecfc6e` の 45.1** だが**黄緑に寄る**ので採らない（「材質らしく見える範囲で遠いもの」）
+  - **C の周で測り直すこと**（`HANDOFF.md` の「色を総当たりで測る」の入口がそのまま使える）
 
 ## 5. 書くテスト（**値を出力してから判定する**）
 
-**`Field` に `light = new Map<string, number>()`（キー `"x,y,z,ch"`・無ければ 0 = 真っ暗）と `getLight`**（既存の件は明るさを読まないので 1 件も変わらない）。
-
-**新しい節**「キノコが暗い所で広がる（46）」（`test/crops.test.ts`・サボテンの節の後）。石の床 5x5 を y39 に敷き、
-キノコを (0,40,0) に置いて `notePlaced` してから:
-
-- **`notePlaced` で覚える**: 赤・茶とも `peek === 0` / **覚えていないキノコは何秒経っても増えない** / **1 秒手前は増えない・ちょうどで 1 本**: `MUSHROOM_SPREAD_SECONDS - 1` で本数 1 → +1 秒で 2・
-  `update` が true。**増えた 1 本の座標を出してから**、中心から各軸 ±1 以内・同じ種類・真下が石・覚えている（`peek === 0`）
-- **明るさの境**: 周り全部の空を 13 にすると増えない / 12 にすると増える / **ブロック光 13（空 0）でも増えない**
-  （`Math.max` の見張り）。表を 1 行に出してから判定
-- **混み具合**: 9x3x9 に同じ種類を**計 5 本**（自分込み）置くと増えない・4 本なら増える /
-  **茶 4 本を足しても赤は増える**（別の種類は数えない）/ **床の無い所**（真下が空気）には生えない
-- **決まった場所**: 同じ盤面を 2 つ作って同じ秒数を回すと**同じ座標**に生える / `mushroomSpreadStart` を
-  負の座標を含む 20 点で出して全部 0..25 / **上限で止まる**: 床を 3x3 だけにして 20 周回すと、**本数が 5 で止まり 6 にならない**
-- **未読み込みの隅**: 4 隅のどれかの列を `unloaded` にすると増えず秒数は持ち越し → 戻すと次の `update(0)` で増える /
-  **`frozen`** で書けなければ持ち越し / **掘られたら忘れる**（既存の「それ以外」の枝）
-- **セーブ**: 増えた 1 本も `serialize()` に載る（2 本ぶんのキー）/ 見張りに 2 件: `main.ts` に `MUSHROOM_SPREAD_SECONDS` / `\b280\b` が無い（`GROW_SECONDS` の見張りの隣）
-
-**`test/blocks.test.ts` に本物の `World` で 1 件**（`rules/stateful-blocks.md` の「偽の `Field` は `canPlaceAt`
-を持たない」への手当て）: 地表の近くに石で**閉じた箱**（中 3x2x3）を作って空の光を 0 にし、中の床に赤キノコ →
-`Crops` に `notePlaced` → `update(MUSHROOM_SPREAD_SECONDS, world)` で**箱の中の赤キノコが 2 本**。
-**対照**: 屋根の無い地表の石の上（空 15）では 1 本のまま。明るさを `console.log` に出してから判定。
+- **`test/items.test.ts`**（粘土玉の件 432 行あたりの形をそのまま）: 名前・色・置ける/道具/食べ物・1 枠の数を
+  1 行に出してから、**置けない・道具でない・食べ物でない・64 個**。**色の隔たり**: 全アイテムでいちばん近い相手と
+  隔たりを出してから **`>= 20`**。**`allItemIds()` に 189 が入る**（`MAX_ITEM_ID` の突き合わせは 450 行あたりの
+  「比べる相手を新しい番号に」の作法。**古い `=== COAL_BLOCK` を残すと TS2367**）
+- **`test/blocks.test.ts`**:
+  - 共有帯の一覧（391 行）に **`sharedItems[67] === GLOWSTONE_DUST && MAX_ITEM_ID === GLOWSTONE_DUST`**
+    （`COAL_BLOCK` の突き合わせは一覧側だけ残す）。コメントは「**189 は手で足したアイテム**（ブロックは増えない）」
+  - **空きの件を「111..255 の空きは 66（グロウストーンダスト 189 で 1 個減った）」に**（数え直し。ゆるめではない）
+  - **落とし物**（粘土の 1509 行の件の形）: `rollDrop(GLOWSTONE, 0)` と `rollDrops(GLOWSTONE, 0.99, 0.99)` を
+    出してから、**粉 3 個・1 山だけ**・**素手でも `canHarvest` が真**・**ブロック 47 そのものは落ちない**
+  - **ブロック 189 は存在しない**（アイテムだけ。`blockDef` / 共有帯のブロック側の一覧に 189 が無い）
+- **`test/crafting.test.ts`**（雪・粘土の 209 / 229 行の形）: **粉 4 個の 2x2 → グロウストーン 1 個** /
+  **掘って戻す**: 掘った粉 3 個では組めず（`count < 4` を出す）・4 個で 1 個（目減りが本家どおりなのを 1 行出す）/
+  **粉 3 個や 1x2 では組めない**
 
 ## 6. このタスク固有の禁じ手
 
-- **`Math.random(` を入れないこと**（見張りが落ちます）/ **`World` を import しないこと** / **`main.ts` に 1 行も書かないこと**
-- **`blocks.ts` を触らないこと** —— **「明るい所には置けない」「明るくなると壊れる」は足さない**（本家には
-  あるが、置く側・壊す側の話で 1 周ぶん。`TUNING.md` に 1 行・見送りは `docs/autodev-log.md`）
-- **自然に生えたキノコを印にしないこと**（生成を触らない。「地形は保存しない」の設計違反になる）
-- **表を 2 つに割らないこと** / **`growStack()` / `growTree()` を書き換えないこと** / **菌糸（本家の「菌糸の上なら明るくても」）は足さない**（ブロックが無い）/ **47 以降に手を出さないこと** / `SaveData.version` は 1 のまま / **判定をゆるめないこと**
+- **`test/blocks.test.ts` の「extra は 1 山目と別のアイテム」をゆるめないこと** —— 粉を 2 山に割って 2〜4 個に
+  見せる形は取らない / **`rollDrops()` / `Drop` の型に min・max を足さないこと**（乱数をもう 1 本流す話で、
+  `breaking.ts` と `main.ts` に及ぶ）/ **`main.ts` に 1 行も書かないこと**
+- **ブロック 189 を作らないこと**・**`def(GLOWSTONE)` を触らないこと**・**`nethergen.ts`（ぶら下がる量）を触らないこと**
+- **既存の ID を振り直さないこと**・`SaveData.version` は 1 のまま / **色の判定 `>= 20` をゆるめないこと**
+- **醸造・レッドストーンの材料としての使い道は足さない**（見送り済み）/ **48 以降に手を出さないこと**
 
 ## 7. 終了条件
 
-- `npm run typecheck` / **`npm test`** / `npm run build` 緑。**`bench` は不要**（生成もメッシュ化も触らない）
-- **C-3**: 広がるのは時間が経ってからで既存の場面には写らない。**`npm run shot -- terrain` を直す前と後で
-  `md5sum` を比べる**（同一のはず。違ったら `Read` で見て理由を書く）
-- **コミット 1 つを `master` へ push** / キューの 46 を消す / この仕様書を **`状態: 済`** /
-  `rules/stateful-blocks.md` の「育つもの」に 1 段（**道が 5 つ**・**`CropWorld` の入口が 4 つ**（167 行の
-  「3 つだけ」を直す）・**広げる先は `births` に集めて for の後で足す**・**乱数の代わりに座標**）/
-  `TUNING.md` に 1 節（280 秒 / 12 以下 / 5 本 / 自然のものは広がらない / 置く・壊すは明るさを見ない）/
-  `docs/autodev-log.md` に 1 節 / **`HANDOFF.md` を書き直す**
+- `npm run typecheck` / **`npm test`**（すべて緑・**3969 → 3977〜3981 あたり**）/ `npm run build` 緑。
+  **`bench` は不要**（生成もメッシュ化も触らない）
+- **C-3**: 一覧に 1 枠増える（見た目に出る）。**`node tools/browsershot.mjs` で一覧を撮って `Read` で見ること**
+  （**名前が 10 文字で `.slot .label` が折れる**のは既知の人の判断待ち。**58 枠目**として `HANDOFF.md` に書く）。
+  **ブロックの絵は変わらない**ので `npm run shot -- terrain` の md5 は前（`f4077e98789fb23ad94f9e3472997aa8`）と同一のはず
+- **コミット 1 つを `master` へ push** / キューの 47 を消す / この仕様書を **`状態: 済`** /
+  **`ROADMAP.md` の予約表に 189 を「実装済み」** / `TUNING.md` に 1 節（3 個固定・目減り・色）/
+  `docs/autodev-log.md` に 1 節 / 踏んだ落とし穴を `rules/` へ / **`HANDOFF.md` を書き直す**
