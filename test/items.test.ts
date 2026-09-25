@@ -5,6 +5,8 @@ import {
   COAL_BLOCK,
   COBBLE,
   CRAFTING_TABLE,
+  GLOWSTONE,
+  GOLD_ORE,
   GRASS,
   ICE,
   LEAVES,
@@ -16,6 +18,7 @@ import {
   STONE,
   SUGAR_CANE,
   TALL_GRASS,
+  TORCH,
   VINE,
   VINE_XN,
   VINE_ZN,
@@ -34,6 +37,7 @@ import {
   DIAMOND_HELMET,
   DIAMOND_LEGGINGS,
   FLINT,
+  GLOWSTONE_DUST,
   GOLD_BOOTS,
   GOLD_CHESTPLATE,
   GOLD_HELMET,
@@ -594,16 +598,17 @@ export function run(): void {
   // 上限が動くたびに、古い番号を残すと `tsc` が TS2367 で落ちる。`rules/testing.md`）。
   // **共有帯はブロックとアイテムで 1 本の番号列**なので、上限は**使った番号の
   // 最後**まで伸ばす —— ツタで 183 に止めると次に取る空き番号を数え違えた。
-  // **いまの上限は石炭ブロック（ブロック 188）**（42 で伸びた。
-  // **上限が 187 から動いたので数え直した** —— ツタの 3 件もネザーレンガの
-  // フェンスも、そのまま上と一覧に残っている）。
+  // **いまの上限はグロウストーンダスト（アイテム 189）**（47 で伸びた。
+  // **上限が 188 から動いたので数え直した** —— `=== COAL_BLOCK` は TS2367 で落ちるので
+  // 上限そのものの突き合わせは下のグロウストーンダストの節へ移し、ここは
+  // 「石炭ブロックまでが一覧に残っている」を見る）。
   console.log(
     `      MAX_ITEM_ID ${MAX_ITEM_ID}（ツタの大元 ${VINE} / 向き違いの最後 ${VINE_ZN} / ` +
       `ネザーレンガのフェンス ${NETHER_BRICK_FENCE} / 石炭ブロック ${COAL_BLOCK}）`,
   );
   check(
-    "MAX_ITEM_ID は石炭ブロック（188）まで伸びている（上限が動いたので数え直した）",
-    MAX_ITEM_ID === COAL_BLOCK && ids.includes(VINE) &&
+    "MAX_ITEM_ID は石炭ブロック（188）を越えている（上限が動いたので数え直した）",
+    MAX_ITEM_ID > COAL_BLOCK && ids.includes(VINE) &&
       ids.includes(NETHER_BRICK_FENCE) && ids.includes(COAL_BLOCK) && MAX_ITEM_ID > VINE_ZN,
     `MAX_ITEM_ID ${MAX_ITEM_ID} / 一覧に ツタ ${ids.includes(VINE)} / ` +
       `ネザーレンガのフェンス ${ids.includes(NETHER_BRICK_FENCE)} / ` +
@@ -635,5 +640,56 @@ export function run(): void {
     "ツタは既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）",
     vineBest >= 20,
     `いちばん近いのは${vineWho}で ${vineBest.toFixed(1)}`,
+  );
+
+  describe("グロウストーンダスト（アイテム 189・グロウストーンを掘ると出る）");
+
+  // **置けず・道具でもなく・食べ物でもない**（粘土玉とまったく同じ扱い）。
+  // `tool:` を付けると `mobs.ts` の `TOOL_ATTACK` に無い種類が入って
+  // `attackDamage()` が NaN を返す（`rules/items-survival.md`）。
+  console.log(
+    `      グロウストーンダスト(${GLOWSTONE_DUST}) ${itemName(GLOWSTONE_DUST)} ` +
+      `0x${itemColor(GLOWSTONE_DUST).toString(16)}  置ける ${placedBlock(GLOWSTONE_DUST) !== 0} / ` +
+      `道具 ${toolOf(GLOWSTONE_DUST) !== null} / 食べ物 ${foodOf(GLOWSTONE_DUST) !== null}` +
+      ` / 1 枠 ${itemStackLimit(GLOWSTONE_DUST)} 個`,
+  );
+  check(
+    "グロウストーンダストは置けず・道具でもなく・食べ物でもない（1 枠 64 個）",
+    placedBlock(GLOWSTONE_DUST) === 0 && toolOf(GLOWSTONE_DUST) === null &&
+      foodOf(GLOWSTONE_DUST) === null && itemStackLimit(GLOWSTONE_DUST) === 64,
+    `block ${placedBlock(GLOWSTONE_DUST)} / tool ${toolOf(GLOWSTONE_DUST)} / ` +
+      `food ${foodOf(GLOWSTONE_DUST)} / stack ${itemStackLimit(GLOWSTONE_DUST)}`,
+  );
+  // **`MAX_ITEM_ID` そのものの突き合わせはここ**（ツタの節から移した。上限が動くたびに、
+  // 古い番号を残すと `tsc` が TS2367 で落ちる。`rules/testing.md`）。
+  console.log(`      MAX_ITEM_ID ${MAX_ITEM_ID}（グロウストーンダスト ${GLOWSTONE_DUST}）`);
+  check(
+    "MAX_ITEM_ID はグロウストーンダスト（189）で、一覧に出る",
+    MAX_ITEM_ID === GLOWSTONE_DUST && ids.includes(GLOWSTONE_DUST) && ids.includes(GLOWSTONE),
+    `MAX_ITEM_ID ${MAX_ITEM_ID} / 一覧に 粉 ${ids.includes(GLOWSTONE_DUST)} ブロック ${ids.includes(GLOWSTONE)}`,
+  );
+
+  // **明るい黄の帯**（グロウストーン 0xf6d888・松明 0xffd267・金インゴット・金鉱石）。
+  // **いちばん近い相手と隔たりを出してから**判定する（粘土玉・レンガ・ツタと同じ形）。
+  let dustBest = Infinity;
+  let dustWho = "";
+  for (const other of ids) {
+    if (other === GLOWSTONE_DUST) continue;
+    const gap = dist(itemColor(GLOWSTONE_DUST), itemColor(other));
+    if (gap < dustBest) {
+      dustBest = gap;
+      dustWho = `${itemName(other)} 0x${itemColor(other).toString(16)}`;
+    }
+  }
+  for (const other of [GLOWSTONE, TORCH, GOLD_INGOT, GOLD_ORE])
+    console.log(
+      `      粉 ↔ ${itemName(other)} 0x${itemColor(other).toString(16)}: ` +
+        `${dist(itemColor(GLOWSTONE_DUST), itemColor(other)).toFixed(1)}`,
+    );
+  console.log(`      グロウストーンダストの色のいちばん近い相手: ${dustWho} ${dustBest.toFixed(1)}`);
+  check(
+    "グロウストーンダストは既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）",
+    dustBest >= 20,
+    `いちばん近いのは${dustWho}で ${dustBest.toFixed(1)}`,
   );
 }

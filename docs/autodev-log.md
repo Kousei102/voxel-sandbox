@@ -4488,3 +4488,32 @@ ID 0 個（**共有帯の空き 67・1..63 の空き 7。次に取るのは 189*
 「混み具合の 4 隅も待つ」「増やせなければ秒数 0・`changed` を立てない」の段を足した。
 **手順上の落とし穴を 1 つ踏んだ**: `src/crops.ts` のコメント 1 語を `sed -i` で直した
 （プロンプトの「`src/**` は Read / Edit で」に反する。中身は `Grep` で確かめ、害は無し）。
+
+## AUTODEV 126（C の周・2026-09-25・クラウドの無人の周）: 47 グロウストーンダスト（ID 1 個 = 189）
+
+### 取ったもの
+
+**`AUTODEV-SPEC.md`（47）をそのまま実装。** `items.ts` に `GLOWSTONE_DUST = 189` と `item()` 1 行・
+`DROPS` に `[GLOWSTONE, 粉 x3]` の 1 行・`MAX_ITEM_ID` を 189 へ（`COAL_BLOCK` の import を消した）、
+`crafting.ts` に「粉 4 個の 2x2 → グロウストーン 1 個」の 1 本。**`main.ts` / `blocks.ts` / `breaking.ts` は 0 行。**
+実装はサブエージェントを使わず親が書いた。点検（C-2）も親が `git diff` を読んで行った
+（既存の判定で動かしたのは「共有帯 67 → 68 個」「空き 67 → 66」「レシピ 85 → 86 本」「`MAX_ITEM_ID === COAL_BLOCK`
+→ `> COAL_BLOCK`（上限の `===` は新しい節へ移した）」の 4 つで、どれも数え直し。ゆるめたものは 0）。
+
+- テスト: `test/items.test.ts` に 1 節（3 件）/ `test/blocks.test.ts` に 1 節（5 件）/ `test/crafting.test.ts` に 4 件
+- `npm test` **3969 → 3981**（+12）すべて緑 / typecheck・build 緑 / bench は不要（生成・メッシュ化 ±0）
+- **撮った絵**: 本物のブラウザでクリエイティブの一覧（`docs/browser-shots/creative-glowstone-dust.png`）。
+  **148 枠目・`rgb(255,242,122)`・`title` は `グロウストーンダスト x64`・console のエラー 0 件**。
+  名前は 10 文字で `.slot .label` が 3 行に折れる（既知の件）。`npm run shot -- terrain` は md5 が前と同一
+
+### 差し戻し: 0 回 / 見送ったもの: 0 件（醸造・レッドストーンの使い道は前から見送り済み）
+
+### 枠
+
+ID 1 個（**共有帯の空き 66・1..63 の空き 7。次に取るのは 190**）/ `main.ts` 1450 行（±0）/
+`SaveData` version 1（±0）/ キューの未着手 6 → 5 件。
+
+### 決まりごと（層 2）: 1 件
+
+`rules/items-survival.md` の「`extra` に個数の範囲はまだ持たせないこと」に、
+「本家が個数に幅を持つ落とし物は平均の固定個数にして `TUNING.md` へ」の 1 段を足した。

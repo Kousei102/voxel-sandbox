@@ -6,6 +6,7 @@ import {
   CAKE,
   CLAY,
   COAL_BLOCK,
+  GLOWSTONE,
   COBBLE,
   CRAFTING_TABLE,
   DIAMOND_BLOCK,
@@ -53,6 +54,7 @@ import {
   CHARCOAL,
   CLAY_BALL,
   COAL,
+  GLOWSTONE_DUST,
   DIAMOND,
   DIAMOND_BOOTS,
   DIAMOND_CHESTPLATE,
@@ -283,6 +285,46 @@ export function run(): void {
       smelted?.out === BRICK_ITEM && smelted.count === 1 && bricksMade === 4 &&
       fromBricks?.out === BRICK && fromBricks.count === 1,
     `粘土玉 ${clayDug.count} / レンガ ${bricksMade} / ${fromBricks?.name ?? "無し"} x${fromBricks?.count ?? 0}`,
+  );
+
+  // --- グロウストーン（掘って出た粉を戻す・47） ---
+  // **雪・粘土と同じ対。** グロウストーンを掘ると粉 3 個になるので、これが無いと
+  // グロウストーンが二度と置けない（`items.ts` の `DROPS` の `GLOWSTONE`）。
+  // 鍵は別の表にしておく（上の `P` の文字を取り合わないため）。
+  const X = { X: GLOWSTONE_DUST };
+  const glowBlock = findRecipe(grid(2, ["XX", "XX"], X), 2);
+  const glowThree = findRecipe(grid(2, ["XX", "X."], X), 2);
+  const glowPair = findRecipe(grid(2, ["XX"], X), 2);
+  const glowColumn = findRecipe(grid(2, ["X.", "X."], X), 2);
+  console.log(
+    `      粉 2x2 → ${glowBlock?.name ?? "無し"} x${glowBlock?.count ?? 0}` +
+      `（3 個: ${glowThree?.name ?? "無し"} / 横 2 個: ${glowPair?.name ?? "無し"} / 縦 2 個: ${glowColumn?.name ?? "無し"}）`,
+  );
+  check(
+    "グロウストーンダスト 4 個（2x2）→ グロウストーン 1 個（作業台が要らない）",
+    glowBlock?.out === GLOWSTONE && glowBlock.count === 1,
+    `${glowBlock?.name ?? "無し"} x${glowBlock?.count ?? 0}`,
+  );
+  check("粉 3 個では作れない", glowThree === null, glowThree?.name ?? "無し");
+  check(
+    "粉 2 個（1x2 / 2x1）では作れない",
+    glowPair === null && glowColumn === null,
+    `${glowPair?.name ?? "無し"} / ${glowColumn?.name ?? "無し"}`,
+  );
+  // **掘って戻す道**: 1 個掘ると粉 3 個 —— 4 個に足りないので、**2 個掘って粉 6 個から
+  // 1 個組み直すと粉 2 個余る**（本家も平均 3 < 4 で目減りする）。1 本の道として出してから判定する。
+  const glowDug = rollDrop(GLOWSTONE, 0.5);
+  const need = glowBlock ? 4 : 0;
+  console.log(
+    `      掘って戻す: グロウストーン(${GLOWSTONE}) を掘る → ${itemName(glowDug.item)} x${glowDug.count}` +
+      `（2x2 に要るのは ${need} 個 → 1 個掘っただけでは ${glowDug.count < need ? "組めない" : "組める"}・` +
+      `2 個掘ると ${glowDug.count * 2} 個で 1 個組めて ${glowDug.count * 2 - need} 個余る）`,
+  );
+  check(
+    "掘った粉 3 個では組めず、2 個ぶん（6 個）で 1 個組める（本家どおりの目減り）",
+    glowDug.item === GLOWSTONE_DUST && glowDug.count === 3 && glowDug.count < need &&
+      glowDug.count * 2 >= need && glowBlock?.out === GLOWSTONE,
+    `粉 ${glowDug.count} 個 / 要る ${need} 個`,
   );
 
   // --- 火打石と打ち金 ---
@@ -893,8 +935,8 @@ export function run(): void {
   // **本数も 1 件として見張る** —— レシピを足したのに表から漏れていたら、
   // 上の `findRecipe` だけでは「揃わないのが正しい」と読めてしまう。
   check(
-    "レシピは 85 本（石炭ブロックのしまう／戻すで 2 本増えた。しまう材質が 4 つになったので数え直した）",
-    RECIPES.length === 85,
+    "レシピは 86 本（グロウストーンダスト 4 個 → グロウストーンで 1 本増えた。数え直した）",
+    RECIPES.length === 86,
     `${RECIPES.length} 本`,
   );
 

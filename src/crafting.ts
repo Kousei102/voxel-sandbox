@@ -14,6 +14,7 @@ import {
   DIAMOND_BLOCK,
   FENCE,
   FURNACE,
+  GLOWSTONE,
   GOLD_BLOCK,
   IRON_BLOCK,
   LADDER,
@@ -71,6 +72,7 @@ import {
   FEATHER,
   FLINT,
   FLINT_AND_STEEL,
+  GLOWSTONE_DUST,
   GOLDEN_APPLE,
   GOLD_BOOTS,
   GOLD_CHESTPLATE,
@@ -239,6 +241,13 @@ export const RECIPES: readonly Recipe[] = [
   // 置けない（`items.ts` の `DROPS` の `CLAY` の行）。形は雪ブロック・作業台と同じだが
   // 材料が違うので、形の重複にはならない。
   { name: "粘土", out: CLAY, count: 1, shape: ["BB", "BB"], key: { B: CLAY_BALL } },
+
+  // グロウストーンダスト 4 個 → グロウストーン 1 個（Minecraft と同じ）。2x2 に収まるので
+  // 作業台が要らない。**掘ると粉 3 個が落ちるようになった対の片割れ**で、これが無いと
+  // グロウストーンが二度と置けない（`items.ts` の `DROPS` の `GLOWSTONE` の行）。
+  // **落ちるのは 3 個・戻すのは 4 個で、掘って組み直すと 1 個目減りする**のは本家どおり
+  // （本家も 2〜4 個・平均 3）。**ここの 4 を 3 に下げないこと。**
+  { name: "グロウストーン", out: GLOWSTONE, count: 1, shape: ["BB", "BB"], key: { B: GLOWSTONE_DUST } },
 
   // レンガ 4 個 → レンガブロック 1 個（Minecraft と同じ）。2x2 に収まるので作業台が要らない。
   // **`BRICK` は `blocks.ts` の 12・`BRICK_ITEM` は `items.ts` の 170** で別物

@@ -30,6 +30,7 @@ import {
   FRAME_HEIGHT,
   GOLD_BLOCK,
   GLASS,
+  GLOWSTONE,
   GRASS,
   GRAVEL,
   ICE,
@@ -164,6 +165,7 @@ import {
   GOLD_BOOTS,
   GOLD_CHESTPLATE,
   GOLD_HELMET,
+  GLOWSTONE_DUST,
   GOLD_INGOT,
   GOLD_LEGGINGS,
   IRON_BOOTS,
@@ -290,8 +292,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタ・ネザーレンガのフェンス・石炭ブロックの 67 個（188 まで。**石炭ブロックが入ったので数え直した** —— 名指しの一覧はそのままで、末尾に 1 個足しただけ）",
-    sharedItems.length === 67 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタ・ネザーレンガのフェンス・石炭ブロック・グロウストーンダストの 68 個（189 まで。**グロウストーンダストが入ったので数え直した** —— 名指しの一覧はそのままで、末尾に 1 個足しただけ）",
+    sharedItems.length === 68 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -389,15 +391,18 @@ export function run(): void {
       // **比べる相手を新しい番号に直すこと** —— 古い番号のまま残すと `tsc` が
       // TS2367 で落ちます。`rules/testing.md`）。
       sharedItems[66] === COAL_BLOCK &&
-      MAX_ITEM_ID === COAL_BLOCK,
+      // **189 は手で足したアイテム**（グロウストーンダスト。ブロックは増えない ——
+      // 組み上がる先は低帯の `GLOWSTONE`(47) なので）。上限がアイテム側に戻った。
+      sharedItems[67] === GLOWSTONE_DUST &&
+      MAX_ITEM_ID === GLOWSTONE_DUST,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 67（石炭ブロック 188 で 1 個減った。番号を 1 つ取ったので数え直した）",
-    sharedFree === 67,
+    "111..255 の空きは 66（グロウストーンダスト 189 で 1 個減った。番号を 1 つ取ったので数え直した）",
+    sharedFree === 66,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1409,6 +1414,7 @@ export function run(): void {
   coalBlocks();
   saplings();
   clay();
+  glowstoneDust();
   brickNames();
 
   world.dispose();
@@ -1536,6 +1542,65 @@ function clay(): void {
     "粘土の音は砂利と同じ粒の音",
     d.sound === "sand" && d.sound === blockDef(GRAVEL).sound,
     `粘土 ${d.sound} / 砂利 ${blockDef(GRAVEL).sound}`,
+  );
+}
+
+/**
+ * グロウストーン（ブロック 47）を掘るとグロウストーンダスト（アイテム 189）が 3 個（47）。
+ * **粘土とまったく同じ対**で、2x2 で戻せることは `test/crafting.test.ts`、色は `test/items.test.ts`。
+ *
+ * ここで守りたいのは 3 点:
+ *
+ * - **粉 3 個・1 山だけ**（本家は 2〜4 個。個数の範囲を持てないので平均で固定。
+ *   **2 山目に粉を割っていないこと** —— 「extra は 1 山目と別のアイテム」に当たる）
+ * - **素手でも落ちる**（`minTier` を書いていない。本家もどの道具でも落ちる）
+ * - **ブロック 47 そのものは落ちない / ブロック 189 は無い**（アイテムだけ）
+ */
+function glowstoneDust(): void {
+  describe("グロウストーンダスト（47・グロウストーンを掘ると粉 3 個）");
+
+  const d = blockDef(GLOWSTONE);
+  const byHand = rollDrop(GLOWSTONE, 0.5);
+  const stacks = rollDrops(GLOWSTONE, 0.99, 0.99);
+  console.log(
+    `      グロウストーン(${GLOWSTONE}): 硬さ ${d.hardness} / 道具 ${d.tool} 階層 ${d.minTier} / ` +
+      `素手で収穫 ${canHarvest(GLOWSTONE, NO_ITEM)} / 木のツルハシで収穫 ${canHarvest(GLOWSTONE, WOOD_PICKAXE)}`,
+  );
+  console.log(
+    `      掘ると: ${itemName(byHand.item)} x${byHand.count}（山 ${stacks.length} 個: ` +
+      `${stacks.map((s) => `${itemName(s.item)} x${s.count}`).join(" / ")}）`,
+  );
+  check(
+    "グロウストーンを掘るとグロウストーンダストが 3 個落ちる（山は 1 つ）",
+    byHand.item === GLOWSTONE_DUST && byHand.count === 3 && stacks.length === 1 &&
+      stacks[0].item === GLOWSTONE_DUST && stacks[0].count === 3,
+    `${itemName(byHand.item)} x${byHand.count}（山 ${stacks.length} 個）`,
+  );
+  check(
+    "グロウストーンそのものは落ちない（だから 2x2 で戻す必要がある）",
+    byHand.item !== GLOWSTONE && stacks.every((s) => s.item !== GLOWSTONE),
+    stacks.map((s) => `${itemName(s.item)} x${s.count}`).join(" / "),
+  );
+  check(
+    "グロウストーンは素手でも収穫になる（minTier を書いていない）",
+    canHarvest(GLOWSTONE, NO_ITEM) && canHarvest(GLOWSTONE, WOOD_PICKAXE),
+    `素手 ${canHarvest(GLOWSTONE, NO_ITEM)} / 木のツルハシ ${canHarvest(GLOWSTONE, WOOD_PICKAXE)}`,
+  );
+  const rolls = [0.0, 0.25, 0.5, 0.75, 0.99].map((r) => rollDrop(GLOWSTONE, r));
+  console.log(`      乱数を振っても: ${rolls.map((x) => `${itemName(x.item)} x${x.count}`).join(" / ")}`);
+  check(
+    "乱数を振っても必ず粉 3 個（chance は 1）",
+    rolls.every((x) => x.item === GLOWSTONE_DUST && x.count === 3),
+    rolls.map((x) => `${itemName(x.item)} x${x.count}`).join(" / "),
+  );
+  // **ブロック 189 は作らない**（アイテムだけ）。`blockDef()` は定義の無い ID を
+  // 空気として返すので、`BLOCKS` に 189 が無いことを直に見る。
+  const block189 = BLOCKS.find((b) => b.id === GLOWSTONE_DUST);
+  console.log(`      ブロック ${GLOWSTONE_DUST}: ${block189 ? block189.name : "無し"} / 置くと ${placedBlock(GLOWSTONE_DUST)}`);
+  check(
+    "ブロック 189 は存在しない（グロウストーンダストはアイテムだけ・置けない）",
+    block189 === undefined && placedBlock(GLOWSTONE_DUST) === AIR,
+    `${block189?.name ?? "無し"} / ${placedBlock(GLOWSTONE_DUST)}`,
   );
 }
 
