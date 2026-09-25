@@ -29,6 +29,7 @@ import {
   RAW_CHICKEN,
   RAW_PORK,
   ROTTEN_FLESH,
+  SPIDER_EYE as SPIDER_EYE_ITEM,
   STONE_AXE,
   STRING,
   WOOD_AXE,
@@ -2473,52 +2474,71 @@ export function run(): void {
       `${shot.length} 件: ${shot.map(itemName).join(" ")}`);
   }
   {
-    // --- クモを倒すと糸 1 個（**殴った側と撃った側を並べて**） ---
+    // --- クモを倒すと糸 1 個（+ クモの目 1 個が 1/3 の確率。48）---
     // 鶏・牛とまったく同じ測り方。**片方だけ直すと弓で撃ったときだけ落ちない**という
-    // 形が戻るので、2 山目を持たないモブでも並べて測る（`rules/mobs.md`）。
-    // **`chance` は 1**（本家の 0〜2 個ではなく 1 個固定。羽根・革と同じ線引き）。
+    // 形が戻るので、殴った側と撃った側を並べて測る（`rules/mobs.md`）。
+    // 糸の **`chance` は 1**（本家の 0〜2 個ではなく 1 個固定。羽根・革と同じ線引き）。
+    // **2 山目のクモの目は 1/3**（本家どおり）。スケルトンの矢と同じ形で割合を数える。
     const table = MOBS.spider.drop;
     console.log(
-      `      クモの表: ${itemName(table.item)} x${table.count}/${table.chance}` +
-        ` + 2 山目 ${table.extra ? itemName(table.extra.item) : "なし"}`,
+      `      クモの表: ${itemName(table.item)} x${table.count}/${table.chance} + ` +
+        `2 山目 ${itemName(table.extra?.item ?? NO_ITEM)} x${table.extra?.count}/${table.extra?.chance}`,
     );
-    check("表は糸 1 個・必ず落ちる・2 山目は無い",
-      table.item === STRING && table.count === 1 && table.chance === 1 && table.extra === undefined,
-      `${itemName(table.item)} x${table.count}/${table.chance} / extra ${table.extra ? "あり" : "なし"}`);
+    check("表は糸 1 個（必ず）+ クモの目 1 個（1/3 の確率）",
+      table.item === STRING && table.count === 1 && table.chance === 1 &&
+        table.extra?.item === SPIDER_EYE_ITEM && table.extra.count === 1 && table.extra.chance === 1 / 3,
+      `${itemName(table.item)} x${table.count}/${table.chance} / ` +
+        `${itemName(table.extra?.item ?? NO_ITEM)} x${table.extra?.count}/${table.extra?.chance}`);
 
-    const arena = fightArena();
-    const punched: number[] = [];
-    {
+    // **乱数は 1 本を回し続けること**（`rules/testing.md`。1 体ずつ種を作ると偏る）。
+    const punchRandom = seeded(263);
+    const punched: number[][] = [];
+    for (let i = 0; i < 200; i++) {
       const pack = new Mobs();
-      pack.onDrop = (item) => punched.push(item);
-      const c = ctx({ random: seeded(263) });
-      const spider = pack.spawn("spider", 0.5, 11, 3.5, 0, seeded(269));
-      while (pack.count > 0) {
-        pack.attack(spider, DIAMOND_SWORD, c);
-        advance(pack, arena, c, COOLDOWN_FRAMES);
-      }
+      const got: number[] = [];
+      pack.onDrop = (item) => got.push(item);
+      const c = ctx({ random: punchRandom });
+      const spider = pack.spawn("spider", 0.5, 11, 3.5, 0, punchRandom);
+      spider.health = 1; // 1 発で倒れるようにしておく
+      pack.attack(spider, DIAMOND_SWORD, c, punchRandom);
+      punched.push(got);
     }
-    const shot: number[] = [];
-    {
+    const shotRandom = seeded(271);
+    const shot: number[][] = [];
+    for (let i = 0; i < 200; i++) {
       const pack = new Mobs();
       const flying = new Projectiles();
-      pack.onDrop = (item) => shot.push(item);
-      const c = ctx({ random: seeded(271) });
-      const spider = pack.spawn("spider", 3.5, 11, 0.5, 0, seeded(277));
+      const got: number[] = [];
+      pack.onDrop = (item) => got.push(item);
+      const c = ctx({ random: shotRandom });
+      const spider = pack.spawn("spider", 3.5, 11, 0.5, 0, shotRandom);
+      spider.health = 1; // 1 本で倒れるようにしておく
       const target = pack.projectileTargets(c).find((t) => t.owner === spider.id)!;
       const arrow = flying.spawn("arrow", 0.5, 12, 0.5, 0, 0, -1, PLAYER_OWNER, 100);
       pack.hitByProjectile(arrow!, target, c);
+      shot.push(got);
     }
+    const rate = (rows: number[][], item: number): number =>
+      rows.filter((got) => got.includes(item)).length / rows.length;
     console.log(
-      `      クモを倒す: 殴って ${punched.map(itemName).join(" ") || "なし"} / ` +
-        `矢で ${shot.map(itemName).join(" ") || "なし"}`,
+      `      200 体ずつ: 殴って 糸 ${(rate(punched, STRING) * 100).toFixed(0)}% ・ ` +
+        `目 ${(rate(punched, SPIDER_EYE_ITEM) * 100).toFixed(1)}% / ` +
+        `撃って 糸 ${(rate(shot, STRING) * 100).toFixed(0)}% ・ 目 ${(rate(shot, SPIDER_EYE_ITEM) * 100).toFixed(1)}%` +
+        `（表は 100% / ${((table.extra?.chance ?? 0) * 100).toFixed(1)}%）`,
     );
-    check("殴って倒すと糸 1 個",
-      punched.length === 1 && punched[0] === STRING,
-      `${punched.length} 件: ${punched.map(itemName).join(" ")}`);
-    check("矢で倒しても糸 1 個（同じ 1 本を通る。弓のときだけ消えない）",
-      shot.length === 1 && shot[0] === STRING,
-      `${shot.length} 件: ${shot.map(itemName).join(" ")}`);
+    check("殴って倒すと糸は必ず 1 個で、1 山目",
+      rate(punched, STRING) === 1 && punched.every((got) => got[0] === STRING && got.length <= 2),
+      `${(rate(punched, STRING) * 100).toFixed(0)}%`);
+    check("矢で倒しても糸は必ず 1 個で、1 山目（同じ 1 本を通る）",
+      rate(shot, STRING) === 1 && shot.every((got) => got[0] === STRING && got.length <= 2),
+      `${(rate(shot, STRING) * 100).toFixed(0)}%`);
+    // 1/3 の二項で 200 体なら σ ≈ 3.3%。**20〜47% は ±4σ**（幅は値を見る前に決めた）。
+    check("殴って倒すとクモの目が 1/3 の確率で 2 山目（20〜47%）",
+      rate(punched, SPIDER_EYE_ITEM) >= 0.2 && rate(punched, SPIDER_EYE_ITEM) <= 0.47,
+      `${(rate(punched, SPIDER_EYE_ITEM) * 100).toFixed(1)}%`);
+    check("矢で倒してもクモの目が 1/3 の確率で 2 山目（20〜47%。弓のときだけ消えない）",
+      rate(shot, SPIDER_EYE_ITEM) >= 0.2 && rate(shot, SPIDER_EYE_ITEM) <= 0.47,
+      `${(rate(shot, SPIDER_EYE_ITEM) * 100).toFixed(1)}%`);
   }
   {
     // --- スケルトンを倒すと骨 1 個（+ 矢 1 本が半分の確率）---

@@ -8,10 +8,12 @@ import {
   GLOWSTONE,
   GOLD_ORE,
   GRASS,
+  BED,
   ICE,
   LEAVES,
   NETHER_BRICK_FENCE,
   OBSIDIAN,
+  RED_MUSHROOM,
   SAPLING,
   SPRUCE_LEAVES,
   SPRUCE_SAPLING,
@@ -25,6 +27,7 @@ import {
   VINE_ZP,
 } from "../src/blocks";
 import {
+  APPLE,
   BONE,
   BRICK_ITEM,
   BUCKET,
@@ -54,8 +57,10 @@ import {
   LEATHER_HELMET,
   LEATHER_LEGGINGS,
   MAX_ITEM_ID,
+  RAW_BEEF,
   ROTTEN_FLESH,
   SHEARS,
+  SPIDER_EYE,
   STEAK,
   STICK,
   STRING,
@@ -660,12 +665,12 @@ export function run(): void {
     `block ${placedBlock(GLOWSTONE_DUST)} / tool ${toolOf(GLOWSTONE_DUST)} / ` +
       `food ${foodOf(GLOWSTONE_DUST)} / stack ${itemStackLimit(GLOWSTONE_DUST)}`,
   );
-  // **`MAX_ITEM_ID` そのものの突き合わせはここ**（ツタの節から移した。上限が動くたびに、
-  // 古い番号を残すと `tsc` が TS2367 で落ちる。`rules/testing.md`）。
+  // 上限はクモの目（190）へ移った。**ここは「上限の内側で一覧に出る」だけを見る**
+  // （`===` の突き合わせはクモの目の節。古い番号を残すと `tsc` が TS2367 で落ちる）。
   console.log(`      MAX_ITEM_ID ${MAX_ITEM_ID}（グロウストーンダスト ${GLOWSTONE_DUST}）`);
   check(
-    "MAX_ITEM_ID はグロウストーンダスト（189）で、一覧に出る",
-    MAX_ITEM_ID === GLOWSTONE_DUST && ids.includes(GLOWSTONE_DUST) && ids.includes(GLOWSTONE),
+    "グロウストーンダスト（189）は MAX_ITEM_ID の内側で、一覧に出る",
+    MAX_ITEM_ID > GLOWSTONE_DUST && ids.includes(GLOWSTONE_DUST) && ids.includes(GLOWSTONE),
     `MAX_ITEM_ID ${MAX_ITEM_ID} / 一覧に 粉 ${ids.includes(GLOWSTONE_DUST)} ブロック ${ids.includes(GLOWSTONE)}`,
   );
 
@@ -691,5 +696,57 @@ export function run(): void {
     "グロウストーンダストは既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）",
     dustBest >= 20,
     `いちばん近いのは${dustWho}で ${dustBest.toFixed(1)}`,
+  );
+
+  describe("クモの目（48・アイテム 190・クモが 1/3 で落とす・食べると毒）");
+
+  // **置けず・道具でもないが、食べ物ではある**（腐った肉と同じ扱い）。
+  const eye = foodOf(SPIDER_EYE);
+  console.log(
+    `      クモの目(${SPIDER_EYE}) ${itemName(SPIDER_EYE)} ` +
+      `0x${itemColor(SPIDER_EYE).toString(16)}  置ける ${placedBlock(SPIDER_EYE) !== 0} / ` +
+      `道具 ${toolOf(SPIDER_EYE) !== null} / 食べ物 ${eye ? `${eye.hunger} / ${eye.saturation} 毒 ${eye.poison}` : "無し"}` +
+      ` / 1 枠 ${itemStackLimit(SPIDER_EYE)} 個`,
+  );
+  check(
+    "クモの目は置けず・道具でもない（1 枠 64 個）・名前は「クモの目」",
+    placedBlock(SPIDER_EYE) === 0 && toolOf(SPIDER_EYE) === null &&
+      itemStackLimit(SPIDER_EYE) === 64 && itemName(SPIDER_EYE) === "クモの目",
+    `block ${placedBlock(SPIDER_EYE)} / tool ${toolOf(SPIDER_EYE)} / stack ${itemStackLimit(SPIDER_EYE)}`,
+  );
+  check(
+    "クモの目は食べ物で、空腹 2・満腹度 3.2・必ず毒（本家どおり。heal / alwaysEdible は無い）",
+    eye !== null && eye.hunger === 2 && eye.saturation === 3.2 && eye.poison &&
+      eye.heal === undefined && eye.alwaysEdible === undefined,
+    JSON.stringify(eye),
+  );
+  console.log(`      MAX_ITEM_ID ${MAX_ITEM_ID}（クモの目 ${SPIDER_EYE}）`);
+  check(
+    "MAX_ITEM_ID はクモの目（190）で、一覧に出る",
+    MAX_ITEM_ID === SPIDER_EYE && ids.includes(SPIDER_EYE),
+    `MAX_ITEM_ID ${MAX_ITEM_ID} / 一覧に ${ids.includes(SPIDER_EYE)}`,
+  );
+
+  // **赤の帯**（赤キノコ・ベッド・生牛肉・リンゴ）。いちばん近い相手を出してから判定する。
+  let eyeBest = Infinity;
+  let eyeWho = "";
+  for (const other of ids) {
+    if (other === SPIDER_EYE) continue;
+    const gap = dist(itemColor(SPIDER_EYE), itemColor(other));
+    if (gap < eyeBest) {
+      eyeBest = gap;
+      eyeWho = `${itemName(other)} 0x${itemColor(other).toString(16)}`;
+    }
+  }
+  for (const other of [RED_MUSHROOM, BED, RAW_BEEF, APPLE])
+    console.log(
+      `      目 ↔ ${itemName(other)} 0x${itemColor(other).toString(16)}: ` +
+        `${dist(itemColor(SPIDER_EYE), itemColor(other)).toFixed(1)}`,
+    );
+  console.log(`      クモの目の色のいちばん近い相手: ${eyeWho} ${eyeBest.toFixed(1)}`);
+  check(
+    "クモの目は既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）",
+    eyeBest >= 20,
+    `いちばん近いのは${eyeWho}で ${eyeBest.toFixed(1)}`,
   );
 }

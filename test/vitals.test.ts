@@ -48,6 +48,7 @@ import {
   MUSHROOM_STEW,
   RAW_CHICKEN,
   ROTTEN_FLESH,
+  SPIDER_EYE,
   WHEAT,
   allFoodIds,
   foodOf,
@@ -916,6 +917,42 @@ export function run(): void {
     dying2.health === POISON_FLOOR && !dying2.dead && !dying2.poisoned,
     `hp ${dying2.health}`,
   );
+
+  // --- 毒（クモの目。48）—— 腐った肉と同じ道。**`vitals.ts` は 0 行**で効くこと ---
+  {
+    const eye = foodOf(SPIDER_EYE);
+    if (!eye) throw new Error("クモの目が食べ物の表に無い");
+    console.log(
+      `      クモの目: 空腹 +${eye.hunger} / 満腹度 +${eye.saturation} / 毒 ${eye.poison}` +
+        `（生鶏肉 ${rawBird.hunger} / ${rawBird.saturation}・腐った肉 ${rotten.hunger} / ${rotten.saturation}）`,
+    );
+    const bitten = new Vitals();
+    bitten.hunger = 10;
+    bitten.saturation = 0;
+    bitten.eat(eye);
+    console.log(`      食べた後: 空腹 ${bitten.hunger} / 満腹度 ${bitten.saturation} / 毒 ${bitten.poisoned}`);
+    check(
+      "クモの目を食べると空腹 +2 で毒になる",
+      bitten.hunger === 12 && bitten.poisoned,
+      `空腹 ${bitten.hunger} / 毒 ${bitten.poisoned}`,
+    );
+    advance(bitten, POISON_SECONDS + 1);
+    check(
+      `クモの目の毒も ${POISON_TICKS} 回で切れる（腐った肉と同じ長さ）`,
+      bitten.health === MAX_HEALTH - POISON_TICKS && !bitten.poisoned,
+      `hp ${bitten.health}`,
+    );
+    const full = new Vitals();
+    full.hunger = MAX_HUNGER;
+    check("満腹ならクモの目は食べられない（alwaysEdible ではない）",
+      !full.canEatFood(eye), `空腹 ${full.hunger} / ${full.canEatFood(eye)}`);
+    // **強さの並び**: 生鶏肉と同じ空腹 2 で、満腹度は上（その代わり必ず毒）。
+    check(
+      "クモの目は生鶏肉と同じ空腹 2 で満腹度は上（3.2 > 1.2）、代わりに毒",
+      eye.hunger === rawBird.hunger && eye.saturation > rawBird.saturation && eye.poison && !rawBird.poison,
+      `目 ${eye.hunger}/${eye.saturation} vs 生鶏肉 ${rawBird.hunger}/${rawBird.saturation}`,
+    );
+  }
 
   // --- ミルクを飲む（毒だけが消える。空腹にも満腹度にも効かない） ---
   {

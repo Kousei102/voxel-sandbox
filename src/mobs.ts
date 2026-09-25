@@ -25,6 +25,8 @@ import {
   RAW_CHICKEN,
   RAW_PORK,
   ROTTEN_FLESH,
+  // アイテムのクモの目。**この下に見た目の色の定数 `SPIDER_EYE` があるので別名で取る**。
+  SPIDER_EYE as SPIDER_EYE_ITEM,
   STRING,
   toolOf,
 } from "./items";
@@ -941,8 +943,9 @@ const SPIDER: MobDef = {
   orbit: null,
   phases: null,
   regen: 0,
-  // **1 個固定**（本家の 0〜2 個ではない。羽根・革と同じ線引き）。`extra` は持たない。
-  drop: { item: STRING, count: 1, chance: 1 },
+  // 糸は **1 個固定**（本家の 0〜2 個ではない。羽根・革と同じ線引き）。
+  // **2 山目にクモの目を 1/3**（本家どおり。1 山目とは別に引く。スケルトンの矢と同じ形）。
+  drop: { item: STRING, count: 1, chance: 1, extra: { item: SPIDER_EYE_ITEM, count: 1, chance: 1 / 3 } },
   shearing: null,
   milkable: false,
   laying: null,

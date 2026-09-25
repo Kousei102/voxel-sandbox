@@ -622,6 +622,21 @@ export const DIAMOND_BOOTS = 182;
 export const GLOWSTONE_DUST = 189;
 
 /**
+ * クモの目（48）。**クモを倒すと 1/3 で 1 個**落ちます（`mobs.ts` の `SPIDER.drop.extra`。
+ * 糸 1 個とは別に引く）。**食べると空腹 2・満腹度 3.2 で、必ず毒**（`FOODS`。本家どおり）。
+ * 醸造の材料としての使い道はまだありません（醸造は見送り）。
+ *
+ * **`mobs.ts` には同じ名前の色の定数 `SPIDER_EYE`（目の箱の色）があります。**
+ * あちらでは `SPIDER_EYE as SPIDER_EYE_ITEM` で取り込むこと（色の定数は改名しない）。
+ *
+ * **色 `0xb83050` は測って選んだ値です**（くすんだ深紅。目の箱 `0xd03a2a` より暗くピンク寄り）。
+ * いちばん近いのは**赤キノコ(139) で 32.1**、次がベッド(41) 39.4・生牛肉(130) 41.2。
+ * 割った候補は目の箱の色そのまま `0xd03a2a`（**リンゴと 17.2**）・`0x9e2a3a`（**ベッドと 19.0**）。
+ * 赤の帯の最大 `0xba105a`（59.6）は赤紫に寄るので採りませんでした（`TUNING.md`）。
+ */
+export const SPIDER_EYE = 190;
+
+/**
  * 一覧を作るときに数え上げる上限（`allItemIds()`）。**アイテムの番号だけでなく、
  * ブロックが自動で作るアイテム（上の for）の番号も含みます。**
  *
@@ -630,8 +645,8 @@ export const GLOWSTONE_DUST = 189;
  * （`craftscreen.ts` の `CREATIVE_ITEMS`）にだけ出てこないブロック**ができます
  * （置けるし掘れるので、型でも `typecheck` でも止まりません）。
  *
- * **いまはグロウストーンダスト（アイテム 189）が上限です**（手で足したアイテムで、
- * ブロック 189 はありません）。直前が石炭ブロック（ブロック 188。
+ * **いまはクモの目（アイテム 190）が上限です**（手で足したアイテムで、
+ * ブロック 190 はありません）。直前がグロウストーンダスト（アイテム 189）・石炭ブロック（ブロック 188。
  * `items.ts` に 1 行も書かずに増えたブロックで、`variantOf` を書いていないので
  * **上の for が同じ番号のアイテム 188 を作ります**。135..137 の鉱物をしまう立方体と
  * 同じ形）・ネザーレンガのフェンス（ブロック 187）・ツタの向き違いの最後
@@ -647,7 +662,7 @@ export const GLOWSTONE_DUST = 189;
  * **上限をこちら側へ移したら、それまで指していたブロックの import を消すこと** ——
  * 残すと「使われていない」で `npm run typecheck` が落ちます（型で止まる安全な罠）。
  */
-export const MAX_ITEM_ID = GLOWSTONE_DUST;
+export const MAX_ITEM_ID = SPIDER_EYE;
 
 export const MAX_STACK = 64;
 
@@ -918,6 +933,10 @@ item({ id: CLAY_BALL, name: "粘土玉", block: AIR, stack: MAX_STACK, color: 0x
 // 戻すのは `crafting.ts` の 2x2 の 1 本。**色は測って選んだ値**（上の `GLOWSTONE_DUST` の説明）。
 item({ id: GLOWSTONE_DUST, name: "グロウストーンダスト", block: AIR, stack: MAX_STACK, color: 0xfff27a, tool: null });
 
+// クモの目。**`block: AIR` / `tool: null`**（置けず・道具でもない）。**食べ物です**
+// （`FOODS` に 1 行。毒つき）。**色は測って選んだ値**（上の `SPIDER_EYE` の説明）。
+item({ id: SPIDER_EYE, name: "クモの目", block: AIR, stack: MAX_STACK, color: 0xb83050, tool: null });
+
 // レンガ。**`block: AIR` / `tool: null`**（置けず・道具でもなく・`FOODS` にも行が無い。
 // 骨・木炭・粘土玉と同じ扱い）。**置けるようにしないこと** —— 置けるのは
 // `blocks.ts` の `BRICK`(12) のほうで、戻すのは `crafting.ts` の 2x2 の 1 本。
@@ -1062,6 +1081,9 @@ const FOODS = new Map<number, FoodDef>([
   // **満腹度 9.6 は焼き豚 12.8 に届かない**ので、腹を満たす目的では今までどおり
   // 焼き豚がいちばん強いままです（強さの並びは動いていません）。
   [GOLDEN_APPLE, { hunger: 4, saturation: 9.6, poison: false, heal: 4, alwaysEdible: true }],
+  // クモの目。本家の値のまま（2 / 3.2・**必ず毒**）。腐った肉と同じ「弱い代わりに毒」の立場で、
+  // 生鶏肉（2 / 1.2）と同じ空腹 2 だが満腹度は上。**`heal` / `alwaysEdible` は付けない**。
+  [SPIDER_EYE, { hunger: 2, saturation: 3.2, poison: true }],
 ]);
 
 /**
