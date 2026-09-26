@@ -11,6 +11,8 @@ import {
   GRAVEL,
   IRON_ORE,
   LEAVES,
+  OBSIDIAN,
+  PLANK,
   STONE,
   VINE,
   VINE_XN,
@@ -26,6 +28,9 @@ import {
   DIAMOND,
   DIAMOND_PICKAXE,
   FLINT,
+  GOLD_AXE,
+  GOLD_PICKAXE,
+  GOLD_SHOVEL,
   IRON_PICKAXE,
   NO_ITEM,
   SHEARS,
@@ -106,6 +111,7 @@ export function run(): void {
   check("葉はたまにしか落ちない", dropOf(LEAVES).chance < 1, `${(dropOf(LEAVES).chance * 100).toFixed(0)}%`);
   check("丸石はそのまま丸石", dropOf(COBBLE).item === COBBLE);
 
+  goldTools();
   gravelDropsFlint();
 
   // --- 進行 ---
@@ -141,6 +147,41 @@ export function run(): void {
   mining.reset();
   check("掘れないブロックは進まない", !mining.update(10, target, BEDROCK, DIAMOND_PICKAXE) && mining.progress === 0);
   check("狙いが無ければ進まない", !mining.update(10, null, STONE, DIAMOND_PICKAXE));
+}
+
+/**
+ * 金の道具（49）。**掘れる階層は木と同じ・速さは 12 で全階層でいちばん速い**（本家どおり）。
+ * `mining.ts` は 1 文字も触っていないので、`ToolDef` の `tier: TIER_WOOD` と `speed: 12` だけで
+ * こうなることを数値で見る。
+ */
+function goldTools(): void {
+  describe("金の道具で掘る（49・掘れる階層は木・速さ 12）");
+  const stone = [WOOD_PICKAXE, DIAMOND_PICKAXE, GOLD_PICKAXE].map((t) => breakTime(STONE, t));
+  console.log(
+    `      石: 木 ${stone[0].toFixed(4)} 秒 / ダイヤ ${stone[1].toFixed(4)} 秒 / 金 ${stone[2].toFixed(4)} 秒`,
+  );
+  check(
+    "石を金のツルハシで 0.1875 秒（木 1.125・ダイヤ 0.28125 より速い）",
+    Math.abs(stone[2] - 0.1875) < 1e-9 && stone[2] < stone[1] && stone[2] < stone[0],
+    `${stone[2]} 秒`,
+  );
+  const ores = [COAL_ORE, STONE, IRON_ORE, GOLD_ORE, DIAMOND_ORE, OBSIDIAN];
+  const rows = ores.map((b) => ({ b, gold: canHarvest(b, GOLD_PICKAXE), wood: canHarvest(b, WOOD_PICKAXE) }));
+  console.log(`      落ちるか（金 / 木）: ${rows.map((r) => `${blockName(r.b)} ${r.gold}/${r.wood}`).join(" / ")}`);
+  check(
+    "金のツルハシで石炭鉱石と石は落ち、鉄鉱石・金鉱石・ダイヤ鉱石・黒曜石は落ちない（木と 6 つとも同じ）",
+    rows[0].gold && rows[1].gold && !rows[2].gold && !rows[3].gold && !rows[4].gold && !rows[5].gold &&
+      rows.every((r) => r.gold === r.wood),
+    rows.map((r) => `${blockName(r.b)} ${r.gold}`).join(" / "),
+  );
+  const plank = breakTime(PLANK, NO_ITEM) / breakTime(PLANK, GOLD_AXE);
+  const dirt = breakTime(DIRT, NO_ITEM) / breakTime(DIRT, GOLD_SHOVEL);
+  console.log(`      素手との比: 板 ÷ 金の斧 ${plank.toFixed(3)} 倍 / 土 ÷ 金のシャベル ${dirt.toFixed(3)} 倍`);
+  check(
+    "金の斧で板・金のシャベルで土が素手の 12 倍速い",
+    Math.abs(plank - 12) < 1e-9 && Math.abs(dirt - 12) < 1e-9,
+    `板 ${plank} / 土 ${dirt}`,
+  );
 }
 
 /**

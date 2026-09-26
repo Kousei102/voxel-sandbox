@@ -71,11 +71,16 @@ import {
   FLINT,
   FLINT_AND_STEEL,
   GOLDEN_APPLE,
+  GOLD_AXE,
   GOLD_BOOTS,
   GOLD_CHESTPLATE,
   GOLD_HELMET,
+  GOLD_HOE,
   GOLD_INGOT,
   GOLD_LEGGINGS,
+  GOLD_PICKAXE,
+  GOLD_SHOVEL,
+  GOLD_SWORD,
   IRON_BOOTS,
   IRON_CHESTPLATE,
   IRON_HELMET,
@@ -473,6 +478,30 @@ export function run(): void {
   check("2x2 ではツルハシは作れない", pickIn2 === null);
   const shovel = findRecipe(grid(3, [".P.", ".S.", ".S."], P), 3);
   check("縦 3 のシャベルも作業台が要る", shovel?.out === WOOD_SHOVEL, shovel?.name ?? "無し");
+
+  // --- 金の道具 5 本（49。材料が金インゴットで、形は他の階層と同じ） ---
+  {
+    const G = { G: GOLD_INGOT, S: STICK };
+    const golds: [string, string[], string[], number][] = [
+      ["金のツルハシ", ["GGG", ".S.", ".S."], ["GG", ".S"], GOLD_PICKAXE],
+      ["金の斧", ["GG.", "GS.", ".S."], ["GG", "GS"], GOLD_AXE],
+      ["金のシャベル", [".G.", ".S.", ".S."], ["G.", "S."], GOLD_SHOVEL],
+      ["金の剣", [".G.", ".G.", ".S."], ["G.", "G."], GOLD_SWORD],
+      ["金のクワ", ["GG.", ".S.", ".S."], ["GG", ".S"], GOLD_HOE],
+    ];
+    for (const [name, rows3, rows2, out] of golds) {
+      const in3 = findRecipe(grid(3, rows3, G), 3);
+      const in2 = findRecipe(grid(2, rows2, G), 2);
+      const mats = in3?.key ? [...new Set(Object.values(in3.key))].map((id) => itemName(id)).join("+") : "無し";
+      console.log(`      ${name}: 作業台 ${in3?.name ?? "無し"}（材料 ${mats}）/ 2x2 ${in2?.name ?? "無し"}`);
+      check(
+        `${name}は作業台で金インゴットと棒から作れて、2x2 では作れない`,
+        in3?.out === out && in3.count === 1 && in2 === null &&
+          in3.key !== undefined && Object.values(in3.key).every((id) => id === GOLD_INGOT || id === STICK),
+        `${in3?.name ?? "無し"} / 2x2 ${in2?.name ?? "無し"} / ${mats}`,
+      );
+    }
+  }
 
   // --- 剣 4 本（材料 2 + 棒 1 の縦 3。Minecraft と同じ形） ---
   const swords: [string, string, number][] = [
@@ -935,8 +964,8 @@ export function run(): void {
   // **本数も 1 件として見張る** —— レシピを足したのに表から漏れていたら、
   // 上の `findRecipe` だけでは「揃わないのが正しい」と読めてしまう。
   check(
-    "レシピは 86 本（グロウストーンダスト 4 個 → グロウストーンで 1 本増えた。数え直した）",
-    RECIPES.length === 86,
+    "レシピは 91 本（金の道具 5 本で 5 本増えた。数え直した）",
+    RECIPES.length === 91,
     `${RECIPES.length} 本`,
   );
 

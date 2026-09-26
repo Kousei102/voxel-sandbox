@@ -637,6 +637,23 @@ export const GLOWSTONE_DUST = 189;
 export const SPIDER_EYE = 190;
 
 /**
+ * 金の道具 5 本（49）。**ツルハシ 191 / 斧 192 / シャベル 193 / 剣 194 / クワ 195。**
+ * 本家どおり **掘れる階層と殴る強さは木と同じ（`tier: TIER_WOOD`）・掘る速さは 12
+ * （ダイヤ 8 より速い）・32 回で壊れる**。
+ *
+ * **`TIER_GOLD` を作らないこと。** `ToolDef.tier` を読むのは `canHarvest()` /
+ * `attackDamage()` / `maxUses()` の 3 か所だけで、金が木とずれるのは回数だけです ——
+ * 速さは `ToolDef.speed` に直に書き（`GOLD_SPEED`）、回数は `isGoldTool()` の表 1 本に
+ * `durability.ts` が聞きます。**既存 3 本のループ（`WOOD_PICKAXE + (tier-1)*3 + k` ほか）にも
+ * 混ぜないこと** —— 番号が連番の外にあるので、下の専用のループで作ります。
+ */
+export const GOLD_PICKAXE = 191;
+export const GOLD_AXE = 192;
+export const GOLD_SHOVEL = 193;
+export const GOLD_SWORD = 194;
+export const GOLD_HOE = 195;
+
+/**
  * 一覧を作るときに数え上げる上限（`allItemIds()`）。**アイテムの番号だけでなく、
  * ブロックが自動で作るアイテム（上の for）の番号も含みます。**
  *
@@ -645,8 +662,8 @@ export const SPIDER_EYE = 190;
  * （`craftscreen.ts` の `CREATIVE_ITEMS`）にだけ出てこないブロック**ができます
  * （置けるし掘れるので、型でも `typecheck` でも止まりません）。
  *
- * **いまはクモの目（アイテム 190）が上限です**（手で足したアイテムで、
- * ブロック 190 はありません）。直前がグロウストーンダスト（アイテム 189）・石炭ブロック（ブロック 188。
+ * **いまは金のクワ（アイテム 195）が上限です**（金の道具 191..195 の最後。手で足したアイテムで、
+ * ブロック 191..195 はありません）。直前がクモの目（アイテム 190）・グロウストーンダスト（アイテム 189）・石炭ブロック（ブロック 188。
  * `items.ts` に 1 行も書かずに増えたブロックで、`variantOf` を書いていないので
  * **上の for が同じ番号のアイテム 188 を作ります**。135..137 の鉱物をしまう立方体と
  * 同じ形）・ネザーレンガのフェンス（ブロック 187）・ツタの向き違いの最後
@@ -662,7 +679,7 @@ export const SPIDER_EYE = 190;
  * **上限をこちら側へ移したら、それまで指していたブロックの import を消すこと** ——
  * 残すと「使われていない」で `npm run typecheck` が落ちます（型で止まる安全な罠）。
  */
-export const MAX_ITEM_ID = SPIDER_EYE;
+export const MAX_ITEM_ID = GOLD_HOE;
 
 export const MAX_STACK = 64;
 
@@ -695,6 +712,12 @@ const TOOL_NAMES: Record<ToolKind, string> = {
 /** 階層ごとの採掘速度。Minecraft と同じ 2 / 4 / 6 / 8。 */
 const TIER_SPEEDS = [1, 2, 4, 6, 8];
 const TIER_COLORS = [0x000000, 0xb18a56, 0x8a8f96, 0xd8d2c8, 0x59c8c8];
+/**
+ * 金の道具の掘る速さ（本家と同じ 12。ダイヤ 8 より速い）。**`TIER_SPEEDS` に入れないこと** ——
+ * あの表の添字は `tier` で、金は `tier: TIER_WOOD`（掘れる階層は木）なので入れる場所がありません。
+ * 5 つ目に足すと添字 5 が「ダイヤより上の階層」に読めてしまいます。
+ */
+const GOLD_SPEED = 12;
 
 const ITEMS: ItemDef[] = [];
 
@@ -802,6 +825,30 @@ for (let tier = TIER_WOOD; tier <= TIER_DIAMOND; tier++) {
     stack: 1,
     color: TIER_COLORS[tier],
     tool: { kind: "hoe", tier, speed: 1 },
+  });
+}
+
+/**
+ * 金の道具 5 本（上の `GOLD_PICKAXE` の説明）。**名前は `"金" + TOOL_NAMES[kind]`**
+ * （`TIER_NAMES` に 5 つ目を足さない）・**色は金インゴットと同じ `0xf2d15c`**
+ * （既存 4 階層も「道具の色 = 材料の色」。`TIER_COLORS` に足さず直に書く）。
+ * **剣とクワは `speed: 1`**（上の剣・クワのループと同じ理由）。
+ */
+const GOLD_TOOL_DEFS: readonly (readonly [ToolKind, number, number])[] = [
+  ["pickaxe", GOLD_PICKAXE, GOLD_SPEED],
+  ["axe", GOLD_AXE, GOLD_SPEED],
+  ["shovel", GOLD_SHOVEL, GOLD_SPEED],
+  ["sword", GOLD_SWORD, 1],
+  ["hoe", GOLD_HOE, 1],
+];
+for (const [kind, id, speed] of GOLD_TOOL_DEFS) {
+  item({
+    id,
+    name: "金" + TOOL_NAMES[kind],
+    block: AIR,
+    stack: 1,
+    color: 0xf2d15c,
+    tool: { kind, tier: TIER_WOOD, speed },
   });
 }
 
@@ -1523,6 +1570,18 @@ const SHEARS_ITEMS: readonly number[] = [SHEARS];
 
 export function isShears(item: number): boolean {
   return SHEARS_ITEMS.includes(item);
+}
+
+/**
+ * 金の道具か（49）。**火種・弓・シアーズと同じ表 1 本**で、`durability.ts` の `maxUses()` が
+ * これに聞いて回数を `GOLD_TOOL_USES`（32）にします。**`durability.ts` に
+ * `item === GOLD_PICKAXE` と書かないこと** —— 金は `tier: TIER_WOOD` なので、
+ * 階層の表（`TOOL_USES`）では木と見分けが付きません。
+ */
+const GOLD_TOOLS: readonly number[] = [GOLD_PICKAXE, GOLD_AXE, GOLD_SHOVEL, GOLD_SWORD, GOLD_HOE];
+
+export function isGoldTool(item: number): boolean {
+  return GOLD_TOOLS.includes(item);
 }
 
 /**

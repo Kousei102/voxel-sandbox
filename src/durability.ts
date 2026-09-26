@@ -22,7 +22,7 @@
 
 import { blockHardness, isBreakable } from "./blocks";
 import type { Slot } from "./inventory";
-import { NO_ITEM, isBow, isFireStarter, isHoe, isShears, isSword, itemName, toolOf } from "./items";
+import { NO_ITEM, isBow, isFireStarter, isGoldTool, isHoe, isShears, isSword, itemName, toolOf } from "./items";
 
 /**
  * 階層ごとに何回使えるか。**Minecraft のまま**（木 59 / 石 131 / 鉄 250 / ダイヤ 1561）。
@@ -41,6 +41,14 @@ export const BOW_USES = 384;
 
 /** シアーズが刈れる回数。**Minecraft のまま**（238 回）。 */
 export const SHEARS_USES = 238;
+
+/**
+ * 金の道具 5 本が何回使えるか。**Minecraft（Java）のまま**（32 回）。
+ * 金は `tier: TIER_WOOD`（掘れる階層は木）なので `TOOL_USES` では木の 59 になります ——
+ * **`TOOL_USES` に 6 つ目を足さないこと**（添字が `tier` なので入れる場所がない）。
+ * どれが金かは `items.ts` の `isGoldTool()` の表 1 本に聞きます。
+ */
+export const GOLD_TOOL_USES = 32;
 
 /**
  * **掘らずに、使って減るもの**が何回使えるか。掘る道具は 0（あちらは `TOOL_USES`）。
@@ -66,6 +74,7 @@ function usedUp(item: number): number {
 export function maxUses(item: number): number {
   const tool = toolOf(item);
   if (tool === null) return usedUp(item);
+  if (isGoldTool(item)) return GOLD_TOOL_USES;
   return TOOL_USES[tool.tier] ?? 0;
 }
 

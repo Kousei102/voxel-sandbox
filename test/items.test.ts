@@ -5,6 +5,7 @@ import {
   COAL_BLOCK,
   COBBLE,
   CRAFTING_TABLE,
+  DIAMOND_ORE,
   GLOWSTONE,
   GOLD_ORE,
   GRASS,
@@ -13,6 +14,7 @@ import {
   LEAVES,
   NETHER_BRICK_FENCE,
   OBSIDIAN,
+  PLANK,
   RED_MUSHROOM,
   SAPLING,
   SPRUCE_LEAVES,
@@ -20,6 +22,7 @@ import {
   STONE,
   SUGAR_CANE,
   TALL_GRASS,
+  TIER_WOOD,
   TORCH,
   VINE,
   VINE_XN,
@@ -41,16 +44,22 @@ import {
   DIAMOND_LEGGINGS,
   FLINT,
   GLOWSTONE_DUST,
+  GOLD_AXE,
   GOLD_BOOTS,
   GOLD_CHESTPLATE,
   GOLD_HELMET,
+  GOLD_HOE,
   GOLD_INGOT,
   GOLD_LEGGINGS,
+  GOLD_PICKAXE,
+  GOLD_SHOVEL,
+  GOLD_SWORD,
   IRON_BOOTS,
   IRON_CHESTPLATE,
   IRON_HELMET,
   IRON_INGOT,
   IRON_LEGGINGS,
+  IRON_PICKAXE,
   LEATHER,
   LEATHER_BOOTS,
   LEATHER_CHESTPLATE,
@@ -64,10 +73,18 @@ import {
   STEAK,
   STICK,
   STRING,
+  WOOD_AXE,
+  WOOD_HOE,
+  WOOD_PICKAXE,
+  WOOD_SHOVEL,
+  WOOD_SWORD,
+  STONE_PICKAXE,
+  DIAMOND_PICKAXE,
   allArmorIds,
   allItemIds,
   armorOf,
   foodOf,
+  isGoldTool,
   itemColor,
   itemName,
   itemStackLimit,
@@ -722,8 +739,8 @@ export function run(): void {
   );
   console.log(`      MAX_ITEM_ID ${MAX_ITEM_ID}（クモの目 ${SPIDER_EYE}）`);
   check(
-    "MAX_ITEM_ID はクモの目（190）で、一覧に出る",
-    MAX_ITEM_ID === SPIDER_EYE && ids.includes(SPIDER_EYE),
+    "MAX_ITEM_ID はクモの目（190）より上で、一覧に出る（上限は金の道具の節が見る）",
+    MAX_ITEM_ID > SPIDER_EYE && ids.includes(SPIDER_EYE),
     `MAX_ITEM_ID ${MAX_ITEM_ID} / 一覧に ${ids.includes(SPIDER_EYE)}`,
   );
 
@@ -748,5 +765,65 @@ export function run(): void {
     "クモの目は既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）",
     eyeBest >= 20,
     `いちばん近いのは${eyeWho}で ${eyeBest.toFixed(1)}`,
+  );
+
+  describe("金の道具（49・アイテム 191..195・掘れる階層は木・速さ 12・32 回）");
+
+  const golds: [number, string, string, number][] = [
+    [GOLD_PICKAXE, "金のツルハシ", "pickaxe", 12],
+    [GOLD_AXE, "金の斧", "axe", 12],
+    [GOLD_SHOVEL, "金のシャベル", "shovel", 12],
+    [GOLD_SWORD, "金の剣", "sword", 1],
+    [GOLD_HOE, "金のクワ", "hoe", 1],
+  ];
+  for (const [id, name, kind, speed] of golds) {
+    const t = toolOf(id);
+    console.log(
+      `      ${id} ${itemName(id)} 0x${itemColor(id).toString(16)}  kind ${t?.kind} / tier ${t?.tier} / ` +
+        `speed ${t?.speed} / 1 枠 ${itemStackLimit(id)} 個 / 置ける ${placedBlock(id) !== 0}`,
+    );
+    check(
+      `${name}(${id}) は置けず 1 個しか積めず、${kind}・tier は木・速さ ${speed}・色は金インゴットと同じ`,
+      itemName(id) === name && placedBlock(id) === 0 && itemStackLimit(id) === 1 &&
+        t !== null && t.kind === kind && t.tier === TIER_WOOD && t.speed === speed &&
+        itemColor(id) === itemColor(GOLD_INGOT),
+      `${itemName(id)} / block ${placedBlock(id)} / stack ${itemStackLimit(id)} / ${JSON.stringify(t)} / ` +
+        `0x${itemColor(id).toString(16)}`,
+    );
+  }
+  // **道具の色は「材料の色」**（既存 4 階層もそう。金だけ離すと決まりが崩れる）。並べて見る。
+  const toolMaterial: [string, number, number][] = [
+    ["木", WOOD_PICKAXE, PLANK],
+    ["石", STONE_PICKAXE, STONE],
+    ["鉄", IRON_PICKAXE, IRON_INGOT],
+    ["ダイヤ", DIAMOND_PICKAXE, DIAMOND_ORE],
+    ["金", GOLD_PICKAXE, GOLD_INGOT],
+  ];
+  for (const [tier, tool, mat] of toolMaterial)
+    console.log(
+      `      ${tier}: ${itemName(tool)} 0x${itemColor(tool).toString(16)} ↔ ${itemName(mat)} ` +
+        `0x${itemColor(mat).toString(16)} 隔たり ${dist(itemColor(tool), itemColor(mat)).toFixed(1)}`,
+    );
+  check(
+    "5 階層とも道具の色は材料の色と同じ（隔たり 0.0）",
+    toolMaterial.every(([, tool, mat]) => itemColor(tool) === itemColor(mat)),
+    toolMaterial.map(([t, tool, mat]) => `${t} ${dist(itemColor(tool), itemColor(mat)).toFixed(1)}`).join(" / "),
+  );
+  const goldIds = golds.map(([id]) => id);
+  const notGold = [WOOD_PICKAXE, WOOD_AXE, WOOD_SHOVEL, WOOD_SWORD, WOOD_HOE, GOLD_INGOT];
+  console.log(
+    `      isGoldTool: 金 ${goldIds.map((id) => isGoldTool(id)).join(" ")} / ` +
+      `木 5 本と金インゴット ${notGold.map((id) => isGoldTool(id)).join(" ")}`,
+  );
+  check(
+    "isGoldTool() は金の 5 本で真・木の 5 本と金インゴットで偽",
+    goldIds.every((id) => isGoldTool(id)) && notGold.every((id) => !isGoldTool(id)),
+    `${goldIds.map((id) => isGoldTool(id)).join(" ")} / ${notGold.map((id) => isGoldTool(id)).join(" ")}`,
+  );
+  console.log(`      MAX_ITEM_ID ${MAX_ITEM_ID}（金のクワ ${GOLD_HOE}）`);
+  check(
+    "MAX_ITEM_ID は金のクワ（195）で、191..195 が一覧に出る",
+    MAX_ITEM_ID === GOLD_HOE && goldIds.every((id) => ids.includes(id)),
+    `MAX_ITEM_ID ${MAX_ITEM_ID} / 一覧に ${goldIds.map((id) => ids.includes(id)).join(" ")}`,
   );
 }

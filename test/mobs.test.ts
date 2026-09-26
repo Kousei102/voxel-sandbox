@@ -23,6 +23,11 @@ import {
   EGG,
   ENDER_PEARL,
   FEATHER,
+  GOLD_AXE,
+  GOLD_HOE,
+  GOLD_PICKAXE,
+  GOLD_SHOVEL,
+  GOLD_SWORD,
   LEATHER,
   NO_ITEM,
   RAW_BEEF,
@@ -1998,6 +2003,25 @@ export function run(): void {
   console.log(`      木のクワで殴る: ${hoeDamage}（シャベルと同じ階層の攻撃力）`);
   check("クワで殴っても NaN にならない", !Number.isNaN(hoeDamage), `${hoeDamage}`);
   check("木のクワは 1.5（シャベルと同じ）", hoeDamage === 1.5, `${hoeDamage}`);
+
+  // 金の道具（49）。**殴る強さは木と同じ**（本家どおり。`tier: TIER_WOOD` だけでこうなる）。
+  // 既存の階層ループ（`WOOD_PICKAXE + tier * 3 + k`）には混ぜず、木と並べて見る。
+  const goldPairs: [number, number][] = [
+    [GOLD_PICKAXE, WOOD_PICKAXE],
+    [GOLD_AXE, WOOD_AXE],
+    [GOLD_SHOVEL, WOOD_SHOVEL],
+    [GOLD_SWORD, WOOD_SWORD],
+    [GOLD_HOE, WOOD_HOE],
+  ];
+  console.log(
+    `      金で殴る: ${goldPairs.map(([g, w]) => `${itemName(g)} ${attackDamage(g)}（木 ${attackDamage(w)}）`).join(" / ")}`,
+  );
+  check(
+    "金の道具 5 本の攻撃力は木と同じ（金の剣 4.5 = 木の剣・NaN なし）",
+    goldPairs.every(([g, w]) => attackDamage(g) === attackDamage(w) && !Number.isNaN(attackDamage(g))) &&
+      attackDamage(GOLD_SWORD) === 4.5,
+    goldPairs.map(([g]) => attackDamage(g)).join(" / "),
+  );
 
   // 声色。低すぎると唸り声にも聞こえず、高すぎると耳障りになる。
   console.log(

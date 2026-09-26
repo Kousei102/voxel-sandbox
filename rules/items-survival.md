@@ -228,6 +228,13 @@ paths:
 | **殴って減る** | 剣 4 本 | 掘る道具と**同じ階層の表**（59 / 131 / 250 / 1561） | `wearForAttack()`（`main.ts` の `mousedown` の `attack`） |
 | **耕して減る** | クワ 4 本 | **59 / 131 / 250 / 1561**（掘る道具と同じ `TOOL_USES`） | `wearForTill()`（`main.ts` の `tillAt()`） |
 
+- **階層と回数がずれる道具（金の 5 本・191..195）は `TOOL_USES` に足さないこと。** 金は
+  `tier: TIER_WOOD`（掘れる階層と殴る強さは木）なので、添字が `tier` の表には入れる場所がありません。
+  **`maxUses()` が `toolOf()` の分岐の中で `isGoldTool()`（`items.ts` の表 1 本）に聞いて
+  `GOLD_TOOL_USES`（32）を返します** —— 減り方（掘る・殴る・耕す）は木と同じ経路のまま 1 行も変わりません。
+  **速さも同じ理屈で `ToolDef.speed` に直に書き、`TIER_SPEEDS` に足さないこと**（`GOLD_SPEED`）。
+  `durability.ts` に `GOLD_PICKAXE` の名前を書くと `test/durability.test.ts` が落とします（2026-09-26）。
+
 - **この 4 つを混ぜないこと。** 火種と弓に `tool:` を付けると `ToolDef` は
   「掘る速さ」の表なので**弓で石が速く掘れます**し、`wearForBreaking()` から
   「掘る道具でなければ 0」を外すと**弓で石を掘って弓が減ります。**

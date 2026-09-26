@@ -9,6 +9,7 @@ import {
 import {
   BOW_USES,
   FIRE_STARTER_USES,
+  GOLD_TOOL_USES,
   REPAIR_BONUS,
   SHEARS_USES,
   TOOL_USES,
@@ -35,6 +36,11 @@ import {
   DIAMOND_PICKAXE,
   DIAMOND_SWORD,
   FLINT_AND_STEEL,
+  GOLD_AXE,
+  GOLD_HOE,
+  GOLD_PICKAXE,
+  GOLD_SHOVEL,
+  GOLD_SWORD,
   IRON_HOE,
   IRON_PICKAXE,
   IRON_SWORD,
@@ -44,8 +50,10 @@ import {
   STONE_HOE,
   STONE_PICKAXE,
   STONE_SWORD,
+  WOOD_AXE,
   WOOD_HOE,
   WOOD_PICKAXE,
+  WOOD_SHOVEL,
   WOOD_SWORD,
   itemName,
   itemStackLimit,
@@ -972,6 +980,60 @@ export function run(): void {
   const hoeNames = [/\bWOOD_HOE\b/, /\bSTONE_HOE\b/, /\bIRON_HOE\b/, /\bDIAMOND_HOE\b/]
     .filter((re) => re.test(durabilitySource));
   check("durability.ts にクワのアイテム名が出てこない", hoeNames.length === 0, hoeNames.join(" / "));
+
+  describe("金の道具（49・32 回。階層は木でも回数は別）");
+
+  {
+    const golds = [GOLD_PICKAXE, GOLD_AXE, GOLD_SHOVEL, GOLD_SWORD, GOLD_HOE];
+    const woods = [WOOD_PICKAXE, WOOD_AXE, WOOD_SHOVEL, WOOD_SWORD, WOOD_HOE];
+    console.log(
+      `      金: ${golds.map((id) => `${itemName(id)} ${maxUses(id)}`).join(" / ")}（GOLD_TOOL_USES ${GOLD_TOOL_USES}）`,
+    );
+    console.log(`      木: ${woods.map((id) => `${itemName(id)} ${maxUses(id)}`).join(" / ")}`);
+    check(
+      "金の道具は 5 本とも 32 回（本家 Java のまま）",
+      GOLD_TOOL_USES === 32 && golds.every((id) => maxUses(id) === 32),
+      golds.map((id) => maxUses(id)).join(" / "),
+    );
+    check(
+      "木の道具 5 本は 59 回のまま（金は TOOL_USES を見ていない）",
+      woods.every((id) => maxUses(id) === 59) && TOOL_USES.length === 5,
+      `${woods.map((id) => maxUses(id)).join(" / ")} / TOOL_USES ${TOOL_USES.length} 個`,
+    );
+
+    // 掘って尽きる（木のツルハシと同じ形）
+    const pick = slot(GOLD_PICKAXE);
+    for (let i = 0; i < 31; i++) wearSlot(pick, wearForBreaking(STONE, pick.item, false));
+    const left = pick.item === GOLD_PICKAXE ? 32 - (pick.damage ?? 0) : 0;
+    const broke = wearSlot(pick, wearForBreaking(STONE, pick.item, false));
+    console.log(`      金のツルハシ: 31 回掘って残り ${left} 回 → 32 回目 ${itemName(broke) || "（壊れない）"}`);
+    check(
+      "金のツルハシは石を 31 回掘っても残り、32 回目で壊れる",
+      left === 1 && broke === GOLD_PICKAXE && isEmpty(pick),
+      `残り ${left} / 返り値 ${broke} / item=${pick.item}`,
+    );
+
+    // 剣は殴って・クワは耕して減る（木と同じ経路。`isSword()` / `isHoe()` に聞くだけ）
+    const sword = slot(GOLD_SWORD);
+    const hoe = slot(GOLD_HOE);
+    wearSlot(sword, wearForAttack(sword.item, false));
+    wearSlot(hoe, wearForTill(hoe.item, false));
+    console.log(
+      `      金の剣: 殴って傷 ${sword.damage} / 金のクワ: 耕して傷 ${hoe.damage} / ` +
+        `帯 ${wearBar(sword).toFixed(4)} ${wearBar(hoe).toFixed(4)}`,
+    );
+    check(
+      "金の剣は殴って・金のクワは耕して 1 ずつ減る（帯は 31/32）",
+      sword.damage === 1 && hoe.damage === 1 &&
+        Math.abs(wearBar(sword) - 31 / 32) < 1e-9 && Math.abs(wearBar(hoe) - 31 / 32) < 1e-9,
+      `剣 ${sword.damage} / クワ ${hoe.damage} / 帯 ${wearBar(sword)}`,
+    );
+
+    // 見張り: どれが金かは `items.ts` の `isGoldTool()`（`durability.ts` は名前を知らない）。
+    const goldNames = [/\bGOLD_PICKAXE\b/, /\bGOLD_AXE\b/, /\bGOLD_SHOVEL\b/, /\bGOLD_SWORD\b/, /\bGOLD_HOE\b/]
+      .filter((re) => re.test(sourceOf("src/durability.ts")));
+    check("durability.ts に金の道具のアイテム名が出てこない", goldNames.length === 0, goldNames.join(" / "));
+  }
 
   // --- 修理で戻る量（`repairedDamage()`。「盤面が修理の形か」は `crafting.ts`） ---
   describe("道具の修理（何回ぶん戻るか）");

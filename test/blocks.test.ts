@@ -167,6 +167,11 @@ import {
   GOLD_HELMET,
   GLOWSTONE_DUST,
   SPIDER_EYE,
+  GOLD_PICKAXE,
+  GOLD_AXE,
+  GOLD_SHOVEL,
+  GOLD_SWORD,
+  GOLD_HOE,
   GOLD_INGOT,
   GOLD_LEGGINGS,
   IRON_BOOTS,
@@ -293,8 +298,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタ・ネザーレンガのフェンス・石炭ブロック・グロウストーンダスト・クモの目の 69 個（190 まで。**クモの目が入ったので数え直した** —— 名指しの一覧はそのままで、末尾に 1 個足しただけ）",
-    sharedItems.length === 69 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタ・ネザーレンガのフェンス・石炭ブロック・グロウストーンダスト・クモの目・金の道具 5 本の 74 個（195 まで。**金の道具 5 本が入ったので数え直した** —— 名指しの一覧はそのままで、末尾に 5 個足しただけ）",
+    sharedItems.length === 74 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -397,15 +402,19 @@ export function run(): void {
       sharedItems[67] === GLOWSTONE_DUST &&
       // **190 も手で足したアイテム**（クモの目。ブロックは増えない）。
       sharedItems[68] === SPIDER_EYE &&
-      MAX_ITEM_ID === SPIDER_EYE,
+      // **191..195 も手で足したアイテム**（金の道具 5 本。ブロックは増えない）。
+      sharedItems[69] === GOLD_PICKAXE && sharedItems[70] === GOLD_AXE &&
+      sharedItems[71] === GOLD_SHOVEL && sharedItems[72] === GOLD_SWORD &&
+      sharedItems[73] === GOLD_HOE &&
+      MAX_ITEM_ID === GOLD_HOE,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 65（クモの目 190 で 1 個減った。番号を 1 つ取ったので数え直した）",
-    sharedFree === 65,
+    "111..255 の空きは 60（金の道具 191..195 で 5 個減った。番号を 5 つ取ったので数え直した）",
+    sharedFree === 60,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1612,6 +1621,17 @@ function glowstoneDust(): void {
     "ブロック 190 は存在しない（クモの目はアイテムだけ・置けない）",
     block190 === undefined && placedBlock(SPIDER_EYE) === AIR,
     `${block190?.name ?? "無し"} / ${placedBlock(SPIDER_EYE)}`,
+  );
+  // **ブロック 191..195 も作らない**（金の道具 5 本はアイテムだけ）。同じ形で直に見る。
+  const goldTools = [GOLD_PICKAXE, GOLD_AXE, GOLD_SHOVEL, GOLD_SWORD, GOLD_HOE];
+  const goldBlocks = goldTools.map((id) => ({ id, def: BLOCKS.find((b) => b.id === id), placed: placedBlock(id) }));
+  console.log(
+    `      ブロック 191..195: ${goldBlocks.map((g) => `${g.id} ${g.def ? g.def.name : "無し"}/置くと ${g.placed}`).join(" / ")}`,
+  );
+  check(
+    "ブロック 191..195 は存在しない（金の道具 5 本はアイテムだけ・置けない）",
+    goldBlocks.every((g) => g.def === undefined && g.placed === AIR),
+    goldBlocks.map((g) => `${g.id}:${g.def?.name ?? "無し"}/${g.placed}`).join(" "),
   );
 }
 
