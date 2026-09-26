@@ -1,118 +1,111 @@
-# 仕様: 金の道具 5 種（キューの 49・**ID 5 個 = 191..195**）
+# 仕様: シラカバの木（キューの 50・**ID 3 個 = 196..198**）
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-**この 1 件だけコードで数え直しました**: 入っていません。`TIER_NAMES` は 4 階層きり（`items.ts` 687 行）、
-`GOLD_(PICKAXE|AXE|SHOVEL|SWORD|HOE)` は `src/**` にも `test/**` にも 0 件。
+**この 1 件だけコードで数え直しました**: 入っていません。`TreeKind` は `"oak" | "spruce" | "cactus"`（`biomes.ts` 46 行）、
+`BIRCH` は `src/**` にも `test/**` にも 0 件。**`TreeKind` を読むのは 4 ファイルだけ**（`biomes.ts` / `worldgen.ts` /
+`treeshape.ts` / `crops.ts`）で、**`main.ts` には `SAPLING` も `spruce` も 0 件**（苗木・葉・原木は表から通る）。
 
-**キューの注記の確かめ（`tier` が何を兼ねているか）**: **`ToolDef.tier` を読むのは `src/**` で 3 か所だけ**です。
+**本家の規則**（Beta 1.2）: 森の木のおよそ 1/5 がシラカバ。形はオークと同じ丸い塊（幹 5〜7）・樹皮は白・
+葉は色が固定 `0x80a755`・**葉からリンゴは落ちない**・苗木は 5%・原木から板 4 枚（本家は板も別材質）・かまどで木炭。
 
-| 読む所 | 何に使う | 本家の金 | 金に `tier: TIER_WOOD`(1) を渡すと |
-| --- | --- | --- | --- |
-| `mining.ts` 28 行 `canHarvest()` | 掘れる階層 | 木と同じ（0） | **本家どおり**（鉄鉱石・金鉱石・ダイヤ鉱石・黒曜石は落ちない） |
-| `mobs.ts` 1857 行 `attackDamage()` | `TOOL_ATTACK + tier * 0.5` | 木と同じ | **本家どおり**（金の剣 4.5 = 木の剣） |
-| `durability.ts` 69 行 `maxUses()` | `TOOL_USES[tier]` | **32 回** | **59 回になる（ずれる）** |
-
-**速さはもう `tier` と別です** —— `ToolDef.speed` という別の欄があり、`toolSpeed()`（`mining.ts` 33 行）は
-`tool.speed` だけを読みます（`TIER_SPEEDS[tier]` を引くのは `items.ts` のループの中だけ）。
-**だから割り方は「`tier` は掘れる階層のまま 1・速さは `speed: 12` を直に書く・回数だけ表 1 本で別に持つ」**で、
-`ToolDef` に欄を足す必要も、`tier` の意味を変える必要もありません。**120 行に収まるので割りません。**
-
-**本家の規則**（Indev から）: **掘れる階層は木・速さ 12（ダイヤ 8 より速い）・耐久 32 回（Java の値。木 59 と
-同じ出どころ）・攻撃は木と同じ**。レシピは他の階層と同じ形で材料が金インゴット。
+**割り方の決め**: **形はオークの写し（`treeCells()` のオーク側の分岐をそのまま使い、ID だけ差し替え）・高さもオークと
+同じ 4..6**（本家は 5..7）。**理由: いま森に立っているオークの 2 割が「同じ形・同じ高さのまま ID だけ変わる」形なら、
+既存のセーブの差分（切った幹・置いたブロック）が 1 マスもずれない。** 高さを変えると切った木の上に幹が残ります。
+**板は既存の `PLANK` 1 種へ**（トウヒと同じ。シラカバの板を足すとハーフ・階段・フェンスまで増えるので別の周）。
 
 ## 1. 何を足すか / 完了の判定
 
-**アイテム 191..195「金のツルハシ・金の斧・金のシャベル・金の剣・金のクワ」を足す。** 作業台で金インゴットと
-棒から作れ、**掘れる物は木の道具と同じ・掘る速さは 12 で全階層でいちばん速い・32 回で壊れる・殴る強さは木と同じ。**
-**完了**: `npm test` に**「金の道具（49）」の件**（`test/items.test.ts`・`test/blocks.test.ts`・`test/mining.test.ts`・
-`test/durability.test.ts`・`test/mobs.test.ts`・`test/crafting.test.ts`）が増えて**すべて緑**（**+12〜20 件**）。
-ブロック ID の枠の行が**「111..255 の空き 60」**になる。
+**ブロック + アイテム 196「シラカバの原木」/ 197「シラカバの葉」/ 198「シラカバの苗木」を足し、森（`FOREST`）の木の
+2 割をシラカバにする。** 苗木を植えると 180 秒でシラカバが育つ・葉から棒と苗木・原木から板 4 枚と木炭・燃料 15 秒。
+**完了**: `npm test` に**「シラカバ（50）」の件**（`test/blocks.test.ts`・`test/items.test.ts`・`test/worldgen.test.ts`・
+`test/treeshape.test.ts`・`test/crops.test.ts`・`test/crafting.test.ts`・`test/smelting.test.ts`）が増えて**すべて緑**
+（**+15〜25 件**）。ブロック ID の枠の行が**「111..255 の空き 57」**になる。
 
 ## 2. 触るファイル / 触らないファイル
 
-**触る**: `src/items.ts`（定数 5 つと説明のコメント・金の 5 本を作る短いループ 1 つ・`GOLD_TOOLS` の表と
-`isGoldTool()`・`MAX_ITEM_ID` の付け替え）/ `src/durability.ts`（`GOLD_TOOL_USES = 32` と `maxUses()` の 1 行）/
-`src/crafting.ts`（`...toolRecipes("金", GOLD_INGOT, ...)` 1 つと import）/ `test/items.test.ts` / `test/blocks.test.ts` /
-`test/mining.test.ts` / `test/durability.test.ts` / `test/mobs.test.ts` / `test/crafting.test.ts` /
-`ROADMAP.md`（予約表に 191..195 を 1 行・「191..255 予備 65 個」を「196..255・予備 60 個」に・213 行あたりの「使用済み」）/
+**触る**: `src/blocks.ts`（定数 3 つ・`def()` 3 つ。苗木はトウヒの苗木の写し）/ `src/biomes.ts`（`TreeKind` に `"birch"`・
+`BiomeDef.birch` を**11 行ぜんぶ**に）/ `src/worldgen.ts`（種類を決める 2〜3 行・塩 1 本）/ `src/treeshape.ts`（原木と葉を
+種類から引く小さい関数 1 つ・`treeCells()` と `vineCells()` がそれを使う・`grownTreeHeight()` のコメント）/
+`src/crops.ts`（`saplingKind()` に 1 行）/ `src/items.ts`（`DROPS` に 1 行・`MAX_ITEM_ID`）/ `src/crafting.ts`（板 1 本）/
+`src/smelting.ts`（`SMELTING` と `FUEL` に 1 行ずつ）/ `tools/shot.ts`（`sapling` と `grown` の場面に 1 本ずつ）/
+上の 7 本のテスト / `ROADMAP.md`（予約表に 196..198・「196..255 予備 60 個」を「199..255・予備 57 個」・「使用済み」の列）/
 `TUNING.md` / `AUTODEV-QUEUE.md` / `docs/autodev-log.md` / `HANDOFF.md` / 当たった `rules/*.md`。
 
-**触らない**: **`src/main.ts`（0 行。持つ・掘る・殴る・耕す・傷むはどれも `toolOf()` / `isSword()` / `isHoe()` /
-`maxUses()` が既に通す）** / `src/mining.ts`（`canHarvest()` と `toolSpeed()` は 1 文字も変えない）/
-`src/mobs.ts`（`TOOL_ATTACK` と `TIER_ATTACK` を変えない）/ `src/blocks.ts`（`TIER_*` の定数を足さない。
-**`TIER_GOLD` を作らないこと**）/ `src/use.ts` / `*render.ts` / `ui.ts` / `inventoryui.ts` / `SaveData`。
+**触らない**: **`src/main.ts`（0 行）** / `src/placing.ts` / `src/world.ts` / `src/mesher.ts` / `src/use.ts` /
+`*render.ts` / `ui.ts` / `inventoryui.ts` / `SaveData` / **既存の `WOOD` / `LEAVES` / `SAPLING` / `SPRUCE_*` の定義と色**。
 
-**先に引いて読むこと**: `grep -l` で `"src/items.ts"` / `"src/durability.ts"` / `"src/crafting.ts"`（**`items-survival.md` の
-`MAX_ITEM_ID` と TS2367**）/ `rules/testing.md` / **`add-block` スキル**（**ブロックは足さないので `blocks.ts` の節は飛ばす**）。
+**先に引いて読むこと**: `grep -l` で `"src/blocks.ts"` / `"src/biomes.ts"` / `"src/worldgen.ts"` / `"src/treeshape.ts"` /
+`"src/crops.ts"` / `"src/items.ts"` / `"src/crafting.ts"` / `"src/smelting.ts"`（**`rules/worldgen.md` の塩の一覧と
+`?:` にしない決まり・`items-survival.md` の `MAX_ITEM_ID` と TS2367**）/ `rules/testing.md` / **`add-block` スキル**。
 
 ## 3. 使う ID
 
-**191..195 の 5 個**（予約表「191..255 予備 65 個」の先頭）。**191 ツルハシ / 192 斧 / 193 シャベル / 194 剣 / 195 クワ**。
-**アイテムだけ**で、ブロック 191..195 は作らない（111 以降は 1 本の番号列）。**次に取るのは 196 になる。**
+**196..198 の 3 個**（予約表「196..255 予備 60 個」の先頭）。**196 原木 / 197 葉 / 198 苗木**。**3 つともブロックで、
+`variantOf` を書かないのでアイテムは `items.ts` の for が作る**（111 以降は 1 本の番号列。アイテム 196..198 = 同じもの）。
+**`MAX_ITEM_ID` は 198 へ手で伸ばす**（上限がブロック側になる）。**次に取るのは 199 になる。**
 
 ## 4. 判断をどこに置くか
 
-**判断は `items.ts`（何か・どの階層か・どれだけ速いか・どれが金か）と `durability.ts`（何回で尽きるか）。**
 新しい「確かめられないもの」は 0 個（`unverifiable-pair` 不要）。
 
-- **定数**: `GOLD_PICKAXE` 191 / `GOLD_AXE` 192 / `GOLD_SHOVEL` 193 / `GOLD_SWORD` 194 / `GOLD_HOE` 195（名前の衝突 0。数え済み）
-- **作り方**: **既存の 3 本のループ（`WOOD_PICKAXE + (tier-1)*3 + k` / `WOOD_SWORD + tier` / `WOOD_HOE + tier`）に
-  混ぜないこと。** 金の 5 本は `[kind, id, speed]` の 5 行の表を回す**専用のループ 1 つ**で作る:
-  - 名前は `"金" + TOOL_NAMES[kind]`（`TIER_NAMES` に 5 つ目を足さない —— 足すと添字 5 が「鉄より上」に読める）
-  - **`tier: TIER_WOOD`**（掘れる階層と殴る強さは木）/ **掘る 3 本は `speed: GOLD_SPEED`（= 12）**、
-    **剣とクワは `speed: 1`**（剣・クワのループのコメントと同じ理由）/ `stack: 1`
-  - **`GOLD_SPEED = 12` は `TIER_SPEEDS` の隣に、「階層の表に入れない理由」のコメント付きで**
-- **`GOLD_TOOLS` の表と `isGoldTool(item)`**（`isShears()` / `isBow()` と同じ「表 1 本に聞く」形）。
-  `durability.ts` の `maxUses()` は **`toolOf()` の分岐の中で `isGoldTool(item)` なら `GOLD_TOOL_USES`、でなければ
-  今までどおり `TOOL_USES[tier]`**。**`ToolDef` に `uses` を足さないこと**（`durability.ts` 31 行のコメントの理由）。
-  **`TOOL_USES` に 6 つ目を足さないこと**（添字が `tier` なので金は入れられない）
-- **`MAX_ITEM_ID = GOLD_HOE`**（いまは `SPIDER_EYE`）
-- **レシピ**: `...toolRecipes("金", GOLD_INGOT, GOLD_PICKAXE, GOLD_AXE, GOLD_SHOVEL, GOLD_SWORD, GOLD_HOE)` を
-  鉄とダイヤの間に（レシピ 86 → **91 本**）
-- **色は `0xf2d15c`（金インゴットと同じ）** —— **B の周で測りました**: 既存 4 階層の色は**どれも材料と隔たり 0.0**
-  （木 = 板 / 石 = 石 / 鉄 = 鉄インゴット / ダイヤ = ダイヤ鉱石）で、**道具の色は「材料の色」という決まり**です。
-  金だけ離すと決まりが崩れるので揃えます（**隔たり `>= 20` の判定は道具には掛けない。今までの 20 本と同じ**）。
-  参考に、**材料から離すなら黄金色の帯の最大は `0xc88c0c` の 50.3**（金のリンゴ）だが**橙に寄る**ので採らない。
-  `TUNING.md` に 1 行。**色は `TIER_COLORS` に足さず、値を直に書くこと**（表の読み順に頼らない）
+- **何か・色・硬さ・音**: `blocks.ts`。**原木 = `WOOD` の写し**（硬さ 2・斧・`sound: "wood"`）/ **葉 = `LEAVES` の写し** /
+  **苗木 = `SPRUCE_SAPLING` の写し**（`model: "cross"` / `CROSS_BOX` / `solid: false` / 硬さ 0 / `supportFace: FACE_YN` /
+  `needsSoil: true`。**`variantOf` / `replaceable` / `stacksOnSelf` を付けないこと**）
+- **色（B の周で 190 種と総当たりで測った。一覧は `top` だけ）**:
+  - **原木 `top: 0xb0a876`・`side: 0xd7d3c7`**（いちばん近い本棚 32.1。**淡い黄色は砂・砂岩・エンドストーンで埋まっていて、
+    素直な `0xcfc08a` は砂岩から 9.9**。暖色の帯の最大がこの値）。**側面は一覧に出ないので白い樹皮をそのまま**
+  - **葉 `0x80a755`**（本家の値そのまま。いちばん近い草 22.8）
+  - **苗木 `0xa8d070`**（いちばん近いサトウキビ 35.9・オークの苗木 47.5）
+  - **3 つどうしは 58 以上離れている**。**C の周で測り直し、割ったらずらして `TUNING.md` へ**（判定はゆるめない）。
+    **側面 `0xd7d3c7` と上面の明暗の差を絵の画素で読むこと**（`HANDOFF.md` の「絵の画素を直に読む」・目安 10 以上）
+- **どこに生えるか**: `biomes.ts` の **`BiomeDef.birch`**（その木がシラカバになる確率。**森だけ 0.2・他の 10 行は 0**）。
+  **`?:` にしないこと**。`TreeKind` に `"birch"` を足すが、**`BiomeDef.treeKind` に `"birch"` を書く行は作らない**
+- **worldgen.ts**: `def.treeKind === "oak" && def.birch > 0 && hash2(wx, wz, this.seed ^ 0x3a6d) < def.birch` なら
+  `"birch"`。**塩 `0x3a6d` は既存 20 本と重ならない**（数え済み）。**高さの三項式は触らない**（シラカバはオークの枝に入る
+  = 4..6 のまま）。**木の場所・高さ・ツタの判定の順番を変えないこと**（既存の木が動く）。数値は書かない
+- **treeshape.ts**: `treeBlocks(kind)` のような**種類 → `{ wood, leaf }` の表 1 本**を作り、`treeCells()` と `vineCells()`
+  の `spruce ? ... : ...` を両方そこへ付け替える（**2 か所に写すと葉の判定がずれて、シラカバにツタが掛からない**）。
+  **形の分岐（`spruce` の円錐）は `kind === "spruce"` のまま**。`grownTreeHeight("birch")` はオークと同じ 4..6
+- **crops.ts**: `saplingKind()` に `if (id === BIRCH_SAPLING) return "birch";` の 1 行だけ（育つ秒数は触らない）
+- **items.ts の `DROPS`**: シラカバの葉は**トウヒの葉と同じ形**（棒 10%・`extra` で苗木 5%・**リンゴなし**）
+- **crafting.ts**: `{ name: "板", out: PLANK, count: 4, ingredients: [BIRCH_WOOD] }`（レシピ 91 → **92 本**）
+- **smelting.ts**: `SMELTING` に原木 → 木炭・`FUEL` に原木 `SMELT_TIME * 1.5`（トウヒの行の写し）
 
 ## 5. 書くテスト（**値を出力してから判定する**）
 
-- **`test/items.test.ts`**: 5 本の名前・色・`toolOf()`（kind / tier / speed）・1 枠の数を 1 行ずつ出してから、
-  **置けない・1 個しか積めない・kind が順に pickaxe/axe/shovel/sword/hoe・tier が 5 本とも `TIER_WOOD`・
-  速さが 12/12/12/1/1・色が 5 本とも金インゴットと同じ**。既存 4 階層の「道具の色 = 材料の色（隔たり 0.0）」も
-  出して並べる。**`allItemIds()` に 191..195**（**古い `MAX_ITEM_ID === SPIDER_EYE` を残すと TS2367** —— 前の節は
-  `> GLOWSTONE_DUST` の形で `> ... ` に、`===` は金の節へ移す。`rules/items-survival.md`）。**`isGoldTool()` が
-  5 本で真・木の 5 本と金インゴットで偽**
-- **`test/blocks.test.ts`**: 共有帯の一覧に **`sharedItems[69..73]` が金の 5 本 && `MAX_ITEM_ID === GOLD_HOE`**・
-  「共有帯 N 個」の件を数え直す（69 → **74**。名指しの一覧の末尾に「金の道具 5 本」）/
-  **空きの件を「111..255 の空きは 60」に**（数え直し。ゆるめではない）/ **ブロック 191..195 は存在しない**
-- **`test/mining.test.ts`**: 時間を出してから判定 —— **石を金のツルハシで 0.1875 秒**（木 1.125 / ダイヤ 0.28125 より速い）/
-  **石炭鉱石は落ちる・鉄鉱石・金鉱石・ダイヤ鉱石・黒曜石は落ちない**（`canHarvest()`。木のツルハシと 5 つとも同じ結果）/
-  **金の斧で板・金のシャベルで土が 12 倍**
-- **`test/durability.test.ts`**: **5 本とも `maxUses() === 32`**・木の 5 本は 59 のまま（`TOOL_USES` を見ていない印）/
-  **金のツルハシで石を 32 回掘ると尽きる**（既存の「尽きる」件の形）/ **金の剣は殴って・金のクワは耕して減る**
-- **`test/mobs.test.ts`**: `attackDamage()` を出してから **金の剣 = 木の剣（4.5）・金の斧 = 木の斧**（既存の階層ループには混ぜない）
-- **`test/crafting.test.ts`**: **5 本とも作業台で作れて 2x2 では作れない**・材料が金インゴットと棒 /
-  **「レシピは 86 本」を 91 本に数え直す**（名前も「金の道具 5 本で 5 本増えた」へ。`===` のまま）/
-  **「同じ形のレシピが重複していない」が緑のまま**
+- **`test/blocks.test.ts`**: 3 つの名前・色・硬さ・道具を出してから判定 / **原木は斧・苗木は `needsSoil` で土・草・耕地の
+  上にだけ立つ・葉は不透明の立方体**（オークの葉と同じ旗）/ 共有帯の一覧・「共有帯 N 個」の数え直し（74 → **77**）/
+  **「111..255 の空きは 57」**（数え直し。ゆるめではない）/ **`MAX_ITEM_ID === BIRCH_SAPLING`**
+- **`test/items.test.ts`**: 3 つの色のいちばん近い相手と隔たりを出して **>= 20**・3 つどうしも >= 20 / `allItemIds()` に
+  196..198 / **前の上限の節（金の道具）は `> GOLD_HOE` に、`===` はこの節へ**（TS2367）/ **葉を 2000 枚割って棒・苗木・
+  リンゴの数を出し、リンゴ 0・苗木 3〜7%**
+- **`test/treeshape.test.ts`**: **シラカバとオークは高さごとにマスの座標が 1 つ残らず同じで、ID だけが原木・葉**（4..6）/
+  **`vineCells("birch")` がオークと同じ座標を返し、0 マスではない**（ツタが掛かる）/ `grownTreeHeight("birch")` は 4..6
+- **`test/worldgen.test.ts`**: **まとまった森を 1 マスも飛ばさずに数え、オーク・シラカバの本数と割合を出してから
+  「シラカバが 10〜30%」**・**森以外のバイオームにシラカバの原木が 1 マスも無い** / 既存の「木の数」「砂漠に木が無い」
+  「ツタが掛かる壁は葉」の件はシラカバを数えに入れる（**`WOOD || SPRUCE_WOOD` を 3 種へ。判定の数値は変えない**）/
+  **同じシードで 2 回作ると同じ**
+- **`test/crops.test.ts`**: シラカバの苗木を植えて 180 秒で**シラカバの原木と葉**が立つ（トウヒの件の写し）
+- **`test/crafting.test.ts`**: 原木 1 → 板 4（2x2 で作れる）/ **「レシピは 91 本」を 92 本に**（名前も数え直しの理由へ）
+- **`test/smelting.test.ts`**: 木炭 1 個・燃料 15 秒（トウヒと同じ）
 
 ## 6. このタスク固有の禁じ手
 
-- **`ToolDef` の形・`tier` の意味を変えないこと**（欄を足さない・`TIER_GOLD` を作らない・`TIER_NAMES` /
-  `TIER_SPEEDS` / `TIER_COLORS` / `TOOL_USES` に要素を足さない）/ **既存 20 本の ID・名前・色・速さを動かさないこと**
-- **`mining.ts` / `mobs.ts` を 1 文字も触らないこと**（金は `tier: TIER_WOOD` だけで本家どおりになる。上の表）
-- **`durability.ts` に `item === GOLD_PICKAXE` と書かないこと**（`isGoldTool()` の表 1 本に聞く）
-- **`main.ts` に 1 行も書かないこと** / 金の防具・リンゴ・ブロックのレシピを触らない / ID を振り直さない /
-  `SaveData.version` は 1 のまま / **判定をゆるめないこと** / **50 以降に手を出さないこと**
+- **既存の森のオークの場所・高さ・形・ツタを 1 マスも動かさないこと**（変わってよいのは 2 割の木の ID だけ）
+- **塩を既存と重ねないこと・高さの塩 `0x99` を使い回さないこと**（背の高い木だけシラカバになる）
+- **`LEAVES` / `SPRUCE_LEAVES` の `DROPS` を書き換えないこと**（リンゴの帯はオークだけ）/ **板を別材質にしないこと**
+- **`main.ts` に 1 行も書かないこと** / ID を振り直さない / `SaveData.version` は 1 のまま / **判定をゆるめないこと** /
+  **`test/world.test.ts` の p99 を触らないこと** / **35 以降に手を出さないこと**
 
 ## 7. 終了条件
 
-- `npm run typecheck` / **`npm test`**（すべて緑・**3992 → 4004〜4012 あたり**）/ `npm run build` 緑。**`bench` は不要**
-- **C-3**: 一覧に 5 枠増える（見た目に出る）。**使い捨てのスクリプトでクリエイティブの一覧を撮って `Read` で見ること**
-  （`docs/browser-shots/README.md` の `creative-clay.png` の手順）。**「金のシャベル」は 6 文字**で `.slot .label` が
-  折れるか確かめる（**折れたら既知の 58 枠に足して `HANDOFF.md` に書く**。「ダイヤのシャベル」が前例）
-- **コミット 1 つを `master` へ push** / キューの 49 を消す / この仕様書を **`状態: 済`** /
-  **`ROADMAP.md` の予約表に 191..195 を「実装済み」** / `TUNING.md` に 1 節（速さ 12・32 回・木の階層・色）/
-  `docs/autodev-log.md` に 1 節 / 踏んだ落とし穴を `rules/` へ / **`HANDOFF.md` を書き直す**
+- `npm run typecheck` / **`npm test`**（すべて緑・**4015 → 4030〜4040 あたり**）/ `npm run build` 緑 /
+  **`npm run bench` を 3 回まわして中央値**（生成を触る。`generateChunk` の前との差を `HANDOFF.md` へ）
+- **C-3**: **`npm run shot -- sapling grown terrain`** を撮って `Read` で見る（白い幹が立方体に見えるか・葉の色がオークと
+  見分けられるか・苗木 3 本の色）。**本物のブラウザで森を 1 枚**（`tools/browsershot.mjs` か使い捨てのスクリプト）
+- **コミット 1 つを `master` へ push** / キューの 50 を消す / この仕様書を **`状態: 済`** /
+  **`ROADMAP.md` の予約表に 196..198 を「実装済み」** / `TUNING.md` に 1 節（2 割・高さ 4..6 を本家 5..7 から寄せた理由・
+  色 3 つ）/ `docs/autodev-log.md` に 1 節 / 踏んだ落とし穴を `rules/` へ / **`HANDOFF.md` を書き直す**
+  （**既存の森の 2 割のオークがシラカバに変わる**ことを「ブラウザで見てほしいところ」に）
