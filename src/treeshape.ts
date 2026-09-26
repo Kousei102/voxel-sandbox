@@ -11,6 +11,8 @@
  */
 
 import {
+  BIRCH_LEAVES,
+  BIRCH_WOOD,
   CACTUS,
   CACTUS_HEIGHT_MAX,
   FACE_XN,
@@ -49,6 +51,27 @@ export interface TreeCell {
 }
 
 /**
+ * 種類ごとの原木と葉（サボテンには葉が無いので `leaf` は 0）。
+ *
+ * **`treeCells()` と `vineCells()` はここだけを引くこと**（50）。片方にだけ
+ * `spruce ? … : …` を写すと、**葉の判定がずれてシラカバにツタが掛かりません**
+ * （`vineCells()` は「葉のマスの横」を探すので、葉の ID を取り違えると候補が 0 になる）。
+ * **形の分岐（トウヒの円錐）はここではなく `treeCells()` の `kind === "spruce"`** のまま。
+ */
+export function treeBlocks(kind: TreeKind): { readonly wood: number; readonly leaf: number } {
+  switch (kind) {
+    case "spruce":
+      return { wood: SPRUCE_WOOD, leaf: SPRUCE_LEAVES };
+    case "birch":
+      return { wood: BIRCH_WOOD, leaf: BIRCH_LEAVES };
+    case "cactus":
+      return { wood: CACTUS, leaf: 0 };
+    case "oak":
+      return { wood: WOOD, leaf: LEAVES };
+  }
+}
+
+/**
  * その種類・その高さの木を作るマスを、**書き込む順に**並べて返す。
  *
  * **順番（葉 → 幹）も `overwrite` の真偽も変えないこと。** 変えると
@@ -65,8 +88,7 @@ export function treeCells(kind: TreeKind, height: number): TreeCell[] {
   }
 
   const spruce = kind === "spruce";
-  const wood = spruce ? SPRUCE_WOOD : WOOD;
-  const leaf = spruce ? SPRUCE_LEAVES : LEAVES;
+  const { wood, leaf } = treeBlocks(kind);
   const top = height - 1;
 
   // 葉: 幹の先端 (top) を含む段。top + 1 にも置かないと幹が空に突き出したままになる。
@@ -150,7 +172,7 @@ export function vineCells(kind: TreeKind, height: number, x: number, z: number):
   if (kind === "cactus") return [];
 
   const cells = treeCells(kind, height);
-  const leaf = kind === "spruce" ? SPRUCE_LEAVES : LEAVES;
+  const { leaf } = treeBlocks(kind);
   const filled = new Set<number>();
   const leaves = new Set<number>();
   let lowest = Infinity;
@@ -211,6 +233,8 @@ export function vineCells(kind: TreeKind, height: number, x: number, z: number):
  * **シードは受け取りません。** 生成側（`worldgen.ts`）の木はワールドのシードで振れますが、
  * こちらは人が植えた 1 本なので、同じ場所に植え直せば同じ木が生えれば十分です。
  * **範囲だけは生成側と揃えること**（オーク 4..6 / トウヒ 6..9 / サボテン 1..3）。
+ * **シラカバはオークと同じ 4..6**（本家は 5..7。生成側でオークの 2 割を ID だけ差し替える
+ * ので、高さを変えると既存のセーブで切った幹の上に幹が残ります。`TUNING.md`）。
  */
 export function grownTreeHeight(kind: TreeKind, x: number, z: number): number {
   const roll = hash2(x, z, 0x5a91);

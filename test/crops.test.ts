@@ -8,6 +8,9 @@
 
 import {
   AIR,
+  BIRCH_LEAVES,
+  BIRCH_SAPLING,
+  BIRCH_WOOD,
   BROWN_MUSHROOM,
   CACTUS,
   CACTUS_HEIGHT_MAX,
@@ -980,6 +983,35 @@ export function run(): void {
       "トウヒのほうが高い（6..9 対 4..6）",
       spruceTrunk > oakTrunk,
       `トウヒ ${spruceTrunk} / オーク ${oakTrunk}`,
+    );
+  }
+
+  {
+    // **シラカバ（50）**: 苗木を植えて 180 秒でシラカバの原木と葉が立つ（トウヒの件の写し）。
+    // **高さはオークと同じ 4..6**（同じ座標ならオークと同じ本数）。
+    const field = new Field();
+    const crops = new Crops();
+    sapled(field, crops, BIRCH_SAPLING);
+    crops.update(SAPLING_GROW_SECONDS - 1, field);
+    const early = field.getVoxel(0, 40, 0);
+    crops.update(1, field);
+    const trunk = trunkHeight(field, 0, 40, 0, BIRCH_WOOD);
+    const leaves = leafCount(field, 0, 40, 0, BIRCH_LEAVES);
+    console.log(
+      `      シラカバ: ${SAPLING_GROW_SECONDS - 1} 秒で ${blockName(early)} → ${SAPLING_GROW_SECONDS} 秒で幹 ` +
+        `${blockName(field.getVoxel(0, 40, 0))} ${trunk} 本（オークの高さ ${grownTreeHeight("oak", 0, 0)}）/ 葉 ${leaves} 枚 / ` +
+        `オークの葉 ${leafCount(field, 0, 40, 0, LEAVES)} 枚 / 覚えている ${crops.count} 本`,
+    );
+    check(
+      "シラカバの苗木は 179 秒では苗木のまま・180 秒でシラカバの幹になる",
+      early === BIRCH_SAPLING && field.getVoxel(0, 40, 0) === BIRCH_WOOD,
+      `${blockName(early)} → ${blockName(field.getVoxel(0, 40, 0))}`,
+    );
+    check(
+      "シラカバの幹はオークと同じ高さで、シラカバの葉がつく（オークの葉は混ざらない）",
+      trunk === grownTreeHeight("oak", 0, 0) && leaves > 0 && leafCount(field, 0, 40, 0, LEAVES) === 0 &&
+        crops.count === 0,
+      `幹 ${trunk} / 葉 ${leaves} / オークの葉 ${leafCount(field, 0, 40, 0, LEAVES)} / 覚えている ${crops.count}`,
     );
   }
 

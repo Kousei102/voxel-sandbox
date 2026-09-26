@@ -26,6 +26,7 @@
 
 import {
   AIR,
+  BIRCH_SAPLING,
   BROWN_MUSHROOM,
   CACTUS,
   CACTUS_HEIGHT_MAX,
@@ -102,6 +103,7 @@ export const MUSHROOM_CROWD_RADIUS = 4;
 function saplingKind(id: number): TreeKind | null {
   if (id === SAPLING) return "oak";
   if (id === SPRUCE_SAPLING) return "spruce";
+  if (id === BIRCH_SAPLING) return "birch";
   return null;
 }
 

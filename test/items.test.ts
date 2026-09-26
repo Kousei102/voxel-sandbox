@@ -1,4 +1,7 @@
 import {
+  BIRCH_LEAVES,
+  BIRCH_SAPLING,
+  BIRCH_WOOD,
   BRICK,
   CACTUS,
   CLAY,
@@ -81,6 +84,7 @@ import {
   STONE_PICKAXE,
   DIAMOND_PICKAXE,
   allArmorIds,
+  rollDrops,
   allItemIds,
   armorOf,
   foodOf,
@@ -822,8 +826,101 @@ export function run(): void {
   );
   console.log(`      MAX_ITEM_ID ${MAX_ITEM_ID}（金のクワ ${GOLD_HOE}）`);
   check(
-    "MAX_ITEM_ID は金のクワ（195）で、191..195 が一覧に出る",
-    MAX_ITEM_ID === GOLD_HOE && goldIds.every((id) => ids.includes(id)),
+    // **上限の `===` はシラカバの節へ移した**（50。ここに残すと TS2367。`rules/testing.md`）
+    "MAX_ITEM_ID は金のクワ（195）より後ろで、191..195 が一覧に出る",
+    MAX_ITEM_ID > GOLD_HOE && goldIds.every((id) => ids.includes(id)),
     `MAX_ITEM_ID ${MAX_ITEM_ID} / 一覧に ${goldIds.map((id) => ids.includes(id)).join(" ")}`,
+  );
+
+  describe("シラカバ（50）: 原木・葉・苗木の一覧の色と、葉の落とし物");
+
+  // **3 つともブロックで `items.ts` に 1 行も無い**（for が同じ番号のアイテムを作る）。
+  // 見るのは「一覧に出るか」「置けるか」「色が既存のどれとも・互いとも 20 以上離れているか」。
+  const birch: [string, number][] = [
+    ["シラカバの原木", BIRCH_WOOD],
+    ["シラカバの葉", BIRCH_LEAVES],
+    ["シラカバの苗木", BIRCH_SAPLING],
+  ];
+  const birchIds = birch.map(([, id]) => id);
+  let birchWorst = Infinity;
+  for (const [name, id] of birch) {
+    let best = Infinity;
+    let who = "";
+    for (const other of ids) {
+      if (birchIds.includes(other)) continue;
+      const gap = dist(itemColor(id), itemColor(other));
+      if (gap < best) {
+        best = gap;
+        who = `${itemName(other)} 0x${itemColor(other).toString(16)}`;
+      }
+    }
+    birchWorst = Math.min(birchWorst, best);
+    console.log(
+      `      ${id} ${itemName(id)} 0x${itemColor(id).toString(16)} 置ける ${placedBlock(id) === id} ` +
+        `一覧 ${ids.includes(id)} ↔ いちばん近い ${who} ${best.toFixed(1)}`,
+    );
+    check(
+      `${name}(${id}) は一覧に出て、持って置ける`,
+      itemName(id) === name && ids.includes(id) && placedBlock(id) === id && toolOf(id) === null,
+      `${itemName(id)} / 一覧 ${ids.includes(id)} / block ${placedBlock(id)}`,
+    );
+  }
+  check(
+    "シラカバの 3 つは既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）",
+    birchWorst >= 20,
+    `いちばん近くて ${birchWorst.toFixed(1)}`,
+  );
+  const birchPairs = [
+    dist(itemColor(BIRCH_WOOD), itemColor(BIRCH_LEAVES)),
+    dist(itemColor(BIRCH_WOOD), itemColor(BIRCH_SAPLING)),
+    dist(itemColor(BIRCH_LEAVES), itemColor(BIRCH_SAPLING)),
+  ];
+  console.log(`      3 つどうし: 原木↔葉 / 原木↔苗木 / 葉↔苗木 = ${birchPairs.map((g) => g.toFixed(1)).join(" / ")}`);
+  check(
+    "シラカバの 3 つは互いにも見分けられる（RGB で 20 以上）",
+    birchPairs.every((g) => g >= 20),
+    birchPairs.map((g) => g.toFixed(1)).join(" / "),
+  );
+  // **上限の `===` はこの節が持つ**（前の節は `> GOLD_HOE`。`rules/testing.md` の TS2367）。
+  console.log(`      MAX_ITEM_ID ${MAX_ITEM_ID}（シラカバの苗木 ${BIRCH_SAPLING}）`);
+  check(
+    "MAX_ITEM_ID はシラカバの苗木（198）",
+    MAX_ITEM_ID === BIRCH_SAPLING,
+    `MAX_ITEM_ID ${MAX_ITEM_ID}`,
+  );
+
+  // **葉を 2000 枚割って数える**（乱数は固定の種。2 本を別々に引く —— `rollDrops()` の約束）。
+  let seed = 0x5eed50;
+  const next = (): number => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  const LEAF_TRIALS = 2000;
+  let sticks = 0;
+  let birchSaplings = 0;
+  let birchApples = 0;
+  let others = 0;
+  for (let i = 0; i < LEAF_TRIALS; i++) {
+    for (const s of rollDrops(BIRCH_LEAVES, next(), next())) {
+      if (s.item === STICK) sticks += s.count;
+      else if (s.item === BIRCH_SAPLING) birchSaplings += s.count;
+      else if (s.item === APPLE) birchApples += s.count;
+      else others += s.count;
+    }
+  }
+  const sapRate = birchSaplings / LEAF_TRIALS;
+  console.log(
+    `      シラカバの葉 ${LEAF_TRIALS} 枚: 棒 ${sticks} / 苗木 ${birchSaplings}（${(sapRate * 100).toFixed(2)}%）/ ` +
+      `リンゴ ${birchApples} / その他 ${others}`,
+  );
+  check(
+    "シラカバの葉からリンゴは 1 個も出ない（本家どおり）・他のものも出ない",
+    birchApples === 0 && others === 0,
+    `リンゴ ${birchApples} / その他 ${others}`,
+  );
+  check(
+    "シラカバの葉から苗木が 3〜7%（表は 5%）・棒も出る",
+    sapRate >= 0.03 && sapRate <= 0.07 && sticks > 0,
+    `苗木 ${(sapRate * 100).toFixed(2)}% / 棒 ${sticks}`,
   );
 }

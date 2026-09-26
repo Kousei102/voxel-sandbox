@@ -699,6 +699,23 @@ export const NETHER_BRICK_FENCE = 187;
  */
 export const COAL_BLOCK = 188;
 
+/**
+ * シラカバの木 3 つ（50）。**原木 196 / 葉 197 / 苗木 198。** 3 つともブロックで、
+ * `variantOf` を書かないので**アイテムは `items.ts` の for が同じ番号で作ります**
+ * （`MAX_ITEM_ID` だけは手で伸ばすこと）。
+ *
+ * **原木は `WOOD`・葉は `LEAVES`・苗木は `SPRUCE_SAPLING` の写しで、違うのは色だけ**です。
+ * **形もオークの写し**（`treeshape.ts` の `treeCells()` がオークの分岐を通り、
+ * 原木と葉の ID だけを `treeBlocks()` の表から差し替える）。**どこに生えるかは
+ * `biomes.ts` の `BiomeDef.birch`**（森の木の 2 割）。
+ *
+ * **板は既存の `PLANK` へ**（トウヒと同じ。`crafting.ts`）。**葉からリンゴは落ちません**
+ * （本家どおり。`items.ts` の `DROPS` はトウヒの葉と同じ形）。
+ */
+export const BIRCH_WOOD = 196;
+export const BIRCH_LEAVES = 197;
+export const BIRCH_SAPLING = 198;
+
 /** 上付きハーフ。見た目と当たり判定だけが違うので、大元は下付きのハーフ。 */
 export const STONE_SLAB_TOP = 64;
 export const COBBLE_SLAB_TOP = 65;
@@ -2249,6 +2266,26 @@ export const BLOCKS: readonly BlockDef[] = [
     needsSoil: true,
   }),
   def(SPRUCE_SAPLING, "トウヒの苗木", { top: 0x2f7f5a }, {
+    opaque: false,
+    solid: false,
+    hardness: 0,
+    sound: "grass",
+    model: "cross",
+    boxes: CROSS_BOX,
+    supportFace: FACE_YN,
+    needsSoil: true,
+  }),
+
+  // シラカバの木 3 つ（上のコメント・50）。**原木は `WOOD`・葉は `LEAVES`・苗木は
+  // `SPRUCE_SAPLING` の写しで、違うのは色だけ。** 苗木にも `variantOf` / `replaceable` /
+  // `stacksOnSelf` を付けないこと（上の苗木 2 種と同じ理由）。
+  // **色は 190 種と総当たりで測った値**（`test/items.test.ts`・`TUNING.md`）: 淡い黄色の帯は
+  // 砂・砂岩・エンドストーンで埋まっていて、素直な `0xcfc08a` は砂岩から 9.9 しか離れないので、
+  // **原木の上面は暖かい灰茶 `0xb0a876`**（いちばん近い本棚から 32.1）。**側面は一覧に
+  // 出ないので白い樹皮そのまま**。葉は本家の固定色 `0x80a755`（草から 22.8）。
+  def(BIRCH_WOOD, "シラカバの原木", { top: 0xb0a876, side: 0xd7d3c7 }, { hardness: 2, tool: "axe", sound: "wood" }),
+  def(BIRCH_LEAVES, "シラカバの葉", { top: 0x80a755 }, { hardness: 0.2, sound: "grass" }),
+  def(BIRCH_SAPLING, "シラカバの苗木", { top: 0xa8d070 }, {
     opaque: false,
     solid: false,
     hardness: 0,

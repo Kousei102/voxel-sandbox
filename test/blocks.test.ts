@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs";
 import { PerspectiveCamera, Scene, Vector3 } from "three";
 import {
+  BIRCH_LEAVES,
+  BIRCH_SAPLING,
+  BIRCH_WOOD,
   AIR,
   BED,
   BLOCKS,
@@ -85,6 +88,7 @@ import {
   WATER,
   WHEAT_CROP,
   WHEAT_CROP_RIPE,
+  WOOD,
   baseBlock,
   blockDef,
   blockName,
@@ -298,8 +302,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタ・ネザーレンガのフェンス・石炭ブロック・グロウストーンダスト・クモの目・金の道具 5 本の 74 個（195 まで。**金の道具 5 本が入ったので数え直した** —— 名指しの一覧はそのままで、末尾に 5 個足しただけ）",
-    sharedItems.length === 74 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタ・ネザーレンガのフェンス・石炭ブロック・グロウストーンダスト・クモの目・金の道具 5 本・シラカバの木 3 つの 77 個（198 まで。**シラカバの原木・葉・苗木が入ったので数え直した** —— 名指しの一覧はそのままで、末尾に 3 個足しただけ）",
+    sharedItems.length === 77 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -406,15 +410,21 @@ export function run(): void {
       sharedItems[69] === GOLD_PICKAXE && sharedItems[70] === GOLD_AXE &&
       sharedItems[71] === GOLD_SHOVEL && sharedItems[72] === GOLD_SWORD &&
       sharedItems[73] === GOLD_HOE &&
-      MAX_ITEM_ID === GOLD_HOE,
+      // **196..198 は `items.ts` に 1 行も書かずに増えたブロック 3 つ**（シラカバの原木・葉・
+      // 苗木。`variantOf` が `AIR` なので for が同じ番号のアイテムを作る）。**上限を持つのが
+      // ブロック側なのは 13 度目**なので、`MAX_ITEM_ID` の突き合わせをここで一緒に見る
+      // （**比べる相手を新しい番号に直すこと** —— 古い番号のまま残すと TS2367。`rules/testing.md`）。
+      sharedItems[74] === BIRCH_WOOD && sharedItems[75] === BIRCH_LEAVES &&
+      sharedItems[76] === BIRCH_SAPLING &&
+      MAX_ITEM_ID === BIRCH_SAPLING,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 60（金の道具 191..195 で 5 個減った。番号を 5 つ取ったので数え直した）",
-    sharedFree === 60,
+    "111..255 の空きは 57（シラカバの木 196..198 で 3 個減った。番号を 3 つ取ったので数え直した）",
+    sharedFree === 57,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1425,6 +1435,7 @@ export function run(): void {
   netherBrickFences();
   coalBlocks();
   saplings();
+  birches();
   clay();
   glowstoneDust();
   brickNames();
@@ -4190,10 +4201,10 @@ function ripeWheat(): void {
     }
     console.log(`      extra を持つブロック: ${withExtra.join(" / ") || "なし"}`);
     // **数えて直すこと、ゆるめないこと。** 実った小麦（種）・オークの葉（リンゴと
-    // 苗木の 2 件）・トウヒの葉（苗木だけ）の 3 つ。
+    // 苗木の 2 件）・トウヒの葉（苗木だけ）・シラカバの葉（苗木だけ。50 で 1 つ増えた）の 4 つ。
     check(
-      "extra を持つのは実った小麦と葉 2 種の 3 つ（オークの葉だけ候補 2 件）",
-      withExtra.length === 3,
+      "extra を持つのは実った小麦と葉 3 種の 4 つ（オークの葉だけ候補 2 件）",
+      withExtra.length === 4,
       withExtra.join(" / "),
     );
     check("extra は 1 山目と別のアイテム", sameItem.length === 0, sameItem.join(" / "));
@@ -4673,5 +4684,98 @@ function saplings(): void {
     supportHint(SAPLING) === "土か草の上" && supportHint(SPRUCE_SAPLING) === "土か草の上" &&
       supportHint(LADDER) === "壁" && supportHint(TORCH) === "床か壁",
     `苗木「${supportHint(SAPLING)}」/ はしご「${supportHint(LADDER)}」/ 松明「${supportHint(TORCH)}」`,
+  );
+}
+
+/**
+ * シラカバの木 3 つ（50）。**原木は `WOOD`・葉は `LEAVES`・苗木は `SPRUCE_SAPLING` の写しで、
+ * 違うのは色だけ** —— だから見るのは「写し元と旗が 1 つ残らず同じか」と、色・名前・番号。
+ */
+function birches(): void {
+  describe("シラカバ（50）: 原木・葉・苗木の定義");
+
+  const pairs: [string, number, number][] = [
+    ["シラカバの原木", BIRCH_WOOD, WOOD],
+    ["シラカバの葉", BIRCH_LEAVES, LEAVES],
+    ["シラカバの苗木", BIRCH_SAPLING, SPRUCE_SAPLING],
+  ];
+  for (const [name, id, base] of pairs) {
+    const d = blockDef(id);
+    const b = blockDef(base);
+    console.log(
+      `      ${name}(${id}): 上 0x${d.top.toString(16)} 側 0x${d.side.toString(16)} / 硬さ ${d.hardness} / ` +
+        `道具 ${d.tool} / 音 ${d.sound} / model ${d.model} / opaque ${d.opaque} / solid ${d.solid} / ` +
+        `variantOf ${d.variantOf} / needsSoil ${needsSoil(id)}  ← 写し元 ${b.name}(${base})`,
+    );
+    check(
+      `${name}(${id}) は名前どおりで、硬さ・道具・音・形・不透明・当たり・土の要否が ${b.name} と同じ`,
+      d.name === name && d.hardness === b.hardness && d.tool === b.tool && d.sound === b.sound &&
+        d.model === b.model && d.opaque === b.opaque && d.solid === b.solid &&
+        d.variantOf === AIR && needsSoil(id) === needsSoil(base) &&
+        isReplaceable(id) === isReplaceable(base) && stacksOnSelf(id) === stacksOnSelf(base) &&
+        d.supportFace === b.supportFace,
+      `${d.name} / 硬さ ${d.hardness} / ${d.tool} / ${d.sound} / ${d.model} / opaque ${d.opaque} / solid ${d.solid}`,
+    );
+  }
+  // **番号は予約表どおり**（`ROADMAP.md`。111 以降はブロックとアイテムで 1 本の番号列）。
+  check(
+    "番号は 196 原木 / 197 葉 / 198 苗木",
+    BIRCH_WOOD === 196 && BIRCH_LEAVES === 197 && BIRCH_SAPLING === 198,
+    `${BIRCH_WOOD} / ${BIRCH_LEAVES} / ${BIRCH_SAPLING}`,
+  );
+  // **原木は斧で速く掘れる**（`WOOD` と同じ秒数）・**葉は不透明の立方体**（オークの葉と同じ旗）。
+  const bare = breakTime(BIRCH_WOOD);
+  const axe = breakTime(BIRCH_WOOD, WOOD_AXE);
+  console.log(
+    `      掘る秒数: シラカバの原木 素手 ${bare.toFixed(2)} / 木の斧 ${axe.toFixed(2)}（原木 ${breakTime(WOOD).toFixed(2)} / ` +
+      `${breakTime(WOOD, WOOD_AXE).toFixed(2)}）・葉 ${breakTime(BIRCH_LEAVES).toFixed(2)}`,
+  );
+  check(
+    "シラカバの原木は斧で速くなり、秒数は原木と同じ",
+    axe < bare && bare === breakTime(WOOD) && axe === breakTime(WOOD, WOOD_AXE) &&
+      canHarvest(BIRCH_WOOD, NO_ITEM),
+    `素手 ${bare} / 斧 ${axe}`,
+  );
+  check(
+    "シラカバの葉は不透明の立方体（オークの葉と同じ旗）",
+    blockDef(BIRCH_LEAVES).opaque && blockDef(BIRCH_LEAVES).solid && blockDef(BIRCH_LEAVES).model === blockDef(LEAVES).model,
+    `opaque ${blockDef(BIRCH_LEAVES).opaque} / solid ${blockDef(BIRCH_LEAVES).solid} / model ${blockDef(BIRCH_LEAVES).model}`,
+  );
+  // **苗木は土・草・耕地の上にだけ立つ**（`needsSoil` の表 1 本）。
+  const soil: [string, number, boolean][] = [
+    ["土", DIRT, true],
+    ["草", GRASS, true],
+    ["耕地", FARMLAND, true],
+    ["石", STONE, false],
+    ["砂", SAND, false],
+    ["葉", LEAVES, false],
+  ];
+  console.log(
+    `      supportsBlock(真下, FACE_YP, シラカバの苗木): ` +
+      soil.map(([n, s]) => `${n} ${supportsBlock(s, FACE_YP, BIRCH_SAPLING)}`).join(" / "),
+  );
+  check(
+    "シラカバの苗木が立つのは土・草・耕地の上だけ・置けない理由は「土か草の上」",
+    soil.every(([, s, want]) => supportsBlock(s, FACE_YP, BIRCH_SAPLING) === want) &&
+      supportHint(BIRCH_SAPLING) === "土か草の上",
+    soil.map(([n, s]) => `${n} ${supportsBlock(s, FACE_YP, BIRCH_SAPLING)}`).join(" / "),
+  );
+  // **葉からはシラカバの苗木**（オークの苗木ではない）。**原木と苗木は掘ると自分が 1 個。**
+  const band = rollDrops(BIRCH_LEAVES, 0.5, 0.03);
+  const apple = rollDrops(BIRCH_LEAVES, 0.05, 0.001);
+  console.log(
+    `      シラカバの葉: 苗木の帯（0.03）→ ${band.map((s) => itemName(s.item)).join("+") || "なし"} / ` +
+      `リンゴの帯の目（0.001）→ ${apple.map((s) => itemName(s.item)).join("+") || "なし"} / ` +
+      `原木を掘る → ${itemName(rollDrop(BIRCH_WOOD, 0.5).item)} / 苗木を掘る → ${itemName(rollDrop(BIRCH_SAPLING, 0.5).item)}`,
+  );
+  check(
+    "シラカバの葉からはシラカバの苗木・リンゴの帯の目でもリンゴは出ない",
+    band.length === 1 && band[0]?.item === BIRCH_SAPLING && apple.every((s) => s.item !== APPLE),
+    `${band.map((s) => itemName(s.item)).join("+")} / ${apple.map((s) => itemName(s.item)).join("+")}`,
+  );
+  check(
+    "シラカバの原木・苗木は掘ると自分が 1 個（DROPS に 1 行も要らない）",
+    rollDrop(BIRCH_WOOD, 0.5).item === BIRCH_WOOD && rollDrop(BIRCH_SAPLING, 0.5).item === BIRCH_SAPLING,
+    `${itemName(rollDrop(BIRCH_WOOD, 0.5).item)} / ${itemName(rollDrop(BIRCH_SAPLING, 0.5).item)}`,
   );
 }

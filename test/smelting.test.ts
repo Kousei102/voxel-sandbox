@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import {
   AIR,
+  BIRCH_WOOD,
   COAL_BLOCK,
   COBBLE,
   FURNACE,
@@ -153,6 +154,17 @@ export function run(): void {
     isFuel(WOOD) && isSmeltable(WOOD) && isFuel(SPRUCE_WOOD) && isSmeltable(SPRUCE_WOOD),
     `燃料 ${isFuel(WOOD)} / ${isFuel(SPRUCE_WOOD)}・焼ける ${isSmeltable(WOOD)} / ${isSmeltable(SPRUCE_WOOD)}`,
   );
+  // **シラカバの原木（50）もトウヒと同じ 2 行**（木炭 1 個・燃料は原木と同じ秒数）。
+  console.log(
+    `      シラカバの原木 → ${itemName(SMELTING.get(BIRCH_WOOD)?.out ?? NO_ITEM)} x${SMELTING.get(BIRCH_WOOD)?.count}` +
+      ` / 燃料 ${fuelTimeOf(BIRCH_WOOD)} 秒（原木 ${fuelTimeOf(WOOD)} 秒・トウヒ ${fuelTimeOf(SPRUCE_WOOD)} 秒）`,
+  );
+  check(
+    "シラカバの原木 → 木炭 1 個・燃料はトウヒの原木と同じ 15 秒",
+    SMELTING.get(BIRCH_WOOD)?.out === CHARCOAL && SMELTING.get(BIRCH_WOOD)?.count === 1 &&
+      fuelTimeOf(BIRCH_WOOD) === fuelTimeOf(SPRUCE_WOOD) && fuelTimeOf(BIRCH_WOOD) === 15,
+    `${itemName(SMELTING.get(BIRCH_WOOD)?.out ?? NO_ITEM)} x${SMELTING.get(BIRCH_WOOD)?.count} / ${fuelTimeOf(BIRCH_WOOD)} 秒`,
+  );
   // **秒ではなく「何個焼けるか」で見ること** —— `SMELT_TIME` を触ったときに
   // 「8 個ぶん」のほうが崩れたと分かる。
   console.log(
@@ -196,13 +208,13 @@ export function run(): void {
     `レンガ ${isSmeltable(BRICK_ITEM)} / 粘土玉 ${isSmeltable(CLAY_BALL)}`,
   );
   // **表そのものを数える。** 「粘土玉が焼ける」だけだと、別の行が消えても緑になる。
-  // **数え直すのは可・ゆるめるのは禁じ手**（`>= 10` にしない）。レンガで 1 行増えて 10 行。
-  check("焼けるものの表は 10 行（レンガで 1 行増えた）", SMELTING.size === 10, `${SMELTING.size} 行`);
+  // **数え直すのは可・ゆるめるのは禁じ手**（`>= 10` にしない）。シラカバの原木で 1 行増えて 11 行。
+  check("焼けるものの表は 11 行（シラカバの原木で 1 行増えた）", SMELTING.size === 11, `${SMELTING.size} 行`);
 
   // **`FUEL` に紛れ込んでいないこと**（革を燃料にすると、牛が薪になる）。
   // 表そのものを数える —— 「革が燃料でない」だけだと、別のものが紛れても緑になる。
-  // **数え直すのは可・ゆるめるのは禁じ手**（`>= 8` にしない）。石炭ブロックで 1 行増えて 10 行。
-  check("燃料の表は 10 行（石炭ブロックで 1 行増えた）", FUEL.size === 10, `${FUEL.size} 行`);
+  // **数え直すのは可・ゆるめるのは禁じ手**（`>= 8` にしない）。シラカバの原木で 1 行増えて 11 行。
+  check("燃料の表は 11 行（シラカバの原木で 1 行増えた）", FUEL.size === 11, `${FUEL.size} 行`);
 
   // --- 石炭ブロック（188・42）--------------------------------------------------
   // **秒ではなく「何個焼けるか」で見ること**（木炭と同じ理由）。本家と同じ 80 個ぶんで、

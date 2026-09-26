@@ -1,5 +1,6 @@
 import {
   BED,
+  BIRCH_WOOD,
   BOOKSHELF,
   BRICK,
   BROWN_MUSHROOM,
@@ -145,6 +146,8 @@ export const RECIPES: readonly Recipe[] = [
   { name: "板", out: PLANK, count: 4, ingredients: [WOOD] },
   // 針葉樹林から始めても詰まないように、トウヒの原木からも板が作れる
   { name: "板", out: PLANK, count: 4, ingredients: [SPRUCE_WOOD] },
+  // シラカバの原木（50）も同じ板へ（本家は板も別材質。足すとハーフ・階段・フェンスまで増える）
+  { name: "板", out: PLANK, count: 4, ingredients: [BIRCH_WOOD] },
   { name: "棒", out: STICK, count: 4, shape: ["P", "P"], key: { P: PLANK } },
   {
     name: "作業台",

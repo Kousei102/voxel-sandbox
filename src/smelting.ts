@@ -7,6 +7,7 @@
  */
 
 import {
+  BIRCH_WOOD,
   COAL_BLOCK,
   COBBLE,
   CRAFTING_TABLE,
@@ -74,6 +75,7 @@ export const SMELTING: ReadonlyMap<number, SmeltResult> = new Map([
   [WOOD, { out: CHARCOAL, count: 1 }],
   // トウヒの原木も同じ 1 行（板が 2 行あるのと同じで、針葉樹林から始めても詰まない）。
   [SPRUCE_WOOD, { out: CHARCOAL, count: 1 }],
+  [BIRCH_WOOD, { out: CHARCOAL, count: 1 }],
   // 粘土玉 → レンガ（本家と同じ）。**`FUEL` には 1 行も足していない** ——
   // 粘土玉もレンガも燃料ではない（革・粘土と同じ）。焼いたレンガ 4 個を 2x2 で
   // 組むと `blocks.ts` の `BRICK`(12) になる（`crafting.ts`）ので、
@@ -103,6 +105,7 @@ export const FUEL: ReadonlyMap<number, number> = new Map([
   [COAL_BLOCK, SMELT_TIME * 80],
   [WOOD, SMELT_TIME * 1.5],
   [SPRUCE_WOOD, SMELT_TIME * 1.5],
+  [BIRCH_WOOD, SMELT_TIME * 1.5],
   [PLANK, SMELT_TIME * 1.5],
   [PLANK_STAIRS, SMELT_TIME * 1.5],
   [CRAFTING_TABLE, SMELT_TIME * 1.5],

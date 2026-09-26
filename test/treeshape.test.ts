@@ -11,18 +11,22 @@
  */
 
 import {
+  BIRCH_LEAVES,
+  BIRCH_WOOD,
   LEAVES,
   SPRUCE_LEAVES,
+  SPRUCE_WOOD,
   VINE,
   VINE_XN,
   VINE_ZN,
   VINE_ZP,
+  WOOD,
   baseBlock,
   blockName,
   supportFace,
   vineVariant,
 } from "../src/blocks";
-import { TREE_RADIUS, VINE_MAX_LENGTH, treeCells, vineCells } from "../src/treeshape";
+import { TREE_RADIUS, VINE_MAX_LENGTH, grownTreeHeight, treeBlocks, treeCells, vineCells } from "../src/treeshape";
 import { sourceOf } from "./arena";
 import { check, describe } from "./harness";
 
@@ -59,9 +63,12 @@ export function run(): void {
     ["oak", 6],
     ["spruce", 6],
     ["spruce", 9],
+    // **シラカバ（50）もオークと同じ形なので、同じ見張りを通す**（葉の ID だけが違う）。
+    ["birch", 4],
+    ["birch", 6],
   ] as const) {
     const tree = treeCells(kind, height);
-    const leafId = kind === "spruce" ? SPRUCE_LEAVES : LEAVES;
+    const leafId = kind === "spruce" ? SPRUCE_LEAVES : kind === "birch" ? BIRCH_LEAVES : LEAVES;
     const filled = new Set(tree.map((c) => `${c.dx},${c.dy},${c.dz}`));
     const leaves = new Set(tree.filter((c) => c.id === leafId).map((c) => `${c.dx},${c.dy},${c.dz}`));
     const lowestLeaf = Math.min(...tree.filter((c) => c.id === leafId).map((c) => c.dy));
@@ -157,4 +164,62 @@ export function run(): void {
   const shapes = new Set<string>();
   for (let x = 0; x < 40; x++) shapes.add(JSON.stringify(vineCells("oak", 5, x * 31, x * 17)));
   check("場所ごとに形が変わる", shapes.size > 5, `40 か所で ${shapes.size} 通り`);
+
+  describe("シラカバ（50）: オークの写しで ID だけが違う");
+
+  // **高さごとにマスの座標が 1 つ残らず同じで、ID だけが原木・葉**（4..6）。
+  // 座標が 1 つでもずれると、既存のセーブで森の 2 割の木の差分が別のマスを指す。
+  for (const height of [4, 5, 6]) {
+    const oak = treeCells("oak", height);
+    const birch = treeCells("birch", height);
+    const swap = (id: number): number => (id === WOOD ? BIRCH_WOOD : id === LEAVES ? BIRCH_LEAVES : -1);
+    const mismatch = oak.filter((c, i) => {
+      const o = birch[i];
+      return !o || o.dx !== c.dx || o.dy !== c.dy || o.dz !== c.dz || o.overwrite !== c.overwrite || o.id !== swap(c.id);
+    }).length;
+    const ids = [...new Set(birch.map((c) => blockName(c.id)))].join(",");
+    console.log(`      高さ ${height}: オーク ${oak.length} マス / シラカバ ${birch.length} マス（${ids}）/ 食い違い ${mismatch}`);
+    check(
+      `高さ ${height}: シラカバはオークと同じ座標・同じ順で、ID だけがシラカバの原木と葉`,
+      oak.length === birch.length && mismatch === 0,
+      `${oak.length} / ${birch.length} マス・食い違い ${mismatch}`,
+    );
+  }
+  // **ツタもオークと同じ座標に掛かる**（葉の ID を取り違えると 0 マスになる）。
+  const oakVines = vineCells("oak", 5, 33, -7);
+  const birchVines = vineCells("birch", 5, 33, -7);
+  console.log(`      ツタ: オーク ${oakVines.length} マス / シラカバ ${birchVines.length} マス`);
+  check(
+    "シラカバのツタはオークと同じ座標・同じ向きで、0 マスではない",
+    birchVines.length > 0 && JSON.stringify(birchVines) === JSON.stringify(oakVines),
+    `${birchVines.length} / ${oakVines.length} マス`,
+  );
+  // **原木と葉の表は 1 本**（`treeBlocks()`）。4 種を並べて出す。
+  const table = (["oak", "spruce", "birch", "cactus"] as const).map((k) => {
+    const t = treeBlocks(k);
+    return `${k} ${t.wood}/${t.leaf}`;
+  });
+  console.log(`      treeBlocks: ${table.join(" / ")}`);
+  check(
+    "treeBlocks はオーク・トウヒ・シラカバで原木と葉の組が別々",
+    treeBlocks("oak").wood === WOOD && treeBlocks("oak").leaf === LEAVES &&
+      treeBlocks("spruce").wood === SPRUCE_WOOD && treeBlocks("spruce").leaf === SPRUCE_LEAVES &&
+      treeBlocks("birch").wood === BIRCH_WOOD && treeBlocks("birch").leaf === BIRCH_LEAVES,
+    table.join(" / "),
+  );
+  // **苗木から育つ高さもオークと同じ 4..6**（本家は 5..7。`TUNING.md`）。
+  const heights = new Set<number>();
+  let sameAsOak = 0;
+  for (let x = 0; x < 200; x++) {
+    const h = grownTreeHeight("birch", x * 13, x * -7);
+    heights.add(h);
+    if (h === grownTreeHeight("oak", x * 13, x * -7)) sameAsOak++;
+  }
+  const sorted = [...heights].sort((a2, b2) => a2 - b2);
+  console.log(`      grownTreeHeight("birch") 200 か所: ${sorted.join(",")}（オークと同じ ${sameAsOak} か所）`);
+  check(
+    "grownTreeHeight(\"birch\") は 4..6 の 3 通りで、同じ座標ならオークと同じ",
+    sorted.join(",") === "4,5,6" && sameAsOak === 200,
+    `${sorted.join(",")} / ${sameAsOak}`,
+  );
 }

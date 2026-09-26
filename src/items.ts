@@ -1,5 +1,7 @@
 import {
   AIR,
+  BIRCH_LEAVES,
+  BIRCH_SAPLING,
   BLOCKS,
   BOOKSHELF,
   CAKE,
@@ -662,8 +664,10 @@ export const GOLD_HOE = 195;
  * （`craftscreen.ts` の `CREATIVE_ITEMS`）にだけ出てこないブロック**ができます
  * （置けるし掘れるので、型でも `typecheck` でも止まりません）。
  *
- * **いまは金のクワ（アイテム 195）が上限です**（金の道具 191..195 の最後。手で足したアイテムで、
- * ブロック 191..195 はありません）。直前がクモの目（アイテム 190）・グロウストーンダスト（アイテム 189）・石炭ブロック（ブロック 188。
+ * **いまはシラカバの苗木（ブロック 198）が上限です**（シラカバの木 196..198 の最後。3 つとも
+ * `items.ts` に 1 行も書かずに増えたブロックで、上の for が同じ番号のアイテムを作ります）。
+ * 直前が金のクワ（アイテム 195。金の道具 191..195 の最後。手で足したアイテムで、
+ * ブロック 191..195 はありません）・クモの目（アイテム 190）・グロウストーンダスト（アイテム 189）・石炭ブロック（ブロック 188。
  * `items.ts` に 1 行も書かずに増えたブロックで、`variantOf` を書いていないので
  * **上の for が同じ番号のアイテム 188 を作ります**。135..137 の鉱物をしまう立方体と
  * 同じ形）・ネザーレンガのフェンス（ブロック 187）・ツタの向き違いの最後
@@ -679,7 +683,7 @@ export const GOLD_HOE = 195;
  * **上限をこちら側へ移したら、それまで指していたブロックの import を消すこと** ——
  * 残すと「使われていない」で `npm run typecheck` が落ちます（型で止まる安全な罠）。
  */
-export const MAX_ITEM_ID = GOLD_HOE;
+export const MAX_ITEM_ID = BIRCH_SAPLING;
 
 export const MAX_STACK = 64;
 
@@ -1368,6 +1372,11 @@ const DROPS = new Map<number, Drop>([
   [
     SPRUCE_LEAVES,
     { item: STICK, count: 1, chance: 0.1, extra: { item: SPRUCE_SAPLING, count: 1, chance: 0.05 } },
+  ],
+  // シラカバの葉（50）も**トウヒと同じ形**（リンゴは付かない。本家どおり）。
+  [
+    BIRCH_LEAVES,
+    { item: STICK, count: 1, chance: 0.1, extra: { item: BIRCH_SAPLING, count: 1, chance: 0.05 } },
   ],
   // 砂利は 10% で火打石、外したら砂利そのもの（Minecraft と同じ）。
   // **`otherwise` が無いと 90% で消えるブロックになる。**

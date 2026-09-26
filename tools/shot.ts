@@ -59,6 +59,8 @@ import {
   SANDSTONE_SLAB_TOP,
   SAPLING,
   SPRUCE_SAPLING,
+  BIRCH_SAPLING,
+  BIRCH_LEAVES,
   STONE,
   STONE_BRICK,
   STONE_BRICK_SLAB,
@@ -1020,6 +1022,10 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
     world.setVoxel(-1, y, 2, WHEAT_CROP);
     // **葉を 1 枚、背にして置く。** 苗木の緑が葉の緑（0x3f7a3a）に沈まないかが出る。
     world.setVoxel(4, y, 0, LEAVES);
+    // **シラカバの苗木（50）はカメラ寄りの空いた所へ**（既存の並びを動かさない。
+    // `rules/meshing-render.md`）。隣にシラカバの葉を 1 枚、オークの葉と見比べるために。
+    world.setVoxel(1, y, 2, BIRCH_SAPLING);
+    world.setVoxel(3, y, 2, BIRCH_LEAVES);
     // **書き換えたらメッシュ化をもう一度流すこと**（`cake` / `ice` / `fence` と同じ）。
     world.primeAround(0.5, 0.5, 3);
     return {
@@ -1028,7 +1034,7 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
       // 十字の 2 枚が 1 本の線に潰れる。
       camera: look(setup, new Vector3(0.5, y + 2.6, 6.6), new Vector3(0, y + 0.3, 0.8)),
       dayNight: skyOf(OVERWORLD, setup.time),
-      note: `草の上 -2..-1,${y},0（オーク/トウヒ）/ 土の上 1,${y},0 / 耕地の上 2,${y},0 / 比べる草むら -2,${y},2・小麦の苗 -1,${y},2 / 葉 4,${y},0`,
+      note: `草の上 -2..-1,${y},0（オーク/トウヒ）/ シラカバの苗木 1,${y},2・葉 3,${y},2 / 土の上 1,${y},0 / 耕地の上 2,${y},0 / 比べる草むら -2,${y},2・小麦の苗 -1,${y},2 / 葉 4,${y},0`,
     };
   },
 
@@ -1057,6 +1063,8 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
     for (const [x, z, id] of [
       [-4, 0, SAPLING],
       [3, 0, SPRUCE_SAPLING],
+      // **シラカバ（50）はトウヒの右の空いた所へ**（既存の 2 本とカメラを動かさない）。
+      [8, 1, BIRCH_SAPLING],
     ] as const) {
       world.setVoxel(x, y, z, id);
       crops.notePlaced({ x, y, z }, id, world);
@@ -1070,7 +1078,7 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
       scene,
       camera: look(setup, new Vector3(0, y + 6, 13), new Vector3(0, y + 3.5, 0)),
       dayNight: skyOf(OVERWORLD, setup.time),
-      note: `育ったオーク -4,${y},0 / 育ったトウヒ 3,${y},0 / 育てていない苗木 0,${y},6 / 覚えている ${crops.count} 本`,
+      note: `育ったオーク -4,${y},0 / 育ったトウヒ 3,${y},0 / 育ったシラカバ 8,${y},1 / 育てていない苗木 0,${y},6 / 覚えている ${crops.count} 本`,
     };
   },
 

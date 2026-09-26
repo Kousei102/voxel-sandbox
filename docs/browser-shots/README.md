@@ -708,3 +708,17 @@ JS で偽装しているため）。**`document.getElementById("mode").click()` 
 | `title` | `金のツルハシ x1` など（**1 枠 1 個**） |
 | 名前 | **「金のツルハシ」「金のシャベル」は 6 文字で `.slot .label` が 2 行（26px）に折れる**（既知の件。60 枠）。斧・剣・クワは 1 行 |
 | console のエラー | **0 件** |
+
+### `forest-birch.png`（シラカバの周・2026-09-26・AUTODEV 132）
+
+**森へ直に降りる撮り方**（1 分）。seed 4242 の森を `WorldGen.biomeAt()` で探し（**(-352, -352)**）、
+`page.addInitScript()` で `localStorage["voxel-sandbox:v1"]` に `{ version: 1, seed: 4242,
+player: { x: -352.5, y: 60, z: -352.5, yaw: 0.6, pitch: -0.25, flying: true }, time: 0.25,
+creative: true, edits: {} }` を書いてから開き、`#play` → ポインタロックを JS で立てる →
+`#loading` が消えて 6 秒待って `#viewport` を撮る。**`sessionStorage` の印で 1 回だけ書くこと**
+（`addInitScript` は再読み込みのたびに走る）。
+
+| 見たこと | 値 |
+| --- | --- |
+| 木 | **オークの間に、白い幹と黄緑の葉のシラカバが数本ずつ混ざる**（形はオークと同じ丸い塊） |
+| console のエラー | **0 件** |

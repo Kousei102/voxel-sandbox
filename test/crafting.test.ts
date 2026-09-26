@@ -1,5 +1,6 @@
 import {
   BED,
+  BIRCH_WOOD,
   BOOKSHELF,
   BRICK,
   BROWN_MUSHROOM,
@@ -964,9 +965,18 @@ export function run(): void {
   // **本数も 1 件として見張る** —— レシピを足したのに表から漏れていたら、
   // 上の `findRecipe` だけでは「揃わないのが正しい」と読めてしまう。
   check(
-    "レシピは 91 本（金の道具 5 本で 5 本増えた。数え直した）",
-    RECIPES.length === 91,
+    "レシピは 92 本（シラカバの原木 → 板で 1 本増えた。数え直した）",
+    RECIPES.length === 92,
     `${RECIPES.length} 本`,
+  );
+
+  // --- シラカバの原木 → 板 4 枚（50）。2x2 で作れる（作業台が要らない）---
+  const birchPlank = findRecipe(grid(2, ["B."], { B: BIRCH_WOOD }), 2);
+  console.log(`      シラカバの原木 1 個（2x2）→ ${birchPlank?.name ?? "無し"} x${birchPlank?.count ?? 0}`);
+  check(
+    "シラカバの原木 1 個 → 板 4 枚（既存の板と同じもの・2x2 で作れる）",
+    birchPlank?.out === PLANK && birchPlank.count === 4,
+    `${birchPlank?.name ?? "無し"} x${birchPlank?.count ?? 0}`,
   );
 
   // --- 残りかす（`consumeGrid()` の前後の盤面を 9 枠ぶん並べて見る） ---

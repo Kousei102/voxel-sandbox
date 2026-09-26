@@ -1,6 +1,8 @@
 import {
   AIR,
   BEDROCK,
+  BIRCH_LEAVES,
+  BIRCH_WOOD,
   BROWN_MUSHROOM,
   CACTUS,
   CANE_HEIGHT_MAX,
@@ -280,11 +282,12 @@ export function run(): void {
     for (let z = -64; z < 64; z++) {
       for (let y = 40; y < 100; y++) {
         const id = voxel(x, y, z);
-        if (id !== WOOD && id !== SPRUCE_WOOD) continue;
+        // **シラカバ（50）も数えに入れる**（森の 2 割。判定の数値は変えない）。
+        if (id !== WOOD && id !== SPRUCE_WOOD && id !== BIRCH_WOOD) continue;
         if (voxel(x, y + 1, z) === id) continue;
         trunks++;
         kinds.set(id, (kinds.get(id) ?? 0) + 1);
-        const leaf = id === WOOD ? LEAVES : SPRUCE_LEAVES;
+        const leaf = id === WOOD ? LEAVES : id === BIRCH_WOOD ? BIRCH_LEAVES : SPRUCE_LEAVES;
         if (voxel(x, y + 1, z) === leaf) capped++;
       }
     }
@@ -510,6 +513,7 @@ export function run(): void {
         for (let y = h + 1; y <= h + 16; y++) {
           const id = voxel(x, y, z);
           if (id === WOOD && voxel(x, y + 1, z) === LEAVES) treesInPatch++;
+          if (id === BIRCH_WOOD && voxel(x, y + 1, z) === BIRCH_LEAVES) treesInPatch++;
           // 垂れた列の長さ（上から下へ数える向きに合わせて、切れたところで締める）
           if (baseBlock(id) === VINE) run++;
           else if (run > 0) {
@@ -533,7 +537,7 @@ export function run(): void {
           const wallFace = supportFace(id);
           const [wx, , wz] = FACE_STEP[wallFace];
           const wall = voxel(x + wx, y, z + wz);
-          if (wall === LEAVES || wall === SPRUCE_LEAVES) {
+          if (wall === LEAVES || wall === SPRUCE_LEAVES || wall === BIRCH_LEAVES) {
             wallHung++;
             if (vineVariant(wallFace) !== id) wrongVariant++;
           } else if (baseBlock(voxel(x, y + 1, z)) === VINE) {
@@ -580,7 +584,7 @@ export function run(): void {
         const h = gen.heightAt(x, z);
         for (let y = h + 1; y <= h + 14; y++) {
           const id = voxel(x, y, z);
-          if (id === WOOD || id === CACTUS) trees++;
+          if (id === WOOD || id === BIRCH_WOOD || id === CACTUS) trees++;
           if (baseBlock(id) === VINE) here++;
         }
       }
@@ -595,6 +599,90 @@ export function run(): void {
     BIOMES.every((b) => b.vine === 0 || b.id === FOREST),
     BIOMES.filter((b) => b.vine > 0).map((b) => `${b.name} ${b.vine}`).join(" / "),
   );
+
+  // --- シラカバ（50・`BiomeDef.birch`）---
+  // **ツタと同じまとまった森を 1 マスも飛ばさずに数える。** 木 1 本 = 幹のてっぺん
+  // （真上が同じ種類の葉）で数え、オークとシラカバの割合を出してから判定する。
+  let oakTops = 0;
+  let birchTops = 0;
+  if (forestAt) {
+    for (let x = forestAt[0]; x < forestAt[0] + 64; x++) {
+      for (let z = forestAt[1]; z < forestAt[1] + 64; z++) {
+        const h = gen.heightAt(x, z);
+        for (let y = h + 1; y <= h + 10; y++) {
+          const id = voxel(x, y, z);
+          if (id === WOOD && voxel(x, y + 1, z) === LEAVES) oakTops++;
+          if (id === BIRCH_WOOD && voxel(x, y + 1, z) === BIRCH_LEAVES) birchTops++;
+        }
+      }
+    }
+  }
+  const birchShare = birchTops / Math.max(1, oakTops + birchTops);
+  console.log(
+    `      64x64 の森: オーク ${oakTops} 本 / シラカバ ${birchTops} 本（シラカバ ${(birchShare * 100).toFixed(1)}%・表は ` +
+      `${(biomeDef(FOREST).birch * 100).toFixed(0)}%）`,
+  );
+  check(
+    "森の木の 10〜30% がシラカバ（表は 2 割）",
+    oakTops + birchTops > 20 && birchShare >= 0.1 && birchShare <= 0.3,
+    `オーク ${oakTops} / シラカバ ${birchTops}（${(birchShare * 100).toFixed(1)}%）`,
+  );
+  // **森以外にはシラカバの原木が 1 マスも無い**（平原にはオークが立つので、木はあるのに
+  // シラカバが無い、を見るのが肝心）。
+  let strayBirch = 0;
+  const birchWhere: string[] = [];
+  for (const [name, want] of [["平原", PLAINS], ["針葉樹林", TAIGA], ["砂漠", DESERT]] as const) {
+    const at = patchOf(want);
+    if (!at) continue;
+    let here = 0;
+    let trees = 0;
+    for (let x = at[0]; x < at[0] + 32; x++) {
+      for (let z = at[1]; z < at[1] + 32; z++) {
+        const h = gen.heightAt(x, z);
+        for (let y = h + 1; y <= h + 12; y++) {
+          const id = voxel(x, y, z);
+          if (id === WOOD || id === SPRUCE_WOOD || id === CACTUS) trees++;
+          if (id === BIRCH_WOOD || id === BIRCH_LEAVES) here++;
+        }
+      }
+    }
+    strayBirch += here;
+    birchWhere.push(`${name} ${here} マス（木や柱 ${trees} マス）`);
+  }
+  console.log(`      森でないバイオームのシラカバ: ${birchWhere.join(" / ")}`);
+  check("森でないバイオームにシラカバは 1 マスも無い", strayBirch === 0, `${strayBirch} マス`);
+  check(
+    "シラカバを生やすバイオームは森だけ（表の側）・treeKind に birch と書いた行は無い",
+    BIOMES.every((b) => b.birch === 0 || b.id === FOREST) && BIOMES.every((b) => b.treeKind !== "birch"),
+    BIOMES.filter((b) => b.birch > 0).map((b) => `${b.name} ${b.birch}`).join(" / "),
+  );
+  // **同じシードで 2 回作ると同じ**（ハッシュだけで決まっている証拠）。
+  if (forestAt) {
+    const cx = forestAt[0] >> 4;
+    const cz = forestAt[1] >> 4;
+    let diff = 0;
+    let birchVoxels = 0;
+    for (let dx = 0; dx < 4; dx++) {
+      for (let dz = 0; dz < 4; dz++) {
+        for (let cy = 2; cy < 6; cy++) {
+          const one = new Uint8Array(CHUNK_VOLUME);
+          const two = new Uint8Array(CHUNK_VOLUME);
+          new WorldGen(12345).generateChunk(cx + dx, cy, cz + dz, one);
+          new WorldGen(12345).generateChunk(cx + dx, cy, cz + dz, two);
+          for (let i = 0; i < one.length; i++) {
+            if (one[i] !== two[i]) diff++;
+            if (one[i] === BIRCH_WOOD) birchVoxels++;
+          }
+        }
+      }
+    }
+    console.log(`      森の 4x4 チャンク x 4 段を 2 回: 食い違い ${diff} マス / シラカバの原木 ${birchVoxels} マス`);
+    check(
+      "同じシードで 2 回作ると同じ森（シラカバの原木も入っている）",
+      diff === 0 && birchVoxels > 0,
+      `食い違い ${diff} / 原木 ${birchVoxels}`,
+    );
+  }
 
   // **生成の順に依らないこと**（木と同じ形）。隣の列を先に作っても後に作っても、
   // ツタの位置が 1 マスも動かない —— 動くと、チャンクの読み込み順で世界が変わる。
@@ -1075,7 +1163,7 @@ export function run(): void {
       for (let z = desert[1]; z < desert[1] + 96; z++) {
         for (let y = 30; y < 110; y++) {
           const id = voxel(x, y, z);
-          if (id === WOOD || id === SPRUCE_WOOD) desertTrees++;
+          if (id === WOOD || id === SPRUCE_WOOD || id === BIRCH_WOOD) desertTrees++;
         }
       }
     }

@@ -270,7 +270,14 @@ export class WorldGen {
       // **塩は他の 8 本と重ねないこと。** 木の場所を決める 3 本（0x1234 / 0xabcd /
       // 0x5678）や高さの 0x99 と重ねると、**背の高い木にだけツタが掛かる**ように偏る。
       const vines = def.vine > 0 && hash2(wx, wz, this.seed ^ 0x4b73) < def.vine;
-      trees.push({ x: wx, y: h + 1, z: wz, height: trunk, kind: def.treeKind, vines });
+      // **オークのうち何割がシラカバか**（50）も `biomes.ts` が持つ（`BiomeDef.birch`）。
+      // 形も高さもオークと同じなので、上の場所・高さ・ツタの判定は 1 つも動かない。
+      // **塩 0x3a6d は他と重ねないこと**（高さの 0x99 と重ねると背の高い木だけがシラカバになる）。
+      const kind =
+        def.treeKind === "oak" && def.birch > 0 && hash2(wx, wz, this.seed ^ 0x3a6d) < def.birch
+          ? "birch"
+          : def.treeKind;
+      trees.push({ x: wx, y: h + 1, z: wz, height: trunk, kind, vines });
     }
 
     const structures = placementsFor(STRUCTURES, this.seed, cx, cz, this.groundAt);
