@@ -11,7 +11,9 @@
  */
 
 import { PerspectiveCamera } from "three";
-import { AIR, BEDROCK, CACTUS, COBWEB, DIRT, FENCE, ICE, LADDER, STONE, STONE_SLAB, STONE_STAIRS, WATER } from "../src/blocks";
+import {
+  AIR, BEDROCK, CACTUS, COBWEB, DIRT, FENCE, ICE, LADDER, SOUL_SAND, STONE, STONE_SLAB, STONE_STAIRS, WATER,
+} from "../src/blocks";
 import { WORLD_HEIGHT } from "../src/constants";
 import { PLAYER_SIZE } from "../src/physics";
 import { Player } from "../src/player";
@@ -451,6 +453,7 @@ export function run(): void {
 
   cobweb(rungs);
   ice();
+  soulSand();
   fence();
 }
 
@@ -738,6 +741,132 @@ function ice(): void {
     Math.abs(airIce - airDirt) < 1e-9 && !overIce.onGround && !overDirt.onGround &&
       !overIce.onSlippery && airIce > 2.7 && airIce < 2.9,
     `氷 ${airIce.toFixed(6)} / 土 ${airDirt.toFixed(6)}`,
+  );
+}
+
+/**
+ * ソウルサンドの上では遅い（`player.onSlowGround`・キューの 51）。**`ice()` の写し**で、
+ * 足元の走査（`bodyStandsOn()`）も同じ。違うのは**目標の速さに 0.4 を掛けるだけ**で、
+ * 加速と摩擦には掛けない（滑らない）ところ。
+ */
+function soulSand(): void {
+  describe("ソウルサンドの上では遅い（player.onSlowGround）");
+
+  // 床 y=10（上面 11）は土で、**x=3..40 だけソウルサンド**。歩いて乗るので手前は空けておく。
+  const patch = new Arena();
+  patch.fill(-4, 60, 10, 10, -4, 4, DIRT);
+  patch.fill(3, 40, 10, 10, -4, 4, SOUL_SAND);
+  const souls = patch as unknown as World;
+  const bare = new Arena();
+  bare.fill(-4, 60, 10, 10, -4, 4, DIRT);
+  const plain = bare as unknown as World;
+  const rink = new Arena();
+  rink.fill(-4, 60, 10, 10, -4, 4, ICE);
+  const frozen = rink as unknown as World;
+
+  const wader = new Player(new PerspectiveCamera());
+  wader.position.set(0.5, 11, 0.5);
+  wader.yaw = -Math.PI / 2; // 前 = +X
+  for (let i = 0; i < 30; i++) wader.update(1 / 60, souls);
+  check(
+    "歩き出す前（x≈0.5・足元は土）は onSlowGround が偽",
+    !wader.onSlowGround && wader.onGround,
+    `x=${wader.position.x.toFixed(3)} onSlowGround=${wader.onSlowGround} onGround=${wader.onGround}`,
+  );
+
+  // 土の上で 5.2 に乗ってから乗り移るので、1 秒ぶん歩かせて速さを落ち着かせる。
+  wader.setKey("KeyW", true);
+  for (let i = 0; i < 120; i++) wader.update(1 / 60, souls);
+  const soulSpeed = Math.hypot(wader.velocity.x, wader.velocity.z);
+  check(
+    "ソウルサンドの上へ歩いて乗ると onSlowGround が真（滑りはしない）",
+    wader.onSlowGround && wader.onGround && wader.position.x > 3 && !wader.onSlippery,
+    `x=${wader.position.x.toFixed(3)} onSlowGround=${wader.onSlowGround} onSlippery=${wader.onSlippery}`,
+  );
+
+  const beside = new Player(new PerspectiveCamera());
+  beside.position.set(2.5, 11, 0.5);
+  for (let i = 0; i < 30; i++) beside.update(1 / 60, souls);
+  check(
+    "ソウルサンドの隣のマスに立っているだけでは偽",
+    !beside.onSlowGround,
+    `x=${beside.position.x.toFixed(3)} 右端=${(beside.position.x + PLAYER_SIZE.half).toFixed(3)}（境目 3.0）`,
+  );
+
+  // --- 2 秒歩いた速さ（**両方を出してから**比べる） ---
+  const walker = new Player(new PerspectiveCamera());
+  walker.position.set(0.5, 11, 0.5);
+  walker.yaw = -Math.PI / 2;
+  walker.setKey("KeyW", true);
+  for (let i = 0; i < 120; i++) walker.update(1 / 60, plain);
+  const dirtSpeed = Math.hypot(walker.velocity.x, walker.velocity.z);
+  const ratio = soulSpeed / dirtSpeed;
+  console.log(
+    `      2 秒歩いた速さ: ソウルサンド ${soulSpeed.toFixed(3)} m/s / 土 ${dirtSpeed.toFixed(3)} m/s` +
+      `（比 ${ratio.toFixed(3)}。5.2 × 0.4 = 2.08）`,
+  );
+  check(
+    "歩く速さが 0.4 倍（土 5.1〜5.3・ソウルサンド 2.0〜2.2・比 0.38〜0.42）",
+    dirtSpeed > 5.1 && dirtSpeed < 5.3 && soulSpeed > 2.0 && soulSpeed < 2.2 &&
+      ratio > 0.38 && ratio < 0.42,
+    `ソウルサンド ${soulSpeed.toFixed(3)} / 土 ${dirtSpeed.toFixed(3)} / 比 ${ratio.toFixed(3)}`,
+  );
+
+  // --- 走っても 0.4 倍（8.4 × 0.4 = 3.36） ---
+  const runner = new Player(new PerspectiveCamera());
+  runner.position.set(10.5, 11, 0.5);
+  runner.yaw = -Math.PI / 2;
+  runner.update(1 / 60, souls);
+  runner.setKey("KeyW", true);
+  runner.setKey("ShiftLeft", true);
+  for (let i = 0; i < 60; i++) runner.update(1 / 60, souls);
+  const runSpeed = Math.hypot(runner.velocity.x, runner.velocity.z);
+  console.log(
+    `      走った速さ（ソウルサンド）: ${runSpeed.toFixed(3)} m/s（8.4 × 0.4 = 3.36）` +
+      ` sprinting=${runner.sprinting} onSlowGround=${runner.onSlowGround}`,
+  );
+  check(
+    "走っても 0.4 倍（3.2〜3.5 m/s）",
+    runner.sprinting && runner.onSlowGround && runSpeed > 3.2 && runSpeed < 3.5,
+    `${runSpeed.toFixed(3)} m/s`,
+  );
+
+  // --- 空中では土の上と同じ（足元が空気なので偽）。**0.5 秒にしないこと**（`ice()` と同じ理由） ---
+  const overSoul = new Player(new PerspectiveCamera());
+  overSoul.position.set(10.5, 20, 0.5);
+  overSoul.yaw = -Math.PI / 2;
+  const overDirt = new Player(new PerspectiveCamera());
+  overDirt.position.set(10.5, 20, 0.5);
+  overDirt.yaw = -Math.PI / 2;
+  overSoul.setKey("KeyW", true);
+  overDirt.setKey("KeyW", true);
+  for (let i = 0; i < 12; i++) overSoul.update(1 / 60, souls);
+  for (let i = 0; i < 12; i++) overDirt.update(1 / 60, plain);
+  const airSoul = Math.hypot(overSoul.velocity.x, overSoul.velocity.z);
+  const airDirt = Math.hypot(overDirt.velocity.x, overDirt.velocity.z);
+  console.log(
+    `      空中で 0.2 秒押した速さ: ソウルサンドの上 ${airSoul.toFixed(4)} m/s / 土の上 ${airDirt.toFixed(4)} m/s`,
+  );
+  check(
+    "空中ではソウルサンドの上でも土の上と同じ（落ちている途中）",
+    Math.abs(airSoul - airDirt) < 1e-9 && !overSoul.onGround && !overSoul.onSlowGround &&
+      airSoul > 2.7 && airSoul < 2.9,
+    `ソウルサンド ${airSoul.toFixed(6)} / 土 ${airDirt.toFixed(6)}`,
+  );
+
+  // --- 氷の上では遅くならない（旗を混ぜていない） ---
+  const skater = new Player(new PerspectiveCamera());
+  skater.position.set(10.5, 11, 0.5);
+  skater.yaw = -Math.PI / 2;
+  skater.update(1 / 60, frozen);
+  skater.setKey("KeyW", true);
+  for (let i = 0; i < 120; i++) skater.update(1 / 60, frozen);
+  const iceSpeed = Math.hypot(skater.velocity.x, skater.velocity.z);
+  console.log(`      氷の上で 2 秒歩いた速さ: ${iceSpeed.toFixed(3)} m/s onSlowGround=${skater.onSlowGround}`);
+  check(
+    "氷の上では遅くならない（onSlowGround 偽・5.1 m/s 以上）",
+    skater.onSlippery && !skater.onSlowGround && iceSpeed > 5.1,
+    `${iceSpeed.toFixed(3)} m/s`,
   );
 }
 

@@ -1,5 +1,5 @@
 import { Euler, Vector3, type PerspectiveCamera } from "three";
-import { AIR, WATER, isClimbable, isHotLiquid, isLiquid, isSlippery, isSpiky, isSticky } from "./blocks";
+import { AIR, WATER, isClimbable, isHotLiquid, isLiquid, isSlippery, isSlowGround, isSpiky, isSticky } from "./blocks";
 import { PLAYER_SIZE, blockOverlapsBody, bodyStandsOn, bodyTouches, moveBody } from "./physics";
 import type { World } from "./world";
 
@@ -36,6 +36,12 @@ const COBWEB_SPEED_SCALE = 0.25;
  * 上書きされて落下が止まらない）。
  */
 const COBWEB_FALL_SPEED = 1.0;
+/**
+ * ソウルサンドの上での横の速さの倍率。**本家の 0.4 をそのまま**（`TUNING.md`）。
+ * 走っていても掛かる。**掛けるのは目標の速さだけ**で、加速と摩擦には掛けない
+ * （氷と違って滑らない）。**どのブロックが遅いかは `blocks.ts` の `isSlowGround()`。**
+ */
+const SOUL_SAND_SPEED_SCALE = 0.4;
 
 /**
  * 普通のブロックの上で立ち止まったときの摩擦（毎秒）。**値は今までの 12 のまま**で、
@@ -109,6 +115,12 @@ export class Player {
    * 氷は体と重ならず、**上に立っているだけ**なので、体の箱で探すと 1 度も真になりません。
    */
   onSlippery = false;
+  /**
+   * **足元のマス**が遅いブロック（ソウルサンド）。**`onSlippery` と同じ走査で事実だけ** ——
+   * どれだけ遅いかは `SOUL_SAND_SPEED_SCALE`、どのブロックかは `blocks.ts` の `isSlowGround()`。
+   * **`onSlippery` と 1 つにしないこと**（滑るのと遅いのは別のこと）。
+   */
+  onSlowGround = false;
 
   private readonly keys = new Set<string>();
   private readonly euler = new Euler(0, 0, 0, "YXZ");
@@ -202,6 +214,7 @@ export class Player {
     // **足元は `bodyStandsOn()`**（氷は体と重ならないので `bodyTouches()` では拾えない）。
     // **ここも押し戻したあとで見ること** —— 前に置くと、まだ乗っていないフレームで真になる。
     this.onSlippery = bodyStandsOn(world, this.position, PLAYER_SIZE, isSlippery);
+    this.onSlowGround = bodyStandsOn(world, this.position, PLAYER_SIZE, isSlowGround);
     this.syncCamera();
   }
 
@@ -226,7 +239,9 @@ export class Player {
     const speed =
       (sprinting ? SPRINT_SPEED : WALK_SPEED) *
       (this.inLiquid ? 0.6 : 1) *
-      (this.inCobweb ? COBWEB_SPEED_SCALE : 1);
+      (this.inCobweb ? COBWEB_SPEED_SCALE : 1) *
+      // 空中では足元が空気なので自然に偽（空中の分岐を別に書かないこと）
+      (this.onSlowGround ? SOUL_SAND_SPEED_SCALE : 1);
     // **氷の上では地上の効きが 0.23 倍**（空中の 14 とほぼ同じ）。**空中には掛けない** ——
     // 掛けると氷の上を跳んだだけで操作が二重に鈍ります（本家も地上だけ）。
     const ground = ACCEL_GROUND * (this.onSlippery ? ICE_ACCEL_SCALE : 1);

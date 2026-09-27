@@ -140,8 +140,9 @@ export const GRAVEL = 44;
  */
 export const NETHERRACK = 45;
 /**
- * ソウルサンド。**溶岩の海のほとりに出る。** 上を歩くと遅くなる仕掛けは
- * まだありません（速さの手触りはユーザーの判断なので、入れるときは相談すること）。
+ * ソウルサンド。**溶岩の海のほとりに出る。** 上に立つとプレイヤーの歩く速さが
+ * 0.4 倍になる（旗 `slowGround`。数値は `player.ts` の `SOUL_SAND_SPEED_SCALE`・本家の値を
+ * 暫定で入れたもので `TUNING.md` に 1 行）。**本家の「沈む」形（14/16）はまだ無い**（立方体のまま）。
  */
 export const SOUL_SAND = 46;
 /** グロウストーン。**天井からぶら下がる光源**（松明より明るい）。 */
@@ -1085,6 +1086,16 @@ export interface BlockDef {
    */
   readonly slippery: boolean;
   /**
+   * 上に立つと遅くなるブロック（ソウルサンド）。**`id === SOUL_SAND` と書かないこと** ——
+   * `slippery` と同じく表 1 本（`isSlowGround()`）に聞く。**どれだけ遅いかは持たない**
+   * （`SOUL_SAND_SPEED_SCALE` は `player.ts` のもの）。**どのマスに効くかも `player.ts`**
+   * （氷と同じ足元の走査 `bodyStandsOn()`）。
+   *
+   * **`slippery` とも `sticky` とも 1 つの旗にまとめないこと** —— 氷は滑らせるだけ・
+   * ソウルサンドは遅くするだけ・クモの巣は体と重なるマスで鈍らせるだけで、どれも片方しか要らない。
+   */
+  readonly slowGround: boolean;
+  /**
    * 壊したあとにそのマスへ残るブロック。既定は `AIR`（普通は空くだけ）で、
    * **氷だけが `WATER`**。**`id === ICE` と書かないこと** ——
    * 引くのは `remainsAfterBreak()` 1 本で、**どのマスに効くかは `breaking.ts` の
@@ -1342,6 +1353,7 @@ function def(
     sticky: opts.sticky ?? false,
     bladed: opts.bladed ?? false,
     slippery: opts.slippery ?? false,
+    slowGround: opts.slowGround ?? false,
     breaksInto: opts.breaksInto ?? AIR,
     fog: opts.fog ?? null,
     emission: opts.emission ?? 0,
@@ -1892,7 +1904,8 @@ export const BLOCKS: readonly BlockDef[] = [
     SOUL_SAND,
     "ソウルサンド",
     { top: 0x51392c, side: 0x4a3428, bottom: 0x422e24 },
-    { hardness: 0.5, tool: "shovel", sound: "sand" },
+    // **旗 `slowGround` だけ**（上に立つと遅い。`slippery` / `sticky` とは別の旗）。
+    { hardness: 0.5, tool: "shovel", sound: "sand", slowGround: true },
   ),
   def(
     GLOWSTONE,
@@ -2386,6 +2399,8 @@ const STICKY = new Uint8Array(ID_LIMIT);
 const BLADED = new Uint8Array(ID_LIMIT);
 /** 1 = 上に立つと滑る（氷）。どのマスに効くかは `player.ts`。 */
 const SLIPPERY = new Uint8Array(ID_LIMIT);
+/** 1 = 上に立つと遅くなる（ソウルサンド）。どのマスに効くかは `player.ts`。 */
+const SLOW_GROUND = new Uint8Array(ID_LIMIT);
 /** 壊したあとにそのマスへ残るブロック（既定は空気。氷だけが水）。引くのは `breaking.ts`。 */
 const BREAKS_INTO = new Uint8Array(ID_LIMIT);
 /** 1 = 自分の上に自分を積める（サトウキビ）。引くのは `supportsBlock()` だけ。 */
@@ -2435,6 +2450,7 @@ for (const block of BLOCKS) {
   STICKY[block.id] = block.sticky ? 1 : 0;
   BLADED[block.id] = block.bladed ? 1 : 0;
   SLIPPERY[block.id] = block.slippery ? 1 : 0;
+  SLOW_GROUND[block.id] = block.slowGround ? 1 : 0;
   BREAKS_INTO[block.id] = block.breaksInto;
   STACKS_ON_SELF[block.id] = block.stacksOnSelf ? 1 : 0;
   NEEDS_SOIL[block.id] = block.needsSoil ? 1 : 0;
@@ -2759,6 +2775,16 @@ export function isBladed(id: number): boolean {
  */
 export function isSlippery(id: number): boolean {
   return SLIPPERY[id] === 1;
+}
+
+/**
+ * 上に立つと遅くなるか（ソウルサンド）。**`id === SOUL_SAND` と書かないこと** ——
+ * `isSlippery()` と同じ表 1 本に聞く。座標は知らない。
+ * **どのマスに効くか**（足元のマス）は `player.ts` が `bodyStandsOn()` で走査する。
+ * **どれだけ遅いかも `player.ts`**（`SOUL_SAND_SPEED_SCALE`）。
+ */
+export function isSlowGround(id: number): boolean {
+  return SLOW_GROUND[id] === 1;
 }
 
 /**

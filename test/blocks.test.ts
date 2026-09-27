@@ -60,6 +60,8 @@ import {
   SAND,
   SAPLING,
   SANDSTONE,
+  SOUL_SAND,
+  NETHERRACK,
   SANDSTONE_SLAB,
   SHARED_ID_START,
   SNOW,
@@ -111,6 +113,7 @@ import {
   isReplaceable,
   isBladed,
   isSlippery,
+  isSlowGround,
   isSoil,
   isSpiky,
   isSticky,
@@ -1431,6 +1434,7 @@ export function run(): void {
   cobwebs();
   cakes();
   ices();
+  soulSands();
   fences();
   netherBrickFences();
   coalBlocks();
@@ -4691,6 +4695,44 @@ function saplings(): void {
  * シラカバの木 3 つ（50）。**原木は `WOOD`・葉は `LEAVES`・苗木は `SPRUCE_SAPLING` の写しで、
  * 違うのは色だけ** —— だから見るのは「写し元と旗が 1 つ残らず同じか」と、色・名前・番号。
  */
+/**
+ * ソウルサンドの旗 `slowGround`（キューの 51）。**ここで見るのは表の値だけ** ——
+ * どれだけ遅いかは `test/physics.test.ts`（あちらが `Player` を実際に走らせます）。
+ */
+function soulSands(): void {
+  describe("ソウルサンド（51・上に立つと遅い）");
+
+  const slow = BLOCKS.filter((b) => isSlowGround(b.id)).map((b) => `${b.id}:${b.name}`);
+  const others: [string, number][] = [
+    ["氷", ICE], ["砂", SAND], ["ネザーラック", NETHERRACK], ["クモの巣", COBWEB], ["石", STONE],
+  ];
+  console.log(`      isSlowGround: [${slow.join(" ")}]`);
+  console.log(`      対照: ${others.map(([n, id]) => `${n} slowGround=${isSlowGround(id)}`).join(" / ")}`);
+  check(
+    "isSlowGround が真なのはソウルサンドだけ（氷・砂・ネザーラック・クモの巣・石は偽）",
+    slow.length === 1 && isSlowGround(SOUL_SAND) && others.every(([, id]) => !isSlowGround(id)),
+    slow.join(" ") || "0 個",
+  );
+  // **旗を混ぜていないこと**を両方向で見る（`slippery` / `sticky` と 1 つにしない）。
+  check(
+    "遅いのと滑る・鈍るのは別の旗（ソウルサンドは slippery でも sticky でもなく、氷と巣は slowGround でない）",
+    !isSlippery(SOUL_SAND) && !isSticky(SOUL_SAND) && !isSlowGround(ICE) && !isSlowGround(COBWEB),
+    `ソウルサンド slippery=${isSlippery(SOUL_SAND)} sticky=${isSticky(SOUL_SAND)} / ` +
+      `氷 slowGround=${isSlowGround(ICE)} / 巣 slowGround=${isSlowGround(COBWEB)}`,
+  );
+  // 旗を足しても色・硬さ・道具・音・形は変えていない（仕様の禁じ手）。
+  const def = blockDef(SOUL_SAND);
+  console.log(
+    `      SOUL_SAND: top 0x${def.top.toString(16)} hardness ${def.hardness} tool ${def.tool} sound ${def.sound} model ${def.model}`,
+  );
+  check(
+    "色・硬さ・道具・音・形はそのまま（0x51392c / 0.5 / シャベル / 砂 / 立方体）",
+    def.top === 0x51392c && def.hardness === 0.5 && def.tool === "shovel" &&
+      def.sound === "sand" && def.model === "cube",
+    `top 0x${def.top.toString(16)} hardness ${def.hardness} tool ${def.tool} sound ${def.sound} model ${def.model}`,
+  );
+}
+
 function birches(): void {
   describe("シラカバ（50）: 原木・葉・苗木の定義");
 
