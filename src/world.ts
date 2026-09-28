@@ -6,13 +6,16 @@ import {
   SKY_BLOCKERS,
   blockEmission,
   blocksSky,
+  isDecayingLeaf,
   isOpaque,
   needsWater,
   oppositeFace,
   supportFaces,
   supportsBlock,
+  sustainsLeaves,
   waterBesideOk,
 } from "./blocks";
+import { decayedLeaves } from "./leafdecay";
 import { Chunk, chunkKey, localIndex } from "./chunk";
 import {
   CHUNK_BITS,
@@ -199,7 +202,23 @@ export class World {
     if (lz === CHUNK_SIZE - 1) this.markDirty(cx, cy, cz + 1);
 
     this.breakUnsupported(wx, wy, wz);
+    // 原木が原木でないものに変わったときだけ。**消える葉は前が葉なので、ここを再び通らない**（連鎖が止まる）。
+    if (sustainsLeaves(previous) && !sustainsLeaves(id)) this.decayLeaves(wx, wy, wz);
     return true;
+  }
+
+  /**
+   * 支えの原木を失った葉を消す（52a）。**どの葉かは `leafdecay.ts` の `decayedLeaves()`** が決め、
+   * ここは `breakUnsupported()` と同じ順（**知らせてから空気にする**）で書くだけ。
+   * 落とす物・クリエイティブで落とさないのは `main.ts` → `breaking.ts` の `autoBreak()` のまま。
+   */
+  private decayLeaves(wx: number, wy: number, wz: number): void {
+    for (const [lx, ly, lz] of decayedLeaves(this, wx, wy, wz)) {
+      const leaf = this.getVoxel(lx, ly, lz);
+      if (!isDecayingLeaf(leaf)) continue;
+      this.onAutoBreak?.(lx, ly, lz, leaf);
+      this.setVoxel(lx, ly, lz, AIR);
+    }
   }
 
   /**

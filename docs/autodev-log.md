@@ -4707,3 +4707,32 @@ ID 0 個（**共有帯の空き 57 のまま**・次は 199）/ `main.ts` 1450 �
 
 `rules/blocks-shapes.md` の「滑る と 鈍る を 1 つの旗にまとめない」の下に 1 段: **足元の旗は掛ける場所が意味**
 （滑る = 加速と摩擦・遅い = 目標の速さだけ）。
+
+## AUTODEV 137（C の周・2026-09-28・クラウドの無人の周）: 52a 原木が無くなると葉が消える（ID 0 個）
+
+### 取ったもの
+
+**仕様書どおり。** サブエージェントは使わず親が実装し、点検（C-2）も親が `git diff` を読んで行った。
+
+- `leafdecay.ts`（新規）: `LEAF_DECAY_DISTANCE = 4`・`LeafWorld`・`decayedLeaves()`（候補の幅優先 → 箱 ±8 の原木から多点の幅優先 → 届かない候補を x→y→z 順）
+- `blocks.ts`: 旗 `decays` / `sustainsLeaves`・表 2 本・`isDecayingLeaf()` / `sustainsLeaves()`・葉 3 つと原木 3 つに 1 語ずつ
+- `world.ts`: `setVoxel()` の末尾に 1 行と `decayLeaves()`（`onAutoBreak` → `setVoxel(AIR)`。書く前に葉のままかを読み直す）
+- **`main.ts` 0 行**・`breaking.ts` / `items.ts` / `treeshape.ts` ±0・`SaveData` ±0・ID 0 個
+
+### 差し戻し: 0 回 / 見送ったもの: 2 件
+
+- **乱数ティックでぽつぽつ消す**（本家の形）—— 乱数ティックの器を足すことになり、`world.update()` の p99 に混ざる。切った瞬間に全部消す
+- **置いた葉を消さない（52b）**—— `SaveData` の省略可のキーが要る。キューに残した
+
+### 撮ったもの
+
+`npm run shot -- terrain` を変更の前後で撮って md5 が同一（`1eb34c15…`）。**仕様書の `f4077e98…` は古い値**だった（前の周から既に違う）。
+
+### 枠
+
+ID 0 個（**共有帯の空き 57 のまま**・次は 199）/ `main.ts` 1450 行（±0）/ `npm test` 4078 → 4093 件 / キューの未着手 11 → 10 件。
+
+### 決まりごと（層 2）: 1 件
+
+`rules/blocks-shapes.md` に 1 段: 葉が消える旗は対の 2 本 / 本物の `World` で試すときは箱（±8）の列が読み込み済みの場所を選ぶ。
+

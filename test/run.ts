@@ -47,6 +47,7 @@ import { run as sfx } from "./sfx.test";
 import { run as smelting } from "./smelting.test";
 import { run as storage } from "./storage.test";
 import { run as treeshape } from "./treeshape.test";
+import { run as leafdecay } from "./leafdecay.test";
 import { run as ui } from "./ui.test";
 import { run as use } from "./use.test";
 import { run as vitals } from "./vitals.test";
@@ -55,6 +56,7 @@ import { run as worldgen } from "./worldgen.test";
 
 worldgen();
 treeshape();
+leafdecay();
 nethergen();
 endgen();
 crystals();

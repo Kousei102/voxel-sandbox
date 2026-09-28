@@ -66,6 +66,7 @@ import {
   SHARED_ID_START,
   SNOW,
   SPRUCE_LEAVES,
+  SPRUCE_WOOD,
   SPRUCE_SAPLING,
   STONE,
   STONE_BRICK,
@@ -114,6 +115,8 @@ import {
   isBladed,
   isSlippery,
   isSlowGround,
+  isDecayingLeaf,
+  sustainsLeaves,
   isSoil,
   isSpiky,
   isSticky,
@@ -1428,6 +1431,7 @@ export function run(): void {
   mushroomSpreadInWorld(world);
   ladders();
   vines(world, ground);
+  leafDecay(world, ground);
   apples();
   paperBookBookshelf();
   goldenApples();
@@ -4695,6 +4699,78 @@ function saplings(): void {
  * シラカバの木 3 つ（50）。**原木は `WOOD`・葉は `LEAVES`・苗木は `SPRUCE_SAPLING` の写しで、
  * 違うのは色だけ** —— だから見るのは「写し元と旗が 1 つ残らず同じか」と、色・名前・番号。
  */
+/**
+ * 原木が無くなると葉が消える（52a）。**表の旗は両方向**、**本物の `World` で原木を下から消し、
+ * 最後の 1 本を消したときだけ葉が全部消える**のを見る（どの葉かの細部は `test/leafdecay.test.ts`）。
+ */
+function leafDecay(world: World, ground: number): void {
+  describe("葉が消える（52a・原木が無くなると）");
+
+  const decays = BLOCKS.filter((b) => isDecayingLeaf(b.id)).map((b) => `${b.id}:${b.name}`);
+  const sustains = BLOCKS.filter((b) => sustainsLeaves(b.id)).map((b) => `${b.id}:${b.name}`);
+  console.log(`      isDecayingLeaf: [${decays.join(" ")}] / sustainsLeaves: [${sustains.join(" ")}]`);
+  check(
+    "isDecayingLeaf が真なのは葉 3 つだけ",
+    decays.length === 3 && [LEAVES, SPRUCE_LEAVES, BIRCH_LEAVES].every((id) => isDecayingLeaf(id)),
+    decays.join(" ") || "0 個",
+  );
+  check(
+    "sustainsLeaves が真なのは原木 3 つだけ",
+    sustains.length === 3 && [WOOD, SPRUCE_WOOD, BIRCH_WOOD].every((id) => sustainsLeaves(id)),
+    sustains.join(" ") || "0 個",
+  );
+  check(
+    "旗は混ざっていない（葉は支えず・原木は消えず・サボテンと草むらはどちらでもない）",
+    [LEAVES, SPRUCE_LEAVES, BIRCH_LEAVES].every((id) => !sustainsLeaves(id)) &&
+      [WOOD, SPRUCE_WOOD, BIRCH_WOOD].every((id) => !isDecayingLeaf(id)) &&
+      [CACTUS, TALL_GRASS].every((id) => !isDecayingLeaf(id) && !sustainsLeaves(id)),
+    `サボテン ${isDecayingLeaf(CACTUS)}/${sustainsLeaves(CACTUS)} 草むら ${isDecayingLeaf(TALL_GRASS)}/${sustainsLeaves(TALL_GRASS)}`,
+  );
+
+  // 原木 3 段 + 上 2 段に葉。周りを 1 マス余分に空けて、地形の木の葉と繋がらないようにする。
+  // **箱（±8）の列が全部読み込み済みの場所**（`primeAround(0.5, 0.5, 1)` の -1..1 列）を選ぶこと。
+  const bx = 4;
+  const bz = -4;
+  const by = ground + 6;
+  for (let y = by + 5; y >= by - 1; y--) {
+    for (let x = bx - 3; x <= bx + 3; x++) {
+      for (let z = bz - 3; z <= bz + 3; z++) world.setVoxel(x, y, z, AIR);
+    }
+  }
+  // **上から順に置くこと**（`rules/meshing-render.md`。葉も原木も支えは要らないが作法どおり）。
+  let leaves = 0;
+  for (let y = by + 3; y >= by + 2; y--) {
+    for (let x = bx - 1; x <= bx + 1; x++) {
+      for (let z = bz - 1; z <= bz + 1; z++) {
+        if (x === bx && z === bz && y === by + 2) continue;
+        if (world.setVoxel(x, y, z, LEAVES)) leaves++;
+      }
+    }
+  }
+  for (let y = by + 2; y >= by; y--) world.setVoxel(bx, y, bz, WOOD);
+
+  let broke = 0;
+  const brokeAfter: number[] = [];
+  world.onAutoBreak = (_x, _y, _z, id) => { if (isDecayingLeaf(id)) broke++; };
+  for (let y = by; y <= by + 2; y++) {
+    world.setVoxel(bx, y, bz, AIR);
+    brokeAfter.push(broke);
+  }
+  world.onAutoBreak = undefined;
+  let left = 0;
+  for (let y = by + 2; y <= by + 3; y++) {
+    for (let x = bx - 1; x <= bx + 1; x++) {
+      for (let z = bz - 1; z <= bz + 1; z++) if (isDecayingLeaf(world.getVoxel(x, y, z))) left++;
+    }
+  }
+  console.log(`      葉 ${leaves} 枚 / 原木を下から 1 本ずつ消したあとの合図 ${brokeAfter.join(" → ")} / 残った葉 ${left}`);
+  check(
+    "原木を下から消すと、最後の 1 本を消したときだけ葉が全部消える（合図は葉の数と同じ）",
+    leaves === 17 && brokeAfter[0] === 0 && brokeAfter[1] === 0 && brokeAfter[2] === leaves && left === 0,
+    `葉 ${leaves} / 合図 ${brokeAfter.join(",")} / 残り ${left}`,
+  );
+}
+
 /**
  * ソウルサンドの旗 `slowGround`（キューの 51）。**ここで見るのは表の値だけ** ——
  * どれだけ遅いかは `test/physics.test.ts`（あちらが `Player` を実際に走らせます）。

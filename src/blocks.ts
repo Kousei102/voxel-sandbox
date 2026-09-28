@@ -1096,6 +1096,17 @@ export interface BlockDef {
    */
   readonly slowGround: boolean;
   /**
+   * 支えの原木を失うと消える葉（葉 3 つ）。**`id === LEAVES` と書かないこと** ——
+   * 表 1 本（`isDecayingLeaf()`）に聞く。相方は `sustainsLeaves`（原木 3 つ）。
+   * **何歩まで支えるか・どの葉が消えるかは `leafdecay.ts`**、消すのは `world.ts` の `setVoxel()`。
+   */
+  readonly decays: boolean;
+  /**
+   * 葉を支える原木（原木 3 つ）。`decays` の相方で、引くのは `sustainsLeaves()` 1 本。
+   * **これが原木でないものに変わった瞬間だけ**、`world.ts` が周りの葉を調べる。
+   */
+  readonly sustainsLeaves: boolean;
+  /**
    * 壊したあとにそのマスへ残るブロック。既定は `AIR`（普通は空くだけ）で、
    * **氷だけが `WATER`**。**`id === ICE` と書かないこと** ——
    * 引くのは `remainsAfterBreak()` 1 本で、**どのマスに効くかは `breaking.ts` の
@@ -1354,6 +1365,8 @@ function def(
     bladed: opts.bladed ?? false,
     slippery: opts.slippery ?? false,
     slowGround: opts.slowGround ?? false,
+    decays: opts.decays ?? false,
+    sustainsLeaves: opts.sustainsLeaves ?? false,
     breaksInto: opts.breaksInto ?? AIR,
     fog: opts.fog ?? null,
     emission: opts.emission ?? 0,
@@ -1645,8 +1658,8 @@ export const BLOCKS: readonly BlockDef[] = [
       fog: { color: 0x1b4f8c, near: 0.1, far: 22, daylit: true },
     },
   ),
-  def(WOOD, "原木", { top: 0x8a6a3f, side: 0x5f4526 }, { hardness: 2, tool: "axe", sound: "wood" }),
-  def(LEAVES, "葉", { top: 0x3f7a3a }, { hardness: 0.2, sound: "grass" }),
+  def(WOOD, "原木", { top: 0x8a6a3f, side: 0x5f4526 }, { hardness: 2, tool: "axe", sound: "wood", sustainsLeaves: true }),
+  def(LEAVES, "葉", { top: 0x3f7a3a }, { hardness: 0.2, sound: "grass", decays: true }),
   def(SNOW, "雪", { top: 0xeef3f7, side: 0xdde5ec, bottom: 0x8a8f96 }, { hardness: 0.2, tool: "shovel", sound: "snow" }),
   def(PLANK, "板", { top: 0xb18a56 }, { hardness: 2, tool: "axe", sound: "wood" }),
   def(
@@ -1705,8 +1718,8 @@ export const BLOCKS: readonly BlockDef[] = [
     tool: "pickaxe",
     minTier: TIER_WOOD,
   }),
-  def(SPRUCE_WOOD, "トウヒの原木", { top: 0x6b4f33, side: 0x3f2d1c }, { hardness: 2, tool: "axe", sound: "wood" }),
-  def(SPRUCE_LEAVES, "トウヒの葉", { top: 0x2c5c3a }, { hardness: 0.2, sound: "grass" }),
+  def(SPRUCE_WOOD, "トウヒの原木", { top: 0x6b4f33, side: 0x3f2d1c }, { hardness: 2, tool: "axe", sound: "wood", sustainsLeaves: true }),
+  def(SPRUCE_LEAVES, "トウヒの葉", { top: 0x2c5c3a }, { hardness: 0.2, sound: "grass", decays: true }),
   // 立方体より少し細いので、松明と同じ専用パスで描く。
   // opaque を true にすると、細いぶん隣の面が消えて地面が透けて見える。
   def(CACTUS, "サボテン", { top: 0x5c9b47, side: 0x4e8b3c, bottom: 0x3f7331 }, {
@@ -2296,8 +2309,8 @@ export const BLOCKS: readonly BlockDef[] = [
   // 砂・砂岩・エンドストーンで埋まっていて、素直な `0xcfc08a` は砂岩から 9.9 しか離れないので、
   // **原木の上面は暖かい灰茶 `0xb0a876`**（いちばん近い本棚から 32.1）。**側面は一覧に
   // 出ないので白い樹皮そのまま**。葉は本家の固定色 `0x80a755`（草から 22.8）。
-  def(BIRCH_WOOD, "シラカバの原木", { top: 0xb0a876, side: 0xd7d3c7 }, { hardness: 2, tool: "axe", sound: "wood" }),
-  def(BIRCH_LEAVES, "シラカバの葉", { top: 0x80a755 }, { hardness: 0.2, sound: "grass" }),
+  def(BIRCH_WOOD, "シラカバの原木", { top: 0xb0a876, side: 0xd7d3c7 }, { hardness: 2, tool: "axe", sound: "wood", sustainsLeaves: true }),
+  def(BIRCH_LEAVES, "シラカバの葉", { top: 0x80a755 }, { hardness: 0.2, sound: "grass", decays: true }),
   def(BIRCH_SAPLING, "シラカバの苗木", { top: 0xa8d070 }, {
     opaque: false,
     solid: false,
@@ -2401,6 +2414,10 @@ const BLADED = new Uint8Array(ID_LIMIT);
 const SLIPPERY = new Uint8Array(ID_LIMIT);
 /** 1 = 上に立つと遅くなる（ソウルサンド）。どのマスに効くかは `player.ts`。 */
 const SLOW_GROUND = new Uint8Array(ID_LIMIT);
+/** 1 = 支えの原木を失うと消える（葉 3 つ）。どの葉が消えるかは `leafdecay.ts`。 */
+const DECAYS = new Uint8Array(ID_LIMIT);
+/** 1 = 葉を支える（原木 3 つ）。`DECAYS` の相方。 */
+const SUSTAINS_LEAVES = new Uint8Array(ID_LIMIT);
 /** 壊したあとにそのマスへ残るブロック（既定は空気。氷だけが水）。引くのは `breaking.ts`。 */
 const BREAKS_INTO = new Uint8Array(ID_LIMIT);
 /** 1 = 自分の上に自分を積める（サトウキビ）。引くのは `supportsBlock()` だけ。 */
@@ -2451,6 +2468,8 @@ for (const block of BLOCKS) {
   BLADED[block.id] = block.bladed ? 1 : 0;
   SLIPPERY[block.id] = block.slippery ? 1 : 0;
   SLOW_GROUND[block.id] = block.slowGround ? 1 : 0;
+  DECAYS[block.id] = block.decays ? 1 : 0;
+  SUSTAINS_LEAVES[block.id] = block.sustainsLeaves ? 1 : 0;
   BREAKS_INTO[block.id] = block.breaksInto;
   STACKS_ON_SELF[block.id] = block.stacksOnSelf ? 1 : 0;
   NEEDS_SOIL[block.id] = block.needsSoil ? 1 : 0;
@@ -2785,6 +2804,19 @@ export function isSlippery(id: number): boolean {
  */
 export function isSlowGround(id: number): boolean {
   return SLOW_GROUND[id] === 1;
+}
+
+/**
+ * 支えの原木を失うと消える葉か（葉 3 つ）。**`id === LEAVES` と書かないこと** ——
+ * 木が増えるたびに漏れる。何歩まで支えるかは `leafdecay.ts` の `LEAF_DECAY_DISTANCE`。
+ */
+export function isDecayingLeaf(id: number): boolean {
+  return DECAYS[id] === 1;
+}
+
+/** 葉を支える原木か（原木 3 つ）。`isDecayingLeaf()` の相方。 */
+export function sustainsLeaves(id: number): boolean {
+  return SUSTAINS_LEAVES[id] === 1;
 }
 
 /**
