@@ -1,100 +1,94 @@
-# 仕様: 置いた葉は消えない（キューの 52b・**ID 0 個**）
+# 仕様: 燃えて死んだ豚・牛・鶏は焼けた肉を落とす（キューの 53・**ID 0 個**）
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-**この 1 件だけコードで数え直しました**: 入っていません。`leafdecay.ts` の `decayedLeaves()` は葉の出どころを見ず、
-`World` にも `SaveData` にも「置いた葉」の印は 1 つも無い（52a の間は**木に接して置いた葉が、残りの原木から 4 歩より遠いと消える**）。
-**`main.ts` は 2026-09-28 に 2 本へ割りました**（ユーザーの判断。手でやることは `src/hands.ts`・`rules/testing.md`）。この件の配線は `main.ts` の
-`startWorld()` の `new World(…)` の 1 行（いま 282 行目）を書き換えるだけで **+0 行の見込み**（下の 2.）。見張りは `wiringSource()` を通すこと。
+**この 1 件だけコードで数え直しました**: 入っていません。`mobs.ts` の `MobDropStack` は `item` / `count` / `chance` の 3 つだけで、
+`dropsFor()`（倒したときの山を全部返す 1 本）は `mob.burnTimer` を 1 回も読みません。**燃えている豚を殴って倒しても生の豚肉**が出ます。
+焼いた肉 3 つは既存（焼き豚 83 / 焼き鳥 127 / ステーキ 131。`smelting.ts` の `SMELTING` が生 → 焼きの 3 行を持つ）。
 
-**`edits`（`World.editsForSave()`）では見分けられません**: 苗木から育った木（`crops.ts` の `growTree()`）の葉も
-`setVoxel()` を通って `edits` に入るので、「`edits` にある葉 = 置いた葉」にすると**育てた木の葉が消えなくなる**（本家は消える）。
-**`edits` の値に印を混ぜる（`id | 0x100` など）ことも禁止**（`SaveData` の形を変える話で、止まる条件）。だから**別の省略可キー**を足します。
+**本家の規則**: 燃えている（火が点いている）あいだに死んだ豚・牛・鶏は、生肉の代わりに焼けた肉を落とす（数は同じ）。
+**羽根・革（2 山目）は焼けない。** ゾンビの腐った肉のように焼けた形の無い物はそのまま。
 
-**本家の規則**: プレイヤーが置いた葉には持続フラグが立ち、何があっても自然には消えない（Beta 1.9 から）。
-距離の計算には普通の葉として参加する（置いた葉を伝って原木に届く自然の葉は残る）。
+**このプロジェクトで燃えるのは**: 溶岩に触れたモブ（敵味方とも。`update()` の `LAVA_LINGER` = `BURN_SECONDS`）と、日光の敵対モブだけ。
+火打石も火矢も無いので、**実際に起きるのは「溶岩のほとりで燃えている豚・牛・鶏を、燃え残りのうちに殴る / 撃つ」**だけです。
+**焼死（`burn()` で倒れる）ではこれまでどおり何も落としません**（`rules/mobs.md`・`test/mobs.test.ts` の「焼死ではドロップしない」
+「溶岩の焼死でもドロップしない」。**本家は焼死でも落とすが、ここでは人が選んだ判断なので変えない**）。
 
 ## 1. 何を足すか / 完了の判定
 
-**プレイヤーが置いた葉（旗 `decays`）の位置を `World` が覚え、`decayedLeaves()` はそのマスを返さない。印は次元ごとの
-省略可キー `placedLeaves`（`[x, y, z, …]` の平たい配列）でセーブに載り、読み戻せる。** 置いた葉を壊す・何かで上書きすると印は消える。
-**完了**: `npm test` に「置いた葉は消えない（52b）」の件（`test/leafdecay.test.ts` / `test/blocks.test.ts` / `test/session.test.ts` /
-`test/storage.test.ts` / `test/dimensions.test.ts` に計 **10〜16 件**）が増えて**すべて緑**（**4093 → 4103〜4109 あたり**）。
-ブロック ID の枠の行は**変わらない**（1..63 の空き 7・111..255 の空き 57）。**`SaveData.version` は 1 のまま。**
+**`MobDropStack` に省略可の `cooked?: number`（燃えていたらこの ID に差し替える）を足し、豚・牛・鶏の 1 山目にだけ書く。
+`dropsFor()` は `mob.burnTimer > 0` かつ `cooked` を持つ山で `item` を `cooked` に差し替える。**
+`attack()` と `hitByProjectile()` はどちらも `dropsFor()` を通っているので、**呼ぶ側は 0 行**で両方に効く。
+**完了**: `npm test` に「燃えて死んだ動物は焼けた肉を落とす（53）」の節（`test/mobs.test.ts`・**8〜12 件**）が増えて
+**すべて緑**（**4112 → 4120〜4124 あたり**）。ブロック ID の枠の行は**変わらない**（1..63 の空き 7・111..255 の空き 57）。
 
 ## 2. 触るファイル / 触らないファイル
 
 **触る**:
-- `src/leafdecay.ts` —— `LeafWorld` に**省略可**の `keepsLeaf?(x, y, z): boolean` を足し、`decayedLeaves()` の 3.（届かなかった候補を
-  返す所）で**真のマスを外すだけ**。**1.（候補集め）と 2.（支えの幅優先）は変えない**（置いた葉も普通の葉として伝う = 本家どおり）。
-  加えて「置いたら覚える葉か」の判断 **`keepsWhenPlaced(id): boolean`**（中身は `isDecayingLeaf(id)`。**`id === LEAVES` を書かない**）
-- `src/world.ts` —— `private readonly placedLeaves = new Set<string>()`（キー `"x,y,z"`）/ コンストラクタの**第 4 引数**
-  `placedLeaves?: readonly number[]`（平たい 3 つ組。長さが 3 の倍数でない端は捨てる）/ `notePlaced(x, y, z, id)`（`keepsWhenPlaced(id)` のときだけ
-  足す）/ `keepsLeaf(x, y, z)` / `placedLeavesForSave(): number[] | undefined`（**空なら `undefined`** = キーごと消える）/
-  **`setVoxel()` が書けたら、そのマスの印を消す**（`delete` 1 行。**集合が空なら文字列を作らないこと** —— `setVoxel()` は生成以外の
-  全部の書き込みが通るので、`size === 0` で先に抜ける）
-- `src/placing.ts` —— `tryPlace()` のベッドでない枝で `setVoxel()` が成功したあと `world.notePlaced?.(x, y, z, id)`。
-  `PlaceWorld`（= `BedWorld`）に**省略可**の `notePlaced?` を足す形にして、**既存の偽の世界（`test/placing.test.ts` など）を書き換えない**
-- `src/dimensions.ts`（`DimensionState.placedLeaves?: number[]` と `normalize()` に 1 行）/ `src/storage.ts`（`SaveData.placedLeaves?`）/
-  `src/session.ts`（`StateSources.world` に `placedLeavesForSave()`・`collectState()`・`buildSave()` の上の階層・`savedShape()` に 1 行ずつ。
-  **`crops` の 4 か所の写し**）
-- **`src/main.ts` の `startWorld()` の 1 行だけ**: `new World(…, deserializeEdits(state.edits), state.placedLeaves)`（`hands.ts` は触らない）
-- テスト 5 本（下の 5.）/ `TUNING.md` の 52a の節の「置いた葉」の行 / `AUTODEV-QUEUE.md` / `docs/autodev-log.md` / `HANDOFF.md` /
-  `rules/stateful-blocks.md` か `rules/dimensions.md`（省略可キーの節に 1〜3 行）
+- `src/mobs.ts` —— **この 1 本だけ**:
+  - `MobDropStack` に `readonly cooked?: number;`（doc コメントに「燃えている（`burnTimer > 0`）ときに `item` の代わりに落とす ID。
+    **数も確率もそのまま**。`smelting.ts` の `SMELTING` と同じ行になること（テストが突き合わせる）」）
+  - `PIG` / `CHICKEN` / `COW` の `drop` の **1 山目にだけ** `cooked: COOKED_PORK` / `COOKED_CHICKEN` / `STEAK`（`extra` の羽根・革には書かない）。
+    `items.ts` から 3 つ import を足す
+  - `dropsFor()` の `stacks.push` の所で `item: mob.burnTimer > 0 && stack.cooked !== undefined ? stack.cooked : stack.item`。
+    **乱数の引き方（`chance >= 1` の山では引かない）と山の順は変えない**
+- `test/mobs.test.ts`（下の 5.）/ `AUTODEV-QUEUE.md` / `docs/autodev-log.md` / `HANDOFF.md` / `rules/mobs.md`（落とし穴があれば 1〜3 行）/
+  `TUNING.md`（下の 7.。**本家と違えたところ 1 行**）
 
-**触らない**: `src/crops.ts`（**`notePlaced()` に相乗りしない** —— `World` が `Crops` を知らないので、`decayLeaves()` から引く配線が
-`main.ts` に 1 行増える）/ `src/breaking.ts` / `src/items.ts` の `DROPS` / `treeshape.ts` / `worldgen.ts` / `ROADMAP.md` / `*render.ts` /
-`ui.ts` / `edits` の形（`serializeEdits` / `deserializeEdits`）/ `test/world.test.ts` の p99。
+**触らない**: `src/smelting.ts`（**`mobs.ts` から `smelting.ts` を import しないこと** —— モブの落とし物がかまどの表に縛られ、
+鉱石を焼く行を足すたびにモブの側が動く。突き合わせはテストの側でやる）/ `src/items.ts`（食べ物の値・`FOODS`）/ `burn()` と `soak()`
+（**焼死のドロップ無しを変えない**）/ `update()` の火が点く条件（`LAVA_LINGER` / `sunlightBurns()`）/ `src/main.ts` / `src/hands.ts` /
+`src/drops.ts` / `*render.ts`（**燃えている見た目は足さない**）/ `ROADMAP.md`。
 
-**先に引いて読むこと**: `grep -l '"src/world.ts"' rules/*.md`（→ `lighting.md` / `meshing-render.md`）/ `grep -l '"src/session.ts"' rules/*.md`
-（→ `dimensions.md` ほか）/ `grep -l '"src/placing.ts"' rules/*.md` / `grep -l '"src/main.ts"' rules/*.md` / `rules/testing.md`。
-**`rules/dimensions.md` の「セーブの組み立てと読み戻しは `session.ts`」と「`collectState()` が唯一の場所」がそのまま掛かります。**
+**先に引いて読むこと**: `grep -l '"src/mobs.ts"' rules/*.md`（→ `rules/mobs.md`。とくに「2 山目を落とす」と焼死の段）/
+`rules/testing.md`（`test/**` を触るので）。**`dropFor()` / `dropsFor()` の doc コメント**（刈った羊の抑え・乱数を引かない山）も読むこと。
 
 ## 3. 使う ID
 
-**0 個。** `ROADMAP.md` の予約表は触らない（**次に取るのは 199 のまま**）。
+**0 個。** 焼き豚 83・焼き鳥 127・ステーキ 131 は既存。`ROADMAP.md` の予約表は触らない（**次に取るのは 199 のまま**）。
 
 ## 4. 判断をどこに置くか
 
 新しい「確かめられないもの」は 0 個（`unverifiable-pair` 不要。スキルも要りません）。
 
-- **どの ID を置いたら覚えるか**: `leafdecay.ts` の `keepsWhenPlaced()`（旗 `decays` に聞く）。`world.ts` / `placing.ts` に葉の ID を書かない
-- **覚えた葉を消さない**: `leafdecay.ts` の `decayedLeaves()` の 3.。**`world.ts` の `decayLeaves()` 側で弾かないこと**（判断が 2 か所に割れる）
-- **印を持つ・消す・セーブに出す**: `world.ts`（器。`edits` と同じく「次元の世界が持つもの」なので `World` に置く）
-- **どのキーに何を書くか**: `session.ts`（`crops` と同じ 4 か所）。`main.ts` は `state.placedLeaves` を渡すだけ
-- 苗木から育った木・生成の木には**印が付かない**（`notePlaced` を呼ぶのは `tryPlace()` だけ）ので、そちらは 52a のまま消える
+- **何が何に焼けるか**: `mobs.ts` の種類の表（`MobDef.drop` の 1 山目の `cooked`）。**`kind === "pig"` と書かないこと**（`shearing` / `laying` と同じ作法）
+- **燃えているかどうか**: `mob.burnTimer > 0`（既存の状態を読むだけ。新しい旗を足さない）
+- **差し替えるのは `dropsFor()` の 1 か所だけ**。`attack()` / `hitByProjectile()` に条件を書かないこと（弓のときだけ生肉、が戻る）
+- **焼けた形の表と精錬の表の一致はテストが見る**（`smeltResultOf(stack.item)?.out === stack.cooked`）
 
-## 5. 書くテスト（**値を出力してから判定する**）
+## 5. 書くテスト（`test/mobs.test.ts`。**値を出力してから判定する**）
 
-- **`test/leafdecay.test.ts`**（偽の `LeafWorld` に `keepsLeaf` を足す）:
-  - 原木 1 本 + 葉の塊で原木を消し、**1 枚だけ `keepsLeaf` 真** → **その 1 枚だけが返らず、残りは全部返る**（返った数を出してから）
-  - **置いた葉を伝って原木に届く自然の葉は残る**（原木 — 置いた葉 — 自然の葉 の列で、別の原木を消したときに返らない）
-  - `keepsLeaf` を持たない偽の世界では 52a と同じ結果（既存の件が 1 つも動かないこと自体が見張り）
-  - `keepsWhenPlaced()` が真の ID を一覧で出して「**葉 3 つだけ**」（原木・苗木・草むらは偽）
-- **`test/blocks.test.ts`**（本物の `World`。52a の件の写し。**支えを探す箱の列が全部読み込み済みの場所を選ぶ** —— `rules/blocks-shapes.md`）:
-  - 原木 + 自然の葉の横に **`tryPlace()` で葉を 1 枚置き**、原木を消す → `onAutoBreak` の数が自然の葉の数と同じで、**置いた葉だけ残る**
-  - **置いた葉を壊して（`setVoxel(…, AIR)`）から、同じマスに `setVoxel()` で葉を書く**（育つ木の形）→ 印は無い（`keepsLeaf` 偽）
-  - `placedLeavesForSave()` が置いた 1 枚の座標を返し、**0 枚なら `undefined`**
-  - **第 4 引数で作り直した `World` でも `keepsLeaf` が真**（`deserializeEdits` と同じ往復）
-- **`test/session.test.ts`**: 偽の `world` に `placedLeavesForSave` を足し、`collectState()` に載る / `buildSave()` の上の階層に載る /
-  **空ならキーごと消える**（`crops` の 169 行あたりの写し）/ `savedShape()` が上の階層から拾う
-- **`test/storage.test.ts`**: `V1_SAVE` に `"placedLeaves": [1, 41, 2]` を足しても v1 として読める / 無い古いセーブは `undefined`
-- **`test/dimensions.test.ts`**: 次元を行って戻ったあと `placedLeaves` が残っている（`crops` の 143 行あたりの写し）
+`describe("燃えて死んだ動物は焼けた肉を落とす（53）")` を「`dropsFor()` が返す山の数の表」の近くに足す。
+
+- **表**: `MOB_KINDS` を回して `cooked` を持つ山を一覧で出し（`豚: 生の豚肉 → 焼き豚` の形）、**豚・鶏・牛の 3 つだけ・どれも 1 山目**
+  （`extra` に `cooked` を持つモブは 0）
+- **精錬と同じ行**: `cooked` を持つ山は全部 `smeltResultOf(item)?.out === cooked`（`test` 側で `../src/smelting` を import）
+- **逆向きの見張り**: どのモブでも、1 山目が `SMELTING` で焼ける食べ物（`foodOf(smeltResultOf(item).out)` が非 null）なら `cooked` を持つ
+  （新しいモブが生肉を落とすのに `cooked` を書き忘れたら落ちる）
+- **`dropsFor()`**: `burnTimer = 5` にした豚 / 鶏 / 牛で、山の中身を出してから **焼き豚 x1 / 焼き鳥 x1 + 羽根 x1 / ステーキ x1 + 革 x1**。
+  `burnTimer = 0` では今までどおり生（既存の山の数の表が動かないこと自体も見張り）
+- **乱数を引く回数が変わらない**: 燃えている鶏で 0 回（既存の「chance 1 の山では乱数を引かない」の写し）
+- **燃えていても焼けない物**: 燃えているゾンビは腐った肉（か何も無し）のまま・**燃えている刈っていない羊は羊毛のまま**
+- **殴って倒す / 撃って倒す**: `attack()` と `hitByProjectile()` で、燃えている豚を倒したときの `onDrop` の ID が**両方とも焼き豚**
+  （`burnTimer` を直に立ててから。**体力を 1 にして 1 発で倒すこと** —— 既存のスケルトンの件の形・`rules/mobs.md`）
+- **焼死はまだ落とさない**: 溶岩に浸けた豚が焼け死んだとき `onDrop` 0 回（既存の「溶岩の焼死でもドロップしない」が受動モブで
+  見ていなければ足す。見ていればそれを引用するだけでよい）
 
 ## 6. このタスク固有の禁じ手
 
-- **`main.ts` に判断を書かないこと**（`new World(…)` の 1 行の書き換えだけ。`hands.ts` も触らない）
-- **`edits` の形・値を変えないこと**（印を ID に混ぜない）/ `SaveData.version` を上げない / ID を使わない・振り直さない
-- **`decayedLeaves()` の 1. と 2. を変えないこと**（置いた葉を「伝わない葉」にしない）/ **乱数を使わない**
-- **`crops.ts` の `notePlaced()` を書き換えないこと** / `breaking.ts` と葉の `DROPS` を触らない / 判定をゆるめないこと
-- **`setVoxel()` で印が空のときに文字列を作らないこと**（全部の書き込みの道。p99 に混ざる）
+- **`burn()` / `soak()` の「焼死・溺死では落とさない」を変えないこと**（本家と違うが、人の判断）
+- **`mobs.ts` から `smelting.ts` を import しないこと** / `SMELTING` と `FOODS` を書き換えない
+- **2 山目（羽根・革・矢・糸）に `cooked` を書かないこと** / 数（`count`）と確率（`chance`）を燃えているときに変えない
+- **`dropsFor()` の乱数の引き方を変えないこと**（種を固定した既存テストの目がずれる）/ `dropFor()` の刈った羊の抑えを写さない
+- `attack()` / `hitByProjectile()` / `main.ts` / `hands.ts` に燃えているかの条件を書かない / ID を使わない / 判定をゆるめない
 
 ## 7. 終了条件
 
 - `npm run typecheck` / **`npm test`**（すべて緑）/ `npm run build` 緑（`src/**` を触る）。**生成もメッシュ化も触らないので `bench` は不要**
-- **C-3**: 地形の絵は変わらないはず。**`npm run shot -- terrain` の md5 を前と比べる**（前: `1eb34c15f2875ec74d1951dba30cb334`）。
-  葉を置いて木を切る絵は撮れないので、`HANDOFF.md` の「ブラウザで見てほしいところ」に**木の横に置いた葉が幹を切っても残る**・
-  **リロードしても残る**を書くこと
-- **コミット 1 つを `master` へ push** / キューの 52b を消す / この仕様書を **`状態: 済`** / `TUNING.md` の 52a の「置いた葉」の行を直す /
-  `docs/autodev-log.md` に 1 節 / 踏んだ落とし穴を `rules/` へ / **`HANDOFF.md` を書き直す**
+- **C-3**: 絵に出るものは無い（落ちるアイテムの ID が変わるだけ）。**`npm run shot -- terrain` の md5 が前と同じ**ことだけ見る
+  （前: `1eb34c15f2875ec74d1951dba30cb334`）。`HANDOFF.md` の「ブラウザで見てほしいところ」に**溶岩のほとりで燃えている豚を倒すと
+  焼き豚が落ちる / 溶岩で焼け死んだら何も落ちない（本家は落ちる）**を 2 行
+- `TUNING.md` に 1 節 1 行: **焼死では落とさない**（本家は落とす。`burn()` の判断をそのまま残した）
+- **コミット 1 つを `master` へ push** / キューの 53 を消す / この仕様書を **`状態: 済`** / `docs/autodev-log.md` に 1 節 /
+  踏んだ落とし穴を `rules/mobs.md` へ / **`HANDOFF.md` を書き直す**
