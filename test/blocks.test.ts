@@ -244,6 +244,7 @@ import { Player } from "../src/player";
 import { raycastVoxels } from "../src/raycast";
 import { World } from "../src/world";
 import { WorldGen } from "../src/worldgen";
+import { tryPlace } from "../src/placing";
 import { check, describe } from "./harness";
 
 export function run(): void {
@@ -1432,6 +1433,7 @@ export function run(): void {
   ladders();
   vines(world, ground);
   leafDecay(world, ground);
+  placedLeaves(world, ground);
   apples();
   paperBookBookshelf();
   goldenApples();
@@ -4769,6 +4771,78 @@ function leafDecay(world: World, ground: number): void {
     leaves === 17 && brokeAfter[0] === 0 && brokeAfter[1] === 0 && brokeAfter[2] === leaves && left === 0,
     `葉 ${leaves} / 合図 ${brokeAfter.join(",")} / 残り ${left}`,
   );
+}
+
+/**
+ * 置いた葉は消えない（52b）。**本物の `World` と `tryPlace()`** で、52a の木の横に葉を 1 枚置いて幹を切る。
+ * 印は `edits` とは別（育つ木の形 = `setVoxel()` で直に書いた葉には付かない）。どの葉かの細部は `test/leafdecay.test.ts`。
+ */
+function placedLeaves(world: World, ground: number): void {
+  describe("置いた葉は消えない（52b）");
+
+  // 52a と同じ場所（箱 ±8 の列が全部読み込み済み）。上から順に空けて、木を建て直す。
+  const bx = 4;
+  const bz = -4;
+  const by = ground + 6;
+  for (let y = by + 5; y >= by - 1; y--) {
+    for (let x = bx - 3; x <= bx + 3; x++) {
+      for (let z = bz - 3; z <= bz + 3; z++) world.setVoxel(x, y, z, AIR);
+    }
+  }
+  let natural = 0;
+  for (let y = by + 3; y >= by + 2; y--) {
+    for (let x = bx - 1; x <= bx + 1; x++) {
+      for (let z = bz - 1; z <= bz + 1; z++) {
+        if (x === bx && z === bz && y === by + 2) continue;
+        if (world.setVoxel(x, y, z, LEAVES)) natural++;
+      }
+    }
+  }
+  for (let y = by + 2; y >= by; y--) world.setVoxel(bx, y, bz, WOOD);
+  const saveBefore = world.placedLeavesForSave();
+
+  // 樹冠の角の上面を狙って 1 枚置く → (bx+1, by+4, bz+1)。
+  const aim = { id: LEAVES, block: { x: bx + 1, y: by + 3, z: bz + 1 }, normal: { x: 0, y: 1, z: 0 }, point: { y: by + 3.5 } };
+  const out = tryPlace(world, { overlapsBlock: () => false }, aim, 0, LEAVES);
+  const px = bx + 1;
+  const py = by + 4;
+  const pz = bz + 1;
+  const saved = world.placedLeavesForSave();
+  console.log(`      置く前の印 ${JSON.stringify(saveBefore)} / tryPlace → ${out.kind} / 印 ${JSON.stringify(saved)}`);
+  check("自然の葉 17 枚には印が付かない（0 枚なら placedLeavesForSave は undefined）", natural === 17 && saveBefore === undefined,
+    `${natural} 枚 / ${JSON.stringify(saveBefore)}`);
+  check("tryPlace で置いた葉 1 枚の座標が placedLeavesForSave に載る",
+    out.kind === "placed" && JSON.stringify(saved) === JSON.stringify([px, py, pz]) && world.keepsLeaf(px, py, pz),
+    `${out.kind} / ${JSON.stringify(saved)}`);
+
+  // 第 4 引数で作り直した World でも印が残る（`deserializeEdits` と同じ往復）。
+  const reloaded = new World(new Scene(), new WorldGen(1), undefined, saved);
+  const bad = new World(new Scene(), new WorldGen(1), undefined, [1, 2, 3, 4]);
+  console.log(`      作り直し: keepsLeaf ${reloaded.keepsLeaf(px, py, pz)} / 端の要らない配列 → ${JSON.stringify(bad.placedLeavesForSave())}`);
+  check("第 4 引数で作り直した World でも置いた葉の印が残る", reloaded.keepsLeaf(px, py, pz) && !reloaded.keepsLeaf(bx, by + 3, bz),
+    String(reloaded.keepsLeaf(px, py, pz)));
+  check("3 つ組でない端は捨てる", JSON.stringify(bad.placedLeavesForSave()) === "[1,2,3]", JSON.stringify(bad.placedLeavesForSave()));
+  reloaded.dispose();
+  bad.dispose();
+
+  let broke = 0;
+  world.onAutoBreak = (_x, _y, _z, id) => { if (isDecayingLeaf(id)) broke++; };
+  for (let y = by; y <= by + 2; y++) world.setVoxel(bx, y, bz, AIR);
+  world.onAutoBreak = undefined;
+  const kept = world.getVoxel(px, py, pz);
+  console.log(`      幹を切った: 合図 ${broke}（自然の葉 ${natural}）/ 置いた葉のマス ${blockName(kept)}`);
+  check("幹を切ると自然の葉だけが消え、置いた葉は残る（合図は自然の葉の数と同じ）", broke === natural && kept === LEAVES,
+    `合図 ${broke} / ${blockName(kept)}`);
+
+  // 壊してから同じマスに `setVoxel()` で葉を書く（育つ木の形）→ 印は無い。
+  world.setVoxel(px, py, pz, AIR);
+  const afterBreak = world.keepsLeaf(px, py, pz);
+  world.setVoxel(px, py, pz, LEAVES);
+  const afterGrow = world.keepsLeaf(px, py, pz);
+  console.log(`      壊したあと keepsLeaf ${afterBreak} / setVoxel で書き直した葉 ${afterGrow} / 印 ${JSON.stringify(world.placedLeavesForSave())}`);
+  check("置いた葉を壊すと印は消え、setVoxel で書いた葉（育つ木）には付かない",
+    !afterBreak && !afterGrow && world.placedLeavesForSave() === undefined, `${afterBreak} / ${afterGrow}`);
+  world.setVoxel(px, py, pz, AIR);
 }
 
 /**

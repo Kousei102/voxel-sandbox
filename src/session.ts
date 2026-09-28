@@ -22,7 +22,7 @@ import type { EditMap } from "./world";
 
 /** いま居る次元の「位置ごとの持ち物」を持っているもの。 */
 export interface StateSources {
-  readonly world: { editsForSave(): EditMap };
+  readonly world: { editsForSave(): EditMap; placedLeavesForSave(): number[] | undefined };
   /** 傷は**別のキー**で持つ（`serialize()` の 5 要素は変えない。`storage.ts` の `dropWear`）。 */
   readonly drops: { serialize(): number[]; serializeWear(): number[] | undefined };
   /** 器の中身の傷も**別のキー**で（`serialize()` の 9 要素 / 54 要素は変えない）。 */
@@ -54,6 +54,7 @@ export function collectState(from: StateSources): DimensionState {
     chests: from.chests.serialize(),
     chestWear: from.chests.serializeWear(),
     crops: from.crops.serialize(),
+    placedLeaves: from.world.placedLeavesForSave(),
   };
 }
 
@@ -137,6 +138,7 @@ export function buildSave(parts: SaveParts): SaveData {
     chests: parts.shape.top.chests,
     chestWear: parts.shape.top.chestWear,
     crops: parts.shape.top.crops,
+    placedLeaves: parts.shape.top.placedLeaves,
     bed: parts.bed,
     bedDim: parts.bedDim,
     edits: parts.shape.top.edits,
@@ -317,6 +319,7 @@ export function savedShape(saved: SaveData | null | undefined): {
       chests: saved?.chests,
       chestWear: saved?.chestWear,
       crops: saved?.crops,
+      placedLeaves: saved?.placedLeaves,
     },
     others: saved?.dims,
   };

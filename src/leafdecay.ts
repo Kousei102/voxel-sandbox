@@ -22,6 +22,19 @@ export interface LeafWorld {
   getVoxel(x: number, y: number, z: number): number;
   /** その列のボクセルが生成済みか。**`getVoxel` は未読み込みで AIR を返す。** */
   hasColumn(cx: number, cz: number): boolean;
+  /**
+   * プレイヤーが置いた葉か（52b）。**真のマスは返さない**が、支えを伝う道としては普通の葉のまま
+   * （置いた葉を伝って原木に届く自然の葉は残る = 本家どおり）。持たない世界では 52a と同じ。
+   */
+  keepsLeaf?(x: number, y: number, z: number): boolean;
+}
+
+/**
+ * 置いたら「消えない葉」として覚えるブロックか（52b）。**旗 `decays` に聞く** ——
+ * `id === LEAVES` をここにも `world.ts` / `placing.ts` にも書かないこと（木が増えるたびに漏れる）。
+ */
+export function keepsWhenPlaced(id: number): boolean {
+  return isDecayingLeaf(id);
 }
 
 const STEPS: readonly (readonly [number, number, number])[] = [
@@ -106,9 +119,12 @@ export function decayedLeaves(world: LeafWorld, x: number, y: number, z: number)
     frontier = next;
   }
 
-  // 3. 届かなかった候補を、決まった順で。
+  // 3. 届かなかった候補を、決まった順で。**置いた葉（`keepsLeaf`）は外す**（52b）。
   const out: [number, number, number][] = [];
-  for (const [k, cell] of candidates) if (!supported.has(k)) out.push(cell);
+  for (const [k, cell] of candidates) {
+    if (supported.has(k) || world.keepsLeaf?.(cell[0], cell[1], cell[2])) continue;
+    out.push(cell);
+  }
   out.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
   return out;
 }

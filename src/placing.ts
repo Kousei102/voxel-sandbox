@@ -45,7 +45,13 @@ import type { UseSpot } from "./use";
  * `beds.ts` と同じで、`World` を丸ごとではなく要る入口だけを受ける
  * （**ベッドが要るものと同じ 3 つ**なので、`BedWorld` をそのまま使う）。
  */
-export type PlaceWorld = BedWorld;
+export interface PlaceWorld extends BedWorld {
+  /**
+   * 置いたことを覚える器（52b。`World` が満たす）。**省略可** —— 偽の世界はそのままでよい。
+   * 何を覚えるかは受ける側（`leafdecay.ts` の `keepsWhenPlaced()`）が決める。
+   */
+  notePlaced?(x: number, y: number, z: number, id: number): void;
+}
 
 /** 置こうとしている人。**`Player` が構造的に満たす**ので継承は要らない。 */
 export interface PlaceBody {
@@ -115,6 +121,7 @@ export function tryPlace(
   } else if (!world.setVoxel(x, y, z, id)) {
     return NOTHING;
   } else {
+    world.notePlaced?.(x, y, z, id);
     // 支えの無い所（空中・水の上）に砂・砂利を置いたら、地面か水底まで落ちる。
     settleColumn(world, x, y, z);
   }

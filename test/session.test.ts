@@ -18,7 +18,8 @@ import { check, describe } from "./harness";
 /** `main.ts` が渡すものと同じ形の偽物（`serialize()` を持つ何か）。 */
 function sources(edits: EditMap = new Map()) {
   return {
-    world: { editsForSave: () => edits },
+    // 置いた葉の印（52b）。**1 枚も無ければ undefined** でキーごと消える。
+    world: { editsForSave: () => edits, placedLeavesForSave: () => [1, 41, 2] as number[] | undefined },
     // 傷は別のキー（`dropWear`）。**全部新品なら undefined** でキーごと消える。
     drops: { serialize: () => [7, 3, 1, 2, 3], serializeWear: () => undefined },
     // 器の中身の傷も別のキー（`furnaceWear` / `chestWear`）。**キーは `serialize()` と同じ。**
@@ -96,6 +97,12 @@ export function run(): void {
       state.crops?.["5,41,6"] === 12.5,
       JSON.stringify(state.crops),
     );
+    // 置いた葉の印も**同じ 1 か所**で集まる（52b）。空ならキーごと消える。
+    const bare = sources(edits);
+    const none = collectState({ ...bare, world: { ...bare.world, placedLeavesForSave: () => undefined } });
+    console.log(`      置いた葉: ${JSON.stringify(state.placedLeaves)} / 0 枚なら ${JSON.stringify(none.placedLeaves)}`);
+    check("置いた葉の印も同じ 1 か所で集まる（52b）", JSON.stringify(state.placedLeaves) === "[1,41,2]", JSON.stringify(state.placedLeaves));
+    check("置いた葉が 0 枚なら placedLeaves は undefined（52b）", none.placedLeaves === undefined, JSON.stringify(none.placedLeaves));
   }
 
   // --- 書き出す形 -----------------------------------------------------------
@@ -167,6 +174,8 @@ export function run(): void {
     check("空のキーは省かれる（chestWear / furnaceWear）", !plainKeys.includes("chestWear") && !plainKeys.includes("furnaceWear"), plainKeys.join(" "));
     // **畑を作っていない人のセーブは 1 バイトも増えないこと**（`crops` がキーごと消える）。
     check("空のキーは省かれる（crops）", !plainKeys.includes("crops"), plainKeys.join(" "));
+    // **葉を置いていない人のセーブも 1 バイトも増えないこと**（52b）。
+    check("空のキーは省かれる（placedLeaves・52b）", !plainKeys.includes("placedLeaves"), plainKeys.join(" "));
   }
 
   {
@@ -180,6 +189,17 @@ export function run(): void {
     // 読み戻す側も上の階層から拾うこと（`savedShape()`）。
     const shape = savedShape({ crops: { "1,2,3": 4 } } as Partial<SaveData> as SaveData);
     check("読み戻しも上の階層から拾う", shape.top.crops?.["1,2,3"] === 4, JSON.stringify(shape.top.crops));
+  }
+
+  {
+    // 置いた葉の印も**上の階層**（52b）。`edits` の値に混ぜないこと。
+    const garden = buildSave(parts({ top: { edits: {}, placedLeaves: [0, 41, 0] } }));
+    console.log(`      セーブに載る置いた葉: ${JSON.stringify(garden.placedLeaves)} / edits ${JSON.stringify(garden.edits)}`);
+    check("置いた葉の印は上の階層に載り、edits には混ざらない（52b）",
+      JSON.stringify(garden.placedLeaves) === "[0,41,0]" && JSON.stringify(garden.edits) === "{}", JSON.stringify(garden.placedLeaves));
+    const shape = savedShape({ placedLeaves: [1, 2, 3] } as Partial<SaveData> as SaveData);
+    check("置いた葉の読み戻しも上の階層から拾う（52b）", JSON.stringify(shape.top.placedLeaves) === "[1,2,3]",
+      JSON.stringify(shape.top.placedLeaves));
   }
 
   {

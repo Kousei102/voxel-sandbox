@@ -4736,3 +4736,36 @@ ID 0 個（**共有帯の空き 57 のまま**・次は 199）/ `main.ts` 1450 �
 
 `rules/blocks-shapes.md` に 1 段: 葉が消える旗は対の 2 本 / 本物の `World` で試すときは箱（±8）の列が読み込み済みの場所を選ぶ。
 
+
+## AUTODEV 139（C の周・2026-09-28・クラウドの無人の周）: 52b 置いた葉は消えない（ID 0 個）
+
+### 取ったもの
+
+**仕様書どおり。** サブエージェントは使わず親が実装し、点検（C-2）も親が `git diff` を読んで行った。
+
+- `leafdecay.ts`: `LeafWorld.keepsLeaf?`・`keepsWhenPlaced()`（旗 `decays` に聞く）・`decayedLeaves()` の 3. で印のマスを外すだけ（1. と 2. は ±0）
+- `world.ts`: `placedLeaves`（`Set<"x,y,z">`）・第 4 引数・`notePlaced()` / `keepsLeaf()` / `placedLeavesForSave()`・`setVoxel()` で印を消す（`size !== 0` の後ろ）
+- `placing.ts`: `PlaceWorld` を `BedWorld` + 省略可の `notePlaced?` に。`tryPlace()` の書けた枝で 1 行
+- `dimensions.ts` / `storage.ts` / `session.ts`: 省略可キー `placedLeaves`（`crops` の写し 6 か所）
+- **`main.ts` ±0 行**（`new World(…)` に `state.placedLeaves`）・`hands.ts` 0 行・`crops.ts` / `breaking.ts` / `DROPS` 0 行
+
+### 差し戻し: 0 回 / 見送ったもの: 1 件
+
+- **52b より前のセーブで置いた葉に印を付けること** —— `edits` では育った木の葉と見分けられない（仕様書の前提）
+
+### 撮ったもの
+
+`npm run shot -- terrain` の md5 が前と同一（`1eb34c15…`）。`main.ts` を触ったので本物のブラウザ（`browsershot.mjs`）でも起動を見た（`game.png` を開いて確認・console のエラー 0 件。絵は差分に入れていない）。
+
+### 枠
+
+ID 0 個（**共有帯の空き 57 のまま**・次は 199）/ `main.ts` 1083 行（±0）/ `npm test` 4094 → 4112 件（+18。仕様の見込み 10〜16 より 2 件多い）/ キューの未着手 10 → 9 件。
+
+### 決まりごと（層 2）: 2 件
+
+- `rules/blocks-shapes.md`: 52a の段の下に「置いた葉は消えない」の 1 段。`paths` に `src/leafdecay.ts` と `test/leafdecay.test.ts` を足した（どの rules にも当たっていなかった）
+- `rules/dimensions.md`: 「次元ごとの省略可キーは 6 か所・`normalize()` と `savedShape()` は型で止まらない」
+
+### 手順の逸れ: 1 件
+
+`src/leafdecay.ts` と `test/leafdecay.test.ts` の最初の書き換え 2 回を `Edit` でなく `Bash` の `python3` でやった（`src/**` と `test/**` は Read / Edit の決まり）。中身は `git diff` で読み直して問題なし。以降は `Edit` に戻した。

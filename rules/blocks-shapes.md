@@ -4,6 +4,8 @@ paths:
   - "src/raycast.ts"
   - "src/liquids.ts"
   - "src/placing.ts"
+  - "src/leafdecay.ts"
+  - "test/leafdecay.test.ts"
   - "src/player.ts"
   - "src/physics.ts"
   - "src/main.ts"
@@ -180,6 +182,10 @@ paths:
 **生えたばかりの木の葉が幹を切る前から支えを持たない**（`test/blocks.test.ts` が 3 つずつを見張ります）。
 本物の `World` で試すときは**支えを探す箱（±8）の列が全部読み込み済みの場所**を選ぶこと
 （未読み込みの列があると 1 枚も消えず、実装が壊れたように見えます）。
+**置いた葉は消えません**（2026-09-28・52b）。印は `World` の `placedLeaves`（`edits` とは別。**育った木の葉も
+`edits` に入るので、`edits` で見分けないこと**）で、付けるのは `tryPlace()` の `notePlaced?` だけ・消すのは
+`setVoxel()`（そのマスが書き換わったら）。**外すのは `decayedLeaves()` の 3. だけ**で、支えを伝う道としては普通の葉のまま。
+**`setVoxel()` に足す処理は `size !== 0` の後ろに置くこと**（全部の書き込みの道で、印が空の人に文字列を作らせない）。
 
 **滑る（`slippery`）と鈍る（`sticky`）を 1 つの旗にまとめないこと。** 氷は滑らせるだけ・
 クモの巣は鈍らせるだけで、**走査すら違います**（足元 ↔ 体と重なるマス）。

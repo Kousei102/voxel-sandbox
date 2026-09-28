@@ -63,6 +63,10 @@ paths:
   （`test/dimensions.test.ts` が `serializeEdits(` の数を数えています）、`buildSave()` がキーの
   並びを、`restoredValues()` が「読んだ値をどこまで信じるか」を持ちます。**`main.ts` に
   `typeof saved?.health === "number"` のような均しを書き戻さないこと。**
+  - **次元ごとの省略可キーを 1 つ足すと、書く所は 6 か所です**（2026-09-28・52b `placedLeaves`。`crops` の写し）:
+    `DimensionState` / `normalize()` / `SaveData` / `collectState()` / `buildSave()` / `savedShape()`。
+    **`normalize()` と `savedShape()` は型で止まりません**（省略可なので書き忘れても `tsc` が緑）——
+    `test/dimensions.test.ts` の `state()` と `test/session.test.ts` の `savedShape` の件に 1 つずつ足して見張ること。
 - **持ち物のキーが 2 つ以上ある器は、`SaveParts` へ器そのものを渡すこと**
   （2026-09-09・防具）。`main.ts` が `inventory: inventory.serialize(),` と
   `wear: inventory.serializeWear(),` と並べる形にしていると、**キーが増えるたびに

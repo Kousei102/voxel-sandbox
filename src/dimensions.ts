@@ -54,6 +54,8 @@ export interface DimensionState {
    * **次元ごとに持つこと** —— ネザーへ行っている間に畑が消えてはいけない。
    */
   readonly crops?: Record<string, number>;
+  /** プレイヤーが置いた葉（`[x, y, z, …]`。52b）。**1 枚も無ければ無し**。次元ごと。 */
+  readonly placedLeaves?: number[];
 }
 
 /** まだ一度も行っていない次元の状態。 */
@@ -75,6 +77,7 @@ function normalize(raw: Partial<DimensionState> | undefined): DimensionState {
     chests: raw?.chests,
     chestWear: raw?.chestWear,
     crops: raw?.crops,
+    placedLeaves: raw?.placedLeaves,
   };
 }
 

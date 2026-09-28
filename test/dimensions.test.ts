@@ -48,6 +48,8 @@ function state(mark: number): DimensionState {
     chestWear: { [`${mark},3,0`]: [mark] },
     // 苗の育ち具合。**次元ごとに持つこと** —— ネザーへ行っている間に畑が消えてはいけない。
     crops: { [`${mark},4,0`]: mark },
+    // 置いた葉の印（52b）。**次元ごと** —— ネザーへ行って戻ったら庭の生け垣が消えた、にしない。
+    placedLeaves: [mark, 5, 0],
   };
 }
 
@@ -142,6 +144,8 @@ export function run(): void {
     // 畑が 0 秒から数え直しになる（型では防げない。どちらも `DimensionState`）。
     console.log(`      戻ってきた苗: ${JSON.stringify(back?.crops)}`);
     check("苗の育ち具合も残っている", back?.crops?.["11,4,0"] === 11, JSON.stringify(back?.crops));
+    console.log(`      戻ってきた置いた葉: ${JSON.stringify(back?.placedLeaves)}`);
+    check("置いた葉の印も残っている（52b）", JSON.stringify(back?.placedLeaves) === "[11,5,0]", JSON.stringify(back?.placedLeaves));
 
     // もう一度行くと、置いてきたものがある。
     const again = dims.switchTo("あちら", back ?? emptyState());

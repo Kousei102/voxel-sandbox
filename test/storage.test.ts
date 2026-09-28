@@ -177,6 +177,16 @@ export function run(): void {
     const crops = new Crops();
     crops.deserialize(load()?.crops);
     check("crops の無い古いセーブは畑が 0 本", crops.count === 0, `${crops.count} 本`);
+    // 置いた葉の印も凍らせた v1 には無い（52b）。無ければ `undefined` = 1 枚も覚えていない。
+    check("placedLeaves の無い古いセーブは undefined（52b）", load()?.placedLeaves === undefined, JSON.stringify(load()?.placedLeaves));
+  });
+
+  // **`placedLeaves` も省略可のキー**（52b・`version` は 1 のまま）。書いてあれば読める。
+  withStorage(V1_SAVE.replace('"bed": [9, 41, -3],', '"bed": [9, 41, -3], "placedLeaves": [1, 41, 2],'), () => {
+    const saved = load();
+    console.log(`      読み戻した置いた葉: ${JSON.stringify(saved?.placedLeaves)} / version ${saved?.version}`);
+    check("placedLeaves を足しても v1 として読め、印が読み戻せる（52b）",
+      saved !== null && saved.version === 1 && JSON.stringify(saved.placedLeaves) === "[1,41,2]", JSON.stringify(saved?.placedLeaves));
   });
 
   // **`armor` も省略可のキーとして足したもの**（`version` は 1 のまま）。

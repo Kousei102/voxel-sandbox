@@ -279,7 +279,7 @@ function startWorld(
   // 持っておく（`ChunkSource` はバイオームを知らない）。オーバーワールドに居るときは
   // `sourceFor` のキャッシュ越しに世界の生成器と同じものになる。
   overworld = dims.overworldGen(seed);
-  world = new World(scene, dims.sourceFor(dimension, seed) ?? overworld, deserializeEdits(state.edits));
+  world = new World(scene, dims.sourceFor(dimension, seed) ?? overworld, deserializeEdits(state.edits), state.placedLeaves);
   menu.showSeed(seed);
   // 次元ごとの空（色・天体・明るさが時刻で動くか）。**決めるのは `daynight.ts` の表**で、
   // ここは名前を渡すだけ（`sky.ts` にも `main.ts` にも次元の分岐は要らない）。

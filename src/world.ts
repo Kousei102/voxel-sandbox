@@ -15,7 +15,7 @@ import {
   sustainsLeaves,
   waterBesideOk,
 } from "./blocks";
-import { decayedLeaves } from "./leafdecay";
+import { decayedLeaves, keepsWhenPlaced } from "./leafdecay";
 import { Chunk, chunkKey, localIndex } from "./chunk";
 import {
   CHUNK_BITS,
@@ -82,6 +82,11 @@ export class World {
   private readonly meshQueue: string[] = [];
   /** プレイヤーが置いた／壊したブロック。チャンクキー -> ローカル index -> ブロック ID。 */
   private readonly edits: EditMap = new Map();
+  /**
+   * プレイヤーが置いた葉（52b。`"x,y,z"`）。**`edits` では見分けられない**ので別に持つ ——
+   * 苗木から育った木の葉も `setVoxel()` を通って `edits` に入る（そちらは消える）。
+   */
+  private readonly placedLeaves = new Set<string>();
   private readonly pad = new Uint8Array(PAD_VOLUME);
   private readonly skyPad = new Uint8Array(PAD_VOLUME);
   private readonly blockPad = new Uint8Array(PAD_VOLUME);
@@ -117,8 +122,15 @@ export class World {
     private readonly scene: Scene,
     private readonly gen: ChunkSource,
     edits?: EditMap,
+    placedLeaves?: readonly number[],
   ) {
     if (edits) this.edits = edits;
+    if (placedLeaves) {
+      // 3 つ組でない端は捨てる（壊れたセーブで落ちない）。
+      for (let i = 0; i + 2 < placedLeaves.length; i += 3) {
+        this.placedLeaves.add(`${placedLeaves[i]},${placedLeaves[i + 1]},${placedLeaves[i + 2]}`);
+      }
+    }
     useTerrainLighting(this.opaqueMaterial, this.daylight);
     useTerrainLighting(this.translucentMaterial, this.daylight);
   }
@@ -189,6 +201,8 @@ export class World {
 
     chunk.setIndex(index, id);
     this.recordEdit(cx, cy, cz, index, id);
+    // 書き換わったマスの「置いた葉」の印は消す。**空なら文字列を作らない**（全部の書き込みの道）。
+    if (this.placedLeaves.size !== 0) this.placedLeaves.delete(`${wx},${wy},${wz}`);
     this.relightSkyEdit(wx, wy, wz, previous, id);
     this.relightBlockEdit(wx, wy, wz, id);
     this.prioritize(chunkKey(cx, cy, cz));
@@ -928,6 +942,28 @@ export class World {
 
   editsForSave(): EditMap {
     return this.edits;
+  }
+
+  /**
+   * プレイヤーがそのマスに置いたことを覚える（`placing.ts` の `tryPlace()` だけが呼ぶ）。
+   * **覚えるかどうかは `leafdecay.ts` の `keepsWhenPlaced()`**。書いたあとに呼ぶこと
+   * （`setVoxel()` が印を消すので、先に呼ぶと消える）。
+   */
+  notePlaced(x: number, y: number, z: number, id: number): void {
+    if (keepsWhenPlaced(id)) this.placedLeaves.add(`${x},${y},${z}`);
+  }
+
+  /** プレイヤーが置いた葉か（`decayedLeaves()` が聞く）。 */
+  keepsLeaf(x: number, y: number, z: number): boolean {
+    return this.placedLeaves.size !== 0 && this.placedLeaves.has(`${x},${y},${z}`);
+  }
+
+  /** 置いた葉の座標を `[x, y, z, …]` で。**1 枚も無ければ `undefined`**（キーごと消える）。 */
+  placedLeavesForSave(): number[] | undefined {
+    if (this.placedLeaves.size === 0) return undefined;
+    const out: number[] = [];
+    for (const key of this.placedLeaves) for (const v of key.split(",")) out.push(Number(v));
+    return out;
   }
 
   dispose(): void {

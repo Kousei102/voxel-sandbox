@@ -7,10 +7,10 @@
  * テストだけが古い値で緑になる）。
  */
 
-import { AIR, LEAVES, STONE, WOOD, isDecayingLeaf, sustainsLeaves } from "../src/blocks";
+import { AIR, LEAVES, SAPLING, STONE, TALL_GRASS, WOOD, blockName, isDecayingLeaf, sustainsLeaves } from "../src/blocks";
 import type { TreeKind } from "../src/biomes";
 import { CHUNK_BITS } from "../src/constants";
-import { LEAF_DECAY_DISTANCE, decayedLeaves, type LeafWorld } from "../src/leafdecay";
+import { LEAF_DECAY_DISTANCE, decayedLeaves, keepsWhenPlaced, type LeafWorld } from "../src/leafdecay";
 import { sourceOf } from "./arena";
 import { treeCells } from "../src/treeshape";
 import { check, describe } from "./harness";
@@ -32,6 +32,14 @@ class FakeWorld implements LeafWorld {
     let n = 0;
     for (const id of this.cells.values()) if (pred(id)) n++;
     return n;
+  }
+}
+
+/** 置いた葉の印を持つ偽物（52b）。 */
+class KeepingWorld extends FakeWorld {
+  readonly kept = new Set<string>();
+  keepsLeaf(x: number, y: number, z: number): boolean {
+    return this.kept.has(`${x},${y},${z}`);
   }
 }
 
@@ -179,6 +187,49 @@ export function run(): void {
     console.log(`      ${rows.join("\n      ")}`);
     check(`本物の木（3 種 × 高さ全範囲）はどの葉も原木から ${d} 歩以内（最遠 ${worst}）`, worst <= d, `${worst}`);
     check("幹を上から全部消すと、その木の葉が全部返る", allGone, rows.join(" / "));
+  }
+
+  // 7. 置いた葉は消えない（52b）。`keepsLeaf` が真のマスは返らず、残りは 52a のまま。
+  {
+    const w = new KeepingWorld();
+    for (let x = -1; x <= 1; x++) for (let z = -1; z <= 1; z++) for (let y = 12; y <= 13; y++) w.set(x, y, z, LEAVES);
+    w.set(0, 11, 0, WOOD);
+    w.kept.add("1,13,1");
+    const plain = new FakeWorld();
+    for (const [k, id] of w.cells) plain.cells.set(k, id);
+    w.set(0, 11, 0, AIR);
+    plain.set(0, 11, 0, AIR);
+    const leaves = w.count(isDecayingLeaf);
+    const got = decayedLeaves(w, 0, 11, 0).map((c) => c.join(","));
+    const base = decayedLeaves(plain, 0, 11, 0).length;
+    console.log(`      置いた葉 1 枚（1,13,1）: 葉 ${leaves} 枚 / 返った ${got.length} 枚 / keepsLeaf の無い世界では ${base} 枚`);
+    check("置いた葉（keepsLeaf 真）の 1 枚だけが返らず、残りは全部返る（52b）",
+      got.length === leaves - 1 && !got.includes("1,13,1"), `${got.length} / ${leaves}`);
+    check("keepsLeaf を持たない世界では 52a と同じく全部返る（52b）", base === leaves, `${base} / ${leaves}`);
+  }
+
+  // 8. 置いた葉も支えを伝う道のまま（原木 — 置いた葉 — 自然の葉 の列で、自然の葉は残る）。
+  {
+    const w = new KeepingWorld();
+    w.set(0, 10, 0, WOOD); // 切るほう
+    for (let x = 1; x <= 3; x++) w.set(x, 10, 0, LEAVES);
+    w.set(4, 10, 0, WOOD); // 残るほう。x=3 は置いた葉、x=1..2 は自然の葉で、x=3 を伝って届く
+    w.kept.add("3,10,0");
+    w.set(0, 10, 0, AIR);
+    const got = decayedLeaves(w, 0, 10, 0).map((c) => c.join(","));
+    console.log(`      置いた葉を伝う: 返った [${got.join(" ")}]`);
+    check("置いた葉を伝って原木に届く自然の葉は残る（52b）", got.length === 0, got.join(" "));
+  }
+
+  // 9. 置いたら覚える ID は葉 3 つだけ（旗 `decays` に聞く）。
+  {
+    const ids: number[] = [];
+    for (let id = 0; id < 256; id++) if (keepsWhenPlaced(id)) ids.push(id);
+    const names = ids.map((id) => blockName(id));
+    console.log(`      keepsWhenPlaced が真: [${ids.join(",")}]（${names.join(" / ")}）`);
+    check("置いたら覚えるのは葉 3 つだけ（52b）",
+      ids.length === 3 && ids.includes(LEAVES) && !ids.includes(WOOD) && !ids.includes(SAPLING) && !ids.includes(TALL_GRASS),
+      ids.join(","));
   }
 
   // 見張り: 乱数を使わない・ID を名指ししない（旗に聞く）。
