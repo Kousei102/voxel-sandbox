@@ -1,5 +1,5 @@
 import { decideClick, decideKey, mobIsNearer, type KeyAction, type KeyFacts } from "../src/controls";
-import { sourceOf } from "./arena";
+import { sourceOf, wiringSource } from "./arena";
 import { check, describe } from "./harness";
 
 /** 並の状況（プレイ中・画面は閉じている・サバイバル）。違うところだけ上書きする。 */
@@ -34,7 +34,7 @@ export function run(): void {
 
   // もとは `main.ts` の `keydown` と `mousedown` にあった `if` の列。
   // **戻っていないこと**を語で見る（`use.ts` の `isBucket(` と同じ作法）。
-  const main = sourceOf("src/main.ts");
+  const main = wiringSource();
   const backInMain = [
     'startsWith("Digit")',
     '=== "KeyE"',

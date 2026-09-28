@@ -4,6 +4,7 @@ paths:
   - "src/daynight.ts"
   - "src/blocks.ts"
   - "src/main.ts"
+  - "src/hands.ts"
   - "src/breaking.ts"
   - "test/beds.test.ts"
 ---

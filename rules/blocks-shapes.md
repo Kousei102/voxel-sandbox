@@ -7,6 +7,7 @@ paths:
   - "src/player.ts"
   - "src/physics.ts"
   - "src/main.ts"
+  - "src/hands.ts"
   - "test/blocks.test.ts"
   - "test/liquids.test.ts"
   - "test/placing.test.ts"

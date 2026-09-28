@@ -32,7 +32,7 @@ import {
   WOOD_HOE,
 } from "../src/items";
 import { decideUse, type UseAction, type UseFacts } from "../src/use";
-import { sourceOf } from "./arena";
+import { sourceOf, wiringSource } from "./arena";
 import { check, describe } from "./harness";
 
 /** 狙っているブロック。`RaycastHit` が構造的に満たす形（`PlaceAim`）をそのまま作る。 */
@@ -76,7 +76,7 @@ export function run(): void {
 
   // もとは `main.ts` の `useOrPlace()` にあった 11 通りの `if` の列。
   // **戻っていないこと**を語で見る（`placing.ts` の `canPlaceAt` と同じ作法）。
-  const main = sourceOf("src/main.ts");
+  const main = wiringSource();
   const backInMain = [
     "isBucket(",
     "isBow(",

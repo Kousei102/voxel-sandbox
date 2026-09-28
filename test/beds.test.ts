@@ -22,7 +22,7 @@ import { Beds, clearBedPartner, placeBed, sleepDecision } from "../src/beds";
 import { DIMENSIONS, NETHER, OVERWORLD } from "../src/dimensions";
 import { World } from "../src/world";
 import { WorldGen } from "../src/worldgen";
-import { sourceOf } from "./arena";
+import { wiringSource } from "./arena";
 import { check, describe } from "./harness";
 
 /** 置く材料。`placeSpot()` が返すものと同じ形（ベッドは `facing` だけを見る）。 */
@@ -307,7 +307,7 @@ export function run(): void {
     check("枕側から覚えても使える地点になる", fromHead.spawnPosition(world) !== null);
     check("次元も一緒に覚える", fromHead.spawnPoint?.dim === OVERWORLD);
 
-    const main = sourceOf("src/main.ts");
+    const main = wiringSource();
     check("main.ts が相方を辿っていない", !main.includes("isBedHead("));
   }
 

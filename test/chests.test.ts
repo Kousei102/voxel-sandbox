@@ -14,7 +14,7 @@ import { findRecipe } from "../src/crafting";
 import { CraftScreen } from "../src/craftscreen";
 import { HOTBAR_SIZE, Inventory, isEmpty, type Slot } from "../src/inventory";
 import { MAX_STACK, NO_ITEM, WOOD_PICKAXE, itemName } from "../src/items";
-import { sourceOf } from "./arena";
+import { sourceOf, wiringSource } from "./arena";
 import { check, describe } from "./harness";
 
 function stripComments(path: string): string {
@@ -489,7 +489,7 @@ export function run(): void {
 
   {
     // 見張り。**枠数と隣接の判断が `main.ts` と `inventoryui.ts` に漏れていないこと。**
-    const main = sourceOf("src/main.ts");
+    const main = wiringSource();
     const leaked = ["chestPartner", "CHEST_SIZE"].filter((name) => main.includes(name));
     check("main.ts に枠数と隣接の判断が無い", leaked.length === 0, leaked.join(" "));
 

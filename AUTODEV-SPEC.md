@@ -5,8 +5,8 @@
 
 **この 1 件だけコードで数え直しました**: 入っていません。`leafdecay.ts` の `decayedLeaves()` は葉の出どころを見ず、
 `World` にも `SaveData` にも「置いた葉」の印は 1 つも無い（52a の間は**木に接して置いた葉が、残りの原木から 4 歩より遠いと消える**）。
-**`main.ts` は 1449 行（`wc -l`。テストの数え方で 1450）で、この件は +0 行**（**既存の 293 行目 1 行を書き換えるだけ**。下の 2.）。
-停止条件 2（1450 を**超えた**）には当たりません —— **1 行でも増えるなら止めて人を呼ぶこと**（逃げ道を探さない）。
+**`main.ts` は 2026-09-28 に 2 本へ割りました**（ユーザーの判断。手でやることは `src/hands.ts`・`rules/testing.md`）。この件の配線は `main.ts` の
+`startWorld()` の `new World(…)` の 1 行（いま 282 行目）を書き換えるだけで **+0 行の見込み**（下の 2.）。見張りは `wiringSource()` を通すこと。
 
 **`edits`（`World.editsForSave()`）では見分けられません**: 苗木から育った木（`crops.ts` の `growTree()`）の葉も
 `setVoxel()` を通って `edits` に入るので、「`edits` にある葉 = 置いた葉」にすると**育てた木の葉が消えなくなる**（本家は消える）。
@@ -39,7 +39,7 @@
 - `src/dimensions.ts`（`DimensionState.placedLeaves?: number[]` と `normalize()` に 1 行）/ `src/storage.ts`（`SaveData.placedLeaves?`）/
   `src/session.ts`（`StateSources.world` に `placedLeavesForSave()`・`collectState()`・`buildSave()` の上の階層・`savedShape()` に 1 行ずつ。
   **`crops` の 4 か所の写し**）
-- **`src/main.ts` 293 行目の 1 行だけ**: `new World(…, deserializeEdits(state.edits), state.placedLeaves)`。**行を増やさないこと**
+- **`src/main.ts` の `startWorld()` の 1 行だけ**: `new World(…, deserializeEdits(state.edits), state.placedLeaves)`（`hands.ts` は触らない）
 - テスト 5 本（下の 5.）/ `TUNING.md` の 52a の節の「置いた葉」の行 / `AUTODEV-QUEUE.md` / `docs/autodev-log.md` / `HANDOFF.md` /
   `rules/stateful-blocks.md` か `rules/dimensions.md`（省略可キーの節に 1〜3 行）
 
@@ -84,7 +84,7 @@
 
 ## 6. このタスク固有の禁じ手
 
-- **`main.ts` の行を増やさないこと**（293 行目の書き換えだけ。増えるなら止めて `HANDOFF.md` に書く）
+- **`main.ts` に判断を書かないこと**（`new World(…)` の 1 行の書き換えだけ。`hands.ts` も触らない）
 - **`edits` の形・値を変えないこと**（印を ID に混ぜない）/ `SaveData.version` を上げない / ID を使わない・振り直さない
 - **`decayedLeaves()` の 1. と 2. を変えないこと**（置いた葉を「伝わない葉」にしない）/ **乱数を使わない**
 - **`crops.ts` の `notePlaced()` を書き換えないこと** / `breaking.ts` と葉の `DROPS` を触らない / 判定をゆるめないこと

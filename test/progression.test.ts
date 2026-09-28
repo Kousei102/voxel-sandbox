@@ -40,7 +40,7 @@ import {
 import { CHUNK_LAYERS, CHUNK_SIZE, CHUNK_VOLUME } from "../src/constants";
 import { findRecipe } from "../src/crafting";
 import { Dimensions, END, NETHER, OVERWORLD, type DimensionState } from "../src/dimensions";
-import { Arena, Slab, seeded, sourceOf } from "./arena";
+import { Arena, Slab, seeded, sourceOf, wiringSource } from "./arena";
 import { BOSSES, MOBS, Mobs, PLAYER_ATTACK_COOLDOWN, hostileFor } from "../src/mobs";
 import { check, describe } from "./harness";
 import { type Slot } from "../src/inventory";
@@ -109,7 +109,8 @@ function item(name: string): number {
  */
 function sourceHas(path: string, ...words: string[]): { done: boolean; detail?: string } {
   if (!existsSync(path)) return { done: false, detail: `${path} が無い` };
-  const source = sourceOf(path);
+  // **`main.ts` は配線 2 本を 1 本として読む**（`hands.ts` へ割った。`test/arena.ts` の `wiringSource()`）。
+  const source = path === "src/main.ts" ? wiringSource() : sourceOf(path);
   const missing = words.filter((w) => !source.includes(w));
   return { done: missing.length === 0, detail: missing.length ? `${missing.join(" ")} が無い` : path };
 }

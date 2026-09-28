@@ -4,6 +4,7 @@ paths:
   - "src/player.ts"
   - "src/items.ts"
   - "src/main.ts"
+  - "src/hands.ts"
   - "test/vitals.test.ts"
 ---
 

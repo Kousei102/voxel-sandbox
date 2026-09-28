@@ -29,7 +29,7 @@ import {
 } from "../src/stronghold";
 import { cellSize, placementsFor, siteAt, type StructureDef } from "../src/structures";
 import { WorldGen } from "../src/worldgen";
-import { sourceOf } from "./arena";
+import { sourceOf, wiringSource } from "./arena";
 import { check, describe } from "./harness";
 
 /** 決まった位置から順に見ていくための標本（種と立ち位置の組）。 */
@@ -710,7 +710,7 @@ function sourceGuards(): void {
   );
 
   // `main.ts` が向きを自分で計算し始めていないか。
-  const main = sourceOf("src/main.ts");
+  const main = wiringSource();
   check(
     "main.ts は方角を自分で決めていない",
     main.includes("eyeShot(") && !main.includes("nearestStronghold("),

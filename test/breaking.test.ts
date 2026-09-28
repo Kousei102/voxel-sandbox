@@ -19,7 +19,7 @@ import {
 } from "../src/blocks";
 import { autoBreak, tryBreak, type BreakContainers } from "../src/breaking";
 import { APPLE, FLINT, NO_ITEM, STICK, WHEAT, WHEAT_SEEDS, WOOD_PICKAXE, itemName } from "../src/items";
-import { Slab, sourceOf } from "./arena";
+import { Slab, sourceOf, wiringSource } from "./arena";
 import { check, describe } from "./harness";
 
 /**
@@ -88,7 +88,7 @@ export function run(): void {
 
   // もとは `main.ts` の `breakBlock()` と `onAutoBreak`。**戻っていないこと**を語で見る
   // （`test/ui.test.ts` の `.chance` と同じ作法）。
-  const main = sourceOf("src/main.ts");
+  const main = wiringSource();
   const backInMain = ["rollDrop(", "rollDrops(", "canHarvest(", "clearBedPartner("].filter((name) =>
     main.includes(name),
   );

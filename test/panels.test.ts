@@ -2,7 +2,7 @@ import { createChest } from "../src/chests";
 import type { ChestState, CraftSize, FurnaceState } from "../src/craftscreen";
 import { Panels, menuVisibleWhenUnlocked, type PanelHost, type PanelScreen } from "../src/panels";
 import { createFurnace } from "../src/smelting";
-import { sourceOf } from "./arena";
+import { sourceOf, wiringSource } from "./arena";
 import { check, describe } from "./harness";
 
 /**
@@ -181,7 +181,7 @@ export function run(): void {
     check("panels.ts が判断だけでできている", leaked.length === 0, leaked.join(" "));
 
     // 出したのに `main.ts` にも書き戻した、を止める。
-    const main = sourceOf("src/main.ts");
+    const main = wiringSource();
     const backInMain = ["function openPanel(", "function closeInventory("].filter((w) =>
       main.includes(w),
     );

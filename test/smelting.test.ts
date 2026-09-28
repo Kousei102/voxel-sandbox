@@ -54,7 +54,7 @@ import {
   tickFurnace,
   type FurnaceState,
 } from "../src/smelting";
-import { sourceOf } from "./arena";
+import { sourceOf, wiringSource } from "./arena";
 import { check, describe } from "./harness";
 
 
@@ -475,7 +475,7 @@ export function run(): void {
     // 掘られた・上書きされたマスを書き換えないこと（**関係のないブロックがかまどに化ける**）。
     check("かまどでなければ書かない", litVoxel(STONE, true) === AIR, blockName(litVoxel(STONE, true)));
     check("空気にも書かない", litVoxel(AIR, true) === AIR);
-    const main = sourceOf("src/main.ts");
+    const main = wiringSource();
     check("main.ts が点火中の ID を選んでいない", !main.includes("FURNACE_LIT"));
   }
 

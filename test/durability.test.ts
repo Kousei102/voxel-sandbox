@@ -61,7 +61,7 @@ import {
 import { breakTime } from "../src/mining";
 import { applyRestore } from "../src/session";
 import type { SaveData } from "../src/storage";
-import { Slab, sourceOf } from "./arena";
+import { Slab, sourceOf, wiringSource } from "./arena";
 import { check, describe } from "./harness";
 
 /** 素の `Slot` 1 個。**`World` も DOM も要らない**（試験場はこれで足りる）。 */
@@ -297,7 +297,7 @@ export function run(): void {
   // 見張り 1: 回数と傷の扱いを `main.ts` に書き戻さない（配線だけに保つ）。
   // **`.damage` そのものでは見ない** —— 矢のダメージ（`shot.damage`）に当たる。
   // 見たいのは「傷を自分で書き換えていないか」なので、代入と足し引きの形で見る。
-  const main = sourceOf("src/main.ts");
+  const main = wiringSource();
   const leaked = ["TOOL_USES", "maxUses(", "damage =", "damage +", "damage ??"].filter((word) =>
     main.includes(word),
   );
@@ -706,7 +706,7 @@ export function run(): void {
   }
 
   // 見張り 1: 回数を運ぶ側へ書き戻していない（`main.ts` は何回で尽きるかを知らない）。
-  const mainSource = sourceOf("src/main.ts");
+  const mainSource = wiringSource();
   const digits = [...mainSource.matchAll(/384/g)].length;
   console.log(`      main.ts の 384 は ${digits} 件`);
   check("main.ts に 384 が出てこない", digits === 0, `${digits} 件`);
@@ -888,7 +888,7 @@ export function run(): void {
   }
 
   // 見張り 1: 配線は 1 か所だけ（**殴れたときだけ**減る。クールダウン中は減らない）。
-  const attacks = [...sourceOf("src/main.ts").matchAll(/wearForAttack\(/g)].length;
+  const attacks = [...wiringSource().matchAll(/wearForAttack\(/g)].length;
   console.log(`      main.ts の wearForAttack( は ${attacks} 回`);
   check("main.ts は殴った 1 か所からだけ呼ぶ", attacks === 1, `${attacks} 回`);
 

@@ -12,7 +12,7 @@ import { landingY, settleColumn } from "../src/gravity";
 import { tryPlace } from "../src/placing";
 import { World } from "../src/world";
 import { WorldGen } from "../src/worldgen";
-import { Slab, sourceOf } from "./arena";
+import { Slab, sourceOf, wiringSource } from "./arena";
 import { check, describe } from "./harness";
 
 /** どこにも当たらない体（`test/placing.test.ts` と同じ）。 */
@@ -293,7 +293,7 @@ export function run(): void {
 
   {
     // main.ts には一切配線しない（breaking.ts / placing.ts の中で閉じる）。
-    const main = sourceOf("src/main.ts");
+    const main = wiringSource();
     const leaked = ["settleColumn(", "landingY(", "fallsDown("].filter((name) => main.includes(name));
     check("main.ts に重力の判断が戻っていない", leaked.length === 0, leaked.join(" "));
   }

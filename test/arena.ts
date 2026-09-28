@@ -181,3 +181,19 @@ export function sourceOf(path: string): string {
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/\/\/.*$/gm, "");
 }
+
+/**
+ * 配線のファイル。**`main.ts` は 2026-09-28 に 2 つに割りました**（ユーザーの判断）——
+ * 手でやること（右クリック・掘る・食べる・弓・捨てる）は `hands.ts` です。
+ * **どちらもヘッドレスで import できない**ので、見張りは形で押さえるしかありません。
+ */
+export const WIRING_FILES = ["src/main.ts", "src/hands.ts"] as const;
+
+/**
+ * 配線を**1 本として**読む（コメントは落とす）。**「`main.ts` に〜が無い／有る」の見張りは
+ * `sourceOf("src/main.ts")` でなくこちらを通すこと** —— 片方だけ読むと、
+ * `hands.ts` に判断を書き戻しても緑のまま通ります。
+ */
+export function wiringSource(): string {
+  return WIRING_FILES.map((path) => sourceOf(path)).join("\n");
+}

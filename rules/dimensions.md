@@ -7,6 +7,7 @@ paths:
   - "src/storage.ts"
   - "src/session.ts"
   - "src/main.ts"
+  - "src/hands.ts"
   - "test/dimensions.test.ts"
   - "test/session.test.ts"
   - "test/portaltravel.test.ts"

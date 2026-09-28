@@ -5,6 +5,7 @@ paths:
   - "test/use.test.ts"
   - "test/controls.test.ts"
   - "src/main.ts"
+  - "src/hands.ts"
 ---
 
 ## 右クリックで何が起きるか（`use.ts`）

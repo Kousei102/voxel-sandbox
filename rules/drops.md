@@ -5,6 +5,7 @@ paths:
   - "src/droprender.ts"
   - "src/inventory.ts"
   - "src/main.ts"
+  - "src/hands.ts"
   - "test/drops.test.ts"
   - "src/constants.ts"
 ---

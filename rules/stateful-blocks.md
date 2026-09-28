@@ -8,6 +8,7 @@ paths:
   - "src/craftscreen.ts"
   - "src/storage.ts"
   - "src/main.ts"
+  - "src/hands.ts"
   - "test/smelting.test.ts"
   - "test/chests.test.ts"
   - "test/crops.test.ts"

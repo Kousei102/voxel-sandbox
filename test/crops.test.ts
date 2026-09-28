@@ -48,7 +48,7 @@ import {
 } from "../src/crops";
 import { BLOCK_LIGHT, SKY_LIGHT, type LightChannel } from "../src/lighting";
 import { grownTreeHeight } from "../src/treeshape";
-import { sourceOf } from "./arena";
+import { sourceOf, wiringSource } from "./arena";
 import { check, describe } from "./harness";
 
 /**
@@ -1138,7 +1138,7 @@ export function run(): void {
     check("crops.ts が列の読み込みを確かめている", source.includes("hasColumn("));
 
     // **`main.ts` に秒数を書かないこと。** 書くと `crops.ts` と二重管理になる。
-    const main = sourceOf("src/main.ts");
+    const main = wiringSource();
     check("main.ts に GROW_SECONDS が無い", !main.includes("GROW_SECONDS"));
     check("main.ts に 育つ秒数（180）が無い", !/\b180\b/.test(main));
     // キノコ（46）も同じ。**秒数を持つのは crops.ts だけ。**

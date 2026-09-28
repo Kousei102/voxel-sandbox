@@ -1,46 +1,33 @@
 import { Vector3 } from "three";
-import {
-  AIR,
-  END_PORTAL,
-  END_PORTAL_FRAME,
-  PALETTE,
-  baseBlock,
-  blockName,
-  blockSound,
-  shapeBounds,
-  type PlaceAim,
-} from "./blocks";
+import { AIR, PALETTE, baseBlock, blockName, blockSound, shapeBounds } from "./blocks";
 import { AudioEngine } from "./audio";
 import { biomeName } from "./biomes";
 import { AUTOSAVE_INTERVAL, DAY_MINUTES, REACH, columnOf } from "./constants";
-import { Beds, SLEEP_MONSTER_RADIUS, sleepDecision } from "./beds";
+import { Beds } from "./beds";
 import { VictoryWatch, bossBarState, victoryMessage } from "./boss";
-import { Drawing, FULL_DRAW_PITCH, SHOOT_HEIGHT } from "./bow";
-import { autoBreak, tryBreak } from "./breaking";
+import { autoBreak } from "./breaking";
 import { Chests } from "./chests";
 import { decideClick, decideKey, mobIsNearer } from "./controls";
 import { CraftScreen } from "./craftscreen";
 import { Crops } from "./crops";
 import { liveCrystals, shatterCrystal } from "./crystals";
-import { DayNight, WAKE_TIME, canSleep, environmentFor } from "./daynight";
-import { breakMessage, wearForAttack, wearForTill, wearForUse, wearSlot } from "./durability";
-import { eyeMessage, fitEye } from "./endportal";
+import { DayNight, environmentFor } from "./daynight";
+import { wearForAttack } from "./durability";
 import { syncExitPortal } from "./exitportal";
 import { Dimensions, OVERWORLD, emptyState, type DimensionState } from "./dimensions";
 import { Drops, type DropContext } from "./drops";
 import { DropRenderer } from "./droprender";
 import { Furnaces, litVoxel } from "./furnaces";
+import { Hands } from "./hands";
 import { Inventory, bulkDiscard } from "./inventory";
 import { InventoryScreen } from "./inventoryui";
-import { ARROW, BUCKET, MILK_BUCKET, NO_ITEM, emptyAfterEating, foodOf, itemName } from "./items";
+import { NO_ITEM, itemName } from "./items";
 import { debugMob, nextShot } from "./debugspawn";
 import { debugText } from "./debugtext";
-import { Mining } from "./mining";
 import { MobRenderer } from "./mobrender";
-import { Mobs, type Mob, type MobContext } from "./mobs";
+import { Mobs, type MobContext } from "./mobs";
 import { Panels, menuVisibleWhenUnlocked } from "./panels";
 import { Player } from "./player";
-import { tryBucket, tryIgnite, tryPlace, tryPlant, tryTill } from "./placing";
 import {
   PortalGate,
   arriveThrough,
@@ -48,11 +35,10 @@ import {
   portalAt,
   type PortalHere,
 } from "./portaltravel";
-import { PLAYER_OWNER, PROJECTILE_KINDS, Projectiles, type ProjectileKind } from "./projectiles";
+import { PROJECTILE_KINDS, Projectiles } from "./projectiles";
 import { ProjectileRenderer } from "./projectilerender";
 import { raycastVoxels, type RaycastHit } from "./raycast";
-import { eyeShot } from "./stronghold";
-import { DigCadence, Footsteps, type Sfx } from "./sfx";
+import { Footsteps } from "./sfx";
 import {
   applyRestore,
   buildSave,
@@ -64,9 +50,8 @@ import {
 } from "./session";
 import { clearSave, countEdits, deserializeEdits, load, save, type SaveData } from "./storage";
 import { Hud, Menu } from "./ui";
-import { decideUse } from "./use";
-import { camera, canvas, crack, fog, highlight, renderer, scene, sky } from "./view";
-import { Eating, VOID_Y, Vitals, deathMessage } from "./vitals";
+import { camera, canvas, fog, highlight, renderer, scene, sky } from "./view";
+import { VOID_Y, Vitals, deathMessage } from "./vitals";
 import { World } from "./world";
 import { WorldGen } from "./worldgen";
 
@@ -84,7 +69,6 @@ const hud = new Hud(inventory);
 // **画面が出ている間の状態変更は screen 経由**（craft を直接触ってよいのはセーブと読み込みだけ）。
 const craft = new CraftScreen(inventory);
 const screen = new InventoryScreen(craft);
-const mining = new Mining();
 const vitals = new Vitals();
 const player = new Player(camera);
 
@@ -92,10 +76,6 @@ const player = new Player(camera);
 // ここは「起きたこと」を渡すだけにして、条件を書かない。
 const audio = new AudioEngine();
 const footsteps = new Footsteps();
-const digCadence = new DigCadence();
-const eating = new Eating();
-/** 弓を引いている最中。**引きの長さも放つかどうかも `bow.ts`**（掘る・食べると同じ形）。 */
-const drawing = new Drawing();
 /**
  * クリア画面を**倒した瞬間だけ**出すための見張り（判断は `boss.ts`）。
  * **「印が立っているか」で出さないこと** —— 出口ポータルは残るので、
@@ -186,10 +166,19 @@ let saveDirty = false;
 let autosaveTimer = 0;
 let hit: RaycastHit | null = null;
 let underwater = false;
-let breaking = false;
 let furnaceUiTimer = 0;
 /** クリエイティブでは即掘れて、置いてもアイテムが減らない。 */
 let creative = false;
+/** 視線の向き。`frame()` が毎フレーム書き直し、`hands.ts` のバケツも同じ 1 本を見る。 */
+const lookDirection = new Vector3();
+
+// 手でやること（右クリック・掘る・食べる・弓・捨てる）は `hands.ts`。**作り直される値は getter で渡す。**
+const hands = new Hands({
+  get world() { return world; }, get creative() { return creative; }, get playing() { return playing; },
+  get hit() { return hit; }, get worldSeed() { return worldSeed; }, get panels() { return panels; },
+  lookDirection, inventory, hud, audio, player, vitals, mobs, drops, projectiles, crops, furnaces, chests, beds, dims, dayNight,
+  mobContext, markDirty: () => { saveDirty = true; }, syncTimeInput,
+});
 
 screen.onChange = () => {
   hud.refresh();
@@ -693,30 +682,18 @@ document.addEventListener("pointerlockchange", () => {
   hud.setPlaying(playing, !playing && menuVisible);
   if (!playing) {
     player.clearKeys();
-    stopHands();
+    hands.stopHands();
     syncTimeInput();
     if (saveDirty) saveNow();
   }
 });
-
-/**
- * 掘りかけ・食べかけ・引きかけを、まとめて無かったことにする。
- * **画面を開く・死ぬ・ポインタが外れる**の 3 経路が同じ形で止まる
- * （写すと、手ごたえのあるものを足したときに 1 つだけ止め忘れる）。
- */
-function stopHands(): void {
-  breaking = false;
-  mining.reset();
-  eating.stop();
-  drawing.stop();
-}
 
 // 画面の開け閉め（手を止める → 出す → メニューを隠す → ロックを外す）は
 // **判断なので `panels.ts`**。ここは DOM の受け口を渡すだけで、器の中身
 // （`furnaces.at()` / `chests.open()`）を引くのも今までどおり呼ぶ側の仕事。
 const panels = new Panels({
   screen,
-  stopHands,
+  stopHands: () => hands.stopHands(),
   setPlaying: (playing, menuVisible) => hud.setPlaying(playing, menuVisible),
   refresh: () => hud.refresh(),
   lock: requestLock,
@@ -751,21 +728,21 @@ document.addEventListener("mousedown", (event) => {
     // **殴れたときだけ**剣が減る（クールダウン中は 1 も減らない）。
     // 減るかどうかも回数も `durability.ts`（ここは戻り値を渡すだけ）。
     if (mobs.attack(target.mob, inventory.selectedItem, mobContext())) {
-      wearHeld(wearForAttack(inventory.selectedItem, creative));
+      hands.wearHeld(wearForAttack(inventory.selectedItem, creative));
       hud.refresh();
     }
     // 殴ると腹が減る。**どれだけ減るかは `vitals.ts`** が持っている。
     if (!creative) vitals.exhaust("attack");
     // 殴っている間は掘らない（ひび割れが出ると、何を壊しているのか分からない）。
     // **弓の引きは止めないこと** —— 引きかけたまま殴っても、離せば矢は飛ぶ。
-    breaking = false;
-    mining.reset();
-    eating.stop();
+    hands.breaking = false;
+    hands.mining.reset();
+    hands.eating.stop();
   } else if (act === "break" && hit) {
     // クリエイティブは 1 クリック 1 個。サバイバルは押しっぱなしで掘り進める。
-    breakBlock(hit.block.x, hit.block.y, hit.block.z, hit.id, NO_ITEM);
+    hands.breakBlock(hit.block.x, hit.block.y, hit.block.z, hit.id, NO_ITEM);
   } else if (act === "mine") {
-    breaking = true;
+    hands.breaking = true;
   } else if (act === "pick" && hit) {
     // スポイト: クリエイティブなら手元に湧かせ、サバイバルは持っていれば選ぶ。
     // 壁掛けの松明のような別置き版は、大元のアイテムに読み替える。
@@ -776,18 +753,18 @@ document.addEventListener("mousedown", (event) => {
   } else if (act === "use") {
     // **手前がモブかどうかは左クリックと同じ 1 本**（`controls.ts` の `mobIsNearer()`）。
     // ここに距離の比較を書くと、殴れる間合いと刈れる間合いが食い違う。
-    useOrPlace(mobIsNearer(facts) ? target : null);
+    hands.useOrPlace(mobIsNearer(facts) ? target : null);
   }
 });
 
 document.addEventListener("mouseup", (event) => {
   if (event.button === 0) {
-    breaking = false;
-    mining.reset();
+    hands.breaking = false;
+    hands.mining.reset();
   } else if (event.button === 2) {
     // 離したら食べかけは無かったことに（アイテムは減らさない）。弓は逆に、離すと放つ。
-    eating.stop();
-    loose();
+    hands.eating.stop();
+    hands.loose();
   }
 });
 
@@ -807,238 +784,6 @@ function fitHighlight(target: RaycastHit): void {
 
 /** 形を囲む箱の控え。毎フレーム使うので配列は使い回す。 */
 const bounds = [0, 0, 0, 1, 1, 1];
-
-/**
- * 右クリック。**何が起きるかの振り分けは `use.ts` の `decideUse()`**（17 通りの
- * 並び順そのものが判断なので、ここに戻さないこと）。ここは注文を受けて貼るだけ。
- *
- * `m` は**手前に居るモブ**（居なければ null。どちらが手前かは `mobIsNearer()`）。
- */
-function useOrPlace(m: { mob: Mob } | null): void {
-  const held = inventory.selectedItem;
-  const hasArrow = creative || inventory.has(ARROW);
-  // 「刈れるか」「搾れるか」は `mobs.ts`、「手前か」は `controls.ts`。込みにするのは呼ぶ側の仕事。
-  const shearable = m !== null && mobs.canShear(m.mob);
-  const milkable = m !== null && mobs.canMilk(m.mob);
-  const act = decideUse(hit, { held, creative, canEat: vitals.canEatFood(foodOf(held)), hasArrow, shearable, milkable });
-  switch (act.kind) {
-    case "flash": hud.flash(act.message); return;
-    case "shear": if (m) shearMob(m.mob); return;
-    case "milk": swapBucket(MILK_BUCKET, "splash", "ミルクを搾った"); return;
-    case "drink": swapBucket(BUCKET, "eat", vitals.drinkMilk() ? "毒が消えた" : "ミルクを飲んだ"); return;
-    case "craft": panels.openInventory(3); return;
-    case "furnace": panels.openFurnace(furnaces.at(act.at.x, act.at.y, act.at.z)); return;
-    case "chest": panels.openChest(chests.open(world, act.at.x, act.at.y, act.at.z)); return;
-    case "bed": sleepOrSetSpawn(act.at.x, act.at.y, act.at.z, act.id); return;
-    case "till": tillAt(act.at.x, act.at.y, act.at.z); return;
-    case "plant": plantAt(act.at.x, act.at.y, act.at.z); return;
-    case "bucket": useBucket(act.item); return;
-    case "fitEye": fitEndPortalEye(act.at.x, act.at.y, act.at.z); return;
-    case "throwEye": throwEye(); return;
-    case "throw": throwItem(act.projectile); return;
-    case "ignite": igniteAt(act.aim); return;
-    case "draw": drawing.begin(act.item); return;
-    case "eat": eating.begin(act.item); return;
-    case "place": placeHeld(act.aim, act.base); return;
-    default: return;
-  }
-}
-
-/**
- * 投げたエンダーアイ。向きは `stronghold.ts` の `eyeShot()`。**種は `worldSeed`** ——
- * `world.seed` はネザーだと塩を混ぜたあとの値で、渡すと別の場所を指す。
- */
-function throwEye(): void {
-  const shot = eyeShot(worldSeed, camera.position.x, camera.position.y, camera.position.z);
-  if (shot) projectiles.fire(shot);
-  else hud.flash("要塞の見当が付きません");
-}
-
-/**
- * 手のものを投げる（卵・雪玉）。**何が飛ぶかは `items.ts` の表、どう飛ぶかは
- * `projectiles.ts` の表**で、ここは目線の高さから飛ばして 1 個減らすだけ。
- * **`damage` を渡さない**（既定の 0。卵は当たっても何も起きない）。
- */
-function throwItem(kind: ProjectileKind): void {
-  const at = player.position;
-  projectiles.launch(kind, at.x, at.y + SHOOT_HEIGHT, at.z, player.yaw, player.pitch, PLAYER_OWNER);
-  if (!creative) inventory.consumeSelected(1);
-  hud.refresh();
-  saveDirty = true;
-}
-
-/**
- * 手に持っているものに傷を付ける。**何回で尽きるかも文言も `durability.ts`**
- * （ここは渡された回数を貼るだけで、64 も 384 も知りません）。
- */
-function wearHeld(uses: number): void {
-  const worn = wearSlot(inventory.selectedSlot, uses);
-  if (worn !== NO_ITEM) hud.flash(breakMessage(worn));
-}
-
-/**
- * 羊を刈る。**何が何個出るか・いつまた刈れるかは `mobs.ts` の表**（ここは貼るだけ）。
- * **刈れたときだけ**減らす（`mobs.shear()` の戻り値の中でだけ呼ぶ）—— 空振りで減ると、
- * 刈れない羊を撫でているうちにシアーズが尽きる。
- */
-function shearMob(mob: Mob): void {
-  if (!mobs.shear(mob, mobContext())) return;
-  wearHeld(wearForUse(inventory.selectedItem, creative));
-  hud.refresh();
-}
-
-/**
- * 手のバケツの中身を入れ替える（搾る・飲む）。**クリエイティブでも入れ替える** ——
- * 中身そのものがアイテムなので、入れ替えないとミルクが手に入らない（`useBucket()` と同じ）。
- */
-function swapBucket(item: number, sound: Sfx, message: string): void {
-  inventory.setSelected(item, 1);
-  audio.play(sound);
-  hud.flash(message);
-  hud.refresh();
-  saveDirty = true;
-}
-
-/** 火種で火を点ける。**どのマスに点くかも枠の判定も `placing.ts` / `portals.ts`。** */
-function igniteAt(aim: PlaceAim): void {
-  const lit = tryIgnite(world, aim);
-  if (lit.kind === "blocked") hud.flash(lit.message);
-  if (lit.kind !== "placed") return;
-  audio.play("place", "stone");
-  // **点いたときだけ**火種が減る（早期 return より後ろ）。帯が減るので描き直す。
-  wearHeld(wearForUse(inventory.selectedItem, creative));
-  hud.refresh();
-  saveDirty = true;
-}
-
-/** クワで耕す。**どのマスが耕地になるかも上が塞がっているかも `placing.ts` の `tryTill()`。** */
-function tillAt(x: number, y: number, z: number): void {
-  const tilling = tryTill(world, { x, y, z });
-  if (tilling.kind === "blocked") hud.flash(tilling.message);
-  if (tilling.kind !== "placed") return;
-  audio.play("place", "dirt");
-  // **耕したときだけ**クワが減る（早期 return より後ろ）。
-  wearHeld(wearForTill(inventory.selectedItem, creative));
-  hud.refresh();
-  saveDirty = true;
-}
-
-/** 種を植える。**可否も書き込みも `placing.ts` の `tryPlant()`。傷は付かない**（種は道具ではない）。 */
-function plantAt(x: number, y: number, z: number): void {
-  const planted = tryPlant(world, { x, y, z });
-  if (planted.kind === "blocked") hud.flash(planted.message);
-  if (planted.kind !== "placed") return;
-  audio.play("place", blockSound(planted.id));
-  crops.plant(x, y + 1, z); // 育つのは苗の立ったマス（狙ったのは 1 つ下の耕地）
-  if (!creative) inventory.consumeSelected(1);
-  hud.refresh();
-  saveDirty = true;
-}
-
-/** 手に持っているものを置く。**置けるかどうかと書き込みは `placing.ts`。** */
-function placeHeld(aim: PlaceAim, base: number): void {
-  const placed = tryPlace(world, player, aim, player.yaw, base);
-  if (placed.kind === "blocked") return hud.flash(placed.message);
-  if (placed.kind !== "placed") return;
-  audio.play("place", blockSound(placed.id));
-  crops.notePlaced(placed.at, placed.id, world); // 置いたものを覚える（何が伸びるかは crops.ts）
-  if (!creative) inventory.consumeSelected(1);
-  hud.refresh();
-  saveDirty = true;
-}
-
-/**
- * 枠にエンダーアイを嵌める。**嵌まるか・揃ったら起動するか・何と出すかは
- * 全部 `endportal.ts`**（ここは減らして貼るだけ）。
- */
-function fitEndPortalEye(x: number, y: number, z: number): void {
-  const fit = fitEye(world, x, y, z);
-  const message = eyeMessage(fit);
-  if (message) hud.flash(message);
-  // **`already` ではアイを減らさない**（嵌まっている枠を叩いても損しない）。
-  if (fit.kind !== "fitted") return;
-  if (!creative) inventory.consumeSelected(1);
-  audio.play("place", blockSound(fit.lit > 0 ? END_PORTAL : END_PORTAL_FRAME));
-  hud.refresh();
-  saveDirty = true;
-}
-
-/**
- * バケツで汲む／流す。**判断は `placing.ts` の `tryBucket()`。**
- *
- * **ここだけ光線を引き直す。** 普段の光線は液体を素通りするので
- * （溶岩湖の向こうを狙えるように）、そのままでは水面を狙えず汲めない。
- */
-function useBucket(held: number): void {
-  const target = raycastVoxels(world, camera.position, lookDirection, REACH, true);
-  if (!target) return;
-
-  const used = tryBucket(world, target, held, player.yaw);
-  if (used.kind === "blocked") hud.flash(used.message);
-  if (used.kind !== "used") return;
-
-  // **クリエイティブでも中身は入れ替える**（`placing.ts` の `BucketOutcome`）。
-  inventory.setSelected(used.item, 1);
-  // 水の音を借りている（溶岩用の音はまだ無い）。
-  audio.play("splash");
-  hud.flash(used.message);
-  hud.refresh();
-  saveDirty = true;
-}
-
-/**
- * ベッドを右クリックしたとき。**判断は `beds.ts` の `sleepDecision()` と
- * `daynight.ts` の `canSleep()`** にあるので、ここは事実を集めて結果を貼るだけ。
- *
- * リスポーン地点は**どの結果でも記録する**（寝られなかったからといって、
- * 地点だけ取り損なう理由が無い）。覚えるのは必ず**足側**のマス —— 枕側を覚えると、
- * 相方を辿らずに「ベッドがまだあるか」を見られなくなる。
- */
-function sleepOrSetSpawn(x: number, y: number, z: number, id: number): void {
-  // **枕側を叩いても足側を覚える**（割り出すのは `beds.ts`）。どの次元で寝たかも
-  // 一緒に（覚えないと、ネザーで死んだ人がオーバーワールドの列を読んで岩盤の上に湧く）。
-  beds.setFrom(x, y, z, id, dims.current);
-  saveDirty = true;
-
-  const result = sleepDecision(
-    canSleep(dayNight.time),
-    mobs.hostileNear(x + 0.5, y, z + 0.5, SLEEP_MONSTER_RADIUS),
-  );
-  if (result === "slept") {
-    dayNight.setTime(WAKE_TIME);
-    syncTimeInput();
-    hud.flash("おはようございます");
-    return;
-  }
-  hud.flash(
-    result === "monsters"
-      ? "近くにモンスターがいます。リスポーン地点にしました"
-      : "ここをリスポーン地点にしました",
-  );
-}
-
-/**
- * 掘り切ったときの処理。**何が落ちるか・器の中身をどうするか・相方のベッドは
- * `breaking.ts` の `tryBreak()`**（支えを失って壊れる経路と同じ規則を通すため）。
- * ここは音を鳴らして、返ってきた山を地面に置くだけ。
- */
-function breakBlock(x: number, y: number, z: number, blockId: number, tool: number): void {
-  const result = tryBreak(
-    world,
-    { furnaces, chests },
-    { x, y, z, id: blockId, tool, creative, roll: Math.random(), extraRoll: Math.random() },
-  );
-  if (!result.broken) return;
-  saveDirty = true;
-  audio.play("break", blockSound(blockId));
-  digCadence.reset();
-  for (const out of result.drops) drops.burst(out.item, out.count, out.x, out.y, out.z, out.damage);
-  // 掘ると腹が減る。**どれだけ減るかは `vitals.ts`**（ここは種類を渡すだけ）。
-  if (result.exhaust) vitals.exhaust("mine");
-  // 道具に傷が付く。**いくつ付くか・壊れたかは `durability.ts`**（ここは戻り値を見るだけ）。
-  wearHeld(result.wear);
-  hud.refresh();
-}
 
 window.addEventListener("wheel", (event) => {
   if (!playing) return;
@@ -1072,7 +817,7 @@ window.addEventListener("keydown", (event) => {
       panels.openCreative();
       return;
     case "discardSelected":
-      discardSelected(bulkDiscard(event));
+      hands.discardSelected(bulkDiscard(event));
       return;
     case "toggleFly":
       player.toggleFly();
@@ -1107,28 +852,6 @@ window.addEventListener("keydown", (event) => {
   }
 });
 
-/**
- * プレイ中の `Q`。落としたものは地面に残るので拾い直せる（`drops.ts`）。
- * 目線の高さから投げる。猶予（拾い直さない時間）は `drops.ts` が決める。
- */
-function discardSelected(bulk: boolean): void {
-  const thrown = inventory.discardSelected(bulk);
-  if (!thrown) return;
-  drops.throwOut(
-    thrown.item,
-    thrown.count,
-    player.position.x,
-    player.position.y + 1.2,
-    player.position.z,
-    player.yaw,
-    player.pitch,
-    thrown.damage,
-  );
-  hud.flash(`${itemName(thrown.item)} x${thrown.count} を落としました`);
-  hud.refresh();
-  saveDirty = true;
-}
-
 window.addEventListener("keyup", (event) => player.setKey(event.code, false));
 window.addEventListener("blur", () => player.clearKeys());
 window.addEventListener("beforeunload", () => {
@@ -1137,7 +860,6 @@ window.addEventListener("beforeunload", () => {
 
 // --- ループ -------------------------------------------------------------
 
-const lookDirection = new Vector3();
 let last = performance.now();
 let fps = 60;
 
@@ -1175,9 +897,9 @@ function frame(now: number): void {
   highlight.visible = playing && hit !== null;
   if (hit) fitHighlight(hit);
 
-  updateMining(dt);
-  updateEating(dt);
-  updateDrawing(dt);
+  hands.updateMining(dt);
+  hands.updateEating(dt);
+  hands.updateDrawing(dt);
 
   dayNight.advance(dt);
   updateEnvironment();
@@ -1306,102 +1028,13 @@ function updateVitals(dt: number, moved: number): void {
   if (hurt) audio.play(vitals.dead ? "death" : "hurt");
 
   if (hurt && vitals.dead) {
-    stopHands();
+    hands.stopHands();
     // **リスポーンより前に落とすこと**（`moveToSpawn()` が位置を変えるので、
     // あとに回すと初期位置に湧く）。
-    hud.showDeath(deathMessage(vitals.cause, dropOnDeath()));
+    hud.showDeath(deathMessage(vitals.cause, hands.dropOnDeath()));
     saveDirty = true;
     document.exitPointerLock();
   }
-}
-
-/**
- * 食べ進める。**掘るのとまったく同じ形**（押している間だけ進み、離すと消える）。
- *
- * この環境では食べる動きを描けないので、進んでいる手ごたえは咀嚼音だけ。
- * **鳴らす間隔は `sfx.ts` の `EatCadence`**、戻る量は `items.ts`、
- * 食べられるかは `vitals.ts` が持っていて、ここには数値を書かない。
- */
-function updateEating(dt: number): void {
-  const held = inventory.selectedItem;
-  const food = foodOf(held);
-  const step = eating.advance(dt, { playing, held, canEat: vitals.canEatFood(food), isFood: food !== null });
-  if (step === "chew") audio.play("eat");
-  if (step !== "done" || !food) return;
-
-  vitals.eat(food);
-  inventory.consumeSelected(1);
-  // 器つきの食べ物は空の器が手の中に戻る。**何が戻るかは `items.ts` の `EMPTIES`**。
-  const empty = emptyAfterEating(held);
-  if (empty !== NO_ITEM) inventory.setSelected(empty, 1);
-  hud.flash(`${itemName(held)} を食べました`);
-  hud.refresh();
-  saveDirty = true;
-}
-
-/** 弓を引き進める。**手ごたえは満引きの合図の音だけ**（引く動きは描けない。判断は `bow.ts`）。 */
-function updateDrawing(dt: number): void {
-  const facts = { playing, held: inventory.selectedItem, hasArrow: creative || inventory.has(ARROW) };
-  if (drawing.advance(dt, facts) === "full") audio.play("bow", "none", FULL_DRAW_PITCH);
-}
-
-/** 弓を離した。**放つかどうかとダメージは `bow.ts`**（ここは矢を 1 本減らして飛ばすだけ）。 */
-function loose(): void {
-  const shot = drawing.release();
-  if (!shot || (!creative && !inventory.consume(ARROW, 1))) return;
-  const at = player.position;
-  projectiles.launch("arrow", at.x, at.y + SHOOT_HEIGHT, at.z, player.yaw, player.pitch, PLAYER_OWNER, shot.damage);
-  audio.play("bow");
-  // **矢が飛んだときだけ**弓が減る（引きが足りない・矢が無いときは上で戻っている）。
-  wearHeld(wearForUse(inventory.selectedItem, creative));
-  hud.refresh();
-  saveDirty = true;
-}
-
-/**
- * 死んだら持ち物を全部その場に落とす。落とした山の数を返す。
- *
- * **どれを落とすかは `inventory.takeAll()`**（不変条件は「落とした合計 = 元の総数」）で、
- * ここは落とす場所を決めるだけ。**リスポーンより前に呼ぶこと。**
- *
- * **奈落で死んだぶんは消えます**（Minecraft と同じ。ユーザーと決めた線）——
- * `drops.ts` が `y < VOID_Y` の山を寿命を待たずに捨てるので、ここに例外は書きません。
- * かまど・チェストの中身と違い、**5 分（`DESPAWN_AGE`）で消えます。**
- */
-function dropOnDeath(): number {
-  const lost = inventory.takeAll();
-  for (const stack of lost) {
-    // 死体の位置から少し上に散らす（足元に埋まると拾いにくい）
-    drops.burst(stack.item, stack.count, player.position.x, player.position.y + 0.6, player.position.z, stack.damage);
-  }
-  if (lost.length > 0) hud.refresh();
-  return lost.length;
-}
-
-/** 掘り進める。ひび割れの表示もここでまとめて更新する。 */
-function updateMining(dt: number): void {
-  if (!playing || !breaking || !hit) {
-    mining.reset();
-    digCadence.reset();
-    crack.setStage(-1);
-    return;
-  }
-
-  const tool = inventory.selectedItem;
-  const { x, y, z } = hit.block;
-  const blockId = hit.id;
-  // 狙いを変えると進み具合は 0 に戻るので、増えたぶんだけを渡す
-  const before = mining.progress;
-  if (mining.update(dt, hit.block, blockId, tool)) {
-    breakBlock(x, y, z, blockId, tool);
-  } else if (digCadence.advance(Math.max(0, mining.progress - before))) {
-    // 掘っている間のコツコツ音。進み具合で刻むので、硬いブロックほど間隔が空く
-    audio.play("dig", blockSound(blockId));
-  }
-
-  const target = mining.target;
-  if (target) crack.setStage(mining.stage, target.x, target.y, target.z, hit?.id ?? AIR);
-  else crack.setStage(-1);
 }
 
 /**

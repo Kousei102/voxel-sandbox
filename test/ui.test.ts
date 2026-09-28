@@ -1,4 +1,5 @@
 import { readFileSync, readdirSync } from "node:fs";
+import { WIRING_FILES } from "./arena";
 import { check, describe } from "./harness";
 
 /**
@@ -75,18 +76,25 @@ export function run(): void {
  * 切り離す」）がそのまま効いて、出した先はヘッドレスで検証できるようになる。
  */
 function mainStaysWiring(): void {
-  const raw = readFileSync("src/main.ts", "utf8");
-  const lines = raw.split("\n").length;
+  // **配線は 2 本**（2026-09-28 にユーザーの判断で `main.ts` から `hands.ts` を割った）。
+  // 下の見張りはどれも 2 本を 1 本として読む —— 片方だけ読むと、`hands.ts` に
+  // 判断を書き戻しても緑のまま通る（`test/arena.ts` の `WIRING_FILES`）。
+  const raw = WIRING_FILES.map((path) => readFileSync(path, "utf8")).join("\n");
 
-  // 現在 1264 行。次元・ポータル・ドラゴンの配線ぶんの余地は残しつつ、
-  // 判断を書き始めたら必ず当たる高さにしてある。
+  // 上限は**1 本ずつ**。割る前の `main.ts` は 1450 行で、次元・ポータル・ドラゴンの
+  // 配線ぶんの余地は残しつつ、判断を書き始めたら必ず当たる高さにしてある。
+  // **3 本目を割って逃げないこと** —— 当たったら判断を別ファイルへ出す（上限を上げない）。
   const LIMIT = 1500;
-  console.log(`      main.ts ${lines} 行 / 上限 ${LIMIT}`);
-  check(
-    "main.ts が配線の大きさに収まっている",
-    lines <= LIMIT,
-    lines > LIMIT ? "判断を別ファイルへ出すこと（上限を上げないこと）" : "",
-  );
+  for (const path of WIRING_FILES) {
+    const name = path.replace("src/", "");
+    const lines = readFileSync(path, "utf8").split("\n").length;
+    console.log(`      ${name} ${lines} 行 / 上限 ${LIMIT}`);
+    check(
+      `${name} が配線の大きさに収まっている`,
+      lines <= LIMIT,
+      lines > LIMIT ? "判断を別ファイルへ出すこと（上限を上げないこと）" : "",
+    );
+  }
 
   // 次元ごとの分岐を散らさない。切り替えは `dimensions.ts` の 1 か所に集め、
   // `main.ts` は「どの次元か」を渡すだけにする。**散らすと、次元を足すたびに

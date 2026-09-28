@@ -33,7 +33,7 @@ import { tryBucket, tryPlace, tryPlant, tryTill } from "../src/placing";
 import { BUCKET, LAVA_BUCKET, WATER_BUCKET } from "../src/items";
 import { World } from "../src/world";
 import { WorldGen } from "../src/worldgen";
-import { Slab, sourceOf } from "./arena";
+import { Slab, sourceOf, wiringSource } from "./arena";
 import { check, describe } from "./harness";
 
 /** 狙っている面。`RaycastHit` と同じ形（`PlaceAim` を構造的に満たす）。 */
@@ -75,7 +75,7 @@ export function run(): void {
     source.includes(w),
   );
   check("placing.ts は描画にも乱数にも触らない", forbidden.length === 0, forbidden.join(" "));
-  check("main.ts に置く判断が戻っていない", !sourceOf("src/main.ts").includes("canPlaceAt"));
+  check("main.ts に置く判断が戻っていない", !wiringSource().includes("canPlaceAt"));
 
   {
     const slab = field();

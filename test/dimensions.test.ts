@@ -9,7 +9,7 @@ import {
   type DimensionState,
 } from "../src/dimensions";
 import { WorldGen } from "../src/worldgen";
-import { sourceOf } from "./arena";
+import { sourceOf, wiringSource } from "./arena";
 import { check, describe } from "./harness";
 
 /**
@@ -271,7 +271,7 @@ export function run(): void {
       check(`dimensions.ts に ${word} が無い`, !source.includes(word));
     }
 
-    const main = sourceOf("src/main.ts");
+    const main = wiringSource();
     // 預け忘れを型では防げないので、**呼び方そのもの**を見張る。
     check("main.ts は保存の前に必ず預ける", main.includes("forSave(liveState())"));
     // 持ち物の組み立ては 1 か所（写すと、片方だけ直したときに静かに食い違う）。

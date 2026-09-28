@@ -6,6 +6,7 @@ paths:
   - "src/crafting.ts"
   - "src/blocks.ts"
   - "src/main.ts"
+  - "src/hands.ts"
   - "src/breaking.ts"
   - "test/mining.test.ts"
   - "test/crafting.test.ts"
