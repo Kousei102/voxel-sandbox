@@ -13,6 +13,7 @@ import {
   DIAMOND_BLOCK,
   DIAMOND_ORE,
   FENCE,
+  GLASS,
   GOLD_BLOCK,
   GOLD_ORE,
   IRON_BLOCK,
@@ -26,6 +27,7 @@ import {
   PLANK_STAIRS,
   RED_MUSHROOM,
   SAND,
+  SANDSTONE,
   SNOW,
   STONE,
   STONE_BRICK,
@@ -162,8 +164,9 @@ export function run(): void {
   check("板 4 枚 → 作業台", table?.out === CRAFTING_TABLE);
   // かまどが入ったので、砂 4 個 → ガラスの代用レシピは外した。
   // **これが戻っていたら、精錬を飛ばせる抜け道ができている。**
+  // 54 で砂 4 個は砂岩になった（本家どおり）。ガラスは焼くだけ —— 見るのは「ガラスでない」こと。
   const glass = findRecipe(grid(2, ["AA", "AA"], P), 2);
-  check("砂はクラフトではガラスにならない（かまどで焼く）", glass === null, glass?.name ?? "無し");
+  check("砂はクラフトではガラスにならない（かまどで焼く）", glass?.out !== GLASS, glass?.name ?? "無し");
 
   const torch = findRecipe(grid(2, ["O.", "S."], P), 2);
   check("石炭 + 棒 → 松明 4 本", torch?.out === TORCH && torch.count === 4, torch?.name ?? "無し");
@@ -293,6 +296,79 @@ export function run(): void {
     `粘土玉 ${clayDug.count} / レンガ ${bricksMade} / ${fromBricks?.name ?? "無し"} x${fromBricks?.count ?? 0}`,
   );
 
+  // --- 2x2 で固めるレシピ 3 本（54）---
+  // 砂 4 → 砂岩 1 / 糸 4 → 羊毛 1 / 石 4 → 石レンガ **4**（本家どおり）。2x2 に収まるので
+  // 作業台が要らない。**3 本の出目・3 個・斜め 2 個を 1 行ずつ出力してから判定する。**
+  const packs: { name: string; ch: string; out: number; count: number }[] = [
+    { name: "砂", ch: "A", out: SANDSTONE, count: 1 },
+    { name: "糸", ch: "G", out: WOOL, count: 1 },
+    { name: "石", ch: "T", out: STONE_BRICK, count: 4 },
+  ];
+  for (const p of packs) {
+    const c = p.ch;
+    const full = findRecipe(grid(2, [c + c, c + c], P), 2);
+    const three = findRecipe(grid(2, [c + c, c + "."], P), 2);
+    const diag = findRecipe(grid(2, [c + ".", "." + c], P), 2);
+    console.log(
+      `      ${p.name} 2x2 → ${full?.name ?? "無し"} x${full?.count ?? 0}` +
+        `（3 個: ${three?.name ?? "無し"} / 斜め 2 個: ${diag?.name ?? "無し"}）`,
+    );
+    check(
+      `${p.name} 4 個（2x2）→ ${itemName(p.out)} ${p.count} 個（作業台が要らない）`,
+      full?.out === p.out && full.count === p.count,
+      `${full?.name ?? "無し"} x${full?.count ?? 0}`,
+    );
+    check(`${p.name} 3 個では作れない`, three?.out !== p.out, three?.name ?? "無し");
+    // **斜めは `=== null` で見ない**（2x2 の斜めはシアーズ（鉄）が取っている形）。
+    check(`${p.name} 2 個の斜めでは作れない`, diag?.out !== p.out, diag?.name ?? "無し");
+  }
+  const brickIn3 = findRecipe(grid(3, ["...", ".TT", ".TT"], P), 3);
+  console.log(`      3x3 の隅に石 2x2 → ${brickIn3?.name ?? "無し"} x${brickIn3?.count ?? 0}`);
+  check(
+    "3x3 の作業台の隅に置いても石レンガ 4 個",
+    brickIn3?.out === STONE_BRICK && brickIn3.count === 4,
+    `${brickIn3?.name ?? "無し"} x${brickIn3?.count ?? 0}`,
+  );
+  // **逆向きが無いこと**（本家にも無い）。羊毛 → 糸を足すと、ベッドと弓の材料が循環する。
+  const reverse = [
+    findRecipe(grid(2, ["X."], { X: SANDSTONE }), 2),
+    findRecipe(grid(2, ["X."], { X: WOOL }), 2),
+    findRecipe(grid(2, ["X."], { X: STONE_BRICK }), 2),
+  ];
+  console.log(`      逆向き（砂岩 / 羊毛 / 石レンガ 1 個）→ ${reverse.map((r) => r?.name ?? "無し").join(" / ")}`);
+  check(
+    "砂岩・羊毛・石レンガ 1 個からは何も作れない（逆向きのレシピが無い）",
+    reverse.every((r) => r === null),
+    reverse.map((r) => r?.name ?? "無し").join(" / "),
+  );
+  // **サバイバルの道**: 丸石を焼いた石 4 個 → 石レンガ 4 → ハーフ（要塞に行かずに届く）。
+  const cobbleSmelt = smeltResultOf(COBBLE);
+  const bricksFromStone = findRecipe(grid(2, ["TT", "TT"], P), 2);
+  const stoneBrickSlab = findRecipe(grid(3, ["MMM"], P), 3);
+  console.log(
+    `      サバイバルの道: 丸石 → 焼く → ${itemName(cobbleSmelt?.out ?? NO_ITEM)} x4` +
+      ` → 2x2 → ${bricksFromStone?.name ?? "無し"} x${bricksFromStone?.count ?? 0}` +
+      ` → 3 個 → ${stoneBrickSlab?.name ?? "無し"} x${stoneBrickSlab?.count ?? 0}`,
+  );
+  check(
+    "丸石 → 石 → 石レンガ 4 → 石レンガハーフ（要塞に行かずに届く）",
+    cobbleSmelt?.out === STONE && bricksFromStone?.out === STONE_BRICK &&
+      bricksFromStone.count === 4 && stoneBrickSlab?.out === STONE_BRICK_SLAB,
+    `${itemName(cobbleSmelt?.out ?? NO_ITEM)} / ${bricksFromStone?.name ?? "無し"} / ${stoneBrickSlab?.name ?? "無し"}`,
+  );
+  // クモの糸 4 本 → 羊毛 1。3 回ぶんでベッドまで届く（羊が居なくてもよい）。
+  const woolFromString = findRecipe(grid(2, ["GG", "GG"], P), 2);
+  const bedFromWool = findRecipe(grid(3, ["LLL", "PPP"], P), 3);
+  console.log(
+    `      サバイバルの道: 糸 x4 → ${woolFromString?.name ?? "無し"} x${woolFromString?.count ?? 0}` +
+      `（3 回で 3 個）→ 板 3 と → ${bedFromWool?.name ?? "無し"}`,
+  );
+  check(
+    "クモの糸 12 本 → 羊毛 3 → ベッド（羊が居なくても作れる）",
+    woolFromString?.out === WOOL && woolFromString.count === 1 && bedFromWool?.out === BED,
+    `${woolFromString?.name ?? "無し"} / ${bedFromWool?.name ?? "無し"}`,
+  );
+
   // --- グロウストーン（掘って出た粉を戻す・47） ---
   // **雪・粘土と同じ対。** グロウストーンを掘ると粉 3 個になるので、これが無いと
   // グロウストーンが二度と置けない（`items.ts` の `DROPS` の `GLOWSTONE`）。
@@ -415,15 +491,16 @@ export function run(): void {
   const bed = findRecipe(grid(3, ["LLL", "PPP"], P), 3);
   check("ベッドは今までどおり羊毛 3 + 板 3", bed?.out === BED && bed.count === 1, `${bed?.name ?? "無し"} x${bed?.count ?? 0}`);
 
-  // **糸を使うレシピはちょうど 1 本（弓）**。2 本目を足すのは別件（防具・本・釣り竿）。
+  // **糸を使うレシピはちょうど 2 本（弓と、54 の羊毛）**。3 本目を足すのは別件（防具・本・釣り竿）。
   const stringRecipes = RECIPES.filter(
     (r) =>
       Object.values(r.key ?? {}).includes(STRING) || (r.ingredients ?? []).includes(STRING),
   );
   console.log(`      糸(${STRING}) を使うレシピ: ${stringRecipes.length} 本 [${stringRecipes.map((r) => r.name).join(", ") || "無し"}]`);
   check(
-    "糸を使うレシピはちょうど 1 本（弓）",
-    stringRecipes.length === 1 && stringRecipes[0].out === BOW,
+    "糸を使うレシピはちょうど 2 本（弓・羊毛）",
+    stringRecipes.length === 2 && stringRecipes.some((r) => r.out === BOW) &&
+      stringRecipes.some((r) => r.out === WOOL),
     stringRecipes.map((r) => r.name).join(", ") || "無し",
   );
 
@@ -965,8 +1042,8 @@ export function run(): void {
   // **本数も 1 件として見張る** —— レシピを足したのに表から漏れていたら、
   // 上の `findRecipe` だけでは「揃わないのが正しい」と読めてしまう。
   check(
-    "レシピは 92 本（シラカバの原木 → 板で 1 本増えた。数え直した）",
-    RECIPES.length === 92,
+    "レシピは 95 本（54 の 2x2 の 3 本で 95 本。数え直した）",
+    RECIPES.length === 95,
     `${RECIPES.length} 本`,
   );
 

@@ -266,7 +266,9 @@ export function run(): void {
 
   // 代用を本当に外したか。**片方だけ戻すと、精錬を飛ばせる抜け道になる。**
   check("鉄鉱石は鉱石のまま落ちる", dropOf(IRON_ORE).item === IRON_ORE, itemName(dropOf(IRON_ORE).item));
-  check("砂 4 個ではガラスにならない", findRecipe(grid([[SAND, SAND], [SAND, SAND]]), 2) === null);
+  // 54 で砂 4 個は砂岩になった（本家どおり）。見るのは「ガラスでない」こと。
+  const sand4 = findRecipe(grid([[SAND, SAND], [SAND, SAND]]), 2);
+  check("砂 4 個ではガラスにならない", sand4?.out !== GLASS, sand4?.name ?? "無し");
 
   const furnaceRecipe = findRecipe(
     grid([

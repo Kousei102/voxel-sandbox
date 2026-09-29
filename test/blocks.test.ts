@@ -482,8 +482,8 @@ export function run(): void {
     `block ${placedBlock(LEATHER)} / tool ${toolOf(LEATHER)} / food ${foodOf(LEATHER)}`,
   );
   // **糸も革・羽根とまったく同じ「置けず・道具でもなく・食べ物でもない」もの**です。
-  // **使い道は弓（棒 3 + 糸 3）1 本だけ**で、精錬は 0 行のまま
-  // （本数は `test/crafting.test.ts` の「糸を使うレシピはちょうど 1 本」が見ています）。
+  // **使い道は弓（棒 3 + 糸 3）と羊毛（糸 4・54）の 2 本だけ**で、精錬は 0 行のまま
+  // （本数は `test/crafting.test.ts` の「糸を使うレシピはちょうど 2 本」が見ています）。
   console.log(
     `      糸(${STRING}) 置ける ${placedBlock(STRING) !== AIR}` +
       ` / 道具 ${toolOf(STRING) !== null} / 食べ物 ${foodOf(STRING) !== null}`,

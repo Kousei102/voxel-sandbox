@@ -26,6 +26,7 @@ import {
   PLANK_SLAB,
   PLANK_STAIRS,
   RED_MUSHROOM,
+  SAND,
   SANDSTONE,
   SANDSTONE_SLAB,
   SANDSTONE_STAIRS,
@@ -170,17 +171,26 @@ export const RECIPES: readonly Recipe[] = [
   // チェストは板 8 個の輪（Minecraft と同じ）。かまどと同じ形で、材料だけが違う。
   { name: "チェスト", out: CHEST, count: 1, shape: ["PPP", "P.P", "PPP"], key: { P: PLANK } },
 
-  // ベッドは羊毛 3 + 板 3（Minecraft と同じ）。**羊毛は羊を倒すしか手が無い**ので、
-  // 「羊を 3 匹ぶん探す」がそのままリスポーン地点への道のりになる。
+  // 糸 4 本 → 羊毛 1 個（Minecraft と同じ）。2x2 に収まるので作業台が要らない。
+  // 羊の居ない所でも、クモを倒せば羊毛（→ ベッド）へ届く。逆向き（羊毛 → 糸）は本家にも無い。
+  { name: "羊毛", out: WOOL, count: 1, shape: ["SS", "SS"], key: { S: STRING } },
+
+  // ベッドは羊毛 3 + 板 3（Minecraft と同じ）。羊毛は羊（倒す・刈る）か、クモの糸 4 本から
+  // （上の 1 行）。「羊を 3 匹ぶん探す」がそのままリスポーン地点への道のりになる。
   { name: "ベッド", out: BED, count: 1, shape: ["WWW", "PPP"], key: { W: WOOL, P: PLANK } },
+
+  // 砂 4 個 → 砂岩 1 個（Beta 1.2）/ 石 4 個 → 石レンガ **4 個**（Beta 1.8）。どちらも 2x2 なので
+  // 作業台が要らない。**砂 4 個はガラスにならない**（ガラスはかまどで焼くだけ。`smelting.ts`）。
+  { name: "砂岩", out: SANDSTONE, count: 1, shape: ["AA", "AA"], key: { A: SAND } },
+  { name: "石レンガ", out: STONE_BRICK, count: 4, shape: ["SS", "SS"], key: { S: STONE } },
 
   // ハーフブロックは横 3 列から 6 個（Minecraft と同じ）。3 列なので作業台が要る。
   slabRecipe("石", STONE, STONE_SLAB),
   slabRecipe("丸石", COBBLE, COBBLE_SLAB),
   slabRecipe("板", PLANK, PLANK_SLAB),
   slabRecipe("砂岩", SANDSTONE, SANDSTONE_SLAB),
-  // **ネザーレンガと石レンガそのものは要塞と遺跡からしか手に入らない**（作るレシピは無い）。
-  // ハーフにできるだけで、持ち帰った量が増えるわけではない。
+  // **ネザーレンガそのものは要塞からしか手に入らない**（作るレシピはまだ無い）。
+  // 石レンガは上の 1 行で石 4 個から作れる。
   slabRecipe("ネザーレンガ", NETHER_BRICK, NETHER_BRICK_SLAB),
   slabRecipe("石レンガ", STONE_BRICK, STONE_BRICK_SLAB),
 
