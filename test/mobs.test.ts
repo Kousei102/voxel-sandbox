@@ -18,6 +18,8 @@ import { DayNight } from "../src/daynight";
 import {
   ARROW,
   BONE,
+  COOKED_CHICKEN,
+  COOKED_PORK,
   DIAMOND_AXE,
   DIAMOND_SWORD,
   EGG,
@@ -35,6 +37,7 @@ import {
   RAW_PORK,
   ROTTEN_FLESH,
   SPIDER_EYE as SPIDER_EYE_ITEM,
+  STEAK,
   STONE_AXE,
   STRING,
   WOOD_AXE,
@@ -42,8 +45,10 @@ import {
   WOOD_PICKAXE,
   WOOD_SHOVEL,
   WOOD_SWORD,
+  foodOf,
   itemName,
 } from "../src/items";
+import { smeltResultOf } from "../src/smelting";
 import { buildMobMesh } from "../src/mobmesh";
 import {
   ATTACK_RANGE,
@@ -2690,6 +2695,127 @@ export function run(): void {
       zombieDraws === 1 && zombieStacks <= 1, `${zombieDraws} 回 / ${zombieStacks} 山`);
   }
 
+  describe("燃えて死んだ動物は焼けた肉を落とす（53）");
+
+  {
+    // --- 何が何に焼けるか（表 1 本。`kind === "pig"` と書かない） ---
+    const cookedRows: string[] = [];
+    let extraCooked = 0;
+    for (const kind of MOB_KINDS) {
+      const drop = MOBS[kind].drop;
+      if (drop.cooked !== undefined) {
+        cookedRows.push(`${MOBS[kind].name}: ${itemName(drop.item)} → ${itemName(drop.cooked)}`);
+      }
+      if (drop.extra?.cooked !== undefined) extraCooked++;
+    }
+    console.log(`      焼けるもの: ${cookedRows.join(" / ") || "なし"}`);
+    const cookers = MOB_KINDS.filter((k) => MOBS[k].drop.cooked !== undefined);
+    check("焼けた肉を持つのは豚・鶏・牛の 3 つだけ",
+      cookers.length === 3 && cookers.includes("pig") && cookers.includes("chicken") && cookers.includes("cow"),
+      cookers.join(" / "));
+    check("2 山目（羽根・革など）に cooked を持つモブは 0", extraCooked === 0, `${extraCooked} 件`);
+
+    // --- 精錬の表と同じ行（`mobs.ts` は `smelting.ts` を import しないので、ここで突き合わせる） ---
+    const mismatched = cookers.filter((k) => {
+      const drop = MOBS[k].drop;
+      return smeltResultOf(drop.item)?.out !== drop.cooked;
+    });
+    console.log(
+      `      かまどでは: ${cookers.map((k) => `${itemName(MOBS[k].drop.item)} → ` +
+        `${itemName(smeltResultOf(MOBS[k].drop.item)?.out ?? NO_ITEM)}`).join(" / ")}`,
+    );
+    check("cooked はかまどで焼いた結果と同じ", mismatched.length === 0, mismatched.join(" / ") || "一致");
+
+    // --- 逆向きの見張り: 1 山目がかまどで食べ物に焼けるなら cooked を持つ ---
+    const forgotten = MOB_KINDS.filter((k) => {
+      const drop = MOBS[k].drop;
+      const smelted = smeltResultOf(drop.item);
+      return smelted !== null && foodOf(smelted.out) !== null && drop.cooked === undefined;
+    });
+    check("焼ける生肉を落とすモブは全部 cooked を書いている", forgotten.length === 0,
+      forgotten.join(" / ") || "書き忘れ 0");
+  }
+  {
+    // --- `dropsFor()`: 燃えていれば焼けた肉・燃えていなければ生（山の中身まで出す） ---
+    const pack = new Mobs();
+    const show = (mob: Mob, def: MobDef, random: () => number = seeded(401)): number[] =>
+      dropsFor(mob, def, random).flatMap((s) => Array<number>(s.count).fill(s.item));
+    const pig = pack.spawn("pig", 0.5, 11, 2.5, 0, seeded(409));
+    const bird = pack.spawn("chicken", 0.5, 11, 4.5, 0, seeded(419));
+    const cow = pack.spawn("cow", 0.5, 11, 6.5, 0, seeded(421));
+    const raw = [show(pig, MOBS.pig), show(bird, MOBS.chicken), show(cow, MOBS.cow)];
+    for (const mob of [pig, bird, cow]) mob.burnTimer = 5;
+    const burnt = [show(pig, MOBS.pig), show(bird, MOBS.chicken), show(cow, MOBS.cow)];
+    const names = (rows: number[][]): string => rows.map((r) => r.map(itemName).join(" + ")).join(" / ");
+    console.log(`      燃えていない: ${names(raw)}`);
+    console.log(`      燃えている  : ${names(burnt)}`);
+    check("燃えていない豚・鶏・牛は今までどおり生",
+      raw[0].join() === `${RAW_PORK}` && raw[1].join() === `${RAW_CHICKEN},${FEATHER}` &&
+        raw[2].join() === `${RAW_BEEF},${LEATHER}`, names(raw));
+    check("燃えている豚は焼き豚 x1", burnt[0].join() === `${COOKED_PORK}`, names([burnt[0]]));
+    check("燃えている鶏は焼き鳥 x1 + 羽根 x1（羽根は焼けない）",
+      burnt[1].join() === `${COOKED_CHICKEN},${FEATHER}`, names([burnt[1]]));
+    check("燃えている牛はステーキ x1 + 革 x1（革は焼けない）",
+      burnt[2].join() === `${STEAK},${LEATHER}`, names([burnt[2]]));
+
+    // 乱数を引く回数は変わらない（燃えている鶏でも 0 回）。
+    let draws = 0;
+    const inner = seeded(431);
+    const counted = show(bird, MOBS.chicken, () => { draws++; return inner(); });
+    console.log(`      燃えている鶏で乱数を引いた回数: ${draws} 回（${counted.length} 個）`);
+    check("燃えていても chance 1 の山では乱数を引かない", draws === 0 && counted.length === 2, `${draws} 回`);
+
+    // 焼けた形の無い物はそのまま。
+    const zombie = pack.spawn("zombie", 0.5, 11, 8.5, 0, seeded(433));
+    const sheep = pack.spawn("sheep", 0.5, 11, 10.5, 0, seeded(439));
+    zombie.burnTimer = 5;
+    sheep.burnTimer = 5;
+    const zombieRandom = seeded(443);
+    const zombieDrops = Array.from({ length: 50 }, () => show(zombie, MOBS.zombie, zombieRandom)).flat();
+    const sheepDrops = show(sheep, MOBS.sheep);
+    console.log(
+      `      燃えているゾンビ 50 回: ${[...new Set(zombieDrops)].map(itemName).join(" ") || "なし"}` +
+        ` / 燃えている羊: ${sheepDrops.map(itemName).join(" ") || "なし"}`,
+    );
+    check("燃えているゾンビは腐った肉のまま（か何も無し）",
+      zombieDrops.length > 0 && zombieDrops.every((id) => id === ROTTEN_FLESH), `${zombieDrops.length} 個`);
+    check("燃えている刈っていない羊は羊毛のまま", sheepDrops.join() === `${WOOL}`, names([sheepDrops]));
+  }
+  {
+    // --- 殴って倒す / 撃って倒す（**並べて測る**。片方だけ焼けると弓のときだけ生肉が戻る） ---
+    const punched: number[] = [];
+    {
+      const pack = new Mobs();
+      pack.onDrop = (item) => punched.push(item);
+      const random = seeded(449);
+      const c = ctx({ random });
+      const pig = pack.spawn("pig", 0.5, 11, 2.5, 0, random);
+      pig.burnTimer = 5;
+      pig.health = 1; // 1 発で倒れるようにしておく
+      pack.attack(pig, DIAMOND_SWORD, c, random);
+    }
+    const shot: number[] = [];
+    {
+      const pack = new Mobs();
+      const flying = new Projectiles();
+      pack.onDrop = (item) => shot.push(item);
+      const random = seeded(457);
+      const c = ctx({ random });
+      const pig = pack.spawn("pig", 3.5, 11, 0.5, 0, random);
+      pig.burnTimer = 5;
+      pig.health = 1; // 1 本で倒れるようにしておく
+      const target = pack.projectileTargets(c).find((t) => t.owner === pig.id)!;
+      const arrow = flying.spawn("arrow", 0.5, 12, 0.5, 0, 0, -1, PLAYER_OWNER, 100);
+      pack.hitByProjectile(arrow!, target, c);
+    }
+    console.log(
+      `      燃えている豚を倒す: 殴って ${punched.map(itemName).join(" ") || "なし"} / ` +
+        `矢で ${shot.map(itemName).join(" ") || "なし"}`,
+    );
+    check("燃えている豚を殴って倒すと焼き豚", punched.join() === `${COOKED_PORK}`, `${punched.length} 件`);
+    check("燃えている豚を矢で倒しても焼き豚（同じ 1 本を通る）", shot.join() === `${COOKED_PORK}`, `${shot.length} 件`);
+  }
+
   describe("鶏が卵を産む（倒さずに取れる 2 つ目）");
 
   // --- 誰が産むか（表 1 本。`kind === "chicken"` と書かない） ---
@@ -3147,6 +3273,8 @@ export function run(): void {
   const roast = swim("pig", LAVA);
   console.log(`      溶岩に沈めた豚: ${roast.seconds.toFixed(1)} 秒で消えた`);
   check("受動モブも溶岩で焼け死ぬ", !roast.alive, `${roast.seconds.toFixed(1)} 秒`);
+  // **焼けた肉（53）が入っても、焼死では落とさない**（本家は落とす。`TUNING.md`）。
+  check("豚も溶岩の焼死ではドロップしない（焼き豚も出ない）", roast.drops === 0, `${roast.drops} 件`);
 
   // 水では焼けない。**液体をひとまとめにすると、水中のゾンビまで焼ける。**
   const wet = swim("zombie", WATER);

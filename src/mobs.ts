@@ -16,6 +16,8 @@ import {
   ARROW,
   BLAZE_ROD,
   BONE,
+  COOKED_CHICKEN,
+  COOKED_PORK,
   EGG,
   ENDER_PEARL,
   FEATHER,
@@ -25,6 +27,7 @@ import {
   RAW_CHICKEN,
   RAW_PORK,
   ROTTEN_FLESH,
+  STEAK,
   // アイテムのクモの目。**この下に見た目の色の定数 `SPIDER_EYE` があるので別名で取る**。
   SPIDER_EYE as SPIDER_EYE_ITEM,
   STRING,
@@ -99,6 +102,13 @@ export interface MobDropStack {
   readonly count: number;
   /** 落ちる確率。1 なら必ず。 */
   readonly chance: number;
+  /**
+   * 燃えている（`burnTimer > 0`）ときに `item` の代わりに落とす ID（焼けた肉）。
+   * **数も確率もそのまま。** `smelting.ts` の `SMELTING` と同じ行になること
+   * （テストが突き合わせる。**`mobs.ts` から `smelting.ts` を import しないこと**）。
+   * **1 山目にだけ書く** —— 羽根・革は焼けません。
+   */
+  readonly cooked?: number;
 }
 
 /**
@@ -481,7 +491,7 @@ const PIG: MobDef = {
   orbit: null,
   phases: null,
   regen: 0,
-  drop: { item: RAW_PORK, count: 1, chance: 1 },
+  drop: { item: RAW_PORK, count: 1, chance: 1, cooked: COOKED_PORK },
   shearing: null,
   milkable: false,
   laying: null,
@@ -656,7 +666,7 @@ const CHICKEN: MobDef = {
   // **2 山落ちます** —— 生鶏肉 1 個（1 山目）と羽根 1 個（`extra`）。
   // 羽根は矢の材料で、本家の 0〜2 個ではなく**1 個固定**です（`items.ts` の `FEATHER`）。
   // **`mobs.ts` の色の定数 `CHICKEN_FEATHER` とは別物**（あちらは見た目の白）。
-  drop: { item: RAW_CHICKEN, count: 1, chance: 1, extra: { item: FEATHER, count: 1, chance: 1 } },
+  drop: { item: RAW_CHICKEN, count: 1, chance: 1, cooked: COOKED_CHICKEN, extra: { item: FEATHER, count: 1, chance: 1 } },
   shearing: null,
   milkable: false,
   // **卵を産む唯一のモブ。** 倒さずに取れるという点は羊の羊毛と同じで、違うのは
@@ -757,7 +767,7 @@ const COW: MobDef = {
   // **2 山落ちます** —— 生牛肉 1 個（1 山目）と革 1 個（`extra`）。
   // 革は本家の 0〜2 個ではなく**1 個固定**（`extra` に個数の範囲を持たせない線引き。
   // 羽根とまったく同じ。`items.ts` の `LEATHER`）。**革の使い道はまだありません。**
-  drop: { item: RAW_BEEF, count: 1, chance: 1, extra: { item: LEATHER, count: 1, chance: 1 } },
+  drop: { item: RAW_BEEF, count: 1, chance: 1, cooked: STEAK, extra: { item: LEATHER, count: 1, chance: 1 } },
   shearing: null,
   // **搾れる唯一のモブ。** 倒さずに取れるという点は羊の羊毛・鶏の卵と同じで、
   // 違うのは**何度でも取れる**ところ（本家の牛に待ち時間はないので、`ShearRule` の
@@ -3256,7 +3266,9 @@ export function dropsFor(
     for (const stack of [drop, drop.extra]) {
       if (!stack || stack.item === NO_ITEM || stack.count <= 0) continue;
       if (stack.chance >= 1 || random() < stack.chance) {
-        stacks.push({ item: stack.item, count: stack.count });
+        // 燃えていたら焼けた肉（`cooked` を持つ山だけ。数も確率もそのまま）。
+        const item = mob.burnTimer > 0 && stack.cooked !== undefined ? stack.cooked : stack.item;
+        stacks.push({ item, count: stack.count });
       }
     }
   }

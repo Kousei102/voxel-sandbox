@@ -4769,3 +4769,29 @@ ID 0 個（**共有帯の空き 57 のまま**・次は 199）/ `main.ts` 1083 �
 ### 手順の逸れ: 1 件
 
 `src/leafdecay.ts` と `test/leafdecay.test.ts` の最初の書き換え 2 回を `Edit` でなく `Bash` の `python3` でやった（`src/**` と `test/**` は Read / Edit の決まり）。中身は `git diff` で読み直して問題なし。以降は `Edit` に戻した。
+
+## AUTODEV 141（C の周・2026-09-29・クラウドの無人の周）: 53 燃えて死んだ動物は焼けた肉を落とす（ID 0 個）
+
+- `src/mobs.ts` だけ: `MobDropStack.cooked?`・豚 / 鶏 / 牛の 1 山目に `COOKED_PORK` / `COOKED_CHICKEN` / `STEAK`・`dropsFor()` の `push` で `burnTimer > 0` なら差し替え（乱数の引き方・山の順は不変）
+- `test/mobs.test.ts`: 節「燃えて死んだ動物は焼けた肉を落とす（53）」13 件（表・精錬と一致・書き忘れの見張り・`dropsFor()` の中身・乱数 0 回・ゾンビ / 羊は焼けない・殴る / 撃つ）+「モブと溶岩」に「豚も溶岩の焼死ではドロップしない」1 件
+- **`mobs.ts` から `smelting.ts` は import していない**（突き合わせはテスト側）。`main.ts` / `hands.ts` 0 行
+
+### 差し戻し: 0 回 / 見送ったもの: 0 件
+
+サブエージェントは使わず親が実装し、C-2 の点検も親が `git diff` を読んでやった（判断の漏れ無し・ID 0・既存の判定は 1 行も変えていない）。
+
+### 撮ったもの
+
+絵に出るものは無し。`npm run shot -- terrain` の md5 が前と同一（`1eb34c15…`）。
+
+### 枠
+
+ID 0 個（共有帯の空き 57 のまま・次は 199）/ `main.ts` 1083 行・`hands.ts` 463 行（±0）/ `npm test` 4112 → 4126 件（+14。仕様の見込み 8〜12 より多いのは、表と見張りを 1 件ずつ分けたのと溶岩の 1 件）/ キューの未着手 9 → 8 件。
+
+### 決まりごと（層 2）: 1 件
+
+- `rules/mobs.md` の「2 山目を落とす」に「焼けた肉（`cooked`）は 1 山目だけ・差し替えは `dropsFor()` の 1 か所・精錬の表との一致はテスト側」
+
+### 手順の逸れ: 1 件
+
+`src/mobs.ts` の `drop:` 3 行を `Bash` の `sed`、`test/mobs.test.ts` の小さな直し 2 か所を `python3` で書き換えた（`src/**` と `test/**` は Read / Edit の決まり）。`git diff` で読み直して問題なし。
