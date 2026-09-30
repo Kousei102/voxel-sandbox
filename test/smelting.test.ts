@@ -1,15 +1,26 @@
 import { readFileSync } from "node:fs";
 import {
   AIR,
+  BIRCH_SAPLING,
   BIRCH_WOOD,
+  BOOKSHELF,
+  CHEST,
   COAL_BLOCK,
   COBBLE,
+  FENCE,
   FURNACE,
   FURNACE_LIT,
   GLASS,
   IRON_ORE,
+  LADDER,
+  LADDER_XN,
+  LADDER_ZN,
+  LADDER_ZP,
+  NETHER_BRICK_FENCE,
   PLANK,
   SAND,
+  SAPLING,
+  SPRUCE_SAPLING,
   SPRUCE_WOOD,
   STONE,
   WOOD,
@@ -21,20 +32,29 @@ import { CraftScreen } from "../src/craftscreen";
 import { Furnaces, litVoxel } from "../src/furnaces";
 import { INVENTORY_SIZE, Inventory, isEmpty, type Slot } from "../src/inventory";
 import {
+  BLAZE_ROD,
+  BOW,
+  BOWL,
   BRICK_ITEM,
+  BUCKET,
   CHARCOAL,
   CLAY_BALL,
   COAL,
   COOKED_CHICKEN,
   COOKED_PORK,
   IRON_INGOT,
+  LAVA_BUCKET,
   MAX_STACK,
   NO_ITEM,
   RAW_BEEF,
   RAW_CHICKEN,
   RAW_PORK,
   STEAK,
+  WOOD_AXE,
+  WOOD_HOE,
   WOOD_PICKAXE,
+  WOOD_SHOVEL,
+  WOOD_SWORD,
   dropOf,
   itemName,
 } from "../src/items";
@@ -213,8 +233,77 @@ export function run(): void {
 
   // **`FUEL` に紛れ込んでいないこと**（革を燃料にすると、牛が薪になる）。
   // 表そのものを数える —— 「革が燃料でない」だけだと、別のものが紛れても緑になる。
-  // **数え直すのは可・ゆるめるのは禁じ手**（`>= 8` にしない）。シラカバの原木で 1 行増えて 11 行。
-  check("燃料の表は 11 行（シラカバの原木で 1 行増えた）", FUEL.size === 11, `${FUEL.size} 行`);
+  // **数え直すのは可・ゆるめるのは禁じ手**（`>= 8` にしない）。55 で 13 行増えて 24 行。
+  check("燃料の表は 24 行（55 で 13 行増えた）", FUEL.size === 24, `${FUEL.size} 行`);
+
+  // --- 燃料を本家に揃える（55）------------------------------------------------
+  // 苗木 5 秒 / 木の道具 10 秒 / 木の置き物 15 秒 / ブレイズロッド 120 秒（本家の値）。
+  const saplings = [SAPLING, SPRUCE_SAPLING, BIRCH_SAPLING];
+  const woodTools = [WOOD_PICKAXE, WOOD_AXE, WOOD_SHOVEL, WOOD_SWORD, WOOD_HOE];
+  const woodProps = [CHEST, BOOKSHELF, FENCE, LADDER];
+  const added55 = [...saplings, ...woodTools, ...woodProps, BLAZE_ROD];
+  for (const item of added55) {
+    console.log(`      ${itemName(item)}(${item}): ${fuelTimeOf(item)} 秒 = ${fuelTimeOf(item) / SMELT_TIME} 個`);
+  }
+  check(
+    "苗木 3 種はどれも 5 秒（半個ぶん。55）",
+    saplings.every((item) => fuelTimeOf(item) === 5),
+    saplings.map((item) => `${itemName(item)} ${fuelTimeOf(item)}`).join(" / "),
+  );
+  check(
+    "木の道具 5 本はどれも 10 秒（1 個ぶん。55）",
+    woodTools.every((item) => fuelTimeOf(item) === 10),
+    woodTools.map((item) => `${itemName(item)} ${fuelTimeOf(item)}`).join(" / "),
+  );
+  check(
+    "チェスト・本棚・フェンス・はしごはどれも 15 秒（1.5 個ぶん。55）",
+    woodProps.every((item) => fuelTimeOf(item) === 15),
+    woodProps.map((item) => `${itemName(item)} ${fuelTimeOf(item)}`).join(" / "),
+  );
+  check(
+    "ブレイズロッドは 120 秒 = 12 個ぶん（55）",
+    fuelTimeOf(BLAZE_ROD) === 120 && fuelTimeOf(BLAZE_ROD) / SMELT_TIME === 12,
+    `${fuelTimeOf(BLAZE_ROD)} 秒`,
+  );
+  // **はしごは 145 だけ**（146..148 は向き違いでアイテムを持たない）。
+  const ladderVariants = [LADDER_XN, LADDER_ZP, LADDER_ZN];
+  console.log(`      はしごの向き違い ${ladderVariants.map((id) => `${id}: ${fuelTimeOf(id)} 秒`).join(" / ")}`);
+  check(
+    "はしごの向き違い（146..148）は燃料の表に居ない",
+    ladderVariants.every((id) => fuelTimeOf(id) === 0),
+    ladderVariants.map((id) => `${id} ${fuelTimeOf(id)}`).join(" / "),
+  );
+  // **足さなかったもの**（範囲外・溶岩入りバケツは 56）。
+  const notFuel55 = [BOW, BOWL, NETHER_BRICK_FENCE, LAVA_BUCKET, BUCKET];
+  console.log(`      足さなかったもの ${notFuel55.map((id) => `${itemName(id)} ${fuelTimeOf(id)} 秒`).join(" / ")}`);
+  check(
+    "弓・ボウル・ネザーレンガのフェンス・溶岩入りバケツ・バケツは燃料でない",
+    notFuel55.every((id) => fuelTimeOf(id) === 0),
+    notFuel55.map((id) => `${itemName(id)} ${fuelTimeOf(id)}`).join(" / "),
+  );
+  // **材料を優先する決まりが崩れていない**（どれも焼けるものの表に居ない）。
+  const smeltable55 = added55.filter((item) => isSmeltable(item));
+  console.log(`      55 で足した 13 個のうち焼けるもの: ${smeltable55.length} 個`);
+  check(
+    "55 で足した 13 個はどれも焼けるものの表に居ない",
+    added55.length === 13 && smeltable55.length === 0,
+    smeltable55.map(itemName).join(" "),
+  );
+  {
+    // **燃やすと傷ごと消える**（`clearSlot` が傷も畳む）。
+    const state = loaded(IRON_ORE, 1, WOOD_PICKAXE, 1);
+    state.fuel.damage = 12;
+    tickFurnace(state, 0.1);
+    console.log(
+      `      傷 12 の木のツルハシをくべた → 燃料枠 ${itemName(state.fuel.item)} x${state.fuel.count}` +
+        ` / 傷 ${state.fuel.damage ?? 0} / 火の長さ ${state.burnTotal} 秒`,
+    );
+    check(
+      "傷のある木のツルハシは 10 秒燃えて、燃料枠に傷が残らない",
+      isEmpty(state.fuel) && (state.fuel.damage ?? 0) === 0 && state.burnTotal === 10,
+      `枠 ${state.fuel.item} x${state.fuel.count} / 傷 ${state.fuel.damage} / ${state.burnTotal} 秒`,
+    );
+  }
 
   // --- 石炭ブロック（188・42）--------------------------------------------------
   // **秒ではなく「何個焼けるか」で見ること**（木炭と同じ理由）。本家と同じ 80 個ぶんで、
@@ -244,10 +333,14 @@ export function run(): void {
   // `Math.max(...FUEL.values())` が 80 → 800 へ動いたので数え直した** ——
   // 表の最大値と突き合わせている件は、その表に大きい値を足すと落ちる。`rules/testing.md`）。
   // **表そのものの最大**と、**1 個もののなかの最大**は別の守りで、どちらも残す。
+  // **55 でもう一度割った**（ゆるめたのではない。ブレイズロッド 120 秒が 1 個ものの最大を
+  // 80 → 120 へ動かしたので、「1 個ものの最大」と「それを除いた最大（石炭・木炭）」の 2 件にした）。
   const singles = [...FUEL.entries()].filter(([item]) => item !== COAL_BLOCK);
+  const common = singles.filter(([item]) => item !== BLAZE_ROD);
   console.log(
     `      表の最大 ${Math.max(...FUEL.values())} 秒（石炭ブロック ${fuelTimeOf(COAL_BLOCK)} 秒）/ ` +
-      `1 個ものの最大 ${Math.max(...singles.map(([, t]) => t))} 秒` +
+      `1 個ものの最大 ${Math.max(...singles.map(([, t]) => t))} 秒（ブレイズロッド ${fuelTimeOf(BLAZE_ROD)} 秒）/ ` +
+      `それを除いた最大 ${Math.max(...common.map(([, t]) => t))} 秒` +
       `（石炭 ${fuelTimeOf(COAL)} 秒 / 木炭 ${fuelTimeOf(CHARCOAL)} 秒）`,
   );
   check(
@@ -256,11 +349,16 @@ export function run(): void {
     `${fuelTimeOf(COAL_BLOCK)} 秒 / 表の最大 ${Math.max(...FUEL.values())} 秒`,
   );
   check(
-    "1 個もののなかでは石炭と木炭がいちばん長持ちする（石炭ブロックを除いた最大）",
-    fuelTimeOf(COAL) === Math.max(...singles.map(([, t]) => t)) &&
+    "1 個ものの最大はブレイズロッド（120 秒。石炭ブロックを除いた最大）",
+    fuelTimeOf(BLAZE_ROD) === Math.max(...singles.map(([, t]) => t)),
+    `ブレイズロッド ${fuelTimeOf(BLAZE_ROD)} 秒 / 1 個ものの最大 ${Math.max(...singles.map(([, t]) => t))} 秒`,
+  );
+  check(
+    "ブレイズロッドを除いた 1 個もののなかでは石炭と木炭がいちばん長持ちする",
+    fuelTimeOf(COAL) === Math.max(...common.map(([, t]) => t)) &&
       fuelTimeOf(CHARCOAL) === fuelTimeOf(COAL),
     `石炭 ${fuelTimeOf(COAL)} 秒 / 木炭 ${fuelTimeOf(CHARCOAL)} 秒 / ` +
-      `1 個ものの最大 ${Math.max(...singles.map(([, t]) => t))} 秒`,
+      `それを除いた最大 ${Math.max(...common.map(([, t]) => t))} 秒`,
   );
   check("焼けないものは燃料でもない扱いにならない", fuelTimeOf(IRON_ORE) === 0);
 
@@ -755,13 +853,27 @@ export function run(): void {
   }
 
   {
-    // **シフトクリックの経路（`moveInto`）も傷を運ぶ。** ただし**いまは道具で届きません** ——
-    // 焼けるものにも燃料にも道具が 1 本も無いので、`quickMove` はかまどを素通りします。
-    // 届く日（本家のように鉄の道具が焼けるようになった日）に黙って新品に戻らないよう、
-    // **呼び出しの形**を見張っておく（`rules/testing.md` の「呼び出しの側も見ること」）。
-    const tools = [WOOD_PICKAXE].filter((item) => isSmeltable(item) || isFuel(item));
-    console.log(`      焼ける／燃える道具: ${tools.length} 本（0 本なら道具はかまどを素通りする）`);
-    check("いまは道具が焼けも燃えもしない", tools.length === 0, tools.map(itemName).join(" "));
+    // **シフトクリックの経路（`moveInto`）も傷を運ぶ。** 55 で木の道具 5 本が燃料になって
+    // **届く日が来た**ので、実際にシフトクリックして燃料枠へ傷ごと入るかを見る。
+    // **呼び出しの形**の見張りも残す（`rules/testing.md` の「呼び出しの側も見ること」）。
+    const inventory = new Inventory();
+    const craft = new CraftScreen(inventory);
+    const state = createFurnace();
+    craft.openFurnace(state);
+    inventory.add(WOOD_PICKAXE, 1, 12);
+    const at = inventory.slots.findIndex((s) => s.item === WOOD_PICKAXE);
+    craft.press("inv", at, 0, { shift: true, double: false });
+    console.log(
+      `      傷 12 の木のツルハシ（枠 ${at}）をシフトクリック → 材料 ${itemName(state.input.item)} /` +
+        ` 燃料 ${itemName(state.fuel.item)} x${state.fuel.count} 傷 ${state.fuel.damage ?? 0} /` +
+        ` 手元 ${inventory.count(WOOD_PICKAXE)} 本`,
+    );
+    check(
+      "傷のある木のツルハシはシフトクリックで燃料枠へ傷ごと入る",
+      at >= 0 && isEmpty(state.input) && state.fuel.item === WOOD_PICKAXE && state.fuel.count === 1 &&
+        state.fuel.damage === 12 && inventory.count(WOOD_PICKAXE) === 0,
+      `燃料 ${state.fuel.item} x${state.fuel.count} 傷 ${state.fuel.damage}`,
+    );
 
     const screen = sourceOf("src/craftscreen.ts");
     check(

@@ -7,17 +7,24 @@
  */
 
 import {
+  BIRCH_SAPLING,
   BIRCH_WOOD,
+  BOOKSHELF,
+  CHEST,
   COAL_BLOCK,
   COBBLE,
   CRAFTING_TABLE,
+  FENCE,
   GLASS,
   GOLD_ORE,
   IRON_ORE,
+  LADDER,
   PLANK,
   PLANK_SLAB,
   PLANK_STAIRS,
   SAND,
+  SAPLING,
+  SPRUCE_SAPLING,
   SPRUCE_WOOD,
   STONE,
   WOOD,
@@ -25,6 +32,7 @@ import {
 import { deserializeWear, serializeWear } from "./durability";
 import { clearSlot, isEmpty, type Slot } from "./inventory";
 import {
+  BLAZE_ROD,
   BRICK_ITEM,
   CHARCOAL,
   CLAY_BALL,
@@ -39,6 +47,11 @@ import {
   RAW_PORK,
   STEAK,
   STICK,
+  WOOD_AXE,
+  WOOD_HOE,
+  WOOD_PICKAXE,
+  WOOD_SHOVEL,
+  WOOD_SWORD,
   itemStackLimit,
 } from "./items";
 
@@ -94,8 +107,9 @@ export const FUEL: ReadonlyMap<number, number> = new Map([
   [COAL, SMELT_TIME * 8],
   // 木炭は**石炭とまったく同じ 8 個ぶん**（本家と同じ）。並べて書いてあるのは、
   // 片方だけ伸ばすと「どちらを使うべきか」が生まれてしまうため —— 本家でも同じ長さで、
-  // 違いは**手に入る道**（掘る / 木を焼く）だけ。**1 個もののなかではこの 80 秒が最長**
-  // （表そのものの最大は石炭ブロックの 800 秒。下の行）。
+  // 違いは**手に入る道**（掘る / 木を焼く）だけ。**ブレイズロッドを除いた 1 個もののなかでは
+  // この 80 秒が最長**（1 個ものの最大はブレイズロッドの 120 秒・表そのものの最大は
+  // 石炭ブロックの 800 秒。どちらも下の行）。
   [CHARCOAL, SMELT_TIME * 8],
   // 石炭ブロック（188・42）は**本家と同じ 80 個ぶん = 800 秒**。石炭 9 個でしまえるので、
   // **しまうと 1 個ぶん（10 秒）得になる**のが本家どおり（`TUNING.md`）。
@@ -103,14 +117,34 @@ export const FUEL: ReadonlyMap<number, number> = new Map([
   // `test/smelting.test.ts` の「いちばん長持ちする」は**2 件に割ってあります**
   // （表の最大値と突き合わせている件は、その表に大きい値を足すと落ちる。`rules/testing.md`）。
   [COAL_BLOCK, SMELT_TIME * 80],
+  // ブレイズロッドは**本家と同じ 12 個ぶん = 120 秒**（55）。**1 個もののなかの最大**になる。
+  // エンドへ行く材料を燃やせてしまうのも本家どおり（`TUNING.md`）。
+  [BLAZE_ROD, SMELT_TIME * 12],
   [WOOD, SMELT_TIME * 1.5],
   [SPRUCE_WOOD, SMELT_TIME * 1.5],
   [BIRCH_WOOD, SMELT_TIME * 1.5],
   [PLANK, SMELT_TIME * 1.5],
   [PLANK_STAIRS, SMELT_TIME * 1.5],
+  // 木の道具 5 本は**本家と同じ 1 個ぶん = 10 秒**（55）。**傷があっても長さは同じ**で、
+  // 燃やすと傷ごと消える（`tickFurnace()` の `clearSlot`）。
+  [WOOD_PICKAXE, SMELT_TIME * 1],
+  [WOOD_AXE, SMELT_TIME * 1],
+  [WOOD_SHOVEL, SMELT_TIME * 1],
+  [WOOD_SWORD, SMELT_TIME * 1],
+  [WOOD_HOE, SMELT_TIME * 1],
   [CRAFTING_TABLE, SMELT_TIME * 1.5],
+  // 木の置き物 4 種は**本家と同じ 1.5 個ぶん = 15 秒**（55。作業台と同じ）。
+  // **はしごは 145 だけ** —— 146..148 は向き違いでアイテムを持たないので行を足さない。
+  [CHEST, SMELT_TIME * 1.5],
+  [BOOKSHELF, SMELT_TIME * 1.5],
+  [FENCE, SMELT_TIME * 1.5],
+  [LADDER, SMELT_TIME * 1.5],
   [PLANK_SLAB, SMELT_TIME * 0.75],
   [STICK, SMELT_TIME * 0.5],
+  // 苗木 3 種は**本家と同じ半個ぶん = 5 秒**（55。棒と同じ）。
+  [SAPLING, SMELT_TIME * 0.5],
+  [SPRUCE_SAPLING, SMELT_TIME * 0.5],
+  [BIRCH_SAPLING, SMELT_TIME * 0.5],
 ]);
 
 /** そのアイテムを焼くと何になるか。焼けないなら null。 */
