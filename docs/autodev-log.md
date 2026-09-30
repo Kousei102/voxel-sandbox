@@ -4845,3 +4845,27 @@ ID 0 個（共有帯の空き 57 のまま・次は 199）/ `main.ts` 1083 行�
 ### 手順の逸れ: 1 件
 
 `src/smelting.ts` の `FUEL` と import を `Bash` の `python3` で書き換えた（`src/**` は Read / Edit の決まり）。`git diff` で読み直して問題なし。`test/**` は `Edit` で書いた。
+
+## AUTODEV 147（C の周・2026-09-30・クラウドの無人の周）: 56 溶岩入りバケツを燃料に（ID 0 個）
+
+- `src/smelting.ts`: `FUEL` に溶岩入りバケツ 1000 秒（表の最大）/ `tickFurnace()` がくべた燃料の残りかすを `leftoverOf()` に聞いて燃料枠に置く（`clearSlot()` の後）/ 古いコメント 2 か所
+- `src/items.ts`: `LEFTOVERS` に溶岩入りバケツ → バケツの 1 行（燃料用の表は作らない）
+- テスト +9: `test/smelting.test.ts`「溶岩入りバケツ（56）」8 件（秒・焼けない・くべた瞬間にバケツが残る・空バケツは次にくべない・石炭は何も残さない・空焚きしない・シフトクリックで燃料枠へ・表の最大）/ `test/crafting.test.ts` 1 件
+- **既存の判定の書き換え 3 か所（仕様書が名指し。ゆるめではない）**: 燃料の表 24 → 25 行 / `notFuel55` から溶岩入りバケツを抜く / 「石炭ブロックが表の最大」を 2 件に割った（`noLava`）。仕様書に無い赤は 0 件
+- rules 2 本（`stateful-blocks.md` 2 か所・`items-survival.md` の表）
+
+### 差し戻し: 0 回 / 見送ったもの: 0 件
+
+サブエージェントは使わず親が実装し、C-2 の点検も親が `git diff` を読んでやった。
+
+### 撮ったもの
+
+絵に出るものは無し。`npm run shot -- terrain` の md5 を `git worktree` の前コミットと突き合わせて同一。
+
+### 枠
+
+ID 0 個（共有帯の空き 57・次は 199）/ `main.ts` 1083 行・`hands.ts` 463 行（±0）/ `npm test` 4148 → 4157 件（+9）/ キューの未着手 6 → 5 件。
+
+### 手順の逸れ: 1 件
+
+`src/smelting.ts` / `src/items.ts` と `test/crafting.test.ts` の import 並べ替えを `Bash` の `python3` で書き換えた（`src/**` と `test/**` は Read / Edit の決まり）。`git diff` で読み直して問題なし。テスト本体は `Edit` で書いた。

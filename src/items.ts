@@ -1221,7 +1221,10 @@ export function emptyAfterEating(id: number): number {
 
 /**
  * **クラフトで使い切ったときに盤面へ残る「残りかす」**。残らないなら `NO_ITEM`。
- * いま入っているのは**ミルクバケツ（138）→ バケツ（84）の 1 行**だけです（ケーキ）。
+ * いま入っているのは**ミルクバケツ（138）→ バケツ（84）**（ケーキ）と
+ * **溶岩入りバケツ（86）→ バケツ（84）**（56。かまどの燃料）の 2 行です。
+ * **かまどの燃料枠（`smelting.ts` の `tickFurnace()`）もこの表に聞きます** ——
+ * 燃料をくべた瞬間に残るものは、クラフトで残るものと同じ（本家と同じ）。
  *
  * **`EMPTIES` と別の表にしてあります。1 つにまとめないこと** ——
  * あちらは**食べ切ったあとに手の中へ戻る器**（シチュー → ボウル）で、
@@ -1238,9 +1241,12 @@ export function emptyAfterEating(id: number): number {
  * 2 個目を作った拍子に残りかすが消えます。`test/crafting.test.ts` が
  * **表に載っているものの `itemStackLimit()` が全部 1** であることを見張っています。
  */
-const LEFTOVERS = new Map<number, number>([[MILK_BUCKET, BUCKET]]);
+const LEFTOVERS = new Map<number, number>([
+  [MILK_BUCKET, BUCKET],
+  [LAVA_BUCKET, BUCKET],
+]);
 
-/** そのアイテムをクラフトで使い切ったあとに盤面へ残るもの。残らないなら `NO_ITEM`。 */
+/** そのアイテムをクラフト（かまどの燃料）で使い切ったあとに盤面（燃料枠）へ残るもの。残らないなら `NO_ITEM`。 */
 export function leftoverOf(id: number): number {
   return LEFTOVERS.get(id) ?? NO_ITEM;
 }

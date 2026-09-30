@@ -41,6 +41,7 @@ import {
   COOKED_PORK,
   GOLD_INGOT,
   IRON_INGOT,
+  LAVA_BUCKET,
   NO_ITEM,
   RAW_BEEF,
   RAW_CHICKEN,
@@ -53,6 +54,7 @@ import {
   WOOD_SHOVEL,
   WOOD_SWORD,
   itemStackLimit,
+  leftoverOf,
 } from "./items";
 
 /** 1 個焼くのにかかる時間（秒）。Minecraft と同じ 10 秒。 */
@@ -109,17 +111,22 @@ export const FUEL: ReadonlyMap<number, number> = new Map([
   // 片方だけ伸ばすと「どちらを使うべきか」が生まれてしまうため —— 本家でも同じ長さで、
   // 違いは**手に入る道**（掘る / 木を焼く）だけ。**ブレイズロッドを除いた 1 個もののなかでは
   // この 80 秒が最長**（1 個ものの最大はブレイズロッドの 120 秒・表そのものの最大は
-  // 石炭ブロックの 800 秒。どちらも下の行）。
+  // 溶岩入りバケツの 1000 秒・それを除けば石炭ブロックの 800 秒。どれも下の行）。
   [CHARCOAL, SMELT_TIME * 8],
   // 石炭ブロック（188・42）は**本家と同じ 80 個ぶん = 800 秒**。石炭 9 個でしまえるので、
   // **しまうと 1 個ぶん（10 秒）得になる**のが本家どおり（`TUNING.md`）。
-  // **これが `Math.max(...FUEL.values())` を 80 → 800 へ動かします** ——
+  // **これが `Math.max(...FUEL.values())` を 80 → 800 へ動かしました**（56 の溶岩入りバケツで
+  // さらに 1000 へ動いたので、いまは「溶岩入りバケツを除いた最大」）——
   // `test/smelting.test.ts` の「いちばん長持ちする」は**2 件に割ってあります**
   // （表の最大値と突き合わせている件は、その表に大きい値を足すと落ちる。`rules/testing.md`）。
   [COAL_BLOCK, SMELT_TIME * 80],
   // ブレイズロッドは**本家と同じ 12 個ぶん = 120 秒**（55）。**1 個もののなかの最大**になる。
   // エンドへ行く材料を燃やせてしまうのも本家どおり（`TUNING.md`）。
   [BLAZE_ROD, SMELT_TIME * 12],
+  // 溶岩入りバケツは**本家と同じ 100 個ぶん = 1000 秒**（56）。**表そのものの最大**。
+  // 燃え始めた瞬間に燃料枠へ**空のバケツが 1 個残る**が、それを決めているのはここではなく
+  // `items.ts` の `LEFTOVERS`（クラフトの残りかすと同じ表。`tickFurnace()` が聞くだけ）。
+  [LAVA_BUCKET, SMELT_TIME * 100],
   [WOOD, SMELT_TIME * 1.5],
   [SPRUCE_WOOD, SMELT_TIME * 1.5],
   [BIRCH_WOOD, SMELT_TIME * 1.5],
@@ -241,6 +248,7 @@ export function pendingResult(state: FurnaceState): SmeltResult | null {
  * 1. 燃えている火を減らす
  * 2. **焼くものが無ければ、燃料をくべない**（Minecraft と同じ。空焚きで燃料が消えない）
  * 3. 火が消えていて焼くものがあるなら、燃料を 1 個くべる
+ *    （**残りかすがあれば燃料枠に置く** —— 溶岩入りバケツ → 空のバケツ。`leftoverOf()` に聞く）
  * 4. 火が点いている間だけ焼き上がりが進む
  *
  * **焼くものが無くなったら進み具合を戻すこと。** 途中で材料を抜いて別のものを入れると、
@@ -267,8 +275,14 @@ export function tickFurnace(state: FurnaceState, dt: number): boolean {
       if (time > 0) {
         state.burnLeft = time;
         state.burnTotal = time;
+        // 残りかすは `consumeGrid()` と同じ順で置く: 先に聞き、`clearSlot()` で傷ごと畳んでから書く。
+        const rest = leftoverOf(state.fuel.item);
         state.fuel.count -= 1;
         if (state.fuel.count <= 0) clearSlot(state.fuel);
+        if (rest !== NO_ITEM) {
+          state.fuel.item = rest;
+          state.fuel.count = 1;
+        }
         changed = true;
       }
     }

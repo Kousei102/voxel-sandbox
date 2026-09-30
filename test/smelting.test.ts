@@ -57,6 +57,7 @@ import {
   WOOD_SWORD,
   dropOf,
   itemName,
+  leftoverOf,
 } from "../src/items";
 import {
   FUEL,
@@ -233,8 +234,8 @@ export function run(): void {
 
   // **`FUEL` に紛れ込んでいないこと**（革を燃料にすると、牛が薪になる）。
   // 表そのものを数える —— 「革が燃料でない」だけだと、別のものが紛れても緑になる。
-  // **数え直すのは可・ゆるめるのは禁じ手**（`>= 8` にしない）。55 で 13 行増えて 24 行。
-  check("燃料の表は 24 行（55 で 13 行増えた）", FUEL.size === 24, `${FUEL.size} 行`);
+  // **数え直すのは可・ゆるめるのは禁じ手**（`>= 8` にしない）。55 で 13 行・56 で 1 行増えて 25 行。
+  check("燃料の表は 25 行（56 で 1 行増えた）", FUEL.size === 25, `${FUEL.size} 行`);
 
   // --- 燃料を本家に揃える（55）------------------------------------------------
   // 苗木 5 秒 / 木の道具 10 秒 / 木の置き物 15 秒 / ブレイズロッド 120 秒（本家の値）。
@@ -273,11 +274,11 @@ export function run(): void {
     ladderVariants.every((id) => fuelTimeOf(id) === 0),
     ladderVariants.map((id) => `${id} ${fuelTimeOf(id)}`).join(" / "),
   );
-  // **足さなかったもの**（範囲外・溶岩入りバケツは 56）。
-  const notFuel55 = [BOW, BOWL, NETHER_BRICK_FENCE, LAVA_BUCKET, BUCKET];
+  // **足さなかったもの**（範囲外。溶岩入りバケツは 56 で足したので下の塊）。
+  const notFuel55 = [BOW, BOWL, NETHER_BRICK_FENCE, BUCKET];
   console.log(`      足さなかったもの ${notFuel55.map((id) => `${itemName(id)} ${fuelTimeOf(id)} 秒`).join(" / ")}`);
   check(
-    "弓・ボウル・ネザーレンガのフェンス・溶岩入りバケツ・バケツは燃料でない",
+    "弓・ボウル・ネザーレンガのフェンス・バケツは燃料でない",
     notFuel55.every((id) => fuelTimeOf(id) === 0),
     notFuel55.map((id) => `${itemName(id)} ${fuelTimeOf(id)}`).join(" / "),
   );
@@ -302,6 +303,84 @@ export function run(): void {
       "傷のある木のツルハシは 10 秒燃えて、燃料枠に傷が残らない",
       isEmpty(state.fuel) && (state.fuel.damage ?? 0) === 0 && state.burnTotal === 10,
       `枠 ${state.fuel.item} x${state.fuel.count} / 傷 ${state.fuel.damage} / ${state.burnTotal} 秒`,
+    );
+  }
+
+  // --- 溶岩入りバケツ（56）-----------------------------------------------------
+  // 本家と同じ 1000 秒 = 100 個ぶん。燃え始めた瞬間に**空のバケツが燃料枠に残る**
+  // （何が残るかは `items.ts` の `LEFTOVERS`。`tickFurnace()` は `leftoverOf()` に聞くだけ）。
+  console.log(
+    `      溶岩入りバケツ ${fuelTimeOf(LAVA_BUCKET)} 秒 = ${fuelTimeOf(LAVA_BUCKET) / SMELT_TIME} 個` +
+      ` / 焼ける ${isSmeltable(LAVA_BUCKET)} / 残りかす ${itemName(leftoverOf(LAVA_BUCKET))}`,
+  );
+  check(
+    "溶岩入りバケツは 1000 秒 = 100 個ぶん（56）",
+    fuelTimeOf(LAVA_BUCKET) === 1000 && fuelTimeOf(LAVA_BUCKET) / SMELT_TIME === 100,
+    `${fuelTimeOf(LAVA_BUCKET)} 秒`,
+  );
+  check("溶岩入りバケツは焼けるものの表に居ない", isSmeltable(LAVA_BUCKET) === false);
+  {
+    const state = loaded(IRON_ORE, 1, LAVA_BUCKET, 1);
+    tickFurnace(state, 0.1);
+    console.log(
+      `      溶岩入りバケツをくべた → 燃料枠 ${itemName(state.fuel.item)} x${state.fuel.count}` +
+        ` / 傷 ${state.fuel.damage ?? 0} / 火の長さ ${state.burnTotal} 秒`,
+    );
+    check(
+      "くべた瞬間に空のバケツが燃料枠に 1 個残る（傷なし・火は 1000 秒）",
+      state.fuel.item === BUCKET &&
+        state.fuel.count === 1 &&
+        (state.fuel.damage ?? 0) === 0 &&
+        state.burnTotal === 1000,
+      `枠 ${itemName(state.fuel.item)} x${state.fuel.count} / 傷 ${state.fuel.damage} / ${state.burnTotal} 秒`,
+    );
+    // 火を消して材料を足しても、空のバケツは燃料でないのでくべない。
+    state.burnLeft = 0;
+    state.input.item = IRON_ORE;
+    state.input.count = 1;
+    tickFurnace(state, 0.1);
+    console.log(
+      `      火を消して続ける → 点いている ${isLit(state)} / 燃料枠 ${itemName(state.fuel.item)} x${state.fuel.count}`,
+    );
+    check(
+      "空のバケツは燃料でないので次はくべない（火が点かず、枠にそのまま 1 個）",
+      !isLit(state) && state.fuel.item === BUCKET && state.fuel.count === 1,
+      `点いている ${isLit(state)} / 枠 ${itemName(state.fuel.item)} x${state.fuel.count}`,
+    );
+  }
+  {
+    // 残りかすの道がほかの燃料に効いていないこと（石炭は何も残さない）。
+    const state = loaded(IRON_ORE, 1, COAL, 1);
+    tickFurnace(state, 0.1);
+    console.log(`      石炭 1 個をくべた → 燃料枠 ${itemName(state.fuel.item)} x${state.fuel.count}`);
+    check("石炭をくべ切った燃料枠は空（何も残らない）", isEmpty(state.fuel), `${state.fuel.item} x${state.fuel.count}`);
+  }
+  {
+    // 空焚きで溶岩が減らない（材料が無ければくべない）。
+    const empty = createFurnace();
+    empty.fuel.item = LAVA_BUCKET;
+    empty.fuel.count = 1;
+    burn(empty, 30);
+    console.log(`      材料なしで 30 秒 → 燃料枠 ${itemName(empty.fuel.item)} x${empty.fuel.count}`);
+    check(
+      "材料が無ければ溶岩入りバケツはくべない（枠はそのまま）",
+      empty.fuel.item === LAVA_BUCKET && empty.fuel.count === 1 && !isLit(empty),
+      `${itemName(empty.fuel.item)} x${empty.fuel.count}`,
+    );
+  }
+  {
+    // シフトクリックで燃料枠へ（行き先は `isFuel()`。画面に分岐は書いていない）。
+    const inventory = new Inventory();
+    const screen = new CraftScreen(inventory);
+    const state = createFurnace();
+    screen.openFurnace(state);
+    inventory.add(LAVA_BUCKET, 1);
+    screen.press("inv", 0, 0, { shift: true, double: false });
+    console.log(`      シフトクリック → 燃料枠 ${itemName(state.fuel.item)} x${state.fuel.count} / 材料枠 ${state.input.count} 個`);
+    check(
+      "溶岩入りバケツはシフトクリックで燃料枠へ行く",
+      state.fuel.item === LAVA_BUCKET && state.fuel.count === 1 && isEmpty(state.input),
+      `燃料枠 ${itemName(state.fuel.item)} x${state.fuel.count}`,
     );
   }
 
@@ -335,21 +414,30 @@ export function run(): void {
   // **表そのものの最大**と、**1 個もののなかの最大**は別の守りで、どちらも残す。
   // **55 でもう一度割った**（ゆるめたのではない。ブレイズロッド 120 秒が 1 個ものの最大を
   // 80 → 120 へ動かしたので、「1 個ものの最大」と「それを除いた最大（石炭・木炭）」の 2 件にした）。
-  const singles = [...FUEL.entries()].filter(([item]) => item !== COAL_BLOCK);
+  // **56 でもう一度割った**（ゆるめたのではない。溶岩入りバケツ 1000 秒が表の最大を 800 → 1000 へ
+  // 動かしたので、「表の最大」と「溶岩入りバケツを除いた最大（石炭ブロック）」の 2 件にした）。
+  const noLava = [...FUEL.entries()].filter(([item]) => item !== LAVA_BUCKET);
+  const singles = noLava.filter(([item]) => item !== COAL_BLOCK);
   const common = singles.filter(([item]) => item !== BLAZE_ROD);
   console.log(
-    `      表の最大 ${Math.max(...FUEL.values())} 秒（石炭ブロック ${fuelTimeOf(COAL_BLOCK)} 秒）/ ` +
+    `      表の最大 ${Math.max(...FUEL.values())} 秒（溶岩入りバケツ ${fuelTimeOf(LAVA_BUCKET)} 秒）/ ` +
+      `それを除いた最大 ${Math.max(...noLava.map(([, t]) => t))} 秒（石炭ブロック ${fuelTimeOf(COAL_BLOCK)} 秒）/ ` +
       `1 個ものの最大 ${Math.max(...singles.map(([, t]) => t))} 秒（ブレイズロッド ${fuelTimeOf(BLAZE_ROD)} 秒）/ ` +
       `それを除いた最大 ${Math.max(...common.map(([, t]) => t))} 秒` +
       `（石炭 ${fuelTimeOf(COAL)} 秒 / 木炭 ${fuelTimeOf(CHARCOAL)} 秒）`,
   );
   check(
-    "石炭ブロックがいちばん長持ちする（表の最大）",
-    fuelTimeOf(COAL_BLOCK) === Math.max(...FUEL.values()),
-    `${fuelTimeOf(COAL_BLOCK)} 秒 / 表の最大 ${Math.max(...FUEL.values())} 秒`,
+    "表の最大は溶岩入りバケツ（1000 秒。56）",
+    fuelTimeOf(LAVA_BUCKET) === Math.max(...FUEL.values()),
+    `${fuelTimeOf(LAVA_BUCKET)} 秒 / 表の最大 ${Math.max(...FUEL.values())} 秒`,
   );
   check(
-    "1 個ものの最大はブレイズロッド（120 秒。石炭ブロックを除いた最大）",
+    "溶岩入りバケツを除いた表の最大は石炭ブロック",
+    fuelTimeOf(COAL_BLOCK) === Math.max(...noLava.map(([, t]) => t)),
+    `${fuelTimeOf(COAL_BLOCK)} 秒 / それを除いた最大 ${Math.max(...noLava.map(([, t]) => t))} 秒`,
+  );
+  check(
+    "1 個ものの最大はブレイズロッド（120 秒。溶岩入りバケツと石炭ブロックを除いた最大）",
     fuelTimeOf(BLAZE_ROD) === Math.max(...singles.map(([, t]) => t)),
     `ブレイズロッド ${fuelTimeOf(BLAZE_ROD)} 秒 / 1 個ものの最大 ${Math.max(...singles.map(([, t]) => t))} 秒`,
   );

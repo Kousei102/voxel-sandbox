@@ -90,6 +90,7 @@ import {
   IRON_HOE,
   IRON_LEGGINGS,
   IRON_SWORD,
+  LAVA_BUCKET,
   LEATHER,
   LEATHER_BOOTS,
   LEATHER_CHESTPLATE,
@@ -1142,6 +1143,13 @@ export function run(): void {
       emptyAfterEating(MUSHROOM_STEW) === BOWL && emptyAfterEating(MILK_BUCKET) === NO_ITEM,
     `残りかす: ミルク → ${leftoverOf(MILK_BUCKET)} / シチュー → ${leftoverOf(MUSHROOM_STEW)}` +
       ` ｜ 器: シチュー → ${emptyAfterEating(MUSHROOM_STEW)} / ミルク → ${emptyAfterEating(MILK_BUCKET)}`,
+  );
+  // 溶岩入りバケツ（56）も同じ表に載る（かまどの燃料枠が聞く。`smelting.ts` の `tickFurnace()`）。
+  console.log(`      溶岩入りバケツの残りかす → ${leftoverOf(LAVA_BUCKET)}（バケツ ${BUCKET}）`);
+  check(
+    "溶岩入りバケツの残りかすは空のバケツ（56。かまどの燃料枠に残る）",
+    leftoverOf(LAVA_BUCKET) === BUCKET,
+    `${leftoverOf(LAVA_BUCKET)}`,
   );
 
   describe("革・鉄・金・ダイヤの防具");
