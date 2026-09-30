@@ -1,100 +1,100 @@
-# 仕様: 溶岩入りバケツを燃料に（1000 秒・空のバケツが燃料枠に残る。キューの 56・**ID 0 個**）
+# 仕様: ネザーレンガ（アイテム）— ネザーラックを焼いて 1 個 / 4 個の 2x2 でネザーレンガのブロック（キューの 57・**ID 1 個**）
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-**この 1 件だけコードで数え直しました**（2026-09-30）: `LAVA_BUCKET`(86) は `smelting.ts` の `FUEL`（24 行）に**居ません**
-（`test/smelting.test.ts` の 55 の塊が「燃料でない」を `=== 0` で押さえている —— 下の 5. で書き換える）。
-**燃やしたあとに何かが残る燃料は 1 つも無く**、`tickFurnace()` は `fuel.count` が 0 になると `clearSlot(state.fuel)` するだけ。
-**残りかすの表はもうあります**: `items.ts` の `LEFTOVERS`（`MILK_BUCKET → BUCKET` の 1 行）/ `leftoverOf()`。
-聞いているのは `crafting.ts` の `consumeGrid()` だけ。**溶岩入りバケツを使うレシピは 0 本**（`LEFTOVERS` に足してもクラフトは変わらない）。
+**この 1 件だけコードで数え直しました**（2026-09-30・AUTODEV 148 の B）: **ネザーレンガの「アイテム」は無い**
+（`items.ts` に定数も `item()` も無し。ブロック `NETHER_BRICK`(48) は `blocks.ts` の低帯で、for が同じ番号のアイテムを自動で付けている）。
+`SMELTING` に `NETHERRACK`(45) の行は**無い**（11 行）。**`NETHER_BRICK`(48) を出力するレシピは 0 本**で、
+`test/crafting.test.ts` の 1015 行が「ネザーレンガそのもののレシピは 1 本も無い（要塞から掘るだけ）」を `=== 0` で押さえている（下の 5. で書き換える）。
+**形はまったく同じ前例がある**: 粘土玉 →（焼く）→ レンガ `BRICK_ITEM`(170) → 4 個の 2x2 → レンガブロック `BRICK`(12)。
+このとき**ブロックの表示名を「レンガブロック」に直した**（`blocks.ts` 1671 行・`test/blocks.test.ts` の `brickNames()`）。今回も同じ扱い。
 
-**本家の値**: 溶岩入りバケツ 20000 ティック = **1000 秒 = 100 個ぶん**。燃え始めた瞬間に**燃料枠に空のバケツが 1 個残る**
-（本家は燃料の「クラフトの残りかす」をそのまま使う —— ミルクバケツと同じ仕組み）。
+**本家の値**: ネザーラック 1 個を焼いてネザーレンガ 1 個（本家 1.0）/ ネザーレンガ 4 個の 2x2 でネザーレンガ（ブロック）1 個。
 
 ## 1. 何を足すか / 完了の判定
 
-**`FUEL` に 1 行（`[LAVA_BUCKET, SMELT_TIME * 100]`）と、`LEFTOVERS` に 1 行（`[LAVA_BUCKET, BUCKET]`）と、
-`tickFurnace()` の燃料をくべる所で `leftoverOf()` に聞く 3〜4 行。** かまどの画面は 1 行も触りません。
-**完了**: `npm test` の「精錬の表」に「溶岩入りバケツ（56）」の件が **6〜9 件**増えて**すべて緑**（**4148 → 4154〜4157 あたり**）。
-「燃料の表は 24 行」の件は **25 行**に書き換わって緑。ブロック ID の枠の行は**変わらない**（1..63 の空き 7・111..255 の空き 57）。
+**アイテム 1 つ（ID 199）・精錬 1 行・レシピ 1 本・ブロック 48 の表示名 1 か所。** 生成・画面・`main.ts` / `hands.ts` は 1 行も触りません。
+**完了**: `npm test` に「ネザーレンガ（57）」の件が **5〜8 件**増えて**すべて緑**（**4157 → 4162〜4165 あたり**）。
+ブロック ID の枠の行は **「111..255 の空き 56」**（57 → 56）・1..63 の空き 7 のまま。`MAX_ITEM_ID` は **199**。
 
 ## 2. 触るファイル / 触らないファイル
 
 **触る**:
-- `src/smelting.ts`:
-  - `FUEL` に 1 行（`COAL_BLOCK` / `BLAZE_ROD` の行の近く）。コメント 2〜3 行: 本家 1000 秒 = 100 個 / **表の最大が 800 → 1000 に動く** /
-    空のバケツが残るのは `LEFTOVERS` に聞く。**古くなるコメントを直す**: `CHARCOAL` の上の「表そのものの最大は石炭ブロックの 800 秒」と、
-    `COAL_BLOCK` の上の「これが `Math.max(...FUEL.values())` を 80 → 800 へ動かします」の段（溶岩入りバケツで 1000 へ動いた旨を足す）
-  - `tickFurnace()` の燃料をくべる所: **`clearSlot(state.fuel)` の前に `const rest = leftoverOf(item)` を取り、
-    `clearSlot()` を通してから `rest !== NO_ITEM` なら `state.fuel.item = rest; state.fuel.count = 1`**
-    （`consumeGrid()` と同じ順。**`clearSlot()` を飛ばして `item` を書き換えないこと** —— 傷が乗り移る。`rules/items-survival.md`）
-  - import に `leftoverOf` / `NO_ITEM`（**名前の実在と、どのファイルが export しているかを先に grep**）/ `LAVA_BUCKET`
-  - `tickFurnace()` の JSDoc の手順 3 に「残りかすがあれば燃料枠に置く」を 1 行
-- `src/items.ts` —— **`LEFTOVERS` に 1 行**と、その上のコメントに「かまどの燃料枠も聞く」旨を 1〜2 行。**ほかは触らない**
-- `test/smelting.test.ts` / `test/crafting.test.ts`（下の 5.）
-- `TUNING.md` —— 末尾の表に 1 行（下の 7.）
-- `rules/items-survival.md` / `rules/stateful-blocks.md`（下の 6.）
+- `src/items.ts`:
+  - `export const NETHER_BRICK_ITEM = 199;` と JSDoc（`BRICK_ITEM` の説明を写す形。**定数名を `NETHER_BRICK` にしないこと** —— `blocks.ts` の 48 と衝突して
+    `crafting.ts` / `smelting.ts` が両方 import した瞬間に typecheck が落ちる。**置けず・道具でも食べ物でもない・`FUEL` に足さない**）
+  - `item({ id: NETHER_BRICK_ITEM, name: "ネザーレンガ", block: AIR, stack: MAX_STACK, color: <測った値>, tool: null });`（`BRICK_ITEM` の `item()` の近く）
+  - **`MAX_ITEM_ID` を `NETHER_BRICK_ITEM` に**（いまは `BIRCH_SAPLING` = 198）
+- `src/smelting.ts`: `SMELTING` に `[NETHERRACK, { out: NETHER_BRICK_ITEM, count: 1 }]` の 1 行（`CLAY_BALL` の行の後ろ）とコメント 2〜3 行
+  （**この 1 行が、要塞で掘るしか無かったネザーレンガのブロックへの入口** / `FUEL` には足していない）と import
+- `src/crafting.ts`: `{ name: "ネザーレンガ", out: NETHER_BRICK, count: 1, shape: ["BB", "BB"], key: { B: NETHER_BRICK_ITEM } }` の 1 本
+  （「レンガブロック」の行の後ろ。**レシピ名はブロックの表示名と揃えること** —— 下の「ネザーレンガブロック」）とコメントと import
+- `src/blocks.ts`: `def(NETHER_BRICK, "ネザーレンガ", …)` の**表示名だけ**を `"ネザーレンガブロック"` に（`BRICK` の 1671 行と同じ理由のコメント 2〜3 行）。
+  **ID・色・硬さ・`slabPair()` の「ネザーレンガハーフ」・フェンスの名前は触らない**
+- `test/smelting.test.ts` / `test/crafting.test.ts` / `test/blocks.test.ts` / `test/items.test.ts`（下の 5.）
+- `ROADMAP.md` の予約表（199 を「実装済み」の 1 行に・**「199..255 予備 57 個」を「200..255 予備 56 個」に**）/ `TUNING.md`（下の 7.）/ `rules/items-survival.md`（下の 6.）
 
-**触らない**: `src/furnaces.ts` / `src/craftscreen.ts` / `src/inventoryui.ts` / `src/main.ts` / `src/hands.ts` / `src/crafting.ts` /
-`src/blocks.ts` / `src/durability.ts` / `src/use.ts` / `test/progression.test.ts` / `ROADMAP.md`。**`.claude/**` には 1 行も書かないこと。**
+**触らない**: `src/main.ts` / `src/hands.ts` / `src/fortress.ts` / `src/nethergen.ts` / `src/mobs.ts` / `src/craftscreen.ts` / `src/inventoryui.ts` /
+`src/furnaces.ts` / `test/progression.test.ts` / `test/fortress.test.ts`。**`.claude/**` には 1 行も書かないこと。**
 
 ## 3. 使う ID
 
-**0 個。** 既存の `LAVA_BUCKET`(86) と `BUCKET`(84) を表の鍵・値に使うだけ。予約表は触らない。
+**1 個: 199**（共有帯の次の空き。`ROADMAP.md` の予約表の `199..255` 行から取る）。**アイテムだけ**で、ブロック側の 199 には何も置かない。
+**111 以降はブロックとアイテムで 1 本の番号列** —— `blocks.ts` に 199 が無いことを grep で確かめてから取ること（`test/blocks.test.ts` が両側を突き合わせる）。
 
 ## 4. 判断をどのファイルに置くか
 
-- **何秒燃えるか** → `smelting.ts` の `FUEL`（判断の側）
-- **何が残るか** → `items.ts` の `LEFTOVERS`（**アイテムの性質**。クラフトでもかまどでも同じ物が残る —— 本家と同じ）。
-  **`smelting.ts` に「燃料の残りかす」の表を別に作らないこと**（同じ性質が 2 か所に写る。`rules/items-survival.md` の「`Recipe` にキーを足さない」と同じ理由）
-- `craftscreen.ts` に `id === LAVA_BUCKET` や `BUCKET` の分岐を**書かないこと** —— シフトクリックの行き先は `isFuel()`、
-  空のバケツが燃料枠に居るときの文言は既存の「この燃料は燃えません」がそのまま出る（**それで良しとする**。本家は何も出ない）
-- 新しい確かめられないものは無し。**使えるスキル**: 無し。**引いて読む rules**: `grep -l '"src/smelting.ts"' rules/*.md` /
-  `grep -l '"src/items.ts"' rules/*.md` と、`test/**` を触るので `rules/testing.md`
+- **何を焼くと何になるか** → `smelting.ts` の `SMELTING` / **何個で何を組むか** → `crafting.ts` の `RECIPES` / **アイテムの性質と色** → `items.ts`
+- 画面（`craftscreen.ts` / `inventoryui.ts`）に `NETHERRACK` や `NETHER_BRICK_ITEM` の分岐を**書かないこと** —— シフトクリックの行き先は `isSmeltable()` が決める
+- 新しい確かめられないものは無し。**使えるスキル**: `add-block`（アイテムを足す手順。**ID の取り方と `MAX_ITEM_ID` の突き合わせ**はここに書いてある）
+- **引いて読む rules**: `grep -l '"src/items.ts"' rules/*.md`（items-survival / vitals）・`"src/smelting.ts"`（inventory-screen / stateful-blocks）・
+  `"src/crafting.ts"`・`"src/blocks.ts"`（beds / blocks-shapes / items-survival）と、`test/**` を触るので `rules/testing.md`
+
+**色**: 候補 **`0x602034`**（深い赤紫）。B の周に総当たりで測った: いちばん近いのは**ソウルサンド(46) `0x51392c` で 30.2**・
+ブロック 48 `0x392229` とは約 40・フェンス(187) `0x6e3746` とは約 32。**割った候補**: `0x6a3139`（フェンスと 14.9）・`0x74303a`（ネザーラックと 11.8）・
+`0x5a2c33`（ソウルサンドと 17.3）。**実装の周で `allItemIds()` 全部と測り直し、20 を割ったらずらして `TUNING.md` に書くこと**（判定はゆるめない）。
 
 ## 5. 書くテスト（**値を出力してから判定**）
 
-`test/smelting.test.ts` の 55 の塊の後ろに `// --- 溶岩入りバケツ（56）---` の塊を 1 つ:
+`test/smelting.test.ts` の末尾の塊の後ろに `// --- ネザーレンガ（57）---` の塊:
+1. **ネザーラック 1 個 → ネザーレンガ 1 個**（`smeltResultOf(NETHERRACK)` などを出してから `out === NETHER_BRICK_ITEM && count === 1`）
+2. **かまどで実際に焼ける**: 既存の `loaded(NETHERRACK, 1, COAL, 1)` の書き方を写し、`SMELT_TIME` ぶん `tickFurnace` → 出力枠がネザーレンガ 1 個
+3. **ネザーレンガ（アイテム）もネザーラックも燃料でない**（`fuelTimeOf(...) === 0`）/ **ネザーレンガそのものは焼けない**（`isSmeltable(NETHER_BRICK_ITEM) === false`）
+4. 既存の「焼けるものの表は 11 行」→ **「12 行（57 で 1 行増えた）」**（`===` のまま）
 
-1. **1000 秒 = 100 個**（`fuelTimeOf(LAVA_BUCKET)` を出してから `=== 1000` と `/ SMELT_TIME === 100`）/ `isSmeltable(LAVA_BUCKET) === false`
-2. **燃え始めた瞬間に空のバケツが燃料枠に 1 個残る**: `loaded(IRON_ORE, 1, LAVA_BUCKET, 1)` → `tickFurnace(state, 0.1)` 1 回 →
-   `state.fuel.item === BUCKET && state.fuel.count === 1 && (state.fuel.damage ?? 0) === 0 && state.burnTotal === 1000`
-3. **空のバケツは燃料でないので次はくべない**: 2. の続きで `burnLeft` を 0 にして材料を足し `tickFurnace` → 火が点かない・燃料枠のバケツはそのまま 1 個
-4. **ほかの燃料は今までどおり何も残らない**: 石炭 1 個をくべたら燃料枠は空（`isEmpty`）—— 残りかすの道が全燃料に効いていないこと
-5. **材料が無ければくべない（空焚きで溶岩が減らない）**: `loaded(NO_ITEM…)` の書き方は既存の「材料が無ければ燃料を食わない」を写す → 燃料枠は `LAVA_BUCKET` のまま
-6. **シフトクリックで燃料枠へ**: かまどを開いた `CraftScreen` で持ち物の `LAVA_BUCKET` を `screen.press("inv", i, 0, { shift: true, double: false })`
-   （640 行あたりの書き方を写す）→ `state.fuel.item === LAVA_BUCKET`
-7. **既存の件を意味を保って書き換える**（**ゆるめではない。仕様書が先に名指しします**）:
-   - 「燃料の表は 24 行（55 で 13 行増えた）」→ **「25 行（56 で 1 行増えた）」**（`===` のまま）
-   - 55 の塊の `notFuel55` から **`LAVA_BUCKET` を抜き**、件名から「溶岩入りバケツ」を消す（`BUCKET` は残す —— 空のバケツは燃料でない）
-   - 「**石炭ブロックがいちばん長持ちする（表の最大）**」→ 溶岩入りバケツ 1000 秒が表の最大を動かすので**割る**（55 と同じ形。`rules/testing.md`）:
-     (a) 「表の最大は溶岩入りバケツ（1000 秒）」 (b) 「**溶岩入りバケツを除いた**表の最大は石炭ブロック」
-   - `singles`（石炭ブロックを除く）からも **`LAVA_BUCKET` を除く**（1 個ものの最大 = ブレイズロッドの件を保つ）。値を出す `console.log` も合わせる
+`test/crafting.test.ts`（ネザーレンガのフェンスの塊の後ろ）:
+5. **ネザーレンガ 4 個の 2x2 → ネザーレンガブロック（48）1 個**・**手持ちの 2x2 で作れる**（`findRecipe(grid(2, ["BB","BB"], …), 2)`）
+6. **ブロック 48 を 4 個並べても何も作れない**（材料がアイテム 199 であって、ブロックではないこと）
+7. 既存の件を**意味を保って書き換える**（**ゆるめではない。仕様書が先に名指しします**）:
+   - 「ネザーレンガそのもののレシピは 1 本も無い（要塞から掘るだけ）」→ **「ネザーレンガブロックのレシピはちょうど 1 本（57 の 2x2）」**（`=== 1`）
+   - 「レシピは 95 本」→ **「96 本（57 の 2x2 で 1 本増えた）」**（`===` のまま）
 
-`test/crafting.test.ts` の「残りかす」の件の近くに 1 件: **`leftoverOf(LAVA_BUCKET) === BUCKET`**（出してから）。
-「残りかすを持つアイテムは全部 1 枠 1 個まで」はそのまま緑のはず（溶岩入りバケツは `stack: 1`）—— **判定は触らない**。
+`test/blocks.test.ts` / `test/items.test.ts`:
+8. **名前の対**（`brickNames()` と同じ形の 1 件）: `blockName(NETHER_BRICK) === "ネザーレンガブロック" && itemName(NETHER_BRICK_ITEM) === "ネザーレンガ"` と、2 つが別の文字列
+9. **色**: 199 の色を `allItemIds()` 全部と測って**いちばん近い相手と距離を出してから** `>= 20`（`GLOWSTONE_DUST` の件を写す）
+10. 既存の件の数え直し（**比べる相手を新しい番号に直すこと** —— 古いまま残すと TS2367。`rules/testing.md`）:
+    `MAX_ITEM_ID === BIRCH_SAPLING`（blocks.test.ts 426 行・items.test.ts 888 行）→ `NETHER_BRICK_ITEM` /
+    共有帯の一覧 `sharedItems[77] === NETHER_BRICK_ITEM` / 「111..255 の空きは 57」→ **56**
 
-**足す前に `test/` を定数名で grep すること**（`FUEL.size` / `LAVA_BUCKET` / `leftoverOf(` / `allLeftoverIds(` / `Math.max(...FUEL`）。
-上の 7. のほかに赤くなったら、**判定を読んでから**「意味を保った書き換え」か「退行」かを決めること（143 の周の落とし穴。`rules/items-survival.md`）。
+**足す前に `test/` を定数名で grep すること**（`SMELTING.size` / `RECIPES.length` / `MAX_ITEM_ID` / `NETHER_BRICK` / `NETHERRACK` / `sharedFree` /
+`"ネザーレンガ"`）。上の 7. と 10. のほかに赤くなったら、**判定を読んでから**「意味を保った書き換え」か「退行」かを決めること。
+**「ネザーレンガ」は 6 文字で一覧の `.slot .label` が 2 行に折れる**側（既知 60 枠。見張りがあれば 61 に数え直す）。
 
 ## 6. このタスク固有の禁じ手
 
-- **`FUEL` の既存 24 行の値を書き換えない** / **`SMELTING` に 1 行も足さない**
-- **燃料枠に `BUCKET` を置くのに `clearSlot()` を飛ばさない**（傷が乗り移る）/ **`FurnaceState` にキーを足さない・`serializeFurnace()` の 9 要素を増やさない**
-- **`LEFTOVERS` の既存の行（ミルクバケツ）を触らない** / **`stack: 1` でないものを載せない**（不変条件）
-- **水入りバケツ・ミルクバケツを燃料にしない**（本家でも燃えない）
-- **判定をゆるめない**（`FUEL.size` は `===`・最大の件は割って残す）
-- **古くなる rules を放っておかない**:
-  (a) `rules/items-survival.md` の `EMPTIES` / `LEFTOVERS` の表: 「いつ」「どこへ」「聞くのは」の列に**かまどの燃料枠（`tickFurnace()`）**を足し、
-  「いま載っているもの」に溶岩入りバケツ（86）→ バケツ（84）
-  (b) `rules/stateful-blocks.md` の 40 行あたりの段: **表の最大は溶岩入りバケツ（1000 秒。56）**・石炭ブロックの件はそれを除いて見る /
-  `tickFurnace()` の順番の段に「くべた燃料に残りかすがあれば燃料枠に置く（`leftoverOf()`）」を 1 行
+- **ブロック 48 の ID・色・硬さ・落とす物を変えない**（名前だけ）/ **`fortress.ts` の建て方を変えない** / **ネザーラックのドロップを変えない**
+- **`FUEL` に 1 行も足さない**（ネザーラックは本家で燃えない —— 火が消えない性質はブロックの話で、燃料ではない）
+- **ネザーレンガのフェンス・ハーフのレシピの材料をアイテム 199 へ差し替えない**（いまはブロック 48 が材料。本家 1.0 の形と違っても今回は触らない。`docs/autodev-log.md` に 1 行）
+- **定数名を `NETHER_BRICK` にしない** / **アイテム 199 を置けるようにしない**（`block: AIR`）
+- **判定をゆるめない**（`SMELTING.size` / `RECIPES.length` / 空きは `===`）
+- **古くなる rules を放っておかない**: `rules/items-survival.md` に「焼いて作る材料アイテムの定数名は `*_ITEM`・ブロックの表示名に『ブロック』を付ける」の
+  前例を 170 と 199 の 2 件として 1〜2 行（既にあれば 199 を足すだけ）
 
 ## 7. 終了条件
 
-- `npm run typecheck` と `npm test` が緑（**4154〜4157 件あたり**）/ `npm run build` 緑（`src/**` を触るので）
-- **コミット 1 つ**（`AUTODEV 147（C の周）: 56 溶岩入りバケツを燃料に（ID 0 個）` の形）→ `master` へ push
-- `TUNING.md` の末尾の表に 1 行: **溶岩入りバケツ 1000 秒 = 100 個（表の最大。本家どおり。燃え始めた瞬間に空のバケツが燃料枠に残る）**
-- `AUTODEV-QUEUE.md` の 56 の行を消す / この仕様書を `状態: 済` / `docs/autodev-log.md` に 1 節 / `HANDOFF.md` を書き直す
-- **見た目には出ない**（撮らなくてよい。`npm run shot -- terrain` の md5 が前と同一なのを確かめるだけ）
+- `npm run typecheck` と `npm test` が緑（**4162〜4165 件あたり**）/ `npm run build` 緑（`src/**` を触るので）
+- **コミット 1 つ**（`AUTODEV 149（C の周）: 57 ネザーレンガ（アイテム・ID 199）` の形）→ `master` へ push
+- `TUNING.md` の末尾の表に 1 行: **ネザーレンガ（199）の色**（測った値と、いちばん近い相手・距離）
+- `ROADMAP.md` の予約表に 199 を「実装済み」/ `AUTODEV-QUEUE.md` の 57 の行を消す / この仕様書を `状態: 済` / `docs/autodev-log.md` に 1 節 / `HANDOFF.md` を書き直す
+- **一覧に 1 枠増えるので撮ること**（C-3。本物のブラウザの一覧で 199 枠目の色と名前・console のエラー 0 件）。地形は変わらない（`npm run shot -- terrain` の md5 が前と同一）
