@@ -1,101 +1,100 @@
-# 仕様: 燃料を本家に揃える（苗木 / 木の道具 / チェスト・本棚・フェンス・はしご / ブレイズロッド。キューの 55・**ID 0 個**）
+# 仕様: 溶岩入りバケツを燃料に（1000 秒・空のバケツが燃料枠に残る。キューの 56・**ID 0 個**）
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-**この 1 件だけコードで数え直しました**（2026-09-29）: 足す 13 種とも `smelting.ts` の `FUEL`（11 行）に入っていません。
-いまの 11 行 = 石炭 80 / 木炭 80 / 石炭ブロック 800 / 原木 3 種 15 / 板 15 / 板の階段 15 / 作業台 15 / 板のハーフ 7.5 / 棒 5（秒）。
-**板は 1 種類きり**（`PLANK`=10。トウヒ・シラカバの板は無い）ので、板もの（階段・ハーフ）の行は増えません。
+**この 1 件だけコードで数え直しました**（2026-09-30）: `LAVA_BUCKET`(86) は `smelting.ts` の `FUEL`（24 行）に**居ません**
+（`test/smelting.test.ts` の 55 の塊が「燃料でない」を `=== 0` で押さえている —— 下の 5. で書き換える）。
+**燃やしたあとに何かが残る燃料は 1 つも無く**、`tickFurnace()` は `fuel.count` が 0 になると `clearSlot(state.fuel)` するだけ。
+**残りかすの表はもうあります**: `items.ts` の `LEFTOVERS`（`MILK_BUCKET → BUCKET` の 1 行）/ `leftoverOf()`。
+聞いているのは `crafting.ts` の `consumeGrid()` だけ。**溶岩入りバケツを使うレシピは 0 本**（`LEFTOVERS` に足してもクラフトは変わらない）。
 
-**本家の値**（ティック ÷ 20。`SMELT_TIME`=10 秒 = 1 個）:
-
-| 足すもの | 定数（ID） | 秒 | 個 |
-| --- | --- | --- | --- |
-| 苗木 3 種 | `SAPLING`(164) / `SPRUCE_SAPLING`(165) / `BIRCH_SAPLING`(198)（`blocks.ts`） | 5 | 0.5 |
-| 木の道具 5 本 | `WOOD_PICKAXE`(69) / `WOOD_AXE`(70) / `WOOD_SHOVEL`(71) / `WOOD_SWORD`(111) / `WOOD_HOE`(117)（`items.ts`） | 10 | 1 |
-| 木の置き物 4 種 | `CHEST`(40) / `BOOKSHELF`(152) / `FENCE`(157) / `LADDER`(145)（`blocks.ts`。**はしごは 145 だけ**。146..148 は向き違いでアイテムを持たない） | 15 | 1.5 |
-| ブレイズロッド | `BLAZE_ROD`(89)（`items.ts`） | **120** | **12** |
-
-**足さないもの**（キューの 55 の範囲外・本家でも燃料でないか後の版）: 弓・ボウル・羊毛・ネザーレンガのフェンス(187)・ベッド。
-**溶岩入りバケツは 56**（空のバケツが残る仕組みが要る。**この周で足さないこと**）。
+**本家の値**: 溶岩入りバケツ 20000 ティック = **1000 秒 = 100 個ぶん**。燃え始めた瞬間に**燃料枠に空のバケツが 1 個残る**
+（本家は燃料の「クラフトの残りかす」をそのまま使う —— ミルクバケツと同じ仕組み）。
 
 ## 1. 何を足すか / 完了の判定
 
-**`FUEL` に 13 行足すだけ**（`[ID, SMELT_TIME * 個]` の形。既存の行と同じ）。**`tickFurnace()` もかまどの画面も 1 行も触りません**
-（燃料枠は `fuelTimeOf()` で引くだけ・シフトクリックは `isFuel()` で行き先を決めるだけ —— どちらも表に聞いています）。
-**完了**: `npm test` の「精錬の表」に「燃料を本家に揃える（55）」の件が **8〜12 件**増えて**すべて緑**（**4139 → 4147〜4151 あたり**）。
-「燃料の表は 11 行」の件は **24 行**に書き換わって緑。ブロック ID の枠の行は**変わらない**（1..63 の空き 7・111..255 の空き 57）。
+**`FUEL` に 1 行（`[LAVA_BUCKET, SMELT_TIME * 100]`）と、`LEFTOVERS` に 1 行（`[LAVA_BUCKET, BUCKET]`）と、
+`tickFurnace()` の燃料をくべる所で `leftoverOf()` に聞く 3〜4 行。** かまどの画面は 1 行も触りません。
+**完了**: `npm test` の「精錬の表」に「溶岩入りバケツ（56）」の件が **6〜9 件**増えて**すべて緑**（**4148 → 4154〜4157 あたり**）。
+「燃料の表は 24 行」の件は **25 行**に書き換わって緑。ブロック ID の枠の行は**変わらない**（1..63 の空き 7・111..255 の空き 57）。
 
 ## 2. 触るファイル / 触らないファイル
 
 **触る**:
-- `src/smelting.ts` —— **`FUEL` の表とそのコメントだけ**:
-  - 13 行を**材料の近く**に足す: 苗木 3 行は `STICK` の行の後ろ / 木の置き物 4 行は `CRAFTING_TABLE` の行の後ろ /
-    木の道具 5 行は板の行の塊の後ろ / ブレイズロッドは `COAL_BLOCK` の行の後ろ（コメント 1〜2 行ずつ。本家の値・何個ぶんか）
-  - import に足す: `./blocks` から `BIRCH_SAPLING` / `BOOKSHELF` / `CHEST` / `FENCE` / `LADDER` / `SAPLING` / `SPRUCE_SAPLING`、
-    `./items` から `BLAZE_ROD` / `WOOD_AXE` / `WOOD_HOE` / `WOOD_PICKAXE` / `WOOD_SHOVEL` / `WOOD_SWORD`（**名前の実在を先に grep**）
-  - **古くなるコメントを直す**: 99 行目あたりの「**1 個もののなかではこの 80 秒が最長**」→ ブレイズロッドの 120 秒が最長になった旨
-- `test/smelting.test.ts` —— 下の 5.
-- `TUNING.md` —— 末尾の表に 2 行（下の 7.）
-- `rules/stateful-blocks.md` —— 下の 6. の 2 か所（**古くなる決まりを直す**。層 2 なので `Edit` で普通に）
+- `src/smelting.ts`:
+  - `FUEL` に 1 行（`COAL_BLOCK` / `BLAZE_ROD` の行の近く）。コメント 2〜3 行: 本家 1000 秒 = 100 個 / **表の最大が 800 → 1000 に動く** /
+    空のバケツが残るのは `LEFTOVERS` に聞く。**古くなるコメントを直す**: `CHARCOAL` の上の「表そのものの最大は石炭ブロックの 800 秒」と、
+    `COAL_BLOCK` の上の「これが `Math.max(...FUEL.values())` を 80 → 800 へ動かします」の段（溶岩入りバケツで 1000 へ動いた旨を足す）
+  - `tickFurnace()` の燃料をくべる所: **`clearSlot(state.fuel)` の前に `const rest = leftoverOf(item)` を取り、
+    `clearSlot()` を通してから `rest !== NO_ITEM` なら `state.fuel.item = rest; state.fuel.count = 1`**
+    （`consumeGrid()` と同じ順。**`clearSlot()` を飛ばして `item` を書き換えないこと** —— 傷が乗り移る。`rules/items-survival.md`）
+  - import に `leftoverOf` / `NO_ITEM`（**名前の実在と、どのファイルが export しているかを先に grep**）/ `LAVA_BUCKET`
+  - `tickFurnace()` の JSDoc の手順 3 に「残りかすがあれば燃料枠に置く」を 1 行
+- `src/items.ts` —— **`LEFTOVERS` に 1 行**と、その上のコメントに「かまどの燃料枠も聞く」旨を 1〜2 行。**ほかは触らない**
+- `test/smelting.test.ts` / `test/crafting.test.ts`（下の 5.）
+- `TUNING.md` —— 末尾の表に 1 行（下の 7.）
+- `rules/items-survival.md` / `rules/stateful-blocks.md`（下の 6.）
 
-**触らない**: `src/furnaces.ts` / `src/craftscreen.ts` / `src/inventoryui.ts` / `src/main.ts` / `src/hands.ts` / `src/items.ts` /
-`src/blocks.ts` / `src/crafting.ts` / `src/durability.ts` / `test/progression.test.ts`。**`.claude/**` には 1 行も書かないこと。**
+**触らない**: `src/furnaces.ts` / `src/craftscreen.ts` / `src/inventoryui.ts` / `src/main.ts` / `src/hands.ts` / `src/crafting.ts` /
+`src/blocks.ts` / `src/durability.ts` / `src/use.ts` / `test/progression.test.ts` / `ROADMAP.md`。**`.claude/**` には 1 行も書かないこと。**
 
 ## 3. 使う ID
 
-**0 個。** 既存の 13 個を `FUEL` の鍵に使うだけ。`ROADMAP.md` の予約表は触らない。
+**0 個。** 既存の `LAVA_BUCKET`(86) と `BUCKET`(84) を表の鍵・値に使うだけ。予約表は触らない。
 
 ## 4. 判断をどのファイルに置くか
 
-**`smelting.ts` の `FUEL` の表 1 本だけ**（`CLAUDE.md` の対の表で「判断の側」）。`craftscreen.ts` に `id === BLAZE_ROD` や
-「道具なら燃料枠へ」のような分岐を**書かないこと** —— 行き先はもう `isFuel()` が決めています。新しい確かめられないものは無し。
-**使えるスキル**: 無し（ブロックもアイテムも足さない）。**引いて読む rules**: `grep -l '"src/smelting.ts"' rules/*.md`
-（→ `inventory-screen.md` / `stateful-blocks.md`）と、`test/**` を触るので `rules/testing.md`。
+- **何秒燃えるか** → `smelting.ts` の `FUEL`（判断の側）
+- **何が残るか** → `items.ts` の `LEFTOVERS`（**アイテムの性質**。クラフトでもかまどでも同じ物が残る —— 本家と同じ）。
+  **`smelting.ts` に「燃料の残りかす」の表を別に作らないこと**（同じ性質が 2 か所に写る。`rules/items-survival.md` の「`Recipe` にキーを足さない」と同じ理由）
+- `craftscreen.ts` に `id === LAVA_BUCKET` や `BUCKET` の分岐を**書かないこと** —— シフトクリックの行き先は `isFuel()`、
+  空のバケツが燃料枠に居るときの文言は既存の「この燃料は燃えません」がそのまま出る（**それで良しとする**。本家は何も出ない）
+- 新しい確かめられないものは無し。**使えるスキル**: 無し。**引いて読む rules**: `grep -l '"src/smelting.ts"' rules/*.md` /
+  `grep -l '"src/items.ts"' rules/*.md` と、`test/**` を触るので `rules/testing.md`
 
-## 5. 書くテスト（`test/smelting.test.ts`。**値を出力してから判定**）
+## 5. 書くテスト（**値を出力してから判定**）
 
-「精錬の表」の燃料の節の近くに `// --- 燃料を本家に揃える（55）---` の塊を 1 つ:
+`test/smelting.test.ts` の 55 の塊の後ろに `// --- 溶岩入りバケツ（56）---` の塊を 1 つ:
 
-1. **13 行を 1 行ずつ `console.log`**（名前・秒・何個ぶん）してから、**種類ごとに 1 件ずつ `===` で**判定する（4 件）:
-   苗木 3 種がどれも 5 秒 / 木の道具 5 本がどれも 10 秒 / 置き物 4 種がどれも 15 秒 / ブレイズロッドが 120 秒（= 12 個）
-2. **はしごは 145 だけ**が燃える（`LADDER_XN` など 146..148 は `fuelTimeOf() === 0`）—— 向き違いに行を足していないこと
-3. **足さなかったもの**が燃料でないこと（値を出してから `=== 0`）: `BOW` / `BOWL` / `NETHER_BRICK_FENCE` / `LAVA_BUCKET`（56 まで）/ `BUCKET`
-4. **既存の件を意味を保って書き換える**（**ゆるめではない。仕様書が先に名指しします**）:
-   - 「燃料の表は 11 行（シラカバの原木で 1 行増えた）」→ **「24 行（55 で 13 行増えた）」**（`===` のまま数を直す）
-   - 「**1 個もののなかでは石炭と木炭がいちばん長持ちする**」→ **ブレイズロッドの 120 秒が 1 個ものの最大**になるので、
-     **2 件に割る**（石炭ブロックのときと同じ形。`rules/testing.md`）:
-     (a) 「1 個ものの最大はブレイズロッド（120 秒）」—— `singles` の最大 `=== fuelTimeOf(BLAZE_ROD)`
-     (b) 「**ブレイズロッドを除いた**1 個もののなかでは石炭と木炭がいちばん長持ちする」—— `singles` から `BLAZE_ROD` も除いて、
-     今までと同じ `fuelTimeOf(COAL) === max && CHARCOAL === COAL`。**「石炭ブロックがいちばん長持ちする（表の最大）」は触らない**（800 > 120）
-   - 「**いまは道具が焼けも燃えもしない**」（760 行あたり）→ 木の道具が燃料になって**届く日が来た**ので、**実際に確かめる件に差し替える**:
-     かまどを開いた `CraftScreen` で、**傷 12 の `WOOD_PICKAXE` を持ち物に入れてシフトクリック**（`screen.press("inv", i, 0, { shift: true, double: false })`・
-     530 行あたりの「シフトクリックの行き先」の書き方を写す）→ **`state.fuel.item === WOOD_PICKAXE` かつ `state.fuel.damage === 12`**。
-     値（行き先の枠・傷）を出してから判定。**`moveInto()` の呼び出しの形の件（`carryWear(into, damageOf(from))`）はそのまま残す**
-5. **燃やすと傷ごと消える**: 燃料枠に傷 12 の木のツルハシ 1 本・入力に鉄鉱石 1 個で `tickFurnace(state, 0.1)` を 1 回 →
-   `state.fuel` が空・`(state.fuel.damage ?? 0) === 0`・`state.burnTotal === 10`（値を出してから）
-6. **材料を優先する既存の決まりが崩れていない**: 新しく足した 13 個のどれも `isSmeltable() === false`（出してから判定）
+1. **1000 秒 = 100 個**（`fuelTimeOf(LAVA_BUCKET)` を出してから `=== 1000` と `/ SMELT_TIME === 100`）/ `isSmeltable(LAVA_BUCKET) === false`
+2. **燃え始めた瞬間に空のバケツが燃料枠に 1 個残る**: `loaded(IRON_ORE, 1, LAVA_BUCKET, 1)` → `tickFurnace(state, 0.1)` 1 回 →
+   `state.fuel.item === BUCKET && state.fuel.count === 1 && (state.fuel.damage ?? 0) === 0 && state.burnTotal === 1000`
+3. **空のバケツは燃料でないので次はくべない**: 2. の続きで `burnLeft` を 0 にして材料を足し `tickFurnace` → 火が点かない・燃料枠のバケツはそのまま 1 個
+4. **ほかの燃料は今までどおり何も残らない**: 石炭 1 個をくべたら燃料枠は空（`isEmpty`）—— 残りかすの道が全燃料に効いていないこと
+5. **材料が無ければくべない（空焚きで溶岩が減らない）**: `loaded(NO_ITEM…)` の書き方は既存の「材料が無ければ燃料を食わない」を写す → 燃料枠は `LAVA_BUCKET` のまま
+6. **シフトクリックで燃料枠へ**: かまどを開いた `CraftScreen` で持ち物の `LAVA_BUCKET` を `screen.press("inv", i, 0, { shift: true, double: false })`
+   （640 行あたりの書き方を写す）→ `state.fuel.item === LAVA_BUCKET`
+7. **既存の件を意味を保って書き換える**（**ゆるめではない。仕様書が先に名指しします**）:
+   - 「燃料の表は 24 行（55 で 13 行増えた）」→ **「25 行（56 で 1 行増えた）」**（`===` のまま）
+   - 55 の塊の `notFuel55` から **`LAVA_BUCKET` を抜き**、件名から「溶岩入りバケツ」を消す（`BUCKET` は残す —— 空のバケツは燃料でない）
+   - 「**石炭ブロックがいちばん長持ちする（表の最大）**」→ 溶岩入りバケツ 1000 秒が表の最大を動かすので**割る**（55 と同じ形。`rules/testing.md`）:
+     (a) 「表の最大は溶岩入りバケツ（1000 秒）」 (b) 「**溶岩入りバケツを除いた**表の最大は石炭ブロック」
+   - `singles`（石炭ブロックを除く）からも **`LAVA_BUCKET` を除く**（1 個ものの最大 = ブレイズロッドの件を保つ）。値を出す `console.log` も合わせる
 
-**足す前に `test/` を定数名で grep すること**（`FUEL.size` / `isFuel(` / `fuelTimeOf(` / `WOOD_PICKAXE`）。
-**レシピや表を 1 行足すと `=== 0` / `=== null` で見ていた既存の件が別ファイルで赤くなる**（143 の周の落とし穴。`rules/items-survival.md`）。
-上の 4. の 3 件のほかに赤くなったら、**判定を読んでから**「意味を保った書き換え」か「退行」かを決めること。
+`test/crafting.test.ts` の「残りかす」の件の近くに 1 件: **`leftoverOf(LAVA_BUCKET) === BUCKET`**（出してから）。
+「残りかすを持つアイテムは全部 1 枠 1 個まで」はそのまま緑のはず（溶岩入りバケツは `stack: 1`）—— **判定は触らない**。
+
+**足す前に `test/` を定数名で grep すること**（`FUEL.size` / `LAVA_BUCKET` / `leftoverOf(` / `allLeftoverIds(` / `Math.max(...FUEL`）。
+上の 7. のほかに赤くなったら、**判定を読んでから**「意味を保った書き換え」か「退行」かを決めること（143 の周の落とし穴。`rules/items-survival.md`）。
 
 ## 6. このタスク固有の禁じ手
 
-- **`FUEL` の既存 11 行の値を書き換えない**（原木・板の 15 秒は木炭の入口。`rules/stateful-blocks.md`）
-- **`SMELTING` に 1 行も足さない**（木の道具を焼いて何かにする行は本家 1.11 以降の別の話）
-- **溶岩入りバケツを足さない**（56。空のバケツが残る判断が要る）
-- **ブレイズロッドの 120 秒を削らない**（本家どおり。**エンドへ行く材料を燃やせてしまう**のは本家も同じで、`TUNING.md` に書くだけ）
-- **判定をゆるめない**（`>= 11` / `>= 1` にしない・`FUEL.size` は `===`）
-- **古くなる rules を放っておかない** —— `rules/stateful-blocks.md` の 2 か所を直す:
-  (a) 250 行あたり「**いまの表では道具で届きません** —— 焼けるものにも燃料にも道具が 1 本も無い」→ **55 で木の道具 5 本が燃料になり届いた**・テストは形の件に加えて実際にシフトクリックして傷を見る件がある
-  (b) 40 行あたり「同じ長さの燃料を 2 つ持つときは〜」の段に 1 行: **1 個ものの最大はブレイズロッド（120 秒）・石炭と木炭の件はそれを除いて見る**
+- **`FUEL` の既存 24 行の値を書き換えない** / **`SMELTING` に 1 行も足さない**
+- **燃料枠に `BUCKET` を置くのに `clearSlot()` を飛ばさない**（傷が乗り移る）/ **`FurnaceState` にキーを足さない・`serializeFurnace()` の 9 要素を増やさない**
+- **`LEFTOVERS` の既存の行（ミルクバケツ）を触らない** / **`stack: 1` でないものを載せない**（不変条件）
+- **水入りバケツ・ミルクバケツを燃料にしない**（本家でも燃えない）
+- **判定をゆるめない**（`FUEL.size` は `===`・最大の件は割って残す）
+- **古くなる rules を放っておかない**:
+  (a) `rules/items-survival.md` の `EMPTIES` / `LEFTOVERS` の表: 「いつ」「どこへ」「聞くのは」の列に**かまどの燃料枠（`tickFurnace()`）**を足し、
+  「いま載っているもの」に溶岩入りバケツ（86）→ バケツ（84）
+  (b) `rules/stateful-blocks.md` の 40 行あたりの段: **表の最大は溶岩入りバケツ（1000 秒。56）**・石炭ブロックの件はそれを除いて見る /
+  `tickFurnace()` の順番の段に「くべた燃料に残りかすがあれば燃料枠に置く（`leftoverOf()`）」を 1 行
 
 ## 7. 終了条件
 
-- `npm run typecheck` と `npm test` が緑（**4147〜4151 件あたり**）/ `npm run build` 緑（`src/**` を触るので）
-- **コミット 1 つ**（`AUTODEV 145（C の周）: 55 燃料を本家に揃える（ID 0 個）` の形）→ `master` へ push
-- `TUNING.md` の末尾の表に 2 行: **ブレイズロッド 120 秒 = 12 個（本家どおり。エンドへの材料を燃やせる）** /
-  **苗木 5・木の道具 10・チェスト / 本棚 / フェンス / はしご 15 秒（本家どおり。木の道具は傷ごと燃える）**
-- `AUTODEV-QUEUE.md` の 55 の行を消す / この仕様書を `状態: 済` / `docs/autodev-log.md` に 1 節 / `HANDOFF.md` を書き直す
+- `npm run typecheck` と `npm test` が緑（**4154〜4157 件あたり**）/ `npm run build` 緑（`src/**` を触るので）
+- **コミット 1 つ**（`AUTODEV 147（C の周）: 56 溶岩入りバケツを燃料に（ID 0 個）` の形）→ `master` へ push
+- `TUNING.md` の末尾の表に 1 行: **溶岩入りバケツ 1000 秒 = 100 個（表の最大。本家どおり。燃え始めた瞬間に空のバケツが燃料枠に残る）**
+- `AUTODEV-QUEUE.md` の 56 の行を消す / この仕様書を `状態: 済` / `docs/autodev-log.md` に 1 節 / `HANDOFF.md` を書き直す
 - **見た目には出ない**（撮らなくてよい。`npm run shot -- terrain` の md5 が前と同一なのを確かめるだけ）
