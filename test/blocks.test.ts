@@ -199,6 +199,7 @@ import {
   MAX_ITEM_ID,
   MILK_BUCKET,
   MUSHROOM_STEW,
+  NETHER_BRICK_ITEM,
   NO_ITEM,
   PAPER,
   RAW_BEEF,
@@ -309,8 +310,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタ・ネザーレンガのフェンス・石炭ブロック・グロウストーンダスト・クモの目・金の道具 5 本・シラカバの木 3 つの 77 個（198 まで。**シラカバの原木・葉・苗木が入ったので数え直した** —— 名指しの一覧はそのままで、末尾に 3 個足しただけ）",
-    sharedItems.length === 77 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタ・ネザーレンガのフェンス・石炭ブロック・グロウストーンダスト・クモの目・金の道具 5 本・シラカバの木 3 つ・ネザーレンガの 78 個（199 まで。**ネザーレンガ（アイテム）が入ったので数え直した** —— 名指しの一覧はそのままで、末尾に 1 個足しただけ）",
+    sharedItems.length === 78 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -423,15 +424,18 @@ export function run(): void {
       // （**比べる相手を新しい番号に直すこと** —— 古い番号のまま残すと TS2367。`rules/testing.md`）。
       sharedItems[74] === BIRCH_WOOD && sharedItems[75] === BIRCH_LEAVES &&
       sharedItems[76] === BIRCH_SAPLING &&
-      MAX_ITEM_ID === BIRCH_SAPLING,
+      // **199 は手で足したアイテム**（ネザーレンガ。57。ブロックは増えない —— 組み上がる先は
+      // 低帯の `NETHER_BRICK`(48) なので）。上限がアイテム側に戻った。
+      sharedItems[77] === NETHER_BRICK_ITEM &&
+      MAX_ITEM_ID === NETHER_BRICK_ITEM,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 57（シラカバの木 196..198 で 3 個減った。番号を 3 つ取ったので数え直した）",
-    sharedFree === 57,
+    "111..255 の空きは 56（ネザーレンガ 199 で 1 個減った。番号を 1 つ取ったので数え直した）",
+    sharedFree === 56,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1491,6 +1495,26 @@ function brickNames(): void {
     "レンガブロックは番号 12 のまま持てて置ける・レンガ（170）は置けない",
     BRICK === 12 && placedBlock(BRICK) === BRICK && placedBlock(BRICK_ITEM) === 0,
     `${placedBlock(BRICK)} / ${placedBlock(BRICK_ITEM)}`,
+  );
+
+  // --- ネザーレンガ（57。ブロック 48 とアイテム 199 の名前の対）---
+  // **レンガとまったく同じ形。** 一覧に「ネザーレンガ」が 2 つ並ばないことを見る。
+  console.log(
+    `      ブロック NETHER_BRICK(${NETHER_BRICK}) 「${blockName(NETHER_BRICK)}」 ／ ` +
+      `アイテム NETHER_BRICK_ITEM(${NETHER_BRICK_ITEM}) 「${itemName(NETHER_BRICK_ITEM)}」` +
+      ` ／ 置くと ${placedBlock(NETHER_BRICK)} / ${placedBlock(NETHER_BRICK_ITEM)}`,
+  );
+  check(
+    "ブロックは「ネザーレンガブロック」・アイテムは「ネザーレンガ」で、名前が別（57）",
+    blockName(NETHER_BRICK) === "ネザーレンガブロック" &&
+      itemName(NETHER_BRICK_ITEM) === "ネザーレンガ" &&
+      blockName(NETHER_BRICK) !== itemName(NETHER_BRICK_ITEM),
+    `${blockName(NETHER_BRICK)} ↔ ${itemName(NETHER_BRICK_ITEM)}`,
+  );
+  check(
+    "ネザーレンガブロックは番号 48 のまま持てて置ける・ネザーレンガ（199）は置けない（57）",
+    NETHER_BRICK === 48 && placedBlock(NETHER_BRICK) === NETHER_BRICK && placedBlock(NETHER_BRICK_ITEM) === 0,
+    `${placedBlock(NETHER_BRICK)} / ${placedBlock(NETHER_BRICK_ITEM)}`,
   );
 }
 

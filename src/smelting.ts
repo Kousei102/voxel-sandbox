@@ -19,6 +19,7 @@ import {
   GOLD_ORE,
   IRON_ORE,
   LADDER,
+  NETHERRACK,
   PLANK,
   PLANK_SLAB,
   PLANK_STAIRS,
@@ -42,6 +43,7 @@ import {
   GOLD_INGOT,
   IRON_INGOT,
   LAVA_BUCKET,
+  NETHER_BRICK_ITEM,
   NO_ITEM,
   RAW_BEEF,
   RAW_CHICKEN,
@@ -96,6 +98,10 @@ export const SMELTING: ReadonlyMap<number, SmeltResult> = new Map([
   // 組むと `blocks.ts` の `BRICK`(12) になる（`crafting.ts`）ので、
   // **この 1 行が、置けるのに作れなかったレンガブロックへの入口**。
   [CLAY_BALL, { out: BRICK_ITEM, count: 1 }],
+  // ネザーラック → ネザーレンガ（本家と同じ。57）。**この 1 行が、要塞で掘るしか
+  // 無かったネザーレンガのブロック（`blocks.ts` の 48）への入口**（4 個の 2x2 は `crafting.ts`）。
+  // **`FUEL` には足していない** —— ネザーラックが燃え続けるのはブロックの性質で、燃料ではない。
+  [NETHERRACK, { out: NETHER_BRICK_ITEM, count: 1 }],
 ]);
 
 /**

@@ -15,11 +15,14 @@ import {
   BED,
   ICE,
   LEAVES,
+  NETHER_BRICK,
   NETHER_BRICK_FENCE,
+  NETHERRACK,
   OBSIDIAN,
   PLANK,
   RED_MUSHROOM,
   SAPLING,
+  SOUL_SAND,
   SPRUCE_LEAVES,
   SPRUCE_SAPLING,
   STONE,
@@ -69,6 +72,7 @@ import {
   LEATHER_HELMET,
   LEATHER_LEGGINGS,
   MAX_ITEM_ID,
+  NETHER_BRICK_ITEM,
   RAW_BEEF,
   ROTTEN_FLESH,
   SHEARS,
@@ -881,11 +885,11 @@ export function run(): void {
     birchPairs.every((g) => g >= 20),
     birchPairs.map((g) => g.toFixed(1)).join(" / "),
   );
-  // **上限の `===` はこの節が持つ**（前の節は `> GOLD_HOE`。`rules/testing.md` の TS2367）。
+  // **上限の `===` はネザーレンガの節へ移した**（57。ここに残すと TS2367。`rules/testing.md`）。
   console.log(`      MAX_ITEM_ID ${MAX_ITEM_ID}（シラカバの苗木 ${BIRCH_SAPLING}）`);
   check(
-    "MAX_ITEM_ID はシラカバの苗木（198）",
-    MAX_ITEM_ID === BIRCH_SAPLING,
+    "MAX_ITEM_ID はシラカバの苗木（198）より後ろで、196..198 が一覧に出る",
+    MAX_ITEM_ID > BIRCH_SAPLING && birchIds.every((id) => ids.includes(id)),
     `MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
 
@@ -922,5 +926,50 @@ export function run(): void {
     "シラカバの葉から苗木が 3〜7%（表は 5%）・棒も出る",
     sapRate >= 0.03 && sapRate <= 0.07 && sticks > 0,
     `苗木 ${(sapRate * 100).toFixed(2)}% / 棒 ${sticks}`,
+  );
+
+  describe("ネザーレンガ（57・アイテム 199・ネザーラックを焼くと出る）");
+
+  // **レンガ（170）の写し**: 置けず・道具でもなく・食べ物でもない。
+  console.log(
+    `      ネザーレンガ(${NETHER_BRICK_ITEM}) ${itemName(NETHER_BRICK_ITEM)} ` +
+      `0x${itemColor(NETHER_BRICK_ITEM).toString(16)}  置ける ${placedBlock(NETHER_BRICK_ITEM) !== 0} / ` +
+      `道具 ${toolOf(NETHER_BRICK_ITEM) !== null} / 食べ物 ${foodOf(NETHER_BRICK_ITEM) !== null}` +
+      ` / 1 枠 ${itemStackLimit(NETHER_BRICK_ITEM)} 個 / 一覧 ${ids.includes(NETHER_BRICK_ITEM)}`,
+  );
+  check(
+    "ネザーレンガは置けず・道具でもなく・食べ物でもない（1 枠 64 個）・一覧に出る",
+    itemName(NETHER_BRICK_ITEM) === "ネザーレンガ" && placedBlock(NETHER_BRICK_ITEM) === 0 &&
+      toolOf(NETHER_BRICK_ITEM) === null && foodOf(NETHER_BRICK_ITEM) === null &&
+      itemStackLimit(NETHER_BRICK_ITEM) === 64 && ids.includes(NETHER_BRICK_ITEM),
+    `block ${placedBlock(NETHER_BRICK_ITEM)} / tool ${toolOf(NETHER_BRICK_ITEM)} / ` +
+      `food ${foodOf(NETHER_BRICK_ITEM)} / stack ${itemStackLimit(NETHER_BRICK_ITEM)}`,
+  );
+  // **上限の `===` はこの節が持つ**（前の節は `> BIRCH_SAPLING`。`rules/testing.md` の TS2367）。
+  console.log(`      MAX_ITEM_ID ${MAX_ITEM_ID}（ネザーレンガ ${NETHER_BRICK_ITEM}）`);
+  check("MAX_ITEM_ID はネザーレンガ（199）", MAX_ITEM_ID === NETHER_BRICK_ITEM, `MAX_ITEM_ID ${MAX_ITEM_ID}`);
+
+  // **深い赤紫の帯**（ネザーレンガブロック 48・フェンス 187・ネザーラック・ソウルサンド）。
+  // **いちばん近い相手と隔たりを出してから**判定する（グロウストーンダストと同じ形）。
+  let nbBest = Infinity;
+  let nbWho = "";
+  for (const other of ids) {
+    if (other === NETHER_BRICK_ITEM) continue;
+    const gap = dist(itemColor(NETHER_BRICK_ITEM), itemColor(other));
+    if (gap < nbBest) {
+      nbBest = gap;
+      nbWho = `${itemName(other)} 0x${itemColor(other).toString(16)}`;
+    }
+  }
+  for (const other of [NETHER_BRICK, NETHER_BRICK_FENCE, NETHERRACK, SOUL_SAND])
+    console.log(
+      `      ネザーレンガ ↔ ${itemName(other)} 0x${itemColor(other).toString(16)}: ` +
+        `${dist(itemColor(NETHER_BRICK_ITEM), itemColor(other)).toFixed(1)}`,
+    );
+  console.log(`      ネザーレンガの色のいちばん近い相手: ${nbWho} ${nbBest.toFixed(1)}`);
+  check(
+    "ネザーレンガは既存のどのアイテムとも一覧で見分けられる（RGB で 20 以上）",
+    nbBest >= 20,
+    `いちばん近いのは${nbWho}で ${nbBest.toFixed(1)}`,
   );
 }

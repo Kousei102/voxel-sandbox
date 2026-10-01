@@ -639,6 +639,22 @@ export const GLOWSTONE_DUST = 189;
 export const SPIDER_EYE = 190;
 
 /**
+ * ネザーレンガ（アイテム。57）。**ネザーラックを焼くと 1 個**（`smelting.ts`）、
+ * **4 個の 2x2 で `blocks.ts` の `NETHER_BRICK`(48) になる**（`crafting.ts`）。
+ * **粘土玉 → レンガ `BRICK_ITEM`(170) → レンガブロック `BRICK`(12) の完全な写し**です。
+ *
+ * **定数名を `NETHER_BRICK` にしないこと** —— `blocks.ts` の 48 と衝突して、
+ * `crafting.ts` が両方 import した瞬間に `npm run typecheck` が落ちます（型で止まる罠）。
+ * **名前は「ブロック = ネザーレンガブロック / アイテム = ネザーレンガ」**（`BRICK` と同じ扱い）。
+ *
+ * **置けず・道具でもなく・食べ物でもなく・`FUEL` にも足さないこと**（レンガと同じ）。
+ *
+ * **色 `0x602034` は測って選んだ値です**（`TUNING.md`）。いちばん近いのは
+ * ソウルサンド `0x51392c` で 30.2・ブロック 48 `0x392229` とは約 40。
+ */
+export const NETHER_BRICK_ITEM = 199;
+
+/**
  * 金の道具 5 本（49）。**ツルハシ 191 / 斧 192 / シャベル 193 / 剣 194 / クワ 195。**
  * 本家どおり **掘れる階層と殴る強さは木と同じ（`tier: TIER_WOOD`）・掘る速さは 12
  * （ダイヤ 8 より速い）・32 回で壊れる**。
@@ -664,9 +680,10 @@ export const GOLD_HOE = 195;
  * （`craftscreen.ts` の `CREATIVE_ITEMS`）にだけ出てこないブロック**ができます
  * （置けるし掘れるので、型でも `typecheck` でも止まりません）。
  *
- * **いまはシラカバの苗木（ブロック 198）が上限です**（シラカバの木 196..198 の最後。3 つとも
+ * **いまはネザーレンガ（アイテム 199）が上限です**（手で足したアイテムで、ブロック 199 はありません）。
+ * 直前がシラカバの苗木（ブロック 198。シラカバの木 196..198 の最後。3 つとも
  * `items.ts` に 1 行も書かずに増えたブロックで、上の for が同じ番号のアイテムを作ります）。
- * 直前が金のクワ（アイテム 195。金の道具 191..195 の最後。手で足したアイテムで、
+ * その前が金のクワ（アイテム 195。金の道具 191..195 の最後。手で足したアイテムで、
  * ブロック 191..195 はありません）・クモの目（アイテム 190）・グロウストーンダスト（アイテム 189）・石炭ブロック（ブロック 188。
  * `items.ts` に 1 行も書かずに増えたブロックで、`variantOf` を書いていないので
  * **上の for が同じ番号のアイテム 188 を作ります**。135..137 の鉱物をしまう立方体と
@@ -683,7 +700,7 @@ export const GOLD_HOE = 195;
  * **上限をこちら側へ移したら、それまで指していたブロックの import を消すこと** ——
  * 残すと「使われていない」で `npm run typecheck` が落ちます（型で止まる安全な罠）。
  */
-export const MAX_ITEM_ID = BIRCH_SAPLING;
+export const MAX_ITEM_ID = NETHER_BRICK_ITEM;
 
 export const MAX_STACK = 64;
 
@@ -995,6 +1012,12 @@ item({ id: SPIDER_EYE, name: "クモの目", block: AIR, stack: MAX_STACK, color
 // **色は測って選んだ値**（上の `BRICK_ITEM` の説明。`BRICK`(12) の 0xa4553f から
 // 離す向きへ振ってある —— 一覧では「レンガ」と「レンガブロック」が並んで出ます）。
 item({ id: BRICK_ITEM, name: "レンガ", block: AIR, stack: MAX_STACK, color: 0xbc5d39, tool: null });
+
+// ネザーレンガ。**レンガ（上の 1 行）の写し**で、`block: AIR` / `tool: null`（置けず・
+// 道具でもなく・`FOODS` にも `FUEL` にも行が無い）。**置けるのは `blocks.ts` の
+// `NETHER_BRICK`(48) のほう**で、戻すのは `crafting.ts` の 2x2 の 1 本。
+// **色は測って選んだ値**（上の `NETHER_BRICK_ITEM` の説明）。
+item({ id: NETHER_BRICK_ITEM, name: "ネザーレンガ", block: AIR, stack: MAX_STACK, color: 0x602034, tool: null });
 
 // 鉄の防具 4 部位。**革の 4 部位とまったく同じ扱い**（`block: AIR` / `tool: null` /
 // `stack: 1`）。**`ToolKind` に "armor" を足さないこと** —— `TOOL_ATTACK` に無い

@@ -17,6 +17,7 @@ import {
   LADDER_ZN,
   LADDER_ZP,
   NETHER_BRICK_FENCE,
+  NETHERRACK,
   PLANK,
   SAND,
   SAPLING,
@@ -45,6 +46,7 @@ import {
   IRON_INGOT,
   LAVA_BUCKET,
   MAX_STACK,
+  NETHER_BRICK_ITEM,
   NO_ITEM,
   RAW_BEEF,
   RAW_CHICKEN,
@@ -229,8 +231,8 @@ export function run(): void {
     `レンガ ${isSmeltable(BRICK_ITEM)} / 粘土玉 ${isSmeltable(CLAY_BALL)}`,
   );
   // **表そのものを数える。** 「粘土玉が焼ける」だけだと、別の行が消えても緑になる。
-  // **数え直すのは可・ゆるめるのは禁じ手**（`>= 10` にしない）。シラカバの原木で 1 行増えて 11 行。
-  check("焼けるものの表は 11 行（シラカバの原木で 1 行増えた）", SMELTING.size === 11, `${SMELTING.size} 行`);
+  // **数え直すのは可・ゆるめるのは禁じ手**（`>= 10` にしない）。ネザーラックで 1 行増えて 12 行。
+  check("焼けるものの表は 12 行（57 のネザーラックで 1 行増えた）", SMELTING.size === 12, `${SMELTING.size} 行`);
 
   // **`FUEL` に紛れ込んでいないこと**（革を燃料にすると、牛が薪になる）。
   // 表そのものを数える —— 「革が燃料でない」だけだと、別のものが紛れても緑になる。
@@ -968,6 +970,45 @@ export function run(): void {
       "moveInto() が傷を載せている",
       /function moveInto[\s\S]*?carryWear\(into, damageOf\(from\)\)/.test(screen),
       "かまどへのシフトクリックが新品に戻す",
+    );
+  }
+
+  // --- ネザーレンガ（57）---
+  describe("ネザーレンガ（57・ネザーラックを焼く）");
+  {
+    const row = SMELTING.get(NETHERRACK);
+    console.log(
+      `      ネザーラック(${NETHERRACK}) → ${row ? `${itemName(row.out)}(${row.out}) x${row.count}` : "無し"}`,
+    );
+    check(
+      "ネザーラック 1 個を焼くとネザーレンガ 1 個（本家と同じ）",
+      row !== undefined && row.out === NETHER_BRICK_ITEM && row.count === 1,
+      JSON.stringify(row),
+    );
+
+    // **表に行があるだけでなく、かまどで実際に焼けること。**
+    const state = loaded(NETHERRACK, 1, COAL, 1);
+    burn(state, SMELT_TIME + 0.1);
+    console.log(
+      `      ネザーラック 1 個 + 石炭 1 個で ${SMELT_TIME} 秒 → 出来 ${itemName(state.output.item)} x${state.output.count}` +
+        ` / 材料 ${state.input.count} 個`,
+    );
+    check(
+      "かまどで実際に焼けて、出力枠がネザーレンガ 1 個になる",
+      state.output.item === NETHER_BRICK_ITEM && state.output.count === 1 && isEmpty(state.input),
+      `${state.output.item} x${state.output.count}`,
+    );
+
+    // **燃料でないこと**（ネザーラックが燃え続けるのはブロックの性質で、燃料ではない）・
+    // **焼いた先をもう一度焼けないこと**（レンガと同じ）。
+    console.log(
+      `      燃料: ネザーレンガ ${fuelTimeOf(NETHER_BRICK_ITEM)} 秒 / ネザーラック ${fuelTimeOf(NETHERRACK)} 秒` +
+        ` / ネザーレンガを焼ける ${isSmeltable(NETHER_BRICK_ITEM)}`,
+    );
+    check(
+      "ネザーレンガもネザーラックも燃料でなく、ネザーレンガそのものは焼けない",
+      fuelTimeOf(NETHER_BRICK_ITEM) === 0 && fuelTimeOf(NETHERRACK) === 0 && !isSmeltable(NETHER_BRICK_ITEM),
+      `${fuelTimeOf(NETHER_BRICK_ITEM)} / ${fuelTimeOf(NETHERRACK)} / ${isSmeltable(NETHER_BRICK_ITEM)}`,
     );
   }
 }

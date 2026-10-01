@@ -1928,9 +1928,12 @@ export const BLOCKS: readonly BlockDef[] = [
     { hardness: 0.3, tool: "pickaxe", emission: LAVA_LIGHT, sound: "glass" },
   ),
   // ネザー要塞の材料。**地形には湧かない**（`fortress.ts` が建てるときだけ出る）。
+  // **表示名は「ネザーレンガブロック」**（57）。アイテムの「ネザーレンガ」（`items.ts` の
+  // `NETHER_BRICK_ITEM` = 199）と一覧で並ぶので分けてある（上の `BRICK` と同じ理由）。
+  // **ID は 48 のまま** —— セーブに入るのは番号なので、名前を変えても既存のセーブは動かない。
   def(
     NETHER_BRICK,
-    "ネザーレンガ",
+    "ネザーレンガブロック",
     { top: 0x392229, side: 0x2f1c22, bottom: 0x27171d },
     { hardness: 2, tool: "pickaxe", minTier: TIER_WOOD },
   ),

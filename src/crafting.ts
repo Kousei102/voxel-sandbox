@@ -103,6 +103,7 @@ import {
   LEATHER_LEGGINGS,
   MILK_BUCKET,
   MUSHROOM_STEW,
+  NETHER_BRICK_ITEM,
   NO_ITEM,
   PAPER,
   SHEARS,
@@ -275,6 +276,18 @@ export const RECIPES: readonly Recipe[] = [
   // 形は雪ブロック・粘土・作業台と同じだが材料が違うので、形の重複にはならない。
   { name: "レンガブロック", out: BRICK, count: 1, shape: ["BB", "BB"], key: { B: BRICK_ITEM } },
 
+  // ネザーレンガ 4 個 → ネザーレンガブロック 1 個（Minecraft と同じ。57）。上のレンガブロックの写し。
+  // **`NETHER_BRICK` は `blocks.ts` の 48・`NETHER_BRICK_ITEM` は `items.ts` の 199** で別物。
+  // 材料のネザーレンガはネザーラックを焼いて手に入る（`smelting.ts`）ので、**この 1 本が、
+  // 要塞で掘るしか無かったネザーレンガブロックの作り方**。レシピ名はブロックの表示名と揃える。
+  {
+    name: "ネザーレンガブロック",
+    out: NETHER_BRICK,
+    count: 1,
+    shape: ["BB", "BB"],
+    key: { B: NETHER_BRICK_ITEM },
+  },
+
   // ボウルは板 3 個の V 字（Minecraft と同じ）。**3 幅なので作業台が要る。**
   // 形はバケツ `["I.I", ".I."]` と同じだが材料が違うので、形の重複にはならない（ハーフと同じ）。
   { name: "ボウル", out: BOWL, count: 4, shape: ["P.P", ".P."], key: { P: PLANK } },
@@ -315,7 +328,7 @@ export const RECIPES: readonly Recipe[] = [
   // ネザーレンガのフェンスはネザーレンガ 6 個で **6 本**（Minecraft Beta 1.9 と同じ）。
   // **木のフェンスの `count: 2` を写さないこと** —— 本家でも本数が違います。
   // **形は同じ 3x2** だが材料が別なので重複にはならない（`test/crafting.test.ts` が見張り）。
-  // **ネザーレンガそのもののレシピは足さないこと** —— 要塞から掘るだけです。
+  // **材料はブロック 48 のまま**（本家 1.0 はアイテムのネザーレンガ。57 では差し替えていない）。
   {
     name: "ネザーレンガのフェンス",
     out: NETHER_BRICK_FENCE,

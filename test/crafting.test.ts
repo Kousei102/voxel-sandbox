@@ -22,6 +22,7 @@ import {
   NETHER_BRICK,
   NETHER_BRICK_FENCE,
   NETHER_BRICK_SLAB,
+  NETHERRACK,
   PLANK,
   PLANK_SLAB,
   PLANK_STAIRS,
@@ -98,6 +99,7 @@ import {
   LEATHER_LEGGINGS,
   MILK_BUCKET,
   MUSHROOM_STEW,
+  NETHER_BRICK_ITEM,
   NO_ITEM,
   PAPER,
   SHEARS,
@@ -1011,12 +1013,43 @@ export function run(): void {
     nbFenceIn2 === null,
     nbFenceIn2?.name ?? "無し",
   );
-  // **ネザーレンガそのもののレシピは足していない**（要塞から掘るだけ）。
+  // --- ネザーレンガ（57。焼いたネザーレンガを組む）---
+  // **レンガブロックの写し**: アイテム 199 を 4 個の 2x2 でブロック 48 が 1 個。
+  // **材料がブロック 48 ではなくアイテム 199 であること**も見る（ブロックを 4 個並べても何もできない）。
+  const NBI = { B: NETHER_BRICK_ITEM };
+  const nbBlock = findRecipe(grid(2, ["BB", "BB"], NBI), 2);
+  const nbBlockFromBlocks = findRecipe(grid(2, ["NN", "NN"], NB), 2);
+  console.log(
+    `      ネザーレンガ(${NETHER_BRICK_ITEM}) x4 の 2x2 → ${nbBlock?.name ?? "無し"} x${nbBlock?.count ?? 0}` +
+      `（out ${nbBlock?.out}）  ブロック ${NETHER_BRICK} x4 の 2x2 → ${nbBlockFromBlocks?.name ?? "無し"}`,
+  );
+  check(
+    "ネザーレンガ 4 個（2x2）→ ネザーレンガブロック（48）1 個（作業台が要らない）",
+    nbBlock?.out === NETHER_BRICK && nbBlock.count === 1 && nbBlock.name === "ネザーレンガブロック",
+    `${nbBlock?.name ?? "無し"} x${nbBlock?.count ?? 0}`,
+  );
+  check(
+    "ネザーレンガブロック（48）を 4 個並べても何も作れない（材料はアイテム 199）",
+    nbBlockFromBlocks === null,
+    nbBlockFromBlocks?.name ?? "無し",
+  );
+  // **ブロック 48 を作るレシピはちょうど 1 本**（41 の時点では 0 本で「要塞から掘るだけ」だった。
+  // 57 で焼いたネザーレンガの 2x2 が入ったので数え直した —— `===` のまま）。
   const nbItself = RECIPES.filter((r) => r.out === NETHER_BRICK).map((r) => r.name);
   check(
-    "ネザーレンガそのもののレシピは 1 本も無い（要塞から掘るだけ）",
-    nbItself.length === 0,
+    "ネザーレンガブロックのレシピはちょうど 1 本（57 の 2x2）",
+    nbItself.length === 1 && nbItself[0] === "ネザーレンガブロック",
     nbItself.join(" / ") || "0 本",
+  );
+  // **ネザーラック 1 個 → 焼いて 1 個 → 4 個で 1 個**の道が通っていること（サバイバルで 48 に届く）。
+  const nbSmelt = smeltResultOf(NETHERRACK);
+  console.log(
+    `      ネザーラック → ${nbSmelt ? `${nbSmelt.out} x${nbSmelt.count}` : "無し"} → 4 個で ${nbBlock?.name ?? "無し"}`,
+  );
+  check(
+    "ネザーラック 4 個 → 焼いてネザーレンガ 4 → ネザーレンガブロック 1 個（サバイバルで 48 に届く）",
+    nbSmelt?.out === NETHER_BRICK_ITEM && nbSmelt.count === 1 && nbBlock?.out === NETHER_BRICK,
+    JSON.stringify(nbSmelt),
   );
 
   describe("ケーキ");
@@ -1043,8 +1076,8 @@ export function run(): void {
   // **本数も 1 件として見張る** —— レシピを足したのに表から漏れていたら、
   // 上の `findRecipe` だけでは「揃わないのが正しい」と読めてしまう。
   check(
-    "レシピは 95 本（54 の 2x2 の 3 本で 95 本。数え直した）",
-    RECIPES.length === 95,
+    "レシピは 96 本（57 のネザーレンガブロックの 2x2 で 1 本増えた。数え直した）",
+    RECIPES.length === 96,
     `${RECIPES.length} 本`,
   );
 

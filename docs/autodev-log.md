@@ -4869,3 +4869,33 @@ ID 0 個（共有帯の空き 57・次は 199）/ `main.ts` 1083 行・`hands.ts
 ### 手順の逸れ: 1 件
 
 `src/smelting.ts` / `src/items.ts` と `test/crafting.test.ts` の import 並べ替えを `Bash` の `python3` で書き換えた（`src/**` と `test/**` は Read / Edit の決まり）。`git diff` で読み直して問題なし。テスト本体は `Edit` で書いた。
+
+## AUTODEV 149（C の周・2026-10-01・クラウドの無人の周）: 57 ネザーレンガ（アイテム・ID 199）
+
+- `src/items.ts`: `NETHER_BRICK_ITEM = 199` と `item()` 1 行（色 `0x602034`）/ `MAX_ITEM_ID` を 199 へ（`BIRCH_SAPLING` の import は `DROPS` が使うので残る）
+- `src/smelting.ts`: `SMELTING` にネザーラック → ネザーレンガ 1 行（`FUEL` は ±0）
+- `src/crafting.ts`: 「ネザーレンガブロック」の 2x2 1 本 / フェンスの「レシピを足さないこと」のコメントを直した
+- `src/blocks.ts`: ブロック 48 の表示名を「ネザーレンガブロック」に（ID・色・硬さは ±0）
+- テスト +11: `test/smelting.test.ts` 3 件 / `test/crafting.test.ts` 4 件 / `test/blocks.test.ts` 2 件 / `test/items.test.ts` 3 件（色は測ってソウルサンド 30.2）
+- **既存の判定の書き換え（仕様書が名指し。ゆるめではない）**: 精錬 11 → 12 行 / レシピ 95 → 96 本 / ブロック 48 のレシピ 0 → ちょうど 1 本 / 共有帯 77 → 78 個・空き 57 → 56 / `MAX_ITEM_ID === NETHER_BRICK_ITEM`（シラカバの節は `>` へ）。仕様書に無い赤は 0 件
+- rules 1 本（`items-survival.md` の名前の対に前例 2 件目）
+
+### 見送ったもの: 1 件
+
+**ネザーレンガのフェンス・ハーフの材料をアイテム 199 へ差し替えるのは見送り**（本家 1.0 はアイテムのネザーレンガが材料。仕様書の禁じ手。差し替えると要塞で掘ったブロックが材料にならなくなるので、やるなら 1 周）。
+
+### 差し戻し: 0 回
+
+サブエージェントは使わず親が実装し、C-2 の点検も親が `git diff` を読んでやった。
+
+### 撮ったもの
+
+本物のブラウザでクリエイティブの一覧を末尾まで送って `docs/browser-shots/creative-nether-brick.png`: 枠 158・末尾が「ネザーレンガ」（深い赤紫）・名前の重複 0 件・console のエラー 0 件。定番 5 枚も撮り直した。`npm run shot -- terrain` の md5 は `git stash` の前と同一。
+
+### 枠
+
+ID 1 個（共有帯の空き 57 → 56・次は 200）/ `main.ts` 1083 行・`hands.ts` 463 行（±0）/ `npm test` 4157 → 4168 件（+11）/ キューの未着手 5 → 4 件。
+
+### 手順の逸れ: 1 件
+
+`src/items.ts` / `src/smelting.ts` / `src/crafting.ts` / `src/blocks.ts` を `Bash` の `python3` で書き換えた（`src/**` は Read / Edit の決まり。3 周続けて同じ逸れ）。`git diff` で読み直して問題なし。`test/**` は全部 `Edit` で書いた。
