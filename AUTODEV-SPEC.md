@@ -1,100 +1,101 @@
-# 仕様: ネザーレンガ（アイテム）— ネザーラックを焼いて 1 個 / 4 個の 2x2 でネザーレンガのブロック（キューの 57・**ID 1 個**）
+# 仕様: 花 2 種（タンポポ・ポピー）— 平原と森に草むらと同じ形で生え、置いて飾るだけ（キューの 58・**ID 2 個**）
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-**この 1 件だけコードで数え直しました**（2026-09-30・AUTODEV 148 の B）: **ネザーレンガの「アイテム」は無い**
-（`items.ts` に定数も `item()` も無し。ブロック `NETHER_BRICK`(48) は `blocks.ts` の低帯で、for が同じ番号のアイテムを自動で付けている）。
-`SMELTING` に `NETHERRACK`(45) の行は**無い**（11 行）。**`NETHER_BRICK`(48) を出力するレシピは 0 本**で、
-`test/crafting.test.ts` の 1015 行が「ネザーレンガそのもののレシピは 1 本も無い（要塞から掘るだけ）」を `=== 0` で押さえている（下の 5. で書き換える）。
-**形はまったく同じ前例がある**: 粘土玉 →（焼く）→ レンガ `BRICK_ITEM`(170) → 4 個の 2x2 → レンガブロック `BRICK`(12)。
-このとき**ブロックの表示名を「レンガブロック」に直した**（`blocks.ts` 1671 行・`test/blocks.test.ts` の `brickNames()`）。今回も同じ扱い。
-
-**本家の値**: ネザーラック 1 個を焼いてネザーレンガ 1 個（本家 1.0）/ ネザーレンガ 4 個の 2x2 でネザーレンガ（ブロック）1 個。
+**この 1 件だけコードで数え直しました**（2026-10-01・AUTODEV 150 の B）: **花は 1 本も無い**（`src/**` に `flower` / `DANDELION` / `POPPY` /
+「タンポポ」「ポピー」が 0 件）。**形はまったく同じ前例がある**: 赤キノコ(139)・茶キノコ(140) —— `blocks.ts` 2066 行の
+`def()` が草むら(32)の写しで、`worldgen.ts` 336〜347 行の生えものの連鎖 `tuft` に 1 段、`biomes.ts` の `BiomeDef.mushroom` に 1 列。
+**床を選ぶ旗も既にある**: 苗木の `needsSoil: true`（土・草・耕地の上だけ。`supportHint()` が「土か草の上」を表から出す）。
+**本家の値**: タンポポ・バラ（いまのポピー）は Alpha から。平原と森に生え、**土・草・耕地の上にだけ置ける**。掘ると自分が 1 個。
 
 ## 1. 何を足すか / 完了の判定
 
-**アイテム 1 つ（ID 199）・精錬 1 行・レシピ 1 本・ブロック 48 の表示名 1 か所。** 生成・画面・`main.ts` / `hands.ts` は 1 行も触りません。
-**完了**: `npm test` に「ネザーレンガ（57）」の件が **5〜8 件**増えて**すべて緑**（**4157 → 4162〜4165 あたり**）。
-ブロック ID の枠の行は **「111..255 の空き 56」**（57 → 56）・1..63 の空き 7 のまま。`MAX_ITEM_ID` は **199**。
+**ブロック 2 つ（= 同じ番号のアイテム 2 つ）・`BiomeDef` に 1 列・生えものの連鎖に 1 段・撮る場面 1 つ。** 染料は見送り済み（`AUTODEV-QUEUE.md`）なので**レシピ 0 本**。
+**完了**: `npm test` に「花 2 種（58）」の件が **10〜16 件**増えて**すべて緑**（**4168 → 4178〜4184 あたり**）。
+ブロック ID の枠の行は **「111..255 の空き 54」**（56 → 54）・1..63 の空き 7 のまま。`MAX_ITEM_ID` は **201**。
 
 ## 2. 触るファイル / 触らないファイル
 
 **触る**:
-- `src/items.ts`:
-  - `export const NETHER_BRICK_ITEM = 199;` と JSDoc（`BRICK_ITEM` の説明を写す形。**定数名を `NETHER_BRICK` にしないこと** —— `blocks.ts` の 48 と衝突して
-    `crafting.ts` / `smelting.ts` が両方 import した瞬間に typecheck が落ちる。**置けず・道具でも食べ物でもない・`FUEL` に足さない**）
-  - `item({ id: NETHER_BRICK_ITEM, name: "ネザーレンガ", block: AIR, stack: MAX_STACK, color: <測った値>, tool: null });`（`BRICK_ITEM` の `item()` の近く）
-  - **`MAX_ITEM_ID` を `NETHER_BRICK_ITEM` に**（いまは `BIRCH_SAPLING` = 198）
-- `src/smelting.ts`: `SMELTING` に `[NETHERRACK, { out: NETHER_BRICK_ITEM, count: 1 }]` の 1 行（`CLAY_BALL` の行の後ろ）とコメント 2〜3 行
-  （**この 1 行が、要塞で掘るしか無かったネザーレンガのブロックへの入口** / `FUEL` には足していない）と import
-- `src/crafting.ts`: `{ name: "ネザーレンガ", out: NETHER_BRICK, count: 1, shape: ["BB", "BB"], key: { B: NETHER_BRICK_ITEM } }` の 1 本
-  （「レンガブロック」の行の後ろ。**レシピ名はブロックの表示名と揃えること** —— 下の「ネザーレンガブロック」）とコメントと import
-- `src/blocks.ts`: `def(NETHER_BRICK, "ネザーレンガ", …)` の**表示名だけ**を `"ネザーレンガブロック"` に（`BRICK` の 1671 行と同じ理由のコメント 2〜3 行）。
-  **ID・色・硬さ・`slabPair()` の「ネザーレンガハーフ」・フェンスの名前は触らない**
-- `test/smelting.test.ts` / `test/crafting.test.ts` / `test/blocks.test.ts` / `test/items.test.ts`（下の 5.）
-- `ROADMAP.md` の予約表（199 を「実装済み」の 1 行に・**「199..255 予備 57 個」を「200..255 予備 56 個」に**）/ `TUNING.md`（下の 7.）/ `rules/items-survival.md`（下の 6.）
+- `src/blocks.ts`: `export const DANDELION = 200; export const POPPY = 201;` と JSDoc（キノコの 342 行の説明を写し、違いを書く）。
+  `def()` 2 つは **`RED_MUSHROOM` の定義の写し + `needsSoil: true`**（`opaque: false / solid: false / replaceable: true / hardness: 0 /
+  sound: "grass" / model: "cross" / boxes: CROSS_BOX / supportFace: FACE_YN`）。**`variantOf` を書かない**（for がアイテムを作り、掘ると自分が 1 個）
+- `src/items.ts`: **`MAX_ITEM_ID` を `POPPY` に**（いまは `NETHER_BRICK_ITEM` = 199）。**`item()` は手で足さないこと**（二重登録）/ `DROPS` に 0 行
+- `src/biomes.ts`: `BiomeDef` に `readonly flower: number;`（JSDoc に「連鎖の**いちばん後ろ**に引くので実効密度は `flower × (1 − 先のもの)`」）と、
+  **`BIOMES` の 11 行すべてに `flower:` を 1 つずつ**。**平原 0.03・森 0.02・ほかは 0**
+- `src/worldgen.ts`: `tuft` の連鎖の**草むらの後ろ（`AIR` の直前）**に 1 段:
+  `sprouted && flower > 0 && hash2(wx, wz, this.seed ^ 0x1e47) < flower ? (hash2(wx, wz, this.seed ^ 0x58c3) < 0.5 ? DANDELION : POPPY) : AIR`
+  と、分割代入に `flower`。**塩 2 本は新しい値**（いまの塩 25 本と重ならないことは B で grep 済み）。**`tall` は 1 のまま**（サトウキビだけが伸びる）
+- `tools/shot.ts`: 場面 `flowers`（`mushrooms` の場面の写し。**黄と赤が両方写る所を探して立つ**。原点のまわりが平原なので ±72 で見つかるはず。
+  見つからなければ探す範囲と `makeWorld` の半径を一緒に広げる —— 448 行のコメント）
+- `test/blocks.test.ts` / `test/worldgen.test.ts` / `test/items.test.ts`（下の 5.）
+- `ROADMAP.md` の予約表（200・201 を「実装済み」の 2 行に・**「200..255 予備 56 個」を「202..255 予備 54 個」に**・末尾の「次に取るのは」）/
+  `TUNING.md`（下の 7.）/ `rules/worldgen.md`（下の 6.）
 
-**触らない**: `src/main.ts` / `src/hands.ts` / `src/fortress.ts` / `src/nethergen.ts` / `src/mobs.ts` / `src/craftscreen.ts` / `src/inventoryui.ts` /
-`src/furnaces.ts` / `test/progression.test.ts` / `test/fortress.test.ts`。**`.claude/**` には 1 行も書かないこと。**
+**触らない**: `src/main.ts` / `src/hands.ts` / `src/crops.ts`（**`isMushroom()` に花を足さない —— 花は広がらない**）/ `src/crafting.ts` / `src/smelting.ts` /
+`src/mesher.ts` / `src/placing.ts` / `src/craftscreen.ts` / `src/inventoryui.ts` / `test/progression.test.ts`。**`.claude/**` には 1 行も書かないこと。**
 
 ## 3. 使う ID
 
-**1 個: 199**（共有帯の次の空き。`ROADMAP.md` の予約表の `199..255` 行から取る）。**アイテムだけ**で、ブロック側の 199 には何も置かない。
-**111 以降はブロックとアイテムで 1 本の番号列** —— `blocks.ts` に 199 が無いことを grep で確かめてから取ること（`test/blocks.test.ts` が両側を突き合わせる）。
+**2 個: 200 = タンポポ / 201 = ポピー**（共有帯の次の空きから 2 つ。`ROADMAP.md` の予約表の `200..255` 行から取る）。
+**ブロックとアイテムで同じ番号**（低帯のキノコ・苗木と同じ。for が作る）。**111 以降は 1 本の番号列** —— `items.ts` に 200・201 が無いことを grep で確かめてから取ること。
 
 ## 4. 判断をどのファイルに置くか
 
-- **何を焼くと何になるか** → `smelting.ts` の `SMELTING` / **何個で何を組むか** → `crafting.ts` の `RECIPES` / **アイテムの性質と色** → `items.ts`
-- 画面（`craftscreen.ts` / `inventoryui.ts`）に `NETHERRACK` や `NETHER_BRICK_ITEM` の分岐を**書かないこと** —— シフトクリックの行き先は `isSmeltable()` が決める
-- 新しい確かめられないものは無し。**使えるスキル**: `add-block`（アイテムを足す手順。**ID の取り方と `MAX_ITEM_ID` の突き合わせ**はここに書いてある）
-- **引いて読む rules**: `grep -l '"src/items.ts"' rules/*.md`（items-survival / vitals）・`"src/smelting.ts"`（inventory-screen / stateful-blocks）・
-  `"src/crafting.ts"`・`"src/blocks.ts"`（beds / blocks-shapes / items-survival）と、`test/**` を触るので `rules/testing.md`
+- **どこにどれだけ生えるか** → `biomes.ts` の `BiomeDef.flower`（**`worldgen.ts` に数値やバイオーム名を書かないこと**。`rules/worldgen.md` の頭）
+- **何の上に立てるか** → `blocks.ts` の `needsSoil` の表（`supportsBlock()` の 1 行が効く。**`id === DANDELION` の分岐を書かないこと**）
+- **掘ると何が落ちるか** → `dropOf()` の既定（自分）。`DROPS` に行を足さない
+- 新しい確かめられないものは無し（`cross` の板は既存のメッシュ化の道をそのまま通る）。**使えるスキル**: `add-block`（ID の取り方・`MAX_ITEM_ID`・一覧に出るまで）
+- **引いて読む rules**: `grep -l '"src/blocks.ts"' rules/*.md`（beds / blocks-shapes / items-survival）・`"src/items.ts"`（items-survival / vitals）・
+  `"src/worldgen.ts"` と `"src/biomes.ts"`（worldgen）・`"tools/shot.ts"`（meshing-render）と、`test/**` を触るので `rules/testing.md`
 
-**色**: 候補 **`0x602034`**（深い赤紫）。B の周に総当たりで測った: いちばん近いのは**ソウルサンド(46) `0x51392c` で 30.2**・
-ブロック 48 `0x392229` とは約 40・フェンス(187) `0x6e3746` とは約 32。**割った候補**: `0x6a3139`（フェンスと 14.9）・`0x74303a`（ネザーラックと 11.8）・
-`0x5a2c33`（ソウルサンドと 17.3）。**実装の周で `allItemIds()` 全部と測り直し、20 を割ったらずらして `TUNING.md` に書くこと**（判定はゆるめない）。
+**色**（B の周に `allItemIds()` 全 190 余りと総当たりで測った）: **タンポポ `0xffe030`**（いちばん近い金の帽子(175) `0xfee34d` から 29.2）/
+**ポピー `0xf01018`**（いちばん近いリンゴ(149) `0xe0342c` から 44.2・赤キノコ `0xc9403a` から 70.6）。**割った候補**: `0xf5d33a`（ブレイズロッドと 20.5・際どい）/
+`0xf2d020`（金の上着と 14.2）/ `0xd0302a`（リンゴと 16.6）/ `0xe83030`（リンゴと 9.8）。**実装の周で測り直し、割ったらずらして `TUNING.md` に書くこと**（判定はゆるめない）。
 
 ## 5. 書くテスト（**値を出力してから判定**）
 
-`test/smelting.test.ts` の末尾の塊の後ろに `// --- ネザーレンガ（57）---` の塊:
-1. **ネザーラック 1 個 → ネザーレンガ 1 個**（`smeltResultOf(NETHERRACK)` などを出してから `out === NETHER_BRICK_ITEM && count === 1`）
-2. **かまどで実際に焼ける**: 既存の `loaded(NETHERRACK, 1, COAL, 1)` の書き方を写し、`SMELT_TIME` ぶん `tickFurnace` → 出力枠がネザーレンガ 1 個
-3. **ネザーレンガ（アイテム）もネザーラックも燃料でない**（`fuelTimeOf(...) === 0`）/ **ネザーレンガそのものは焼けない**（`isSmeltable(NETHER_BRICK_ITEM) === false`）
-4. 既存の「焼けるものの表は 11 行」→ **「12 行（57 で 1 行増えた）」**（`===` のまま）
+`test/blocks.test.ts`（キノコ 2 種の `mushrooms()` の後ろに `flowers()` を足して呼ぶ）:
+1. **キノコの 5 件の写し**（cross・`variantOf` が `AIR` / 同じ番号のアイテムで置くと自分 / 掘ると自分が 1 個 / 上書きして置ける（葉が弾かれない）/ `supportFace === FACE_YN`）
+2. **花は土の上だけ**: `needsSoil()` が真 / `supportHint(DANDELION) === "土か草の上"` / `supportsBlock(supporter, FACE_YN, id)` で**草・土・耕地は可、砂・石は不可**（苗木の件を写す）
+3. **花は広がらない**: `crops.ts` の `isMushroom()` は export されていないので**振る舞いで見る** —— 本物の `World` で石の箱に花を 1 本置き `Crops.notePlaced` → `update(MUSHROOM_SPREAD_SECONDS)` で 1 本のまま（「本物の World でキノコが広がる（46）」の写し）
+4. **十字の板 5 つ（草むら・赤キノコ・茶キノコ・タンポポ・ポピー）がどの 2 つも RGB で 60 以上**（既存の 3 色の件は**そのまま残し**、5 色の件を別に足す）
 
-`test/crafting.test.ts`（ネザーレンガのフェンスの塊の後ろ）:
-5. **ネザーレンガ 4 個の 2x2 → ネザーレンガブロック（48）1 個**・**手持ちの 2x2 で作れる**（`findRecipe(grid(2, ["BB","BB"], …), 2)`）
-6. **ブロック 48 を 4 個並べても何も作れない**（材料がアイテム 199 であって、ブロックではないこと）
-7. 既存の件を**意味を保って書き換える**（**ゆるめではない。仕様書が先に名指しします**）:
-   - 「ネザーレンガそのもののレシピは 1 本も無い（要塞から掘るだけ）」→ **「ネザーレンガブロックのレシピはちょうど 1 本（57 の 2x2）」**（`=== 1`）
-   - 「レシピは 95 本」→ **「96 本（57 の 2x2 で 1 本増えた）」**（`===` のまま）
+`test/items.test.ts`:
+5. **色**: 200・201 を `allItemIds()` 全部と測って**いちばん近い相手と距離を出してから** `>= 20`（`GLOWSTONE_DUST` / `NETHER_BRICK_ITEM` の件を写す）
 
-`test/blocks.test.ts` / `test/items.test.ts`:
-8. **名前の対**（`brickNames()` と同じ形の 1 件）: `blockName(NETHER_BRICK) === "ネザーレンガブロック" && itemName(NETHER_BRICK_ITEM) === "ネザーレンガ"` と、2 つが別の文字列
-9. **色**: 199 の色を `allItemIds()` 全部と測って**いちばん近い相手と距離を出してから** `>= 20`（`GLOWSTONE_DUST` の件を写す）
-10. 既存の件の数え直し（**比べる相手を新しい番号に直すこと** —— 古いまま残すと TS2367。`rules/testing.md`）:
-    `MAX_ITEM_ID === BIRCH_SAPLING`（blocks.test.ts 426 行・items.test.ts 888 行）→ `NETHER_BRICK_ITEM` /
-    共有帯の一覧 `sharedItems[77] === NETHER_BRICK_ITEM` / 「111..255 の空きは 57」→ **56**
+`test/worldgen.test.ts`（草むら・キノコの塊の後ろに `// --- 花（58）---`）:
+6. **まとまった平原と森**（`patchOf()` を使う）を 1 マスも飛ばさずに数え、**本数・黄赤の内訳・実効密度**を出す →
+   **平原も森も 1 本以上・黄も赤も 1 本以上** / **実効密度が `flower × (1 − grass − …)` の ±50% 以内**（式の値も出力）
+7. **場違いが 0**: 走査した全マスで、花の真下が草（`GRASS`）でない / `BiomeDef.flower === 0` のバイオームに花がある → どちらも 0 本
+8. **草むら・キノコの位置が変わらない**: 同じ種で、花を足す前の数え方（既存の「草むら N 本」）の数が**変わっていないこと**を、既存の件が緑のまま通ることで見る
+   （**既存の草むら・キノコの件の数を書き換えたくなったら、連鎖の順を間違えている** —— 花は草むらの後ろ）
 
-**足す前に `test/` を定数名で grep すること**（`SMELTING.size` / `RECIPES.length` / `MAX_ITEM_ID` / `NETHER_BRICK` / `NETHERRACK` / `sharedFree` /
-`"ネザーレンガ"`）。上の 7. と 10. のほかに赤くなったら、**判定を読んでから**「意味を保った書き換え」か「退行」かを決めること。
-**「ネザーレンガ」は 6 文字で一覧の `.slot .label` が 2 行に折れる**側（既知 60 枠。見張りがあれば 61 に数え直す）。
+`test/blocks.test.ts` の数え直し（**比べる相手を新しい番号に直すこと** —— 古いまま残すと TS2367。`rules/testing.md`）:
+9. `MAX_ITEM_ID === NETHER_BRICK_ITEM`（blocks.test.ts と items.test.ts の 2 か所）→ `POPPY` / 共有帯の一覧 `sharedItems.length === 78` → **80**・
+   `sharedItems[78] === DANDELION && sharedItems[79] === POPPY` と名指しの文 / 「111..255 の空きは 56」→ **54**
+
+**足す前に `test/` を定数名で grep すること**（`MAX_ITEM_ID` / `sharedFree` / `sharedItems` / `BiomeDef` / `mushroom:` / `needsSoil` / `TALL_GRASS` / `cross`）。
+**`BIOMES` の列を数える件・`needsSoil` を持つブロックを数える件・`cross` のブロックを数える件があれば、意味を保って +2 / +1 列で書き換える**。
+上のほかに赤くなったら、**判定を読んでから**「意味を保った書き換え」か「退行」かを決めること。
 
 ## 6. このタスク固有の禁じ手
 
-- **ブロック 48 の ID・色・硬さ・落とす物を変えない**（名前だけ）/ **`fortress.ts` の建て方を変えない** / **ネザーラックのドロップを変えない**
-- **`FUEL` に 1 行も足さない**（ネザーラックは本家で燃えない —— 火が消えない性質はブロックの話で、燃料ではない）
-- **ネザーレンガのフェンス・ハーフのレシピの材料をアイテム 199 へ差し替えない**（いまはブロック 48 が材料。本家 1.0 の形と違っても今回は触らない。`docs/autodev-log.md` に 1 行）
-- **定数名を `NETHER_BRICK` にしない** / **アイテム 199 を置けるようにしない**（`block: AIR`）
-- **判定をゆるめない**（`SMELTING.size` / `RECIPES.length` / 空きは `===`）
-- **古くなる rules を放っておかない**: `rules/items-survival.md` に「焼いて作る材料アイテムの定数名は `*_ITEM`・ブロックの表示名に『ブロック』を付ける」の
-  前例を 170 と 199 の 2 件として 1〜2 行（既にあれば 199 を足すだけ）
+- **連鎖の順を変えない**（サトウキビ → キノコ → 草むら → **花**）。花を先に入れると**既存の草むら・キノコの位置が動き**、公開サイトで遊んでいる世界の
+  地表が差し替わる（**セーブの差分は位置で持つ** —— 壊した草むらの跡に花が湧くのは許すが、既存の生えものを消さない）
+- **塩を既存のものと重ねない**（`0x1e47` / `0x58c3`。実装の前にもう一度 `grep -on "seed ^ 0x" src/*.ts`）
+- **`replaceable: true` を外さない**（外すと平原・森の木の葉が花に弾かれて穴が空く。キノコと同じ理由）
+- **花を広げない・骨粉で増やさない・染料を作らない**（どれも別タスク）/ **`crops.ts` を触らない**
+- **既存のバイオームの `grass` / `mushroom` / `trees` の値を変えない** / **判定をゆるめない**（空きは `===`）
+- **古くなる rules を放っておかない**: `rules/worldgen.md` 128〜137 行の「いまはサトウキビ → キノコ → 草むらの順」と塩の一覧に
+  **花（200 / 201・`flower`・塩 `0x1e47` / `0x58c3`）**を足し、「**いちばん後ろに足せば既存の生えものの位置は動かない**」を 1〜2 行
 
 ## 7. 終了条件
 
-- `npm run typecheck` と `npm test` が緑（**4162〜4165 件あたり**）/ `npm run build` 緑（`src/**` を触るので）
-- **コミット 1 つ**（`AUTODEV 149（C の周）: 57 ネザーレンガ（アイテム・ID 199）` の形）→ `master` へ push
-- `TUNING.md` の末尾の表に 1 行: **ネザーレンガ（199）の色**（測った値と、いちばん近い相手・距離）
-- `ROADMAP.md` の予約表に 199 を「実装済み」/ `AUTODEV-QUEUE.md` の 57 の行を消す / この仕様書を `状態: 済` / `docs/autodev-log.md` に 1 節 / `HANDOFF.md` を書き直す
-- **一覧に 1 枠増えるので撮ること**（C-3。本物のブラウザの一覧で 199 枠目の色と名前・console のエラー 0 件）。地形は変わらない（`npm run shot -- terrain` の md5 が前と同一）
+- `npm run typecheck` と `npm test` が緑（**4178〜4184 件あたり**）/ `npm run build` 緑 / **生成を触るので `npm run bench` を 3 回**（中央値を `HANDOFF.md` に）
+- **コミット 1 つ**（`AUTODEV 151（C の周）: 58 花 2 種（タンポポ・ポピー・ID 200..201）` の形）→ `master` へ push
+- `TUNING.md` の末尾の表に 2 行: **花の色 2 つ**（測った値・いちばん近い相手・距離）/ **花の密度**（平原 0.03・森 0.02、実効密度の実測値。本家の値ではなく暫定）
+- `ROADMAP.md` の予約表に 200・201 を「実装済み」/ `AUTODEV-QUEUE.md` の 58 の行を消す / この仕様書を `状態: 済` / `docs/autodev-log.md` に 1 節 / `HANDOFF.md` を書き直す
+- **撮ること**（C-3）: `npm run shot -- flowers terrain`（**terrain の md5 は変わってよい** —— 原点が平原なので花が写る。変わったことを書く）と
+  本物のブラウザ（`node tools/browsershot.mjs`）で一覧の 200・201 枠目の色と名前・console のエラー 0 件。**撮ったら `Read` で開いて見ること**
