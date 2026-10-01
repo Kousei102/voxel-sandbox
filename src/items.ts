@@ -20,6 +20,7 @@ import {
   LEAVES,
   LOW_BAND_MAX,
   NETHER_PORTAL,
+  POPPY,
   SAPLING,
   SNOW,
   SPRUCE_LEAVES,
@@ -700,7 +701,7 @@ export const GOLD_HOE = 195;
  * **上限をこちら側へ移したら、それまで指していたブロックの import を消すこと** ——
  * 残すと「使われていない」で `npm run typecheck` が落ちます（型で止まる安全な罠）。
  */
-export const MAX_ITEM_ID = NETHER_BRICK_ITEM;
+export const MAX_ITEM_ID = POPPY;
 
 export const MAX_STACK = 64;
 

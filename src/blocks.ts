@@ -717,6 +717,21 @@ export const BIRCH_WOOD = 196;
 export const BIRCH_LEAVES = 197;
 export const BIRCH_SAPLING = 198;
 
+/**
+ * 花 2 種（58）。**タンポポ 200 / ポピー 201。** 赤キノコ・茶キノコ（139 / 140）の
+ * **完全な写し**（十字の板 2 枚・通り抜けられる・硬さ 0・`replaceable: true`・
+ * `variantOf` を書かない）で、違うのは 2 つだけ: **色**と **`needsSoil: true`**
+ * （苗木と同じで、土・草・耕地の上にだけ立つ）。
+ *
+ * **どこにどれだけ生えるかは `biomes.ts` の `BiomeDef.flower`**（平原と森）。
+ * `worldgen.ts` の生えものの連鎖の**いちばん後ろ**に引くので、既存の草むら・
+ * キノコ・サトウキビの位置は動きません。**広がらない**（`crops.ts` の `isMushroom()` に
+ * 足さないこと）・**染料は作らない**（レシピ 0 本）。アイテムは `items.ts` の for が
+ * 同じ番号で作ります（**`MAX_ITEM_ID` だけは手で伸ばすこと**）。
+ */
+export const DANDELION = 200;
+export const POPPY = 201;
+
 /** 上付きハーフ。見た目と当たり判定だけが違うので、大元は下付きのハーフ。 */
 export const STONE_SLAB_TOP = 64;
 export const COBBLE_SLAB_TOP = 65;
@@ -2317,6 +2332,32 @@ export const BLOCKS: readonly BlockDef[] = [
   def(BIRCH_SAPLING, "シラカバの苗木", { top: 0xa8d070 }, {
     opaque: false,
     solid: false,
+    hardness: 0,
+    sound: "grass",
+    model: "cross",
+    boxes: CROSS_BOX,
+    supportFace: FACE_YN,
+    needsSoil: true,
+  }),
+
+  // 花 2 種（上のコメント・58）。**キノコの定義の写し + `needsSoil: true`**。
+  // **`replaceable: true` を外さないこと**（平原・森の木の葉が花に弾かれて穴が空く）。
+  // 色は一覧の全アイテムと総当たりで測った値（`test/items.test.ts`・`TUNING.md`）。
+  def(DANDELION, "タンポポ", { top: 0xffe030 }, {
+    opaque: false,
+    solid: false,
+    replaceable: true,
+    hardness: 0,
+    sound: "grass",
+    model: "cross",
+    boxes: CROSS_BOX,
+    supportFace: FACE_YN,
+    needsSoil: true,
+  }),
+  def(POPPY, "ポピー", { top: 0xf01018 }, {
+    opaque: false,
+    solid: false,
+    replaceable: true,
     hardness: 0,
     sound: "grass",
     model: "cross",

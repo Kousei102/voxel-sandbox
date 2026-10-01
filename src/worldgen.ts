@@ -4,11 +4,13 @@ import {
   BROWN_MUSHROOM,
   CANE_HEIGHT_MAX,
   COAL_ORE,
+  DANDELION,
   DIAMOND_ORE,
   GOLD_ORE,
   GRAVEL,
   IRON_ORE,
   LAVA,
+  POPPY,
   RED_MUSHROOM,
   STONE,
   SUGAR_CANE,
@@ -304,7 +306,7 @@ export class WorldGen {
         const at = lz * CHUNK_SIZE + lx;
         const h = height[at];
         // 内側の 16 段で毎回引かないよう、ここで取り出しておく
-        const { surface, filler, grass, mushroom, cane, seaSurface, floorPatch } = biomeDef(biome[at]);
+        const { surface, filler, grass, mushroom, flower, cane, seaSurface, floorPatch } = biomeDef(biome[at]);
         // 地表からの数マスをまだらに差し替える敷き物（いまは海底の粘土）。
         // **塊 → 間引きの 2 段は `VEINS` とまったく同じ形**だが、あちらは
         // `depth > 3`（石の中）にしか効かないので、海底の砂の下には 1 マスも出ない。
@@ -317,16 +319,16 @@ export class WorldGen {
           floorPatch !== null &&
           hash2(wx >> floorPatch.shift, wz >> floorPatch.shift, this.seed ^ 0x3d15) < floorPatch.chance &&
           hash2(wx, wz, this.seed ^ 0x6e83) < floorPatch.fill;
-        // 生えもの（サトウキビかキノコか草むら）は地表のすぐ上から上へ `tall` マス
+        // 生えもの（サトウキビかキノコか草むらか花）は地表のすぐ上から上へ `tall` マス
         // （**サトウキビだけが 1〜3 で、あとは 1 マス**）。列ごとに 1 回引けば済む。
         //
         // **表どおりの確率になるのは、いちばん先に引いたものだけ。** あとのものは
         // 前のものが生えなかったマスだけを候補にするので、**biomes.ts に書いた値と
         // 実際の密度が食い違う**（キノコを草むらの後ろに置いた頃、森は 0.015 の
         // つもりが 0.01275 だった）。**同じバイオームで 2 つ以上を 0 より大きく
-        // したときだけ効く**ので、いまは（浜のサトウキビ・森のキノコ・草原の草むらで
-        // 重なりが無いので）どれも表どおりだが、**バイオームに値を足すときは
-        // この順を見ること。**
+        // したときだけ効く**。いまは平原（草むら → 花）と森（キノコ → 草むら → 花）で
+        // 重なっている。**新しい生えものはいちばん後ろに足すこと**（前のものの位置が
+        // 動かない）。**バイオームに値を足すときはこの順を見ること。**
         // **塩は他と重ねないこと** —— 草むらの 0x6a55 と重ねると、同じマスに寄る。
         const sprouted = h > SEA_LEVEL;
         const tuft =
@@ -343,7 +345,13 @@ export class WorldGen {
                 : BROWN_MUSHROOM
               : sprouted && grass > 0 && hash2(wx, wz, this.seed ^ 0x6a55) < grass
                 ? TALL_GRASS
-                : AIR;
+                : // **花（58）はいちばん後ろ。** 先に入れると既存の草むら・キノコの位置が動く。
+                  // 黄か赤かは 2 本目のハッシュで半々（キノコと同じ理由）。
+                  sprouted && flower > 0 && hash2(wx, wz, this.seed ^ 0x1e47) < flower
+                  ? hash2(wx, wz, this.seed ^ 0x58c3) < 0.5
+                    ? DANDELION
+                    : POPPY
+                  : AIR;
         // **サトウキビだけが 1..CANE_HEIGHT_MAX 段。** キノコと草むらは 1 マスのまま。
         // **塩は他の 4 本（0x7c39 / 0x4d17 / 0x2f8b / 0x6a55）と重ねないこと** ——
         // 重ねると段数が密度と相関する（濃い所ほど高い、という形で偏る）。

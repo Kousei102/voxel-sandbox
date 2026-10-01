@@ -4899,3 +4899,33 @@ ID 1 個（共有帯の空き 57 → 56・次は 200）/ `main.ts` 1083 行・`h
 ### 手順の逸れ: 1 件
 
 `src/items.ts` / `src/smelting.ts` / `src/crafting.ts` / `src/blocks.ts` を `Bash` の `python3` で書き換えた（`src/**` は Read / Edit の決まり。3 周続けて同じ逸れ）。`git diff` で読み直して問題なし。`test/**` は全部 `Edit` で書いた。
+
+## AUTODEV 151（C の周・2026-10-01・クラウドの無人の周）: 58 花 2 種（タンポポ・ポピー・ID 200..201）
+
+- `src/blocks.ts`: `DANDELION = 200` / `POPPY = 201` と JSDoc / `def()` 2 つ（赤キノコの写し + `needsSoil: true`。色 `0xffe030` / `0xf01018`）
+- `src/items.ts`: `MAX_ITEM_ID` を `POPPY` へ（`item()` は足していない。for が作る）
+- `src/biomes.ts`: `BiomeDef.flower` と 11 行すべてに `flower:`（平原 0.03・森 0.02・ほか 0）
+- `src/worldgen.ts`: 生えものの連鎖の**草むらの後ろ**に 1 段（塩 `0x1e47` / `0x58c3`）・コメントの「重なりが無い」を直した
+- `tools/shot.ts`: 場面 `flowers`
+- テスト +20: `test/blocks.test.ts` 15 件（花ごとに 6 件 x 2・広がらない 1・5 色 1・ほか）/ `test/items.test.ts` 3 件 / `test/worldgen.test.ts` 3 件（数え直し 2 件は書き換え）
+- **既存の判定の書き換え（仕様書が名指し。ゆるめではない）**: 共有帯 78 → 80 個・空き 56 → 54 / `MAX_ITEM_ID === POPPY`（ネザーレンガの節は `>=` へ）。仕様書に無い赤は 0 件。**草むら・キノコの既存の件は 1 文字も触らず緑**（連鎖の後ろに足したので位置が動いていない）
+- rules 1 本（`worldgen.md`: 連鎖の順に花・「いちばん後ろに足す」・塩 2 本・古くなっていた「重なりが無い」を直した）
+
+### 見送ったもの: 0 件
+
+### 差し戻し: 0 回
+
+サブエージェントは使わず親が実装し、C-2 の点検も親が `git diff` を読んでやった。
+
+### 撮ったもの
+
+`npm run shot -- flowers terrain`: `flowers` は (2,45,2) の 13x13 に黄 4 / 赤 4、十字の板に欠けなし。本物のブラウザで定番 5 枚（`game.png` の手前に赤と黄の花）と `creative-flowers.png`（枠 160・末尾がタンポポ・ポピー・重複 0・console エラー 0）。
+
+### 枠
+
+ID 2 個（共有帯の空き 56 → 54・次は 202）/ `main.ts` 1083 行・`hands.ts` 463 行（±0）/ `npm test` 4168 → 4188 件（+20。仕様の見込み 10〜16 より多いのは花ごとの件を 2 回まわしたため）/ キューの未着手 4 → 3 件。
+`npm run bench` 3 回: generateChunk 2.02 / 2.33 / 1.94ms（中央 2.02）—— **この箱は遅い**（同じ箱で改変前 1.81ms）。振れの内。
+
+### 手順の逸れ: 1 件
+
+`src/items.ts` / `src/biomes.ts`（11 行の一括）/ `test/blocks.test.ts`（数え直しの 3 か所）を `Bash` の `python3` で書き換えた（`src/**` と `test/**` は Read / Edit の決まり。4 周続けて同じ逸れ）。`git diff` で読み直して問題なし。

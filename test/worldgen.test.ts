@@ -16,6 +16,8 @@ import {
   IRON_ORE,
   LAVA,
   LEAVES,
+  DANDELION,
+  POPPY,
   RED_MUSHROOM,
   SAND,
   SANDSTONE,
@@ -485,6 +487,65 @@ export function run(): void {
     reds > 0 && browns > 0 && reds / caps > 0.3 && reds / caps < 0.7,
     `赤 ${reds} / 茶 ${browns}（赤 ${((reds / Math.max(1, caps)) * 100).toFixed(0)}%）`,
   );
+
+  // --- 花（58）---
+  // 草むら・キノコとまったく同じ経路（地表のすぐ上の 1 マス）で、**連鎖のいちばん後ろ**。
+  // だから実効密度は `flower × (1 − cane)(1 − mushroom)(1 − grass)`（式の値も出す）。
+  // **まとまった平原と森を 1 マスも飛ばさずに数える**（キノコと同じ `patchOf()`）。
+  {
+    const flowerPatches: [string, number, [number, number] | null][] = [
+      ["平原", PLAINS, patchOf(PLAINS)],
+      ["森", FOREST, patches[0][2]],
+    ];
+    let yellows = 0;
+    let poppies = 0;
+    let notOnGrass = 0;
+    let stray = 0;
+    const perBiome: string[] = [];
+    const densityOk: boolean[] = [];
+    for (const [name, want, at] of flowerPatches) {
+      if (!at) {
+        perBiome.push(`${name} 見つからない`);
+        densityOk.push(false);
+        continue;
+      }
+      let here = 0;
+      let columns = 0;
+      for (let x = at[0]; x < at[0] + 64; x++) {
+        for (let z = at[1]; z < at[1] + 64; z++) {
+          const b = gen.biomeAt(x, z);
+          const h = gen.heightAt(x, z);
+          const id = voxel(x, h + 1, z);
+          if (b === want) columns++;
+          if (id !== DANDELION && id !== POPPY) continue;
+          if (id === DANDELION) yellows++;
+          else poppies++;
+          if (voxel(x, h, z) !== GRASS) notOnGrass++;
+          if (biomeDef(b).flower === 0) stray++;
+          if (b === want) here++;
+        }
+      }
+      const d = biomeDef(want);
+      const expected = d.flower * (1 - d.cane) * (1 - d.mushroom) * (1 - d.grass);
+      const measured = here / Math.max(1, columns);
+      perBiome.push(
+        `${name} ${here} 本 / ${columns} 列（実測 ${(measured * 100).toFixed(2)}% / 式 ${(expected * 100).toFixed(2)}%）`,
+      );
+      densityOk.push(here > 0 && Math.abs(measured - expected) <= expected * 0.5);
+    }
+    console.log(`      64x64 の花: ${perBiome.join(" / ")}  黄 ${yellows} / 赤 ${poppies}`);
+    check(
+      "花は平原にも森にも生え、黄も赤も出る",
+      densityOk.length === 2 && flowerPatches.every(([, , at]) => at !== null) && yellows > 0 && poppies > 0,
+      `${perBiome.join(" / ")} / 黄 ${yellows} / 赤 ${poppies}`,
+    );
+    check("花の実効密度は flower × (1 − 先のもの) の ±50% 以内", densityOk.every(Boolean), perBiome.join(" / "));
+    check(
+      "花の真下は必ず草・flower が 0 のバイオームに花は無い（場違い 0 本）",
+      notOnGrass === 0 && stray === 0,
+      `草でない床 ${notOnGrass} 本 / 場違い ${stray} 本`,
+    );
+  }
 
   // --- ツタ（34c・`BiomeDef.vine` と `treeshape.ts` の `vineCells()`）---
   // **キノコと同じまとまった森を 1 マスも飛ばさずに数える**（原点のまわりは平原なので、

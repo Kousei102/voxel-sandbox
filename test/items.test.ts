@@ -34,6 +34,8 @@ import {
   VINE_XN,
   VINE_ZN,
   VINE_ZP,
+  DANDELION,
+  POPPY,
 } from "../src/blocks";
 import {
   APPLE,
@@ -945,9 +947,9 @@ export function run(): void {
     `block ${placedBlock(NETHER_BRICK_ITEM)} / tool ${toolOf(NETHER_BRICK_ITEM)} / ` +
       `food ${foodOf(NETHER_BRICK_ITEM)} / stack ${itemStackLimit(NETHER_BRICK_ITEM)}`,
   );
-  // **上限の `===` はこの節が持つ**（前の節は `> BIRCH_SAPLING`。`rules/testing.md` の TS2367）。
+  // **上限の `===` は花の節（58）へ移した**（ここは `>=`。`rules/testing.md` の TS2367）。
   console.log(`      MAX_ITEM_ID ${MAX_ITEM_ID}（ネザーレンガ ${NETHER_BRICK_ITEM}）`);
-  check("MAX_ITEM_ID はネザーレンガ（199）", MAX_ITEM_ID === NETHER_BRICK_ITEM, `MAX_ITEM_ID ${MAX_ITEM_ID}`);
+  check("MAX_ITEM_ID はネザーレンガ（199）まで届いている", MAX_ITEM_ID >= NETHER_BRICK_ITEM, `MAX_ITEM_ID ${MAX_ITEM_ID}`);
 
   // **深い赤紫の帯**（ネザーレンガブロック 48・フェンス 187・ネザーラック・ソウルサンド）。
   // **いちばん近い相手と隔たりを出してから**判定する（グロウストーンダストと同じ形）。
@@ -972,4 +974,33 @@ export function run(): void {
     nbBest >= 20,
     `いちばん近いのは${nbWho}で ${nbBest.toFixed(1)}`,
   );
+
+  describe("花 2 種（58・ブロック 200..201）");
+
+  // **上限の `===` はこの節が持つ**（前の節は `>= NETHER_BRICK_ITEM`）。
+  console.log(`      MAX_ITEM_ID ${MAX_ITEM_ID}（タンポポ ${DANDELION} / ポピー ${POPPY}）`);
+  check("MAX_ITEM_ID はポピー（201）", MAX_ITEM_ID === POPPY, `MAX_ITEM_ID ${MAX_ITEM_ID}`);
+
+  // **一覧の全アイテムと総当たりで、いちばん近い相手と隔たりを出してから**判定する。
+  for (const flower of [DANDELION, POPPY]) {
+    let best = Infinity;
+    let who = "";
+    for (const other of ids) {
+      if (other === flower) continue;
+      const gap = dist(itemColor(flower), itemColor(other));
+      if (gap < best) {
+        best = gap;
+        who = `${itemName(other)} 0x${itemColor(other).toString(16)}`;
+      }
+    }
+    console.log(
+      `      ${itemName(flower)}(${flower}) 0x${itemColor(flower).toString(16)} 一覧 ${ids.includes(flower)}` +
+        ` / いちばん近い相手: ${who} ${best.toFixed(1)}`,
+    );
+    check(
+      `${itemName(flower)}は一覧に出て、既存のどのアイテムとも見分けられる（RGB で 20 以上）`,
+      ids.includes(flower) && best >= 20,
+      `いちばん近いのは${who}で ${best.toFixed(1)}`,
+    );
+  }
 }

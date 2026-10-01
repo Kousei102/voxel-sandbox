@@ -56,6 +56,8 @@ import {
   PLANK_SLAB,
   PLANK_SLAB_TOP,
   PLANK_STAIRS,
+  DANDELION,
+  POPPY,
   RED_MUSHROOM,
   SAND,
   SAPLING,
@@ -310,8 +312,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタ・ネザーレンガのフェンス・石炭ブロック・グロウストーンダスト・クモの目・金の道具 5 本・シラカバの木 3 つ・ネザーレンガの 78 個（199 まで。**ネザーレンガ（アイテム）が入ったので数え直した** —— 名指しの一覧はそのままで、末尾に 1 個足しただけ）",
-    sharedItems.length === 78 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタ・ネザーレンガのフェンス・石炭ブロック・グロウストーンダスト・クモの目・金の道具 5 本・シラカバの木 3 つ・ネザーレンガ・花 2 種の 80 個（201 まで。**タンポポ・ポピーが入ったので数え直した** —— 名指しの一覧はそのままで、末尾に 2 個足しただけ）",
+    sharedItems.length === 80 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -427,15 +429,18 @@ export function run(): void {
       // **199 は手で足したアイテム**（ネザーレンガ。57。ブロックは増えない —— 組み上がる先は
       // 低帯の `NETHER_BRICK`(48) なので）。上限がアイテム側に戻った。
       sharedItems[77] === NETHER_BRICK_ITEM &&
-      MAX_ITEM_ID === NETHER_BRICK_ITEM,
+      // **200..201 は `items.ts` に 1 行も書かずに増えたブロック 2 つ**（花 2 種。58。
+      // `variantOf` が `AIR`）。**上限を持つのがブロック側なのは 14 度目**。
+      sharedItems[78] === DANDELION && sharedItems[79] === POPPY &&
+      MAX_ITEM_ID === POPPY,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 56（ネザーレンガ 199 で 1 個減った。番号を 1 つ取ったので数え直した）",
-    sharedFree === 56,
+    "111..255 の空きは 54（花 2 種 200..201 で 2 個減った。番号を 2 つ取ったので数え直した）",
+    sharedFree === 54,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1434,6 +1439,7 @@ export function run(): void {
   cactusOnSand(world, ground);
   caneByWater(world, ground);
   mushroomSpreadInWorld(world);
+  flowers(world);
   ladders();
   vines(world, ground);
   leafDecay(world, ground);
@@ -4045,6 +4051,131 @@ function mushrooms(): void {
   );
   check(
     "草むら・赤・茶はどの 2 つも色で見分けられる（RGB で 60 以上）",
+    closest >= 60,
+    `いちばん近い組で ${closest.toFixed(1)}`,
+  );
+}
+
+/**
+ * 花 2 種（タンポポ 200・ポピー 201。58）。**キノコの写し + `needsSoil: true`** なので、
+ * 見るのは「写し間違えていないか」「土の上だけか」「広がらないか」「絵で見分けが付くか」。
+ * **どこに生えるか（平原・森）は `test/worldgen.test.ts`。**
+ */
+function flowers(world: World): void {
+  describe("花 2 種（58）");
+
+  const grown: [string, number][] = [
+    ["タンポポ", DANDELION],
+    ["ポピー", POPPY],
+  ];
+  for (const [name, block] of grown) {
+    const d = blockDef(block);
+    const dropped = rollDrop(block, 0.5);
+    console.log(
+      `      ${name}(${block}): model ${d.model} / variantOf ${d.variantOf} / 硬さ ${d.hardness} / ` +
+        `色 0x${d.top.toString(16)} / 通り抜け ${!d.solid} / 上書きされる ${isReplaceable(block)} / ` +
+        `土の上だけ ${needsSoil(block)} / 置けない理由「${supportHint(block)}」 / ` +
+        `掘ると ${itemName(dropped.item)} x${dropped.count} / アイテム名「${itemName(block)}」`,
+    );
+    check(
+      `${name}は cross で、向き違いではない（アイテムが自動で付く）`,
+      d.model === "cross" && d.variantOf === AIR,
+      `${d.model} / variantOf ${d.variantOf}`,
+    );
+    check(
+      `${name}は同じ番号のアイテムとして持てて、置くと自分に戻る`,
+      itemName(block) === name && placedBlock(block) === block,
+      `「${itemName(block)}」→ ${placedBlock(block)}`,
+    );
+    check(
+      `${name}は掘ると自分が 1 個落ちる（DROPS に 1 行も要らない）`,
+      dropped.item === block && dropped.count === 1 && rollDrops(block, 0.5, 0.9).length === 1,
+      `${itemName(dropped.item)} x${dropped.count}（山 ${rollDrops(block, 0.5, 0.9).length} 個）`,
+    );
+    // **`replaceable` が無いと、平原・森の木の葉が花に弾かれて穴が空く**（キノコと同じ理由）。
+    check(
+      `${name}は上書きして置ける（木の葉が弾かれない）`,
+      isReplaceable(block) && !d.solid && !d.opaque && d.hardness === 0,
+      `replaceable ${isReplaceable(block)} / solid ${d.solid} / opaque ${d.opaque} / 硬さ ${d.hardness}`,
+    );
+    check(`${name}は床が要る（浮いたまま残らない）`, d.supportFace === FACE_YN, `supportFace ${d.supportFace}`);
+
+    // **土の上だけ**（苗木と同じ表 1 本。`id === DANDELION` の分岐は書いていない）。
+    const floors: [string, number, boolean][] = [
+      ["草", GRASS, true],
+      ["土", DIRT, true],
+      ["耕地", FARMLAND, true],
+      ["砂", SAND, false],
+      ["石", STONE, false],
+    ];
+    console.log(
+      `      ${name} supportsBlock(床, FACE_YN): ` +
+        floors.map(([n, s]) => `${n} ${supportsBlock(s, FACE_YN, block)}`).join(" / "),
+    );
+    check(
+      `${name}は草・土・耕地の上にだけ立つ（砂・石は不可。置けない理由は「土か草の上」）`,
+      needsSoil(block) &&
+        supportHint(block) === "土か草の上" &&
+        floors.every(([, s, want]) => supportsBlock(s, FACE_YN, block) === want),
+      floors.map(([n, s, want]) => `${n} ${supportsBlock(s, FACE_YN, block)}（期待 ${want}）`).join(" / "),
+    );
+  }
+
+  // **花は広がらない。** `crops.ts` の `isMushroom()` は export されていないので振る舞いで見る:
+  // 本物の `World` で石で閉じた箱（中 3x2x3。床は草）に 1 本置き、キノコが増える秒数だけ回す。
+  {
+    const bx = 34;
+    const bz = -10;
+    const by = world.surfaceY(bx, bz) + 3;
+    for (let y = by - 1; y <= by + 2; y++) {
+      for (let z = bz - 2; z <= bz + 2; z++) {
+        for (let x = bx - 2; x <= bx + 2; x++) {
+          const inside = Math.abs(x - bx) <= 1 && Math.abs(z - bz) <= 1 && y >= by && y <= by + 1;
+          const floor = Math.abs(x - bx) <= 1 && Math.abs(z - bz) <= 1 && y === by - 1;
+          world.setVoxel(x, y, z, inside ? AIR : floor ? GRASS : STONE);
+        }
+      }
+    }
+    const placed = world.setVoxel(bx, by, bz, POPPY);
+    const crops = new Crops();
+    crops.notePlaced({ x: bx, y: by, z: bz }, POPPY, world);
+    crops.update(MUSHROOM_SPREAD_SECONDS, world);
+    let n = 0;
+    for (let y = by - 1; y <= by + 2; y++) {
+      for (let z = bz - 2; z <= bz + 2; z++) {
+        for (let x = bx - 2; x <= bx + 2; x++) {
+          const id = world.getVoxel(x, y, z);
+          if (id === POPPY || id === DANDELION) n++;
+        }
+      }
+    }
+    console.log(`      閉じた箱（y=${by}）にポピー 1 本: 置けた ${placed} / ${MUSHROOM_SPREAD_SECONDS} 秒後 ${n} 本 / 覚えている ${crops.count}`);
+    check("花は暗い箱の中でも広がらない（1 本のまま）", placed && n === 1, `${n} 本`);
+  }
+
+  // **十字の板 5 つはどれも色だけが手掛かり。** どの 2 つも RGB で 60 以上離れていること
+  // （上のキノコ 3 色の件はそのまま残し、5 色をここで別に見る）。
+  const shades: [string, number][] = [
+    ["草むら", blockDef(TALL_GRASS).top],
+    ["赤キノコ", blockDef(RED_MUSHROOM).top],
+    ["茶キノコ", blockDef(BROWN_MUSHROOM).top],
+    ["タンポポ", blockDef(DANDELION).top],
+    ["ポピー", blockDef(POPPY).top],
+  ];
+  const dist = (a: number, b: number): number =>
+    Math.hypot(((a >> 16) & 255) - ((b >> 16) & 255), ((a >> 8) & 255) - ((b >> 8) & 255), (a & 255) - (b & 255));
+  const pairs: string[] = [];
+  let closest = Infinity;
+  for (let i = 0; i < shades.length; i++) {
+    for (let j = i + 1; j < shades.length; j++) {
+      const d = dist(shades[i][1], shades[j][1]);
+      pairs.push(`${shades[i][0]}↔${shades[j][0]} ${d.toFixed(0)}`);
+      if (d < closest) closest = d;
+    }
+  }
+  console.log(`      隔たり: ${pairs.join(" / ")}`);
+  check(
+    "草むら・キノコ 2 種・花 2 種はどの 2 つも色で見分けられる（RGB で 60 以上）",
     closest >= 60,
     `いちばん近い組で ${closest.toFixed(1)}`,
   );

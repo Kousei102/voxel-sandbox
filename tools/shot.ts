@@ -52,6 +52,8 @@ import {
   PLANK,
   PLANK_SLAB,
   PLANK_SLAB_TOP,
+  POPPY,
+  DANDELION,
   RED_MUSHROOM,
   SAND,
   SANDSTONE,
@@ -442,6 +444,48 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
       note: best
         ? `キノコ ${Math.round(at.x)},${Math.round(at.y)},${Math.round(at.z)}（13x13 に ${bestNote}）`
         : "**1 本も見つからない**（原点のまわりに森が無い種）",
+    };
+  },
+
+  /**
+   * 花（タンポポ 200 / ポピー 201・58）。`mushrooms` の写しで、**黄と赤が両方写る所**を
+   * 探して立つ。見るのは: 十字の板に欠け・裏返りが無いか / **黄と赤と草むらが見分けられるか**。
+   */
+  flowers(setup) {
+    const { scene, world } = makeWorld(OVERWORLD, 5);
+    const topOf = (x: number, z: number): number => world.getVoxel(x, world.surfaceY(x, z) - 1, z);
+    let best: Vector3 | null = null;
+    let most = 0;
+    let bestNote = "";
+    for (let x = -72; x <= 72; x += 2) {
+      for (let z = -72; z <= 72; z += 2) {
+        if (topOf(x, z) !== DANDELION && topOf(x, z) !== POPPY) continue;
+        let yellows = 0;
+        let reds = 0;
+        for (let dx = -6; dx <= 6; dx++) {
+          for (let dz = -6; dz <= 6; dz++) {
+            const id = topOf(x + dx, z + dz);
+            if (id === DANDELION) yellows++;
+            if (id === POPPY) reds++;
+          }
+        }
+        const both = Math.min(yellows, reds) * 100 + yellows + reds;
+        if (both > most) {
+          most = both;
+          best = new Vector3(x, world.surfaceY(x, z) - 1, z);
+          bestNote = `黄 ${yellows} / 赤 ${reds}`;
+        }
+      }
+    }
+    const at = best ?? new Vector3(0, world.surfaceY(0, 0) - 1, 0);
+    const eye = new Vector3(at.x + 6.5, at.y + 3.4, at.z + 6.5);
+    return {
+      scene,
+      camera: look(setup, eye, new Vector3(at.x + 0.5, at.y + 0.4, at.z + 0.5)),
+      dayNight: skyOf(OVERWORLD, setup.time),
+      note: best
+        ? `花 ${Math.round(at.x)},${Math.round(at.y)},${Math.round(at.z)}（13x13 に ${bestNote}）`
+        : "**1 本も見つからない**（原点のまわりに平原も森も無い種）",
     };
   },
 
