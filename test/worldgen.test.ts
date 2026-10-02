@@ -17,6 +17,7 @@ import {
   LAVA,
   LEAVES,
   DANDELION,
+  DEAD_BUSH,
   POPPY,
   RED_MUSHROOM,
   SAND,
@@ -544,6 +545,49 @@ export function run(): void {
       "花の真下は必ず草・flower が 0 のバイオームに花は無い（場違い 0 本）",
       notOnGrass === 0 && stray === 0,
       `草でない床 ${notOnGrass} 本 / 場違い ${stray} 本`,
+    );
+  }
+
+  // --- 枯れ木（59）---
+  // 花と同じ経路で、**連鎖のいちばん後ろ**（花の後ろ）。実効密度は
+  // `deadBush × (1 − cane)(1 − mushroom)(1 − grass)(1 − flower)`（式の値も出す）。
+  // **まとまった砂漠を 1 マスも飛ばさずに数える**（花・キノコと同じ `patchOf()`）。
+  {
+    const at = patchOf(DESERT);
+    let here = 0;
+    let columns = 0;
+    let notOnSand = 0;
+    let stray = 0;
+    if (at) {
+      for (let x = at[0]; x < at[0] + 64; x++) {
+        for (let z = at[1]; z < at[1] + 64; z++) {
+          const b = gen.biomeAt(x, z);
+          const h = gen.heightAt(x, z);
+          if (b === DESERT) columns++;
+          if (voxel(x, h + 1, z) !== DEAD_BUSH) continue;
+          if (voxel(x, h, z) !== SAND) notOnSand++;
+          if (biomeDef(b).deadBush === 0) stray++;
+          if (b === DESERT) here++;
+        }
+      }
+    }
+    const d = biomeDef(DESERT);
+    const expected = d.deadBush * (1 - d.cane) * (1 - d.mushroom) * (1 - d.grass) * (1 - d.flower);
+    const measured = here / Math.max(1, columns);
+    const line =
+      `砂漠 ${at ? `${at[0]},${at[1]}` : "見つからない"}: ${here} 本 / ${columns} 列` +
+      `（実測 ${(measured * 100).toFixed(2)}% / 式 ${(expected * 100).toFixed(2)}%）`;
+    console.log(`      64x64 の枯れ木: ${line} / 砂でない床 ${notOnSand} 本 / 場違い ${stray} 本`);
+    check("枯れ木はまとまった砂漠に 1 本以上生える", at !== null && here > 0, line);
+    check(
+      "枯れ木の実効密度は deadBush × (1 − 先のもの) の ±50% 以内",
+      here > 0 && Math.abs(measured - expected) <= expected * 0.5,
+      line,
+    );
+    check(
+      "枯れ木の真下は必ず砂・deadBush が 0 のバイオームに枯れ木は無い（場違い 0 本）",
+      notOnSand === 0 && stray === 0,
+      `砂でない床 ${notOnSand} 本 / 場違い ${stray} 本`,
     );
   }
 

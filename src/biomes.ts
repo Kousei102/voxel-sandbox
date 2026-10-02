@@ -110,6 +110,15 @@ export interface BiomeDef {
    */
   readonly flower: number;
   /**
+   * 地表 1 マスごとに枯れ木（59）が生える確率 0..1。
+   *
+   * **生えものの連鎖のいちばん後ろ**（花の後ろ。`worldgen.ts`）に引くので、実効密度は
+   * **`deadBush × (1 − 先のもの)`**。**いまは砂漠だけ 0 より大きく**、砂漠は先のもの
+   * （`cane` / `mushroom` / `grass` / `flower`）が全部 0 なので**表どおり**。
+   * 立つのは砂の上だけ（`blocks.ts` の `needsSand`）。
+   */
+  readonly deadBush: number;
+  /**
    * 地表 1 マスごとにサトウキビが生える確率 0..1。
    *
    * **キノコよりさらに先に引く**（`worldgen.ts`）ので、`mushroom` とも `grass` とも
@@ -185,28 +194,28 @@ const WET = 0.02;
  * 添字と `id` が一致していないと別のバイオームの表が返る（`rules/worldgen.md`）。
  */
 export const BIOMES: readonly BiomeDef[] = [
-  { id: OCEAN, name: "海", surface: SAND, filler: SAND, trees: 0, treeKind: "oak", grass: 0, mushroom: 0, flower: 0, cane: 0, vine: 0, birch: 0, seaSurface: WATER, floorPatch: OCEAN_CLAY },
+  { id: OCEAN, name: "海", surface: SAND, filler: SAND, trees: 0, treeKind: "oak", grass: 0, mushroom: 0, flower: 0, deadBush: 0, cane: 0, vine: 0, birch: 0, seaSurface: WATER, floorPatch: OCEAN_CLAY },
   // **サトウキビが生えるのは浜だけ**（`cane`）。雪の浜は地表が雪、砂漠には水が無い。
-  { id: BEACH, name: "浜", surface: SAND, filler: SAND, trees: 0, treeKind: "oak", grass: 0, mushroom: 0, flower: 0, cane: 0.12, vine: 0, birch: 0, seaSurface: WATER, floorPatch: null },
-  // 砂漠だけ木の代わりにサボテンが立つ
-  { id: DESERT, name: "砂漠", surface: SAND, filler: SANDSTONE, trees: 0.35, treeKind: "cactus", grass: 0, mushroom: 0, flower: 0, cane: 0, vine: 0, birch: 0, seaSurface: WATER, floorPatch: null },
+  { id: BEACH, name: "浜", surface: SAND, filler: SAND, trees: 0, treeKind: "oak", grass: 0, mushroom: 0, flower: 0, deadBush: 0, cane: 0.12, vine: 0, birch: 0, seaSurface: WATER, floorPatch: null },
+  // 砂漠だけ木の代わりにサボテンが立つ。**枯れ木（`deadBush`）も砂漠だけ**（59）
+  { id: DESERT, name: "砂漠", surface: SAND, filler: SANDSTONE, trees: 0.35, treeKind: "cactus", grass: 0, mushroom: 0, flower: 0, deadBush: 0.01, cane: 0, vine: 0, birch: 0, seaSurface: WATER, floorPatch: null },
   // 平原がいちばん草深い（Minecraft と同じで、森は木の下なので少なめ）。
   // **平原にキノコは生えない** —— 木陰の生えものなので、森と針葉樹林だけにしてある。
-  { id: PLAINS, name: "平原", surface: GRASS, filler: DIRT, trees: 0.3, treeKind: "oak", grass: 0.3, mushroom: 0, flower: 0.03, cane: 0, vine: 0, birch: 0, seaSurface: WATER, floorPatch: null },
+  { id: PLAINS, name: "平原", surface: GRASS, filler: DIRT, trees: 0.3, treeKind: "oak", grass: 0.3, mushroom: 0, flower: 0.03, deadBush: 0, cane: 0, vine: 0, birch: 0, seaSurface: WATER, floorPatch: null },
   // **ツタが掛かるのは森だけ**（`vine`。34c）。**木 1 本ごとの確率**で、掛かる木の
   // どのマスに何を置くかは `treeshape.ts` の `vineCells()` が決める。
-  { id: FOREST, name: "森", surface: GRASS, filler: DIRT, trees: 0.8, treeKind: "oak", grass: 0.15, mushroom: 0.015, flower: 0.02, cane: 0, vine: 0.25, birch: 0.2, seaSurface: WATER, floorPatch: null },
-  { id: TAIGA, name: "針葉樹林", surface: GRASS, filler: DIRT, trees: 0.65, treeKind: "spruce", grass: 0.1, mushroom: 0.01, flower: 0, cane: 0, vine: 0, birch: 0, seaSurface: WATER, floorPatch: null },
-  { id: SNOWY, name: "雪原", surface: SNOW, filler: DIRT, trees: 0.15, treeKind: "spruce", grass: 0, mushroom: 0, flower: 0, cane: 0, vine: 0, birch: 0, seaSurface: WATER, floorPatch: null },
-  { id: ALPINE, name: "高山", surface: SNOW, filler: STONE, trees: 0, treeKind: "spruce", grass: 0, mushroom: 0, flower: 0, cane: 0, vine: 0, birch: 0, seaSurface: WATER, floorPatch: null },
+  { id: FOREST, name: "森", surface: GRASS, filler: DIRT, trees: 0.8, treeKind: "oak", grass: 0.15, mushroom: 0.015, flower: 0.02, deadBush: 0, cane: 0, vine: 0.25, birch: 0.2, seaSurface: WATER, floorPatch: null },
+  { id: TAIGA, name: "針葉樹林", surface: GRASS, filler: DIRT, trees: 0.65, treeKind: "spruce", grass: 0.1, mushroom: 0.01, flower: 0, deadBush: 0, cane: 0, vine: 0, birch: 0, seaSurface: WATER, floorPatch: null },
+  { id: SNOWY, name: "雪原", surface: SNOW, filler: DIRT, trees: 0.15, treeKind: "spruce", grass: 0, mushroom: 0, flower: 0, deadBush: 0, cane: 0, vine: 0, birch: 0, seaSurface: WATER, floorPatch: null },
+  { id: ALPINE, name: "高山", surface: SNOW, filler: STONE, trees: 0, treeKind: "spruce", grass: 0, mushroom: 0, flower: 0, deadBush: 0, cane: 0, vine: 0, birch: 0, seaSurface: WATER, floorPatch: null },
   // 暖かい土地の山。雪をかぶらないので、砂漠から生えた山も砂 → 岩肌になる。
-  { id: ALPINE_ROCK, name: "岩山", surface: STONE, filler: STONE, trees: 0, treeKind: "oak", grass: 0, mushroom: 0, flower: 0, cane: 0, vine: 0, birch: 0, seaSurface: WATER, floorPatch: null },
-  { id: SNOWY_BEACH, name: "雪の浜", surface: SNOW, filler: SAND, trees: 0, treeKind: "spruce", grass: 0, mushroom: 0, flower: 0, cane: 0, vine: 0, birch: 0, seaSurface: WATER, floorPatch: null },
+  { id: ALPINE_ROCK, name: "岩山", surface: STONE, filler: STONE, trees: 0, treeKind: "oak", grass: 0, mushroom: 0, flower: 0, deadBush: 0, cane: 0, vine: 0, birch: 0, seaSurface: WATER, floorPatch: null },
+  { id: SNOWY_BEACH, name: "雪の浜", surface: SNOW, filler: SAND, trees: 0, treeKind: "spruce", grass: 0, mushroom: 0, flower: 0, deadBush: 0, cane: 0, vine: 0, birch: 0, seaSurface: WATER, floorPatch: null },
   // 寒い海。**海の行の写しで、違うのは `seaSurface` だけ**（海面 1 段が氷）。
   // **`surface` を `SNOW` にしないこと** —— これは海の「底」なので、水の底に雪が
   // 敷かれるうえ、「砂と雪が接するのは海岸だけ」の見張りに当たる。
   // 生えもの（`trees` / `grass` / `mushroom` / `cane` / `vine`）は海と同じで全部 0。
-  { id: FROZEN_OCEAN, name: "凍った海", surface: SAND, filler: SAND, trees: 0, treeKind: "oak", grass: 0, mushroom: 0, flower: 0, cane: 0, vine: 0, birch: 0, seaSurface: ICE, floorPatch: OCEAN_CLAY },
+  { id: FROZEN_OCEAN, name: "凍った海", surface: SAND, filler: SAND, trees: 0, treeKind: "oak", grass: 0, mushroom: 0, flower: 0, deadBush: 0, cane: 0, vine: 0, birch: 0, seaSurface: ICE, floorPatch: OCEAN_CLAY },
 ];
 
 /** 気候だけで決まるバイオーム。**高さを見ないこと**（循環する）。 */

@@ -54,6 +54,7 @@ import {
   PLANK_SLAB_TOP,
   POPPY,
   DANDELION,
+  DEAD_BUSH,
   RED_MUSHROOM,
   SAND,
   SANDSTONE,
@@ -1249,6 +1250,46 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
         `伸ばしたぶん -3,${y},0 が ${heightAt(-3)} 段 / -1,${y},0 が ${heightAt(-1)} 段 ` +
         `（上限 ${CACTUS_HEIGHT_MAX}）/ 自然に生えたぶん 2,${y},0 が ${heightAt(2)} 段 / ` +
         `比べる砂岩 4,${y},0 / 覚えている ${crops.count} 本`,
+    };
+  },
+
+  /**
+   * 枯れ木（202・59）。`cactus` の写しで、**砂漠を探さずに砂の台を敷き**、枯れ木 3 本と
+   * 比べるサボテン 1 本・草むら 1 本（草を 1 マスだけ敷いた上）を並べる。
+   * 手で置くのは「生えた枯れ木の形」を見るためで、時間で変わるものではない。
+   * 見るのは: 十字の板に欠け・裏返りが無いか / **砂の上で枯れ木の茶色が読めるか** /
+   * **草むらと見分けが付くか**（色だけが手掛かり）。
+   */
+  deadbush(setup) {
+    const { scene, world } = makeWorld(OVERWORLD, 3);
+    const pad = 9;
+    let y = 0;
+    for (let dz = -pad; dz <= pad; dz++) {
+      for (let dx = -pad; dx <= pad; dx++) y = Math.max(y, world.surfaceY(dx, dz));
+    }
+    // **台はカメラの手前（`z = 4`）で切ること。** 台の上面は 1 枚の大きな四角に
+    // まとまるので、カメラの後ろまで伸ばすと near 平面をまたいで丸ごと捨てられ
+    // （`tools/raster.ts`）、台の手前が下の草地のまま写る（`cactus` の絵がそうなっている）。
+    for (let dz = -pad; dz <= 4; dz++) {
+      for (let dx = -pad; dx <= pad; dx++) {
+        for (let h = y; h < y + 10; h++) world.setVoxel(dx, h, dz, AIR);
+        for (let h = y - 4; h < y; h++) world.setVoxel(dx, h, dz, SAND);
+      }
+    }
+    for (const x of [-3, -1, 1]) world.setVoxel(x, y, 0, DEAD_BUSH);
+    world.setVoxel(3, y, 0, CACTUS);
+    // 草むらは**草の上にしか立たない**ので、そこだけ 1 マス草を敷く。
+    world.setVoxel(5, y - 1, 0, GRASS);
+    world.setVoxel(5, y, 0, TALL_GRASS);
+    world.primeAround(0.5, 0.5, 3);
+    const placed = [-3, -1, 1].filter((x) => world.getVoxel(x, y, 0) === DEAD_BUSH).length;
+    return {
+      scene,
+      camera: look(setup, new Vector3(1, y + 2.4, 5.8), new Vector3(1, y + 0.4, 0)),
+      dayNight: skyOf(OVERWORLD, setup.time),
+      note:
+        `枯れ木 ${placed} / 3 本（-3,-1,1 / y ${y}）/ サボテン 3,${y},0 ${world.getVoxel(3, y, 0) === CACTUS} / ` +
+        `草むら 5,${y},0 ${world.getVoxel(5, y, 0) === TALL_GRASS}`,
     };
   },
 

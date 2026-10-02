@@ -9,6 +9,7 @@ import {
   COAL_ORE,
   COBWEB,
   COBBLE,
+  DEAD_BUSH,
   DIAMOND_ORE,
   DIRT,
   END_CRYSTAL,
@@ -20,7 +21,6 @@ import {
   LEAVES,
   LOW_BAND_MAX,
   NETHER_PORTAL,
-  POPPY,
   SAPLING,
   SNOW,
   SPRUCE_LEAVES,
@@ -701,7 +701,7 @@ export const GOLD_HOE = 195;
  * **上限をこちら側へ移したら、それまで指していたブロックの import を消すこと** ——
  * 残すと「使われていない」で `npm run typecheck` が落ちます（型で止まる安全な罠）。
  */
-export const MAX_ITEM_ID = POPPY;
+export const MAX_ITEM_ID = DEAD_BUSH;
 
 export const MAX_STACK = 64;
 
@@ -1442,6 +1442,10 @@ const DROPS = new Map<number, Drop>([
   // 見るのは `canHarvest()` だが、こちらは**落ちるものが最初から無い**ので
   // **素手でもツルハシでも剣でも 0 個**（`test/blocks.test.ts` が 3 通り並べて見る）。
   [CAKE, { item: NO_ITEM, count: 0, chance: 0 }],
+  // 枯れ木は**棒が 1 本だけ**（59。本家は 0〜2 本で、平均の 1 本に固定）。この 1 行が無いと
+  // 既定の `baseBlock()` が枯れ木そのものを落とす。**シアーズでも棒**（`dropOf()` は道具を
+  // 見ない）。本棚と同じで **`extra` も `otherwise` も書かないこと。**
+  [DEAD_BUSH, { item: STICK, count: 1, chance: 1 }],
   // 氷も**何も落ちない**（本家はシルクタッチでだけ持ち帰れるが、まだ無い）。ガラス・
   // ケーキと同じ `NO_ITEM` の 1 行で、**道具では変わらない** —— **素手でもツルハシでも
   // 0 個**。**残るのは水**だが、それを決めるのは `blocks.ts` の `remainsAfterBreak()` で

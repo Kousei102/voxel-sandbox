@@ -5,6 +5,7 @@ import {
   CANE_HEIGHT_MAX,
   COAL_ORE,
   DANDELION,
+  DEAD_BUSH,
   DIAMOND_ORE,
   GOLD_ORE,
   GRAVEL,
@@ -306,7 +307,7 @@ export class WorldGen {
         const at = lz * CHUNK_SIZE + lx;
         const h = height[at];
         // 内側の 16 段で毎回引かないよう、ここで取り出しておく
-        const { surface, filler, grass, mushroom, flower, cane, seaSurface, floorPatch } = biomeDef(biome[at]);
+        const { surface, filler, grass, mushroom, flower, deadBush, cane, seaSurface, floorPatch } = biomeDef(biome[at]);
         // 地表からの数マスをまだらに差し替える敷き物（いまは海底の粘土）。
         // **塊 → 間引きの 2 段は `VEINS` とまったく同じ形**だが、あちらは
         // `depth > 3`（石の中）にしか効かないので、海底の砂の下には 1 マスも出ない。
@@ -319,7 +320,7 @@ export class WorldGen {
           floorPatch !== null &&
           hash2(wx >> floorPatch.shift, wz >> floorPatch.shift, this.seed ^ 0x3d15) < floorPatch.chance &&
           hash2(wx, wz, this.seed ^ 0x6e83) < floorPatch.fill;
-        // 生えもの（サトウキビかキノコか草むらか花）は地表のすぐ上から上へ `tall` マス
+        // 生えもの（サトウキビかキノコか草むらか花か枯れ木）は地表のすぐ上から上へ `tall` マス
         // （**サトウキビだけが 1〜3 で、あとは 1 マス**）。列ごとに 1 回引けば済む。
         //
         // **表どおりの確率になるのは、いちばん先に引いたものだけ。** あとのものは
@@ -327,7 +328,7 @@ export class WorldGen {
         // 実際の密度が食い違う**（キノコを草むらの後ろに置いた頃、森は 0.015 の
         // つもりが 0.01275 だった）。**同じバイオームで 2 つ以上を 0 より大きく
         // したときだけ効く**。いまは平原（草むら → 花）と森（キノコ → 草むら → 花）で
-        // 重なっている。**新しい生えものはいちばん後ろに足すこと**（前のものの位置が
+        // 重なっている（砂漠の枯れ木は重ならない）。**新しい生えものはいちばん後ろに足すこと**（前のものの位置が
         // 動かない）。**バイオームに値を足すときはこの順を見ること。**
         // **塩は他と重ねないこと** —— 草むらの 0x6a55 と重ねると、同じマスに寄る。
         const sprouted = h > SEA_LEVEL;
@@ -351,7 +352,10 @@ export class WorldGen {
                   ? hash2(wx, wz, this.seed ^ 0x58c3) < 0.5
                     ? DANDELION
                     : POPPY
-                  : AIR;
+                  : // **枯れ木（59）は花の後ろ。** いまは砂漠だけで、砂漠は先のものが全部 0。
+                    sprouted && deadBush > 0 && hash2(wx, wz, this.seed ^ 0x2d91) < deadBush
+                    ? DEAD_BUSH
+                    : AIR;
         // **サトウキビだけが 1..CANE_HEIGHT_MAX 段。** キノコと草むらは 1 マスのまま。
         // **塩は他の 4 本（0x7c39 / 0x4d17 / 0x2f8b / 0x6a55）と重ねないこと** ——
         // 重ねると段数が密度と相関する（濃い所ほど高い、という形で偏る）。

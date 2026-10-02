@@ -4929,3 +4929,45 @@ ID 2 個（共有帯の空き 56 → 54・次は 202）/ `main.ts` 1083 行・`h
 ### 手順の逸れ: 1 件
 
 `src/items.ts` / `src/biomes.ts`（11 行の一括）/ `test/blocks.test.ts`（数え直しの 3 か所）を `Bash` の `python3` で書き換えた（`src/**` と `test/**` は Read / Edit の決まり。4 周続けて同じ逸れ）。`git diff` で読み直して問題なし。
+
+## AUTODEV 153（C の周・2026-10-02・クラウドの無人の周）: 59 枯れ木（ID 202）
+
+- `src/blocks.ts`: `DEAD_BUSH = 202` と JSDoc / `def()` 1 つ（タンポポの写しで `needsSoil` → `needsSand`。色 `0x8a6c20`）
+- `src/items.ts`: `MAX_ITEM_ID` を `DEAD_BUSH` へ（`POPPY` の import を消した）/ `DROPS` に棒 1 本の 1 行（`item()` は足していない。for が作る）
+- `src/biomes.ts`: `BiomeDef.deadBush` と 11 行すべてに `deadBush:`（砂漠 0.01・ほか 0）
+- `src/worldgen.ts`: 生えものの連鎖の**花の後ろ**に 1 段（塩 `0x2d91`）・コメント 2 か所
+- `tools/shot.ts`: 場面 `deadbush`（砂の台をカメラの手前 `dz <= 4` で切る —— 下の「落とし穴」）
+- テスト +10: `test/blocks.test.ts` 5 件（`deadBush()`）/ `test/items.test.ts` 2 件 / `test/worldgen.test.ts` 3 件
+- **既存の判定の書き換え（仕様書が名指し。ゆるめではない）**: 共有帯 80 → 81 個・空き 54 → 53 / `MAX_ITEM_ID === DEAD_BUSH`（花の節は `>= POPPY` へ）/
+  「needsSand はサボテンだけ」→「サボテンと枯れ木だけ」/ 十字の板 5 色 → 6 色。仕様書に無い赤は 0 件。**既存の生えものの件は数を 1 文字も触らず緑**
+- rules 2 本（`worldgen.md`: 連鎖の順と塩 / `meshing-render.md`: near 平面で大きな上面が消える落とし穴）
+
+### 見送ったもの: 2 件
+
+- **シアーズで枯れ木そのものが落ちる**（本家どおり）—— `dropOf()` は道具を見ない。道具で落とし物を変える仕組みを作るならそれだけで 1 周（シアーズで葉・草むらも同じ形で取れる）
+- **棒 0〜2 本の幅** —— `rules/items-survival.md` の「本家が幅を持つ落とし物は平均の固定個数」
+
+### 差し戻し: 0 回
+
+サブエージェントは使わず親が実装し、C-2 の点検も親が `git diff` を読んでやった。
+
+### 落とし穴（据えた）
+
+`deadbush` の最初の絵で**台の手前が元の草地のまま写った**（`cactus` の場面も同じ絵）。砂が落ちたと思って地表まで砂で埋めたら、今度は**洞窟が透けた** ——
+`getVoxel` は砂を返すので、**ボクセルではなく描画の側**。`tools/raster.ts` は near 平面をまたぐ三角形を丸ごと捨てるので、
+**カメラの後ろまで続く台の greedy の上面 1 枚が消えていた**。台をカメラの手前で切って直った。`rules/meshing-render.md` へ。
+
+### 撮ったもの
+
+`npm run shot -- deadbush terrain`: 枯れ木 3 / 3 本・十字の板に欠けなし・草むらと色で見分けられる。`terrain` は右奥の砂漠に枯れ木が生えたぶん +304 三角形。
+本物のブラウザで定番 5 枚と `creative-dead-bush.png`（枠 161・末尾が「枯れ木」・重複 0・console エラー 0）。
+
+### 枠
+
+ID 1 個（共有帯の空き 54 → 53・次は 203）/ `main.ts` 1083 行・`hands.ts` 463 行（±0）/ `npm test` 4188 → 4198 件（+10）/ キューの未着手 3 → 2 件。
+`npm run bench` 3 回: generateChunk 1.03 / 0.99 / 1.02ms（中央 1.02）。
+
+### 手順の逸れ: 2 件
+
+`src/blocks.ts`（定数と `def()` の 2 か所）を `Bash` の `python3` で書き換えた（`src/**` は Read / Edit の決まり）。ほかの `src/**` と `test/**` は `Edit`（`test/blocks.test.ts` の 1 語だけ `sed`）。`git diff` で読み直して問題なし。
+`terrain` の md5 を比べるのに `git stash` を使った（`rules/meshing-render.md` は `git worktree` を勧めている）。`git status` で差分が戻ったことを確かめた。

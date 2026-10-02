@@ -35,6 +35,7 @@ import {
   VINE_ZN,
   VINE_ZP,
   DANDELION,
+  DEAD_BUSH,
   POPPY,
 } from "../src/blocks";
 import {
@@ -977,9 +978,9 @@ export function run(): void {
 
   describe("花 2 種（58・ブロック 200..201）");
 
-  // **上限の `===` はこの節が持つ**（前の節は `>= NETHER_BRICK_ITEM`）。
+  // **上限の `===` は枯れ木の節（59）へ移した**（ここは `>=`。`rules/testing.md` の TS2367）。
   console.log(`      MAX_ITEM_ID ${MAX_ITEM_ID}（タンポポ ${DANDELION} / ポピー ${POPPY}）`);
-  check("MAX_ITEM_ID はポピー（201）", MAX_ITEM_ID === POPPY, `MAX_ITEM_ID ${MAX_ITEM_ID}`);
+  check("MAX_ITEM_ID はポピー（201）まで届いている", MAX_ITEM_ID >= POPPY, `MAX_ITEM_ID ${MAX_ITEM_ID}`);
 
   // **一覧の全アイテムと総当たりで、いちばん近い相手と隔たりを出してから**判定する。
   for (const flower of [DANDELION, POPPY]) {
@@ -1000,6 +1001,35 @@ export function run(): void {
     check(
       `${itemName(flower)}は一覧に出て、既存のどのアイテムとも見分けられる（RGB で 20 以上）`,
       ids.includes(flower) && best >= 20,
+      `いちばん近いのは${who}で ${best.toFixed(1)}`,
+    );
+  }
+
+  describe("枯れ木（59・ブロック 202）");
+
+  // **上限の `===` はこの節が持つ**（前の節は `>= POPPY`）。
+  console.log(`      MAX_ITEM_ID ${MAX_ITEM_ID}（枯れ木 ${DEAD_BUSH}）`);
+  check("MAX_ITEM_ID は枯れ木（202）", MAX_ITEM_ID === DEAD_BUSH, `MAX_ITEM_ID ${MAX_ITEM_ID}`);
+
+  // **茶色はいちばん混んでいる帯**。全アイテムと総当たりで、いちばん近い相手と隔たりを出してから判定する。
+  {
+    let best = Infinity;
+    let who = "";
+    for (const other of ids) {
+      if (other === DEAD_BUSH) continue;
+      const gap = dist(itemColor(DEAD_BUSH), itemColor(other));
+      if (gap < best) {
+        best = gap;
+        who = `${itemName(other)} 0x${itemColor(other).toString(16)}`;
+      }
+    }
+    console.log(
+      `      ${itemName(DEAD_BUSH)}(${DEAD_BUSH}) 0x${itemColor(DEAD_BUSH).toString(16)} 一覧 ${ids.includes(DEAD_BUSH)}` +
+        ` / いちばん近い相手: ${who} ${best.toFixed(1)}`,
+    );
+    check(
+      "枯れ木は一覧に出て、既存のどのアイテムとも見分けられる（RGB で 20 以上）",
+      ids.includes(DEAD_BUSH) && best >= 20,
       `いちばん近いのは${who}で ${best.toFixed(1)}`,
     );
   }

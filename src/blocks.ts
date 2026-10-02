@@ -732,6 +732,20 @@ export const BIRCH_SAPLING = 198;
 export const DANDELION = 200;
 export const POPPY = 201;
 
+/**
+ * 枯れ木（59）。**202。** 花 2 種（200 / 201）の**完全な写し**（十字の板 2 枚・通り抜け
+ * られる・硬さ 0・`replaceable: true`・`variantOf` を書かない）で、違うのは 3 つだけ:
+ * **色** / **`needsSoil` ではなく `needsSand: true`**（サボテンと同じで、砂の上にだけ立つ。
+ * 砂岩は不可）/ **壊すと棒が 1 本落ちる**（`items.ts` の `DROPS`）。
+ *
+ * **どこにどれだけ生えるかは `biomes.ts` の `BiomeDef.deadBush`**（砂漠だけ）。
+ * `worldgen.ts` の生えものの連鎖の**いちばん後ろ**（花の後ろ）に引くので、既存の
+ * 生えものの位置は動きません。**育たない・広がらない**（`crops.ts` に足さないこと）・
+ * **燃えない**（燃料 0 行）。アイテムは `items.ts` の for が同じ番号で作ります
+ * （**`MAX_ITEM_ID` だけは手で伸ばすこと**）。
+ */
+export const DEAD_BUSH = 202;
+
 /** 上付きハーフ。見た目と当たり判定だけが違うので、大元は下付きのハーフ。 */
 export const STONE_SLAB_TOP = 64;
 export const COBBLE_SLAB_TOP = 65;
@@ -2364,6 +2378,20 @@ export const BLOCKS: readonly BlockDef[] = [
     boxes: CROSS_BOX,
     supportFace: FACE_YN,
     needsSoil: true,
+  }),
+  // 枯れ木（上のコメント・59）。**花の定義の写しで `needsSoil` を `needsSand` に差し替えたもの**。
+  // **`stacksOnSelf` / `spiky` を付けないこと**（付けるとサボテンになる）・**`needsSoil` と
+  // 両方付けないこと**（どこにも立てなくなる）。色は総当たりで測った値（`TUNING.md`）。
+  def(DEAD_BUSH, "枯れ木", { top: 0x8a6c20 }, {
+    opaque: false,
+    solid: false,
+    replaceable: true,
+    hardness: 0,
+    sound: "grass",
+    model: "cross",
+    boxes: CROSS_BOX,
+    supportFace: FACE_YN,
+    needsSand: true,
   }),
 
   // 粘土（上のコメント）。**砂利の定義をほぼそのまま写した普通の立方体**で、違うのは

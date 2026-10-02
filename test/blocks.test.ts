@@ -57,6 +57,7 @@ import {
   PLANK_SLAB_TOP,
   PLANK_STAIRS,
   DANDELION,
+  DEAD_BUSH,
   POPPY,
   RED_MUSHROOM,
   SAND,
@@ -312,8 +313,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタ・ネザーレンガのフェンス・石炭ブロック・グロウストーンダスト・クモの目・金の道具 5 本・シラカバの木 3 つ・ネザーレンガ・花 2 種の 80 個（201 まで。**タンポポ・ポピーが入ったので数え直した** —— 名指しの一覧はそのままで、末尾に 2 個足しただけ）",
-    sharedItems.length === 80 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタ・ネザーレンガのフェンス・石炭ブロック・グロウストーンダスト・クモの目・金の道具 5 本・シラカバの木 3 つ・ネザーレンガ・花 2 種・枯れ木の 81 個（202 まで。**枯れ木が入ったので数え直した** —— 名指しの一覧はそのままで、末尾に 1 個足しただけ）",
+    sharedItems.length === 81 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -432,15 +433,17 @@ export function run(): void {
       // **200..201 は `items.ts` に 1 行も書かずに増えたブロック 2 つ**（花 2 種。58。
       // `variantOf` が `AIR`）。**上限を持つのがブロック側なのは 14 度目**。
       sharedItems[78] === DANDELION && sharedItems[79] === POPPY &&
-      MAX_ITEM_ID === POPPY,
+      // **202 も `items.ts` に 1 行も書かずに増えたブロック**（枯れ木。59）。**15 度目**。
+      sharedItems[80] === DEAD_BUSH &&
+      MAX_ITEM_ID === DEAD_BUSH,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 54（花 2 種 200..201 で 2 個減った。番号を 2 つ取ったので数え直した）",
-    sharedFree === 54,
+    "111..255 の空きは 53（枯れ木 202 で 1 個減った。番号を 1 つ取ったので数え直した）",
+    sharedFree === 53,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1440,6 +1443,7 @@ export function run(): void {
   caneByWater(world, ground);
   mushroomSpreadInWorld(world);
   flowers(world);
+  deadBush();
   ladders();
   vines(world, ground);
   leafDecay(world, ground);
@@ -3597,8 +3601,9 @@ function cactusOnSand(world: World, ground: number): void {
     `      needsSand: ${sandNeeders.join(",") || "なし"} / isSand: ${sands.join(",") || "なし"} / ` +
       `needsSand と needsSoil の両方: ${both.join(",") || "なし"}`,
   );
-  check("needsSand が真なのはサボテンだけ",
-    sandNeeders.length === 1 && needsSand(CACTUS), sandNeeders.join(","));
+  // **枯れ木（59）が 2 つ目**（同じ表 1 本。`id === DEAD_BUSH` の分岐は書いていない）。
+  check("needsSand が真なのはサボテンと枯れ木だけ",
+    sandNeeders.length === 2 && needsSand(CACTUS) && needsSand(DEAD_BUSH), sandNeeders.join(","));
   check("isSand が真なのは砂だけ（砂岩は入らない）",
     sands.length === 1 && isSand(SAND) && !isSand(SANDSTONE), sands.join(","));
   check("needsSand と needsSoil が両方真のブロックは無い", both.length === 0, both.join(","));
@@ -4153,14 +4158,15 @@ function flowers(world: World): void {
     check("花は暗い箱の中でも広がらない（1 本のまま）", placed && n === 1, `${n} 本`);
   }
 
-  // **十字の板 5 つはどれも色だけが手掛かり。** どの 2 つも RGB で 60 以上離れていること
-  // （上のキノコ 3 色の件はそのまま残し、5 色をここで別に見る）。
+  // **十字の板 6 つはどれも色だけが手掛かり。** どの 2 つも RGB で 60 以上離れていること
+  // （上のキノコ 3 色の件はそのまま残し、6 色をここで別に見る。**枯れ木（59）で 5 → 6**）。
   const shades: [string, number][] = [
     ["草むら", blockDef(TALL_GRASS).top],
     ["赤キノコ", blockDef(RED_MUSHROOM).top],
     ["茶キノコ", blockDef(BROWN_MUSHROOM).top],
     ["タンポポ", blockDef(DANDELION).top],
     ["ポピー", blockDef(POPPY).top],
+    ["枯れ木", blockDef(DEAD_BUSH).top],
   ];
   const dist = (a: number, b: number): number =>
     Math.hypot(((a >> 16) & 255) - ((b >> 16) & 255), ((a >> 8) & 255) - ((b >> 8) & 255), (a & 255) - (b & 255));
@@ -4175,9 +4181,81 @@ function flowers(world: World): void {
   }
   console.log(`      隔たり: ${pairs.join(" / ")}`);
   check(
-    "草むら・キノコ 2 種・花 2 種はどの 2 つも色で見分けられる（RGB で 60 以上）",
+    "草むら・キノコ 2 種・花 2 種・枯れ木はどの 2 つも色で見分けられる（RGB で 60 以上）",
     closest >= 60,
     `いちばん近い組で ${closest.toFixed(1)}`,
+  );
+}
+
+/**
+ * 枯れ木（202。59）。**花の写しで `needsSoil` → `needsSand`・掘ると棒 1 本**なので、
+ * 見るのは「写し間違えていないか」「砂の上だけか」「棒が 1 本だけ落ちるか」。
+ * **どこに生えるか（砂漠）は `test/worldgen.test.ts`。** 色の見分けは上の `flowers()` の 6 色の件。
+ */
+function deadBush(): void {
+  describe("枯れ木（59）");
+
+  const d = blockDef(DEAD_BUSH);
+  console.log(
+    `      枯れ木(${DEAD_BUSH}): model ${d.model} / variantOf ${d.variantOf} / 硬さ ${d.hardness} / ` +
+      `色 0x${d.top.toString(16)} / 通り抜け ${!d.solid} / 上書きされる ${isReplaceable(DEAD_BUSH)} / ` +
+      `砂の上だけ ${needsSand(DEAD_BUSH)} / 土の上だけ ${needsSoil(DEAD_BUSH)} / ` +
+      `置けない理由「${supportHint(DEAD_BUSH)}」 / アイテム名「${itemName(DEAD_BUSH)}」`,
+  );
+  check(
+    "枯れ木は cross で、向き違いではない（アイテムが自動で付く）",
+    d.model === "cross" && d.variantOf === AIR,
+    `${d.model} / variantOf ${d.variantOf}`,
+  );
+  check(
+    "枯れ木は同じ番号のアイテムとして持てて、置くと自分に戻る",
+    itemName(DEAD_BUSH) === "枯れ木" && placedBlock(DEAD_BUSH) === DEAD_BUSH,
+    `「${itemName(DEAD_BUSH)}」→ ${placedBlock(DEAD_BUSH)}`,
+  );
+  // **`replaceable` が無いと、砂漠のサボテンが枯れ木に弾かれる**（花・キノコと同じ理由）。
+  check(
+    "枯れ木は上書きして置ける・床が要る",
+    isReplaceable(DEAD_BUSH) && !d.solid && !d.opaque && d.hardness === 0 && d.supportFace === FACE_YN,
+    `replaceable ${isReplaceable(DEAD_BUSH)} / solid ${d.solid} / opaque ${d.opaque} / 硬さ ${d.hardness} / supportFace ${d.supportFace}`,
+  );
+
+  // **砂の上だけ**（サボテンと同じ表 1 本。砂岩は本家でも不可）。
+  const floors: [string, number, boolean][] = [
+    ["砂", SAND, true],
+    ["砂岩", SANDSTONE, false],
+    ["草", GRASS, false],
+    ["土", DIRT, false],
+    ["耕地", FARMLAND, false],
+    ["石", STONE, false],
+  ];
+  console.log(
+    "      枯れ木 supportsBlock(床, FACE_YN): " +
+      floors.map(([n, s]) => `${n} ${supportsBlock(s, FACE_YN, DEAD_BUSH)}`).join(" / "),
+  );
+  check(
+    "枯れ木は砂の上にだけ立つ（砂岩・草・土・耕地・石は不可。置けない理由は「砂の上」）",
+    needsSand(DEAD_BUSH) &&
+      !needsSoil(DEAD_BUSH) &&
+      supportHint(DEAD_BUSH) === "砂の上" &&
+      floors.every(([, s, want]) => supportsBlock(s, FACE_YN, DEAD_BUSH) === want),
+    floors.map(([n, s, want]) => `${n} ${supportsBlock(s, FACE_YN, DEAD_BUSH)}（期待 ${want}）`).join(" / "),
+  );
+
+  // **掘ると棒 1 本**（本家は 0〜2 本で、平均の 1 本に固定）。乱数の両端で回して幅が無いことを見る。
+  const drop = dropOf(DEAD_BUSH);
+  const low = rollDrops(DEAD_BUSH, 0, 0);
+  const high = rollDrops(DEAD_BUSH, 0.999, 0.999);
+  console.log(
+    `      dropOf(): ${itemName(drop.item)}(${drop.item}) x${drop.count} chance ${drop.chance} / ` +
+      `extraDrops ${extraDrops(drop).length} 山 / roll 0: ${low.map((s) => `${itemName(s.item)} x${s.count}`).join(",")} / ` +
+      `roll 0.999: ${high.map((s) => `${itemName(s.item)} x${s.count}`).join(",")}`,
+  );
+  check(
+    "枯れ木を掘ると棒が 1 本だけ落ちる（確率にも 2 本目の乱数にも繋がっていない）",
+    drop.item === STICK && drop.count === 1 && drop.chance === 1 && extraDrops(drop).length === 0 &&
+      low.length === 1 && low[0].item === STICK && low[0].count === 1 &&
+      high.length === 1 && high[0].item === STICK && high[0].count === 1,
+    `${itemName(drop.item)} x${drop.count} / roll 0 ${low.length} 山 / roll 0.999 ${high.length} 山`,
   );
 }
 
