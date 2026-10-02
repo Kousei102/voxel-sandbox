@@ -17,6 +17,8 @@ import {
   CANE_HEIGHT_MAX,
   DIRT,
   FARMLAND,
+  GLASS,
+  GRASS,
   LEAVES,
   RED_MUSHROOM,
   SAND,
@@ -36,6 +38,9 @@ import {
   CACTUS_GROW_SECONDS,
   CANE_GROW_SECONDS,
   Crops,
+  GRASS_DIE_SECONDS,
+  GRASS_SPREAD_MIN_LIGHT,
+  GRASS_SPREAD_SECONDS,
   GROW_SECONDS,
   MUSHROOM_CROWD_LIMIT,
   MUSHROOM_CROWD_RADIUS,
@@ -1148,4 +1153,130 @@ export function run(): void {
 
   // 節を分けて最後に回す（上の見張りまでが「育つ苗」の節）。
   mushrooms();
+  grassAndDirt();
+}
+
+/**
+ * **草と土の広がり（60）。** 置いた土は隣の草から、上を覆われた草は土になる。
+ * 自然の土・草（印の無いもの）は動かない。
+ */
+function grassAndDirt(): void {
+  describe("草と土の広がり（60）");
+  const T = GRASS_SPREAD_SECONDS;
+  const lit = (f: Field, x: number, y: number, z: number, v: number): void => {
+    f.light.set(`${x},${y},${z},${SKY_LIGHT}`, v);
+  };
+  /** 石の床 y=39、(0,40,0) に置いた土、(1,40,0) に草。真上は空気・明るさ 15。 */
+  const board = (): { field: Field; crops: Crops } => {
+    const field = new Field();
+    const crops = new Crops();
+    for (let x = -2; x <= 2; x++) for (let z = -2; z <= 2; z++) field.set(x, 39, z, STONE);
+    field.set(0, 40, 0, DIRT);
+    field.set(1, 40, 0, GRASS);
+    lit(field, 0, 41, 0, 15);
+    crops.notePlaced({ x: 0, y: 40, z: 0 }, DIRT, field);
+    return { field, crops };
+  };
+
+  {
+    const { field, crops } = board();
+    crops.update(T - 0.1, field);
+    const before = field.getVoxel(0, 40, 0);
+    console.log(`  土 ${T - 0.1} 秒 -> ${blockName(before)}`);
+    crops.update(0.1, field);
+    const after = field.getVoxel(0, 40, 0);
+    console.log(`  土 ${T} 秒 -> ${blockName(after)} 印 ${crops.count}`);
+    check("置いた土は 59.9 秒ではまだ土", before === DIRT);
+    check("置いた土は 60 秒で草になり、印が消える", after === GRASS && crops.peek(0, 40, 0) === null);
+  }
+
+  {
+    const cases: [string, (f: Field) => void][] = [
+      ["真上が不透明", (f) => f.set(0, 41, 0, STONE)],
+      ["明るさ 8", (f) => lit(f, 0, 41, 0, GRASS_SPREAD_MIN_LIGHT - 1)],
+      ["隣に草が無い", (f) => f.set(1, 40, 0, AIR)],
+    ];
+    for (const [name, mutate] of cases) {
+      const { field, crops } = board();
+      crops.update(T - 1, field);
+      mutate(field);
+      crops.update(5, field);
+      crops.update(T, field);
+      const age = crops.peek(0, 40, 0);
+      console.log(`  ${name}: ${blockName(field.getVoxel(0, 40, 0))} 秒数 ${age}`);
+      check(`${name}: 草にならず、印は残り秒数は 0`, field.getVoxel(0, 40, 0) === DIRT && age === 0);
+    }
+  }
+
+  {
+    const { field, crops } = board();
+    field.set(1, 40, 0, AIR);
+    crops.update(T * 3, field);
+    check("草が無い間は何年経っても土のまま", field.getVoxel(0, 40, 0) === DIRT);
+    field.set(1, 40, 0, GRASS);
+    crops.update(T - 0.1, field);
+    check("草があとから現れたら、そこから数える（59.9 秒ではまだ土）", field.getVoxel(0, 40, 0) === DIRT);
+    crops.update(0.1, field);
+    check("草があとから現れたら、そこから 60 秒で草", field.getVoxel(0, 40, 0) === GRASS);
+  }
+
+  {
+    const field = new Field();
+    const crops = new Crops();
+    field.set(0, 40, 0, GRASS);
+    field.set(0, 41, 0, STONE);
+    crops.notePlaced({ x: 0, y: 41, z: 0 }, STONE, field);
+    crops.update(GRASS_DIE_SECONDS - 0.1, field);
+    const before = field.getVoxel(0, 40, 0);
+    crops.update(0.1, field);
+    const after = field.getVoxel(0, 40, 0);
+    console.log(`  覆った草 ${GRASS_DIE_SECONDS} 秒: ${blockName(before)} -> ${blockName(after)}`);
+    check("覆われた草は 59.9 秒ではまだ草", before === GRASS);
+    check("覆われた草は 60 秒で土になり、印が消える", after === DIRT && crops.count === 0);
+
+    const f2 = new Field();
+    const c2 = new Crops();
+    f2.set(0, 40, 0, GRASS);
+    f2.set(0, 41, 0, STONE);
+    c2.notePlaced({ x: 0, y: 41, z: 0 }, STONE, f2);
+    c2.update(30, f2);
+    f2.set(0, 41, 0, AIR);
+    c2.update(GRASS_DIE_SECONDS, f2);
+    check("覆いを外すと草のまま、印も消える", f2.getVoxel(0, 40, 0) === GRASS && c2.count === 0);
+
+    const f3 = new Field();
+    const c3 = new Crops();
+    f3.set(0, 40, 0, GRASS);
+    f3.set(0, 41, 0, GLASS);
+    c3.notePlaced({ x: 0, y: 41, z: 0 }, GLASS, f3);
+    check("ガラス（不透明でない）では印を付けない", c3.count === 0);
+  }
+
+  {
+    // 未読み込み・書き込み失敗・自然の土草・セーブの形
+    const { field, crops } = board();
+    field.unloaded.add("0,0");
+    crops.update(T * 2, field);
+    check("未読み込みの列では書かず、印も忘れない", field.writes === 0 && crops.count === 1);
+    field.unloaded.delete("0,0");
+    field.frozen = true;
+    crops.update(T, field);
+    check("setVoxel が失敗したら忘れず持ち越す", crops.count === 1 && field.getVoxel(0, 40, 0) === DIRT);
+    field.frozen = false;
+    crops.update(0, field);
+    check("書けるようになったらすぐ草になる", field.getVoxel(0, 40, 0) === GRASS);
+
+    const nat = new Field();
+    const nc = new Crops();
+    nat.set(0, 40, 0, DIRT);
+    nat.set(1, 40, 0, GRASS);
+    nat.set(5, 40, 5, GRASS);
+    nat.set(5, 41, 5, STONE);
+    lit(nat, 0, 41, 0, 15);
+    nc.update(T * 100, nat);
+    check("自然の（印の無い）土・草は動かない", nat.getVoxel(0, 40, 0) === DIRT && nat.getVoxel(5, 40, 5) === GRASS);
+
+    const b = board();
+    check("serialize のキーは \"x,y,z\" のまま", JSON.stringify(b.crops.serialize()) === '{"0,40,0":0}');
+  }
 }

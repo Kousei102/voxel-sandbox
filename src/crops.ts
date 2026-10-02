@@ -31,14 +31,17 @@ import {
   CACTUS,
   CACTUS_HEIGHT_MAX,
   CANE_HEIGHT_MAX,
+  DIRT,
   FACE_YP,
   FARMLAND,
+  GRASS,
   RED_MUSHROOM,
   SAPLING,
   SPRUCE_SAPLING,
   SUGAR_CANE,
   WHEAT_CROP,
   WHEAT_CROP_RIPE,
+  isOpaque,
   isReplaceable,
   supportsBlock,
 } from "./blocks";
@@ -98,6 +101,18 @@ export const MUSHROOM_CROWD_LIMIT = 5;
 
 /** 混み具合を数える x・z の半径（y は ±1 固定）。**4 隅の列もこの半径で待ちます。** */
 export const MUSHROOM_CROWD_RADIUS = 4;
+
+/**
+ * **プレイヤーが置いた土**が、隣の草から**草に変わる**までの秒数。**暫定**（`TUNING.md`）。
+ * 本家は乱数ティックで平均 1 分前後。**自然地形は見張らず**、置いた土だけを覚えます。
+ */
+export const GRASS_SPREAD_SECONDS = 60;
+
+/** 土が草になれる明るさの下限（真上のマスの、空と光の大きいほう）。本家の 9。**暫定。** */
+export const GRASS_SPREAD_MIN_LIGHT = 9;
+
+/** **プレイヤーが上を覆った草**が土に戻るまでの秒数。**暫定**（`TUNING.md`）。 */
+export const GRASS_DIE_SECONDS = 60;
 
 /** その苗木がどの木になるか。苗木でなければ null。 */
 function saplingKind(id: number): TreeKind | null {
@@ -195,6 +210,12 @@ export class Crops {
    */
   notePlaced(at: UseSpot | undefined, id: number, world: CropWorld): void {
     if (!at) return;
+    // 草と土（60）。**置いたものだけ**覚える（自然地形は走査しない）。土は下の草も
+    // 覆うので、ここは return せず下へ進む。
+    if (id === DIRT) this.map.set(cropKey(at.x, at.y, at.z), 0);
+    if (isOpaque(id) && world.getVoxel(at.x, at.y - 1, at.z) === GRASS) {
+      this.map.set(cropKey(at.x, at.y - 1, at.z), 0);
+    }
     if (saplingKind(id) !== null || isMushroom(id)) {
       this.map.set(cropKey(at.x, at.y, at.z), 0);
       return;
@@ -269,6 +290,10 @@ export class Crops {
         }
       } else if (isMushroom(here)) {
         if (this.spreadMushroom(key, age, dt, x, y, z, here, world, births)) changed = true;
+      } else if (here === DIRT) {
+        if (this.growDirt(key, age, dt, x, y, z, world)) changed = true;
+      } else if (here === GRASS) {
+        if (this.dieGrass(key, age, dt, x, y, z, world)) changed = true;
       } else if (kind !== null) {
         if (this.growTree(key, age, dt, x, y, z, kind, world)) changed = true;
       } else {
@@ -439,6 +464,85 @@ export class Crops {
       return false;
     }
     this.map.set(key, 0);
+    return false;
+  }
+
+  /**
+   * **置いた土**（60）を草にする。**`here === DIRT` は完全一致**（`FARMLAND` は別物）。
+   * 周り 26 マスに草が有り、真上が空気で明るさ（空と光の大きいほう）が
+   * `GRASS_SPREAD_MIN_LIGHT` 以上の間だけ数える。**満たさない間は秒数を 0 に戻して
+   * 忘れない**（草が後から来る・覆いをどける）。隣の列が未読み込みなら持ち越す。
+   * 変えるのは `setVoxel` が成功したときだけ。
+   */
+  private growDirt(
+    key: string,
+    age: number,
+    dt: number,
+    x: number,
+    y: number,
+    z: number,
+    world: CropWorld,
+  ): boolean {
+    for (const dx of [-1, 1]) {
+      for (const dz of [-1, 1]) {
+        if (!world.hasColumn(columnOf(x + dx), columnOf(z + dz))) {
+          this.map.set(key, age);
+          return false;
+        }
+      }
+    }
+    let grass = false;
+    for (const [dx, dy, dz] of MUSHROOM_NEIGHBORS) {
+      if (world.getVoxel(x + dx, y + dy, z + dz) === GRASS) {
+        grass = true;
+        break;
+      }
+    }
+    const light = Math.max(world.getLight(x, y + 1, z, SKY_LIGHT), world.getLight(x, y + 1, z, BLOCK_LIGHT));
+    if (!grass || world.getVoxel(x, y + 1, z) !== AIR || light < GRASS_SPREAD_MIN_LIGHT) {
+      if (age !== 0) this.map.set(key, 0);
+      return false;
+    }
+    const grown = age + dt;
+    if (grown < GRASS_SPREAD_SECONDS) {
+      this.map.set(key, grown);
+      return false;
+    }
+    if (world.setVoxel(x, y, z, GRASS)) {
+      this.map.delete(key);
+      return true;
+    }
+    this.map.set(key, grown);
+    return false;
+  }
+
+  /**
+   * **上を覆われた草**（60）を土に戻す。真上が不透明のまま `GRASS_DIE_SECONDS` 経てば
+   * `DIRT`。**覆いが外れていたら忘れる**（また覆えば `notePlaced()` が覚え直す）。
+   */
+  private dieGrass(
+    key: string,
+    age: number,
+    dt: number,
+    x: number,
+    y: number,
+    z: number,
+    world: CropWorld,
+  ): boolean {
+    if (!isOpaque(world.getVoxel(x, y + 1, z))) {
+      this.map.delete(key);
+      return true;
+    }
+    const grown = age + dt;
+    if (grown < GRASS_DIE_SECONDS) {
+      this.map.set(key, grown);
+      return false;
+    }
+    if (world.setVoxel(x, y, z, DIRT)) {
+      this.map.delete(key);
+      return true;
+    }
+    this.map.set(key, grown);
     return false;
   }
 
