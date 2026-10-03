@@ -11,11 +11,15 @@ import {
   GRASS,
   STONE,
   TORCH,
+  WHEAT_CROP,
+  WHEAT_CROP_RIPE,
   bedPartner,
   endPortalFrame,
 } from "../src/blocks";
 import {
   ARROW,
+  BONE,
+  BONE_MEAL,
   BOW,
   BREAD,
   BUCKET,
@@ -411,4 +415,24 @@ export function run(): void {
     const act = decideUse(aimAt(GRASS), facts(ARROW));
     return act.kind === "place" && act.base === AIR;
   })());
+
+  // --- 骨粉（35。種の直後・バケツより前） ---
+  {
+    const act = decideUse(aimAt(WHEAT_CROP), facts(BONE_MEAL));
+    console.log(`      骨粉 + 小麦の苗 → ${act.kind}`);
+    check(
+      "骨粉 + 小麦の苗 → fertilize（狙ったマスがそのまま渡る）",
+      act.kind === "fertilize" && act.at.x === 3 && act.at.y === 11 && act.at.z === 5,
+      act.kind === "fertilize" ? `(${act.at.x},${act.at.y},${act.at.z})` : act.kind,
+    );
+    const other = [
+      ["実った小麦", decideUse(aimAt(WHEAT_CROP_RIPE), facts(BONE_MEAL)).kind],
+      ["土", decideUse(aimAt(DIRT), facts(BONE_MEAL)).kind],
+      ["空", decideUse(null, facts(BONE_MEAL)).kind],
+      ["骨 + 苗", decideUse(aimAt(WHEAT_CROP), facts(BONE)).kind],
+    ];
+    console.log(`      ${other.map((o) => o.join("→")).join(" / ")}`);
+    check("実った小麦・土・空・骨では fertilize でない", other.every((o) => o[1] !== "fertilize"), JSON.stringify(other));
+    check("器が先: 骨粉 + 作業台 → craft", decideUse(aimAt(CRAFTING_TABLE), facts(BONE_MEAL)).kind === "craft");
+  }
 }

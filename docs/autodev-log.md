@@ -4987,3 +4987,10 @@ ID 1 個（共有帯の空き 54 → 53・次は 203）/ `main.ts` 1083 行・`h
 - 差し戻し 0 回。サブエージェントは使わず、親が実装して `git diff` で点検。`main.ts` 1083 / `hands.ts` 463（±0）。
 - 手順の逸れ: `src/crops.ts` と `test/crops.test.ts` を `python3` で書き換えた（`.claude/**` ではない）。
 
+
+## 2026-10-03 — C（実装）の周（AUTODEV 158）: 35 骨粉
+
+- **取ったもの**: アイテム 203（`BONE_MEAL`）・レシピ 1 本・`crops.ts` の `fertilize()`・`use.ts` の `fertilize`（19 通り目）・`hands.ts` の `fertilizeAt()`。`npm test` 4198 → 4232 件。共有帯の空き 53 → 52（次は 204）。
+- **見送ったもの**: 苗木・サトウキビ・草むらへの骨粉（苗木は `treeshape.ts` を呼ぶ別の 1 周）。
+- 差し戻し 0 回。サブエージェントは使わず、親が実装して `git diff` で点検。`main.ts` ±0 / `hands.ts` 462 → 472。
+- 数え直しで動いた既存の件 3 つ: `test/blocks.test.ts` の共有帯の一覧（81 → 82）と空き（53 → 52）、`test/crafting.test.ts` のレシピ 96 → 97 本、`test/items.test.ts` の枯れ木の `===`（`>=` にして骨粉の節へ移した）。

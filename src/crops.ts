@@ -307,6 +307,19 @@ export class Crops {
     return changed;
   }
 
+  /**
+   * 骨粉（35）: **小麦の苗をその場で実らせる**。効くのは `WHEAT_CROP` だけ（苗木・サトウキビは見送り）。
+   * 門は `growWheat()` の 2〜4 と同じ —— 列が読み込み済み・まだ苗・**`setVoxel` が成功したときだけ印を消す**。
+   * **耕地の下は問わない**（育たない苗にかけて実らせるのは本家でも可）。成功したら true。
+   */
+  fertilize(x: number, y: number, z: number, world: CropWorld): boolean {
+    if (!world.hasColumn(columnOf(x), columnOf(z))) return false;
+    if (world.getVoxel(x, y, z) !== WHEAT_CROP) return false;
+    if (!world.setVoxel(x, y, z, WHEAT_CROP_RIPE)) return false;
+    this.map.delete(cropKey(x, y, z));
+    return true;
+  }
+
   /** 苗を 1 マスぶん進める。**上の 2〜4 がそのまま**（18c で 1 行も変えていません）。 */
   private growWheat(
     key: string,

@@ -1279,4 +1279,39 @@ function grassAndDirt(): void {
     const b = board();
     check("serialize のキーは \"x,y,z\" のまま", JSON.stringify(b.crops.serialize()) === '{"0,40,0":0}');
   }
+
+  describe("骨粉で実る（35・fertilize）");
+  {
+    const field = new Field();
+    const crops = new Crops();
+    planted(field);
+    crops.plant(0, 40, 0);
+    const before = field.getVoxel(0, 40, 0);
+    const ok = crops.fertilize(0, 40, 0, field);
+    console.log(`      前 ${before} → 後 ${field.getVoxel(0, 40, 0)}（苗 ${WHEAT_CROP} / 実り ${WHEAT_CROP_RIPE}）/ 印 ${crops.count} 本 / ${JSON.stringify(crops.serialize())}`);
+    check("苗が実り、印が消える", ok && before === WHEAT_CROP && field.getVoxel(0, 40, 0) === WHEAT_CROP_RIPE && crops.count === 0);
+    check("実った小麦には効かない（false）", crops.fertilize(0, 40, 0, field) === false);
+    field.set(1, 40, 0, DIRT);
+    check("別のブロックには効かない", crops.fertilize(1, 40, 0, field) === false && field.getVoxel(1, 40, 0) === DIRT);
+  }
+  {
+    const field = new Field();
+    const crops = new Crops();
+    planted(field);
+    crops.plant(0, 40, 0);
+    field.unloaded.add("0,0");
+    field.writes = 0;
+    check("未読み込みの列では書かず false", crops.fertilize(0, 40, 0, field) === false && field.writes === 0);
+    field.unloaded.delete("0,0");
+    field.frozen = true;
+    check("setVoxel が失敗したら false で印を残す", crops.fertilize(0, 40, 0, field) === false && crops.count === 1);
+    field.frozen = false;
+  }
+  {
+    const field = new Field();
+    const crops = new Crops();
+    field.set(0, 40, 0, WHEAT_CROP); // 耕地でない苗（下は空気）
+    check("耕地でない苗にも効く", crops.fertilize(0, 40, 0, field) && field.getVoxel(0, 40, 0) === WHEAT_CROP_RIPE);
+    check("印が無ければセーブは前と同じ（undefined）", crops.serialize() === undefined);
+  }
 }

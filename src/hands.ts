@@ -128,6 +128,7 @@ export class Hands {
       case "bed": this.sleepOrSetSpawn(act.at.x, act.at.y, act.at.z, act.id); return;
       case "till": this.tillAt(act.at.x, act.at.y, act.at.z); return;
       case "plant": this.plantAt(act.at.x, act.at.y, act.at.z); return;
+      case "fertilize": this.fertilizeAt(act.at.x, act.at.y, act.at.z); return;
       case "bucket": this.useBucket(act.item); return;
       case "fitEye": this.fitEndPortalEye(act.at.x, act.at.y, act.at.z); return;
       case "throwEye": this.throwEye(); return;
@@ -228,6 +229,15 @@ export class Hands {
     if (planted.kind !== "placed") return;
     this.h.audio.play("place", blockSound(planted.id));
     crops.plant(x, y + 1, z); // 育つのは苗の立ったマス（狙ったのは 1 つ下の耕地）
+    if (!this.h.creative) this.h.inventory.consumeSelected(1);
+    this.h.hud.refresh();
+    this.h.markDirty();
+  }
+
+  /** 骨粉をかける。**実るかどうかは `crops.ts` の `fertilize()`。** 実ったときだけ減る。 */
+  private fertilizeAt(x: number, y: number, z: number): void {
+    if (!this.h.crops.fertilize(x, y, z, this.h.world)) return;
+    this.h.audio.play("place", "grass");
     if (!this.h.creative) this.h.inventory.consumeSelected(1);
     this.h.hud.refresh();
     this.h.markDirty();

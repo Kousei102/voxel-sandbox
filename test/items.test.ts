@@ -41,6 +41,7 @@ import {
 import {
   APPLE,
   BONE,
+  BONE_MEAL,
   BRICK_ITEM,
   BUCKET,
   CHARCOAL,
@@ -1007,9 +1008,9 @@ export function run(): void {
 
   describe("枯れ木（59・ブロック 202）");
 
-  // **上限の `===` はこの節が持つ**（前の節は `>= POPPY`）。
+  // 上限の `===` は次の節（骨粉）へ移した。
   console.log(`      MAX_ITEM_ID ${MAX_ITEM_ID}（枯れ木 ${DEAD_BUSH}）`);
-  check("MAX_ITEM_ID は枯れ木（202）", MAX_ITEM_ID === DEAD_BUSH, `MAX_ITEM_ID ${MAX_ITEM_ID}`);
+  check("MAX_ITEM_ID は枯れ木（202）以上", MAX_ITEM_ID >= DEAD_BUSH, `MAX_ITEM_ID ${MAX_ITEM_ID}`);
 
   // **茶色はいちばん混んでいる帯**。全アイテムと総当たりで、いちばん近い相手と隔たりを出してから判定する。
   {
@@ -1032,5 +1033,30 @@ export function run(): void {
       ids.includes(DEAD_BUSH) && best >= 20,
       `いちばん近いのは${who}で ${best.toFixed(1)}`,
     );
+  }
+
+  describe("骨粉（35・アイテム 203）");
+
+  console.log(`      MAX_ITEM_ID ${MAX_ITEM_ID}（骨粉 ${BONE_MEAL}）`);
+  check("骨粉は 203・MAX_ITEM_ID も 203", BONE_MEAL === 203 && MAX_ITEM_ID === 203, `MAX_ITEM_ID ${MAX_ITEM_ID}`);
+  check("名前は「骨粉」", itemName(BONE_MEAL) === "骨粉", itemName(BONE_MEAL));
+  check(
+    "骨粉は置けず・道具でも食べ物でもない",
+    placedBlock(BONE_MEAL) === 0 && toolOf(BONE_MEAL) === null && foodOf(BONE_MEAL) === null,
+    `block ${placedBlock(BONE_MEAL)} / tool ${toolOf(BONE_MEAL)} / food ${foodOf(BONE_MEAL)}`,
+  );
+  {
+    let best = Infinity;
+    let who = "";
+    for (const other of ids) {
+      if (other === BONE_MEAL) continue;
+      const gap = dist(itemColor(BONE_MEAL), itemColor(other));
+      if (gap < best) {
+        best = gap;
+        who = `${itemName(other)} 0x${itemColor(other).toString(16)}`;
+      }
+    }
+    console.log(`      骨粉 0x${itemColor(BONE_MEAL).toString(16)} 一覧 ${ids.includes(BONE_MEAL)} / いちばん近い相手: ${who} ${best.toFixed(1)}`);
+    check("骨粉は一覧に出て、既存のどのアイテムとも見分けられる（RGB で 20 以上）", ids.includes(BONE_MEAL) && best >= 20, `${who} ${best.toFixed(1)}`);
   }
 }

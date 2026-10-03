@@ -22,12 +22,14 @@ import {
   CHEST,
   CRAFTING_TABLE,
   FURNACE,
+  WHEAT_CROP,
   baseBlock,
   isBed,
   isEndPortalFrame,
   type PlaceAim,
 } from "./blocks";
 import {
+  BONE_MEAL,
   BUCKET,
   ENDER_EYE,
   MILK_BUCKET,
@@ -101,6 +103,8 @@ export type UseAction =
   | { readonly kind: "till"; readonly at: UseSpot }
   /** 種を植える。**植わるかどうかはここで決めない**（可否は `placing.ts` の `tryPlant()`）。 */
   | { readonly kind: "plant"; readonly at: UseSpot }
+  /** 骨粉をかける。**実るかどうかはここで決めない**（可否は `crops.ts` の `fertilize()`）。 */
+  | { readonly kind: "fertilize"; readonly at: UseSpot }
   | { readonly kind: "bucket"; readonly item: number }
   | { readonly kind: "fitEye"; readonly at: UseSpot }
   | { readonly kind: "throwEye" }
@@ -147,6 +151,10 @@ export function decideUse(aim: PlaceAim | null, facts: UseFacts): UseAction {
   // **植わるかどうか（耕地の上か・塞がっていないか）はここで決めない** ——
   // クワとまったく同じで、可否は `placing.ts` の `tryPlant()`。
   if (aim && isSeed(held)) return { kind: "plant", at: aim.block };
+
+  // 骨粉。**種の直後・バケツより前**（器より後ろ。前に出すと、器の上で骨粉を持っている間
+  // 器が開かない）。**効くのは小麦の苗を狙ったときだけ**（それ以外は下の `place` に落ちて何も置かない）。
+  if (aim && held === BONE_MEAL && aim.id === WHEAT_CROP) return { kind: "fertilize", at: aim.block };
 
   // バケツ。**汲めるか流せるかは `items.ts` の `bucketUse()`**、どのマスに効くかは
   // `placing.ts` の `tryBucket()`。ここは「バケツを使う」とだけ言う。

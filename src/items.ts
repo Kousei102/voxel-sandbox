@@ -673,6 +673,15 @@ export const GOLD_SWORD = 194;
 export const GOLD_HOE = 195;
 
 /**
+ * 骨粉（35）。**骨 1 個 → 3 個**（`crafting.ts`）。**小麦の苗に右クリックでその場で実る**
+ * （`use.ts` の `fertilize` → `crops.ts` の `fertilize()`）。**置けず・道具でもなく・食べ物でもありません**
+ * （`BONE` と同じ扱い。`tool:` を持たせないこと）。**`BONE` の別名にしないこと**（別 ID）。
+ * **色 `0xc8f0d0`（淡いミント）は測って選んだ値**: 素直な白は羊毛・羽根に 4 しか離れず、
+ * この値でいちばん近いのは紙の 34.4（判定は 20。`TUNING.md`）。
+ */
+export const BONE_MEAL = 203;
+
+/**
  * 一覧を作るときに数え上げる上限（`allItemIds()`）。**アイテムの番号だけでなく、
  * ブロックが自動で作るアイテム（上の for）の番号も含みます。**
  *
@@ -701,7 +710,7 @@ export const GOLD_HOE = 195;
  * **上限をこちら側へ移したら、それまで指していたブロックの import を消すこと** ——
  * 残すと「使われていない」で `npm run typecheck` が落ちます（型で止まる安全な罠）。
  */
-export const MAX_ITEM_ID = DEAD_BUSH;
+export const MAX_ITEM_ID = BONE_MEAL;
 
 export const MAX_STACK = 64;
 
@@ -983,6 +992,7 @@ item({ id: LEATHER_BOOTS, name: "革の靴", block: AIR, stack: 1, color: 0x6441
 // 行が無い。革・糸・羽根とまったく同じ扱い）。**色は測って選んだ値**（上の `BONE` の説明。
 // 素直な 0xd8cfae は砂と 20.9 しか離れず、判定 20 のすぐ上だった）。
 item({ id: BONE, name: "骨", block: AIR, stack: MAX_STACK, color: 0xcdc8b0, tool: null });
+item({ id: BONE_MEAL, name: "骨粉", block: AIR, stack: MAX_STACK, color: 0xc8f0d0, tool: null });
 
 // 木炭。**`block: AIR` / `tool: null`**（置けず・道具でもなく・`FOODS` にも行が無い）。
 // **燃料としてだけ効きます**（`smelting.ts` の `FUEL`。石炭と同じ 80 秒）。

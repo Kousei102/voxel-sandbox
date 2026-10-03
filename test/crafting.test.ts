@@ -110,6 +110,8 @@ import {
   STONE_SWORD,
   STRING,
   SUGAR,
+  BONE,
+  BONE_MEAL,
   WHEAT,
   WOOD_HOE,
   WOOD_PICKAXE,
@@ -789,6 +791,21 @@ export function run(): void {
     `3x3 の真ん中: ${sugar3x3?.name ?? "無し"} x${sugar3x3?.count ?? 0}`,
   );
 
+  describe("骨粉（35）");
+
+  // **骨 1 個 → 骨粉 3 個の形なし**（本家と同じ）。1 個なので 2x2 で作れる。
+  const B = { B: BONE };
+  const meal2x2 = findRecipe(grid(2, [".B", ".."], B), 2);
+  const meal3x3 = findRecipe(grid(3, ["...", ".B.", "..."], B), 3);
+  const mealNone = findRecipe(grid(2, ["..", ".."], B), 2);
+  console.log(
+    `      骨 1 個 → 2x2 で ${meal2x2?.name ?? "無し"} x${meal2x2?.count ?? 0}` +
+      ` / 3x3 の真ん中で ${meal3x3?.name ?? "無し"} x${meal3x3?.count ?? 0} / 骨 0 個: ${mealNone?.name ?? "無し"}`,
+  );
+  check("骨 1 個（2x2）→ 骨粉 3 個", meal2x2?.out === BONE_MEAL && meal2x2.count === 3, `${meal2x2?.name ?? "無し"} x${meal2x2?.count ?? 0}`);
+  check("3x3 の真ん中でも作れる（形なし）", meal3x3?.out === BONE_MEAL && meal3x3.count === 3);
+  check("骨 0 個では作れない", mealNone === null || mealNone.out !== BONE_MEAL, mealNone?.name ?? "無し");
+
   describe("はしご");
 
   // **棒 7 本で 3 個**（本家と同じ形・同じ個数）。3x3 なので作業台が要る。
@@ -1076,8 +1093,8 @@ export function run(): void {
   // **本数も 1 件として見張る** —— レシピを足したのに表から漏れていたら、
   // 上の `findRecipe` だけでは「揃わないのが正しい」と読めてしまう。
   check(
-    "レシピは 96 本（57 のネザーレンガブロックの 2x2 で 1 本増えた。数え直した）",
-    RECIPES.length === 96,
+    "レシピは 97 本（35 の骨粉で 1 本増えた。数え直した）",
+    RECIPES.length === 97,
     `${RECIPES.length} 本`,
   );
 

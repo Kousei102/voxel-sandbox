@@ -49,6 +49,8 @@ import {
   ARROW,
   BLAZE_POWDER,
   BLAZE_ROD,
+  BONE,
+  BONE_MEAL,
   BOOK,
   BOW,
   BOWL,
@@ -305,6 +307,9 @@ export const RECIPES: readonly Recipe[] = [
   // 砂糖はサトウキビ 1 個の形なし（Minecraft と同じ 1 対 1）。**1 個なので 2x2 に
   // 収まり、浜で採ったその場で作れる**（作業台が要らない）。
   { name: "砂糖", out: SUGAR, count: 1, ingredients: [SUGAR_CANE] },
+
+  // 骨粉は骨 1 個の形なしで 3 個（Minecraft と同じ）。1 個なので 2x2 で作れる。
+  { name: "骨粉", out: BONE_MEAL, count: 3, ingredients: [BONE] },
 
   // 紙・本・本棚の 3 本（どれも Minecraft と同じ形・同じ個数）。**サトウキビの 2 本目の
   // 使い道**が紙で、砂糖と取り合いになる（1 本のサトウキビは砂糖 1 個か紙 1/3 枚）。
