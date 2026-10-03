@@ -14,6 +14,7 @@ import {
   BROWN_MUSHROOM,
   CACTUS,
   CACTUS_HEIGHT_MAX,
+  CAKE,
   CANE_HEIGHT_MAX,
   DIRT,
   FARMLAND,
@@ -1313,5 +1314,62 @@ function grassAndDirt(): void {
     field.set(0, 40, 0, WHEAT_CROP); // 耕地でない苗（下は空気）
     check("耕地でない苗にも効く", crops.fertilize(0, 40, 0, field) && field.getVoxel(0, 40, 0) === WHEAT_CROP_RIPE);
     check("印が無ければセーブは前と同じ（undefined）", crops.serialize() === undefined);
+  }
+
+  describe("ケーキをかじる（24b-1・bite）");
+  {
+    const field = new Field();
+    const crops = new Crops();
+    field.set(0, 40, 0, CAKE);
+    const log: string[] = [];
+    const results: string[] = [];
+    for (let i = 1; i <= 7; i++) {
+      const r = crops.bite(0, 40, 0, field);
+      results.push(r);
+      log.push(`${i}口目 ${r} / ブロック ${field.getVoxel(0, 40, 0)} / 印 ${crops.count}`);
+      if (i <= 6) {
+        check(`${i} 口目は eaten・ケーキのまま・印 ${i}`, r === "eaten" && field.getVoxel(0, 40, 0) === CAKE && crops.peek(0, 40, 0) === i, log[i - 1]);
+        crops.update(1, field); // 育つものではない: 印も口数も動かない
+        check(`${i} 口目のあと update しても印と口数が変わらない`, crops.peek(0, 40, 0) === i && field.getVoxel(0, 40, 0) === CAKE);
+      }
+    }
+    console.log(`      ${log.join("\n      ")}`);
+    check("7 口目は finished・AIR・印 0", results[6] === "finished" && field.getVoxel(0, 40, 0) === AIR && crops.count === 0, log[6]);
+  }
+  {
+    const field = new Field();
+    const crops = new Crops();
+    field.set(0, 40, 0, CAKE);
+    for (let i = 0; i < 3; i++) crops.bite(0, 40, 0, field);
+    const back = new Crops();
+    back.deserialize(crops.serialize());
+    check("serialize の往復で口数が戻る", back.peek(0, 40, 0) === 3, JSON.stringify(crops.serialize()));
+    // 壊したあと（update が印を掃除）に置き直したケーキは 0 口から
+    field.set(0, 40, 0, AIR);
+    crops.update(1, field);
+    check("壊すと印が消える", crops.count === 0);
+    field.set(0, 40, 0, CAKE);
+    crops.notePlaced({ x: 0, y: 40, z: 0 }, CAKE, field);
+    check("置き直したケーキは 0 口から始まる", crops.bite(0, 40, 0, field) === "eaten" && crops.peek(0, 40, 0) === 1);
+    // 壊して掃除される前に置き直しても、notePlaced が口数を忘れさせる
+    crops.notePlaced({ x: 0, y: 40, z: 0 }, CAKE, field);
+    check("掃除前の置き直しでも口数が戻る", crops.peek(0, 40, 0) === null);
+  }
+  {
+    const field = new Field();
+    const crops = new Crops();
+    field.set(0, 40, 0, DIRT);
+    field.set(1, 40, 0, CAKE);
+    field.writes = 0;
+    check("CAKE でないマスは absent で何も書かない", crops.bite(0, 40, 0, field) === "absent" && field.writes === 0 && crops.count === 0);
+    field.unloaded.add("0,0");
+    check("未読み込みの列は absent で何も書かない", crops.bite(1, 40, 0, field) === "absent" && field.writes === 0 && crops.count === 0);
+    field.unloaded.delete("0,0");
+    for (let i = 0; i < 6; i++) crops.bite(1, 40, 0, field);
+    field.frozen = true;
+    const r = crops.bite(1, 40, 0, field);
+    console.log(`      setVoxel 失敗時の 7 口目: ${r} / ブロック ${field.getVoxel(1, 40, 0)} / 印 ${crops.peek(1, 40, 0)}`);
+    check("setVoxel が失敗したら 7 口目の印を残す（absent）", r === "absent" && field.getVoxel(1, 40, 0) === CAKE && crops.peek(1, 40, 0) === 6);
+    field.frozen = false;
   }
 }

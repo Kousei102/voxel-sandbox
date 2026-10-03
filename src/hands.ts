@@ -28,7 +28,7 @@ import { breakMessage, wearForTill, wearForUse, wearSlot } from "./durability";
 import { eyeMessage, fitEye } from "./endportal";
 import type { Furnaces } from "./furnaces";
 import type { Inventory } from "./inventory";
-import { ARROW, BUCKET, MILK_BUCKET, NO_ITEM, emptyAfterEating, foodOf, itemName } from "./items";
+import { ARROW, BUCKET, CAKE_BITE_FOOD, MILK_BUCKET, NO_ITEM, emptyAfterEating, foodOf, itemName } from "./items";
 import { Mining } from "./mining";
 import type { Mob, MobContext, Mobs } from "./mobs";
 import type { Panels } from "./panels";
@@ -116,7 +116,7 @@ export class Hands {
     // 「刈れるか」「搾れるか」は `mobs.ts`、「手前か」は `controls.ts`。込みにするのは呼ぶ側の仕事。
     const shearable = m !== null && mobs.canShear(m.mob);
     const milkable = m !== null && mobs.canMilk(m.mob);
-    const act = decideUse(this.h.hit, { held, creative, canEat: vitals.canEatFood(foodOf(held)), hasArrow, shearable, milkable });
+    const act = decideUse(this.h.hit, { held, creative, canEat: vitals.canEatFood(foodOf(held)), canEatCake: vitals.canEatFood(CAKE_BITE_FOOD), hasArrow, shearable, milkable });
     switch (act.kind) {
       case "flash": hud.flash(act.message); return;
       case "shear": if (m) this.shearMob(m.mob); return;
@@ -136,6 +136,7 @@ export class Hands {
       case "ignite": this.igniteAt(act.aim); return;
       case "draw": this.drawing.begin(act.item); return;
       case "eat": this.eating.begin(act.item); return;
+      case "eatCake": this.eatCakeAt(act.at.x, act.at.y, act.at.z); return;
       case "place": this.placeHeld(act.aim, act.base); return;
       default: return;
     }
@@ -239,6 +240,15 @@ export class Hands {
     if (!this.h.crops.fertilize(x, y, z, this.h.world)) return;
     this.h.audio.play("place", "grass");
     if (!this.h.creative) this.h.inventory.consumeSelected(1);
+    this.h.hud.refresh();
+    this.h.markDirty();
+  }
+
+  /** ケーキを 1 口かじる。**何口目で消えるかは `crops.ts` の `bite()`、戻る量は `items.ts`。** */
+  private eatCakeAt(x: number, y: number, z: number): void {
+    if (this.h.crops.bite(x, y, z, this.h.world) === "absent") return;
+    this.h.vitals.eat(CAKE_BITE_FOOD);
+    this.h.audio.play("eat");
     this.h.hud.refresh();
     this.h.markDirty();
   }

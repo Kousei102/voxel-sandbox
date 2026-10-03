@@ -30,6 +30,7 @@ import {
   BROWN_MUSHROOM,
   CACTUS,
   CACTUS_HEIGHT_MAX,
+  CAKE,
   CANE_HEIGHT_MAX,
   DIRT,
   FACE_YP,
@@ -169,6 +170,9 @@ export interface CropWorld {
   getLight(x: number, y: number, z: number, channel: LightChannel): number;
 }
 
+/** ケーキは 7 口目で消える（1〜6 口目はそのまま。口数は `Crops` の表に入る）。 */
+export const CAKE_BITES = 7;
+
 export function cropKey(x: number, y: number, z: number): string {
   return `${x},${y},${z}`;
 }
@@ -213,6 +217,8 @@ export class Crops {
     // 草と土（60）。**置いたものだけ**覚える（自然地形は走査しない）。土は下の草も
     // 覆うので、ここは return せず下へ進む。
     if (id === DIRT) this.map.set(cropKey(at.x, at.y, at.z), 0);
+    // 置き直したケーキは 0 口から（前のケーキの口数を引き継がない）。
+    if (id === CAKE) this.map.delete(cropKey(at.x, at.y, at.z));
     if (isOpaque(id) && world.getVoxel(at.x, at.y - 1, at.z) === GRASS) {
       this.map.set(cropKey(at.x, at.y - 1, at.z), 0);
     }
@@ -290,6 +296,9 @@ export class Crops {
         }
       } else if (isMushroom(here)) {
         if (this.spreadMushroom(key, age, dt, x, y, z, here, world, births)) changed = true;
+      } else if (here === CAKE) {
+        // かじった口数の印。育たないので何もしない（**消さないこと**。消えるのは壊れたとき＝下の else）。
+        continue;
       } else if (here === DIRT) {
         if (this.growDirt(key, age, dt, x, y, z, world)) changed = true;
       } else if (here === GRASS) {
@@ -318,6 +327,25 @@ export class Crops {
     if (!world.setVoxel(x, y, z, WHEAT_CROP_RIPE)) return false;
     this.map.delete(cropKey(x, y, z));
     return true;
+  }
+
+  /**
+   * ケーキを 1 口かじる（24b-1）。**列が読み込み済み・そこが `CAKE` のときだけ**（それ以外は
+   * `"absent"` で何も書かない）。口数は同じ表に入り、`CAKE_BITES` 口目で `AIR` にして印を消す
+   * （**`setVoxel` が成功したときだけ**。失敗したら口数も進めず `"absent"`）。
+   */
+  bite(x: number, y: number, z: number, world: CropWorld): "eaten" | "finished" | "absent" {
+    if (!world.hasColumn(columnOf(x), columnOf(z))) return "absent";
+    if (world.getVoxel(x, y, z) !== CAKE) return "absent";
+    const key = cropKey(x, y, z);
+    const bites = (this.map.get(key) ?? 0) + 1;
+    if (bites < CAKE_BITES) {
+      this.map.set(key, bites);
+      return "eaten";
+    }
+    if (!world.setVoxel(x, y, z, AIR)) return "absent";
+    this.map.delete(key);
+    return "finished";
   }
 
   /** 苗を 1 マスぶん進める。**上の 2〜4 がそのまま**（18c で 1 行も変えていません）。 */

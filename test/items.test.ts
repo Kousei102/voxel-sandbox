@@ -102,10 +102,16 @@ import {
   itemStackLimit,
   placedBlock,
   toolOf,
+  CAKE_BITE_FOOD,
 } from "../src/items";
 import { check, describe } from "./harness";
 
 export function run(): void {
+  describe("ケーキ 1 口（items.ts の CAKE_BITE_FOOD）");
+  console.log(`      hunger ${CAKE_BITE_FOOD.hunger} / saturation ${CAKE_BITE_FOOD.saturation} / poison ${CAKE_BITE_FOOD.poison}`);
+  check("ケーキ 1 口は 2 / 0.4・毒なし", CAKE_BITE_FOOD.hunger === 2 && CAKE_BITE_FOOD.saturation === 0.4 && !CAKE_BITE_FOOD.poison);
+  check("満腹でも食べられる印は付けない（満腹の門は効く）", !CAKE_BITE_FOOD.alwaysEdible);
+
   describe("防具の表（items.ts の ARMORS）");
 
   // **着られるのは革・鉄・金・ダイヤの 4 材質・16 種**（33b で金とダイヤが入った）。

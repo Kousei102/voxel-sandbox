@@ -4994,3 +4994,11 @@ ID 1 個（共有帯の空き 54 → 53・次は 203）/ `main.ts` 1083 行・`h
 - **見送ったもの**: 苗木・サトウキビ・草むらへの骨粉（苗木は `treeshape.ts` を呼ぶ別の 1 周）。
 - 差し戻し 0 回。サブエージェントは使わず、親が実装して `git diff` で点検。`main.ts` ±0 / `hands.ts` 462 → 472。
 - 数え直しで動いた既存の件 3 つ: `test/blocks.test.ts` の共有帯の一覧（81 → 82）と空き（53 → 52）、`test/crafting.test.ts` のレシピ 96 → 97 本、`test/items.test.ts` の枯れ木の `===`（`>=` にして骨粉の節へ移した）。
+
+
+## 2026-10-03 — C（実装）の周（AUTODEV 160）: 24b-1 ケーキをかじる
+
+- **取ったもの**: `use.ts` の `eatCake`（20 通り目・`UseFacts.canEatCake`）・`crops.ts` の `bite()` / `CAKE_BITES` / `update()` の CAKE 枝 / `notePlaced()` の CAKE 掃除・`items.ts` の `CAKE_BITE_FOOD`・`hands.ts` の `eatCakeAt()`。`npm test` 4232 → 4261 件。ID 0 個（共有帯の空き 52・次は 204 のまま）。
+- **見送ったもの**: かじった見た目（24b-2・ID が 3〜6 個要るので人の確認待ち）。
+- 差し戻し 0 回。サブエージェントは使わず、親が実装して `git diff` で点検。`main.ts` ±0 / `hands.ts` 472 → 483。
+- 数え直しで動いた既存の件: `test/use.test.ts` の `facts()` に `canEatCake: true` を足しただけ（判定はゆるめていない）。

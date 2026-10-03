@@ -1290,6 +1290,12 @@ export function allLeftoverIds(): number[] {
   return [...LEFTOVERS.keys()];
 }
 
+/**
+ * ケーキ 1 口ぶん（本家と同じ 2 / 0.4。24b-1）。**アイテムではない**（`FOODS` に入れると、
+ * 持っているものを食べる経路に乗ってしまう）。かじるのは `use.ts` の `eatCake`。
+ */
+export const CAKE_BITE_FOOD: FoodDef = { hunger: 2, saturation: 0.4, poison: false };
+
 /** そのアイテムを食べたときの値。食べられないなら null。 */
 export function foodOf(id: number): FoodDef | null {
   return FOODS.get(id) ?? null;

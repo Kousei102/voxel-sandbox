@@ -19,6 +19,7 @@
  */
 
 import {
+  CAKE,
   CHEST,
   CRAFTING_TABLE,
   FURNACE,
@@ -58,6 +59,11 @@ export interface UseFacts {
    * あるので、**ここで `alwaysEdible` を読まないこと**（判断が 2 か所に散ります）。
    */
   readonly canEat: boolean;
+  /**
+   * **ケーキをかじれるか**（`canEat` と同じ約束。`vitals.ts` の `canEatFood()` にケーキ 1 口ぶんを
+   * 渡して、呼ぶ側が決めます）。手のものとは別の事実なので、`canEat` を使い回さないこと。
+   */
+  readonly canEatCake: boolean;
   /** **放てる矢があるか。** クリエイティブぶんは呼ぶ側で込みにする（`bow.ts` と同じ約束）。 */
   readonly hasArrow: boolean;
   /**
@@ -113,6 +119,8 @@ export type UseAction =
   | { readonly kind: "ignite"; readonly aim: PlaceAim }
   | { readonly kind: "draw"; readonly item: number }
   | { readonly kind: "eat"; readonly item: number }
+  /** ケーキを 1 口かじる。**何口目で消えるかはここで決めない**（`crops.ts` の `bite()`）。 */
+  | { readonly kind: "eatCake"; readonly at: UseSpot }
   | { readonly kind: "place"; readonly aim: PlaceAim; readonly base: number };
 
 const NOTHING: UseAction = { kind: "none" };
@@ -184,6 +192,15 @@ export function decideUse(aim: PlaceAim | null, facts: UseFacts): UseAction {
   // 弓。**引き始めるだけ**で、放つのは離したとき。長さも下限も `bow.ts`。
   if (isBow(held)) {
     return facts.hasArrow ? { kind: "draw", item: held } : { kind: "flash", message: "矢がありません" };
+  }
+
+  // ケーキをかじる。**食べ物より前**（手の食べ物を食べ始めるのが先に勝つと、ケーキに触れない）・
+  // **器・刈る・搾る・クワ・種・骨粉・バケツ・ミルクより後ろ**（前に出すと、ケーキの上で道具を
+  // 持っている間それが効かない）。**何口目で消えるかはここで決めない**（`crops.ts` の `bite()`）。
+  if (aim && aim.id === CAKE) {
+    if (creative) return NOTHING;
+    if (!facts.canEatCake) return { kind: "flash", message: "お腹は空いていません" };
+    return { kind: "eatCake", at: aim.block };
   }
 
   // 食べ物。**何がどれだけ戻るかは `items.ts`、食べられるかは `vitals.ts`**。

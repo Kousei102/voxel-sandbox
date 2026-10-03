@@ -1,6 +1,7 @@
 import {
   AIR,
   BED,
+  CAKE,
   CHEST,
   CRAFTING_TABLE,
   DIRT,
@@ -46,7 +47,7 @@ function aimAt(id: number, x = 3, y = 11, z = 5) {
 
 /** 並の状況（サバイバル・腹は減っている・矢はある・刈れる／搾れるモブは居ない）。違うところだけ上書きする。 */
 function facts(held: number, over: Partial<UseFacts> = {}): UseFacts {
-  return { held, creative: false, canEat: true, hasArrow: true, shearable: false, milkable: false, ...over };
+  return { held, creative: false, canEat: true, canEatCake: true, hasArrow: true, shearable: false, milkable: false, ...over };
 }
 
 /** 表に出すための短い説明（何が起きるか）。 */
@@ -191,6 +192,38 @@ export function run(): void {
     "バケツは器より後（かまどを狙ったら開く）",
     decideUse(aimAt(FURNACE), facts(WATER_BUCKET)).kind === "furnace",
   );
+
+  // --- ケーキをかじる（24b-1）。並びは 器・道具・バケツ・ミルクより後ろ、食べ物より前 ---
+  {
+    const cake = (held: number, over: Partial<UseFacts> = {}) => decideUse(aimAt(CAKE), facts(held, over));
+    const show = (name: string, act: UseAction) => console.log(`      ${name.padEnd(28)}  ${describeAction(act)}`);
+    const hungry = cake(NO_ITEM);
+    const full = cake(NO_ITEM, { canEatCake: false });
+    const creativeCake = cake(NO_ITEM, { creative: true });
+    const withBread = cake(BREAD);
+    const withHoe = cake(WOOD_HOE);
+    const withBucket = cake(WATER_BUCKET);
+    const withMilk = cake(MILK_BUCKET);
+    const notCake = decideUse(aimAt(GRASS), facts(NO_ITEM));
+    show("ケーキ（腹が減っている）", hungry);
+    show("ケーキ（満腹）", full);
+    show("ケーキ（クリエイティブ）", creativeCake);
+    show("パンを持ってケーキ", withBread);
+    show("クワを持ってケーキ", withHoe);
+    check("ケーキを狙うと eatCake（狙ったマス）", hungry.kind === "eatCake" && hungry.at.x === 3 && hungry.at.y === 11 && hungry.at.z === 5, describeAction(hungry));
+    check("満腹なら flash（口数は増えない）", full.kind === "flash" && full.message === "お腹は空いていません", describeAction(full));
+    check("クリエイティブなら none", creativeCake.kind === "none", describeAction(creativeCake));
+    check("手に食べ物があってもケーキが先", withBread.kind === "eatCake", describeAction(withBread));
+    check("クワ・バケツ・ミルクはケーキより先", withHoe.kind === "till" && withBucket.kind === "bucket" && withMilk.kind === "drink", `${withHoe.kind} ${withBucket.kind} ${withMilk.kind}`);
+    check("ケーキを狙っていなければ eatCake でない", notCake.kind !== "eatCake", describeAction(notCake));
+    check(
+      "器はケーキより先（作業台・かまど・チェスト・ベッドの判定が動かない）",
+      decideUse(aimAt(CRAFTING_TABLE), facts(NO_ITEM)).kind === "craft" &&
+        decideUse(aimAt(FURNACE), facts(NO_ITEM)).kind === "furnace" &&
+        decideUse(aimAt(CHEST), facts(NO_ITEM)).kind === "chest" &&
+        decideUse(aimAt(BED), facts(NO_ITEM)).kind === "bed",
+    );
+  }
 
   // --- 狙う先が要るもの・要らないもの ---
   // **`aim` が無くても食べられること**（空を向いたまま食べられないのはおかしい）。
