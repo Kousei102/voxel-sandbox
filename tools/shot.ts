@@ -55,9 +55,11 @@ import {
   POPPY,
   DANDELION,
   DEAD_BUSH,
+  HAY_BALE,
   RED_MUSHROOM,
   SAND,
   SANDSTONE,
+  WOOL,
   SANDSTONE_SLAB,
   SANDSTONE_SLAB_TOP,
   SAPLING,
@@ -1290,6 +1292,26 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
       note:
         `枯れ木 ${placed} / 3 本（-3,-1,1 / y ${y}）/ サボテン 3,${y},0 ${world.getVoxel(3, y, 0) === CACTUS} / ` +
         `草むら 5,${y},0 ${world.getVoxel(5, y, 0) === TALL_GRASS}`,
+    };
+  },
+
+  /**
+   * 干し草の俵（205・62）。**羊毛・金ブロック・砂岩の立方体と並べて**、俵の黄土が
+   * 隣と見分けられるか・面ごとの色の差（上が明るく下が暗い）が読めるかを見る。
+   * 手前に 2 段積みも 1 本置く（面の欠け・継ぎ目の確認）。
+   */
+  hay(setup) {
+    const { scene, world } = makeWorld(OVERWORLD, 3);
+    const y = world.surfaceY(0, 0) + 1;
+    const row = [WOOL, HAY_BALE, GOLD_BLOCK, SANDSTONE];
+    row.forEach((b, i) => world.setVoxel(-3 + i * 2, y, 0, b));
+    world.setVoxel(-1, y + 1, 0, HAY_BALE);
+    world.primeAround(0.5, 0.5, 3);
+    return {
+      scene,
+      camera: look(setup, new Vector3(0, y + 2.2, 5.5), new Vector3(0, y + 0.6, 0)),
+      dayNight: skyOf(OVERWORLD, setup.time),
+      note: `俵 -1,${y},0 ${world.getVoxel(-1, y, 0) === HAY_BALE} / 2 段目 ${world.getVoxel(-1, y + 1, 0) === HAY_BALE}`,
     };
   },
 

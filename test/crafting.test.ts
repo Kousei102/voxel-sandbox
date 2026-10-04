@@ -16,6 +16,7 @@ import {
   GLASS,
   GOLD_BLOCK,
   GOLD_ORE,
+  HAY_BALE,
   IRON_BLOCK,
   IRON_ORE,
   LADDER,
@@ -886,6 +887,24 @@ export function run(): void {
   const eight = findRecipe(grid(3, ["III", "III", "II."], P), 3);
   check("鉄 8 個ではブロックにならない", eight === null, eight?.name ?? "無し");
 
+  describe("干し草の俵（小麦 9 個の 3x3 ⇄ 俵 1 個）");
+
+  const HK = { W: WHEAT, Z: HAY_BALE };
+  const hayPacked = findRecipe(grid(3, ["WWW", "WWW", "WWW"], HK), 3);
+  const hayBack = findRecipe(grid(2, ["Z."], HK), 2);
+  const hayIn2 = findRecipe(grid(2, ["WW", "WW"], HK), 2);
+  const hayEight = findRecipe(grid(3, ["WWW", "WWW", "WW."], HK), 3);
+  const breadStill = findRecipe(grid(3, ["WWW"], HK), 3);
+  console.log(
+    `      小麦 9 個 → ${hayPacked?.name ?? "無し"} x${hayPacked?.count ?? 0} / 俵 1 個 → ${hayBack?.name ?? "無し"} x${hayBack?.count ?? 0}` +
+      ` / 2x2 → ${hayIn2?.name ?? "無し"} / 8 個 → ${hayEight?.name ?? "無し"} / 横 3 個 → ${breadStill?.name ?? "無し"}`,
+  );
+  check("小麦 9 個の 3x3 → 干し草の俵 1 個", hayPacked?.out === HAY_BALE && hayPacked.count === 1, hayPacked?.name ?? "無し");
+  check("俵 1 個 → 小麦 9 個（2x2 でも作れる）", hayBack?.out === WHEAT && hayBack.count === 9, hayBack?.name ?? "無し");
+  check("往復で小麦が増減しない（9 → 1 → 9）", 9 === (hayBack?.count ?? 0) * (hayPacked?.count ?? 0), "9 個 → 俵 1 個 → 小麦 9 個");
+  check("2x2 や 8 個では俵にならない", hayIn2?.out !== HAY_BALE && hayEight?.out !== HAY_BALE, `${hayIn2?.name ?? "無し"} / ${hayEight?.name ?? "無し"}`);
+  check("パン（小麦 3 個の横一列）は動かない", breadStill?.out === BREAD && breadStill.count === 1, breadStill?.name ?? "無し");
+
   describe("紙・本・本棚");
 
   // **3 本とも本家と同じ形・同じ個数**。作業台の要否が 3 本で違う（紙・本棚は要る）ので、
@@ -1107,8 +1126,8 @@ export function run(): void {
   // **本数も 1 件として見張る** —— レシピを足したのに表から漏れていたら、
   // 上の `findRecipe` だけでは「揃わないのが正しい」と読めてしまう。
   check(
-    "レシピは 98 本（57 のレンガハーフで 1 本増えた。数え直した）",
-    RECIPES.length === 98,
+    "レシピは 100 本（干し草の俵 2 本で増えた。数え直した）",
+    RECIPES.length === 100,
     `${RECIPES.length} 本`,
   );
 

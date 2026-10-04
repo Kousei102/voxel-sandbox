@@ -99,6 +99,7 @@ import {
   WOOD,
   baseBlock,
   blockDef,
+  HAY_BALE,
   blockName,
   blockTool,
   blocksSky,
@@ -316,8 +317,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタ・ネザーレンガのフェンス・石炭ブロック・グロウストーンダスト・クモの目・金の道具 5 本・シラカバの木 3 つ・ネザーレンガ・花 2 種・枯れ木・骨粉の 82 個（203 まで。**骨粉が入ったので数え直した** —— 名指しの一覧はそのままで、末尾に 1 個足しただけ）",
-    sharedItems.length === 82 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタ・ネザーレンガのフェンス・石炭ブロック・グロウストーンダスト・クモの目・金の道具 5 本・シラカバの木 3 つ・ネザーレンガ・花 2 種・枯れ木・骨粉・干し草の俵の 83 個（205 まで。**俵が入ったので数え直した** —— 名指しの一覧はそのままで、末尾に 1 個足しただけ）",
+    sharedItems.length === 83 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -440,15 +441,18 @@ export function run(): void {
       sharedItems[80] === DEAD_BUSH &&
       // **203 は手で足したアイテム**（骨粉。35）。上限がアイテム側に戻った。
       sharedItems[81] === BONE_MEAL &&
-      MAX_ITEM_ID === BONE_MEAL,
+      // **204 は上付きハーフ（アイテムなし）、205 は `items.ts` に書かずに増えたブロック**
+      // （干し草の俵）。上限を持つのがブロック側へ戻った。
+      sharedItems[82] === HAY_BALE &&
+      MAX_ITEM_ID === HAY_BALE,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 51（レンガハーフの上付き 204 で 1 個減った。番号を 1 つ取ったので数え直した）",
-    sharedFree === 51,
+    "111..255 の空きは 50（干し草の俵 205 で 1 個減った。番号を 1 つ取ったので数え直した）",
+    sharedFree === 50,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1478,6 +1482,7 @@ export function run(): void {
 
   endPortalFrames();
   storedBlocks();
+  hayBale();
   mushrooms();
   bowlAndStew();
   sugarCane(world, ground);
@@ -5246,4 +5251,18 @@ function birches(): void {
     rollDrop(BIRCH_WOOD, 0.5).item === BIRCH_WOOD && rollDrop(BIRCH_SAPLING, 0.5).item === BIRCH_SAPLING,
     `${itemName(rollDrop(BIRCH_WOOD, 0.5).item)} / ${itemName(rollDrop(BIRCH_SAPLING, 0.5).item)}`,
   );
+}
+
+function hayBale(): void {
+  describe("干し草の俵（205・立方体）");
+
+  const d = blockDef(HAY_BALE);
+  console.log(
+    `      HAY_BALE ${HAY_BALE} / 名前 ${d.name} / 硬さ ${d.hardness} / 道具 ${d.tool} / variantOf ${d.variantOf} / ` +
+      `色 ${d.top.toString(16)} / アイテム名 ${itemName(HAY_BALE)} / 置くと ${placedBlock(HAY_BALE)}`,
+  );
+  check("ID は 205（共有帯の次の空き）", HAY_BALE === 205, `${HAY_BALE}`);
+  check("名前は「干し草の俵」・アイテムも同じ名前", d.name === "干し草の俵" && itemName(HAY_BALE) === "干し草の俵", `${d.name} / ${itemName(HAY_BALE)}`);
+  check("variantOf は AIR（アイテムが自動で作られ、掘ると自分が落ちる）", d.variantOf === AIR && placedBlock(HAY_BALE) === HAY_BALE, `${d.variantOf} / ${placedBlock(HAY_BALE)}`);
+  check("硬さ 0.5・道具なし・立方体", d.hardness === 0.5 && d.tool === null && d.model === "cube", `${d.hardness} / ${d.tool} / ${d.model}`);
 }

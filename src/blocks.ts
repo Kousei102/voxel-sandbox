@@ -763,6 +763,12 @@ export const NETHER_BRICK_SLAB_TOP = 166;
 export const STONE_BRICK_SLAB_TOP = 167;
 /** レンガハーフ（57）の上付き。共有帯の次の空き。`variantOf` があるのでアイテムは作られない。 */
 export const BRICK_SLAB_TOP = 204;
+/**
+ * 干し草の俵（本家 Beta 1.2。立方体）。**小麦 9 個の 3x3 ⇄ 俵 1 個**で、鉄ブロック(135) と
+ * 同じ形（`variantOf` を書かない → アイテムは自動・掘ると自分が落ちる）。
+ * **`items.ts` の `MAX_ITEM_ID` はこの番号まで伸ばしてある。**
+ */
+export const HAY_BALE = 205;
 
 /**
  * 階段の向き違い。材質ごとに 7 個ずつ連番で取る（大元は 1..63 側）。
@@ -2089,6 +2095,10 @@ export const BLOCKS: readonly BlockDef[] = [
     hardness: 5,
     tool: "pickaxe",
     minTier: TIER_STONE,
+  }),
+  def(HAY_BALE, "干し草の俵", { top: 0xd09028, side: 0xc08424, bottom: 0xa87424 }, {
+    hardness: 0.5,
+    sound: "grass",
   }),
   def(GOLD_BLOCK, "金ブロック", { top: 0xf2d15c }, {
     hardness: 3,
