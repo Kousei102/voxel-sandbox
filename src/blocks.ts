@@ -250,6 +250,8 @@ export const END_CRYSTAL = 54;
  */
 export const NETHER_BRICK_SLAB = 55;
 export const STONE_BRICK_SLAB = 56;
+/** レンガ（12）のハーフ。低帯の予備 57..63 の先頭。上付きは共有帯の 204。 */
+export const BRICK_SLAB = 57;
 
 /**
  * ブロック ID の枠は 3 帯に分かれている。**既存の ID は動かせない**（`localStorage` の
@@ -759,6 +761,8 @@ export const SANDSTONE_SLAB_TOP = 67;
  */
 export const NETHER_BRICK_SLAB_TOP = 166;
 export const STONE_BRICK_SLAB_TOP = 167;
+/** レンガハーフ（57）の上付き。共有帯の次の空き。`variantOf` があるのでアイテムは作られない。 */
+export const BRICK_SLAB_TOP = 204;
 
 /**
  * 階段の向き違い。材質ごとに 7 個ずつ連番で取る（大元は 1..63 側）。
@@ -1862,6 +1866,14 @@ export const BLOCKS: readonly BlockDef[] = [
     STONE_BRICK_SLAB_TOP,
     "石レンガハーフ",
     { top: 0x7d8288, side: 0x757a80, bottom: 0x6d7278 },
+    { hardness: 2, tool: "pickaxe", minTier: TIER_WOOD },
+  ),
+  // レンガ（12）は 1 色なので 3 面とも同じ色（写し）。
+  ...slabPair(
+    BRICK_SLAB,
+    BRICK_SLAB_TOP,
+    "レンガハーフ",
+    { top: 0xa4553f, side: 0xa4553f, bottom: 0xa4553f },
     { hardness: 2, tool: "pickaxe", minTier: TIER_WOOD },
   ),
 

@@ -33,6 +33,7 @@ import {
   STONE,
   STONE_BRICK,
   STONE_BRICK_SLAB,
+  BRICK_SLAB,
   STONE_SLAB,
   STONE_STAIRS,
   SUGAR_CANE,
@@ -148,7 +149,7 @@ export function run(): void {
     P: PLANK, S: STICK, W: WOOD, C: COBBLE, D: DIAMOND, A: SAND, O: COAL, T: STONE,
     I: IRON_INGOT, F: FLINT, L: WOOL, H: WHEAT, N: FEATHER, G: STRING, K: SNOWBALL,
     R: BLAZE_ROD, B: BLAZE_POWDER, E: ENDER_PEARL, Y: ENDER_EYE, Z: CHARCOAL,
-    J: NETHER_BRICK, M: STONE_BRICK, Q: CLAY_BALL, V: BRICK_ITEM,
+    J: NETHER_BRICK, M: STONE_BRICK, Q: CLAY_BALL, V: BRICK_ITEM, X: BRICK,
   };
 
   // --- 形なし ---
@@ -675,6 +676,19 @@ export function run(): void {
     brickSlab?.out === STONE_BRICK_SLAB && brickSlab.count === 6,
     brickSlab?.name ?? "無し",
   );
+  // --- レンガのハーフ（材質 7 番目）---
+  const redSlab = findRecipe(grid(3, ["XXX"], P), 3);
+  console.log(`      レンガ 3 → ${redSlab?.out} x${redSlab?.count}「${redSlab?.name}」`);
+  check(
+    "レンガブロック 3 個（横）→ レンガハーフ 6 個（既存の 6 組は動かない）",
+    redSlab?.out === BRICK_SLAB && redSlab.count === 6 &&
+      netherSlab?.out === NETHER_BRICK_SLAB && brickSlab?.out === STONE_BRICK_SLAB,
+    redSlab?.name ?? "無し",
+  );
+  check(
+    "レンガハーフは 2x2 では作れない",
+    findRecipe(grid(2, ["XX"], P), 2) === null,
+  );
   // **3 幅なので 2x2 では作れない**（他の 4 材質と同じで作業台が要る）。
   const netherSlabIn2 = findRecipe(grid(2, ["JJ"], P), 2);
   const brickSlabIn2 = findRecipe(grid(2, ["MM"], P), 2);
@@ -1093,8 +1107,8 @@ export function run(): void {
   // **本数も 1 件として見張る** —— レシピを足したのに表から漏れていたら、
   // 上の `findRecipe` だけでは「揃わないのが正しい」と読めてしまう。
   check(
-    "レシピは 97 本（35 の骨粉で 1 本増えた。数え直した）",
-    RECIPES.length === 97,
+    "レシピは 98 本（57 のレンガハーフで 1 本増えた。数え直した）",
+    RECIPES.length === 98,
     `${RECIPES.length} 本`,
   );
 

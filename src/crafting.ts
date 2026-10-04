@@ -3,6 +3,7 @@ import {
   BIRCH_WOOD,
   BOOKSHELF,
   BRICK,
+  BRICK_SLAB,
   BROWN_MUSHROOM,
   CAKE,
   CHEST,
@@ -196,6 +197,7 @@ export const RECIPES: readonly Recipe[] = [
   // 石レンガは上の 1 行で石 4 個から作れる。
   slabRecipe("ネザーレンガ", NETHER_BRICK, NETHER_BRICK_SLAB),
   slabRecipe("石レンガ", STONE_BRICK, STONE_BRICK_SLAB),
+  slabRecipe("レンガ", BRICK, BRICK_SLAB),
 
   // 階段は 6 個から 4 個（Minecraft と同じで、少し目減りする）。
   stairRecipe("石", STONE, STONE_STAIRS),

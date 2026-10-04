@@ -46,6 +46,8 @@ import {
   LAVA,
   LOW_BAND_MAX,
   MAX_BLOCK_ID,
+  BRICK_SLAB,
+  BRICK_SLAB_TOP,
   NETHER_BRICK,
   NETHER_BRICK_FENCE,
   NETHER_BRICK_SLAB,
@@ -445,8 +447,8 @@ export function run(): void {
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 52（骨粉 203 で 1 個減った。番号を 1 つ取ったので数え直した）",
-    sharedFree === 52,
+    "111..255 の空きは 51（レンガハーフの上付き 204 で 1 個減った。番号を 1 つ取ったので数え直した）",
+    sharedFree === 51,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -687,8 +689,8 @@ export function run(): void {
   // **空きの数も出すこと**（`AUTODEV.md` の 2 の予算）。低帯は 55 / 56 で 2 個・
   // 共有帯は上付き 2 つで 2 個減る。
   check(
-    "1..63 の空きは 7（55 / 56 を取って 2 個減った）",
-    lowFree === 7,
+    "1..63 の空きは 6（55 / 56 / 57 を取って 3 個減った）",
+    lowFree === 6,
     `${lowFree} 個`,
   );
 
@@ -760,6 +762,44 @@ export function run(): void {
       dropOf(STONE_BRICK_SLAB_TOP).count === 1,
     `${dropOf(NETHER_BRICK_SLAB_TOP).item} x${dropOf(NETHER_BRICK_SLAB_TOP).count} / ` +
       `${dropOf(STONE_BRICK_SLAB_TOP).item} x${dropOf(STONE_BRICK_SLAB_TOP).count}`,
+  );
+
+  describe("レンガのハーフ（57 / 204）");
+  console.log(
+    `      ${BRICK_SLAB}:${blockName(BRICK_SLAB)}「${itemName(BRICK_SLAB)}」 ` +
+      `${BRICK_SLAB_TOP}:variantOf=${blockDef(BRICK_SLAB_TOP).variantOf} ` +
+      `箱 [${collisionBoxes(BRICK_SLAB)[0].join(",")}] [${collisionBoxes(BRICK_SLAB_TOP)[0].join(",")}] ` +
+      `色 0x${blockDef(BRICK_SLAB).top.toString(16)}`,
+  );
+  check(
+    "大元は 57（1..63）でアイテムになり、名前はレンガハーフ",
+    BRICK_SLAB === 57 && BRICK_SLAB <= LOW_BAND_MAX &&
+      blockDef(BRICK_SLAB).variantOf === AIR && itemName(BRICK_SLAB) === "レンガハーフ",
+    itemName(BRICK_SLAB),
+  );
+  check(
+    "上付きは 204（共有帯）でアイテムにならず、大元は下付き",
+    BRICK_SLAB_TOP === 204 && BRICK_SLAB_TOP >= SHARED_ID_START &&
+      blockDef(BRICK_SLAB_TOP).variantOf === BRICK_SLAB &&
+      itemName(BRICK_SLAB_TOP) === "" && baseBlock(BRICK_SLAB_TOP) === BRICK_SLAB &&
+      dropOf(BRICK_SLAB_TOP).item === BRICK_SLAB,
+  );
+  check(
+    "箱は下半分 / 上半分・硬さ道具と色は元のレンガと同じ",
+    collisionBoxes(BRICK_SLAB)[0].join() === "0,0,0,1,0.5,1" &&
+      collisionBoxes(BRICK_SLAB_TOP)[0].join() === "0,0.5,0,1,1,1" &&
+      blockDef(BRICK_SLAB).hardness === blockDef(BRICK).hardness &&
+      blockDef(BRICK_SLAB).tool === blockDef(BRICK).tool &&
+      blockDef(BRICK_SLAB).minTier === blockDef(BRICK).minTier &&
+      blockDef(BRICK_SLAB).top === blockDef(BRICK).top &&
+      blockDef(BRICK_SLAB).side === blockDef(BRICK).side &&
+      blockDef(BRICK_SLAB).bottom === blockDef(BRICK).bottom,
+  );
+  check(
+    "上の面を狙うと上付き・下の面を狙うと下付き（他の材質にならない）",
+    placedVariant(BRICK_SLAB, aim(FACE_YP, 1.0)) === BRICK_SLAB_TOP &&
+      placedVariant(BRICK_SLAB, aim(FACE_YN, 0.0)) === BRICK_SLAB &&
+      placedVariant(STONE_BRICK_SLAB, aim(FACE_YP, 1.0)) === STONE_BRICK_SLAB_TOP,
   );
 
   describe("ハーフブロックの上に立つ・狙う");
