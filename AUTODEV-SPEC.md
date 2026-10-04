@@ -1,62 +1,52 @@
-# 仕様: レンガブロックのハーフ（キューの 61・**ID 2 個**）
+# 仕様: 干し草の俵（キューの 62・**ID 1 個**）
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-## 0. 数え直した結果（161 の B）
+## 0. 数え直した結果（163 の B）
 
-- `BRICK`(12) は立方体であるが、**ハーフは無い**（`blocks.ts` の `slabPair()` は 石 / 丸石 / 板 / 砂岩 / ネザーレンガ / 石レンガ の 6 組。
-  `crafting.ts` の `slabRecipe()` も同じ 6 行）。
-- **24b-2 は ID を食うので人の確認待ち → 飛ばした。** 61 は「ハーフの材質を増やす」の型（`add-block` スキル 5.）そのもの。
-- 低帯の空きは **7（57..63）**・共有帯は **52（次の空きは 204）**。55 / 56 は「下付き = 低帯・上付き = 共有帯」だった。
+- `src/blocks.ts` / `items.ts` / `crafting.ts` に「俵」「干し草」は **0 件**（grep 済み）。小麦 `WHEAT`(124) の使い道は `パン`（`crafting.ts` 255 行）だけ。
+- **24b-2 は ID を 3〜6 個食うので人の確認待ち（HANDOFF「人がやること」）→ 飛ばし、キューの末尾へ回した。**
+- 空き: 低帯 6（58..63。**階段用の予備なので使わない**）/ 共有帯 51（**次の空きは 205**）。
 
 ## 1. 何を足すか・完了の判定
 
-**レンガハーフ（下付き 1 + 上付き 1）。レンガブロック 3 個を横一列 → ハーフ 6 個**（既存の 6 組と同じ `slabRecipe`）。
-置く向き（上付き / 下付き）の振り分けは既存の `SLAB_TOP_BY_BOTTOM` が勝手にやる（書き足さない）。
-完了 = `npm run typecheck` と `npm test` が緑で、`test/blocks.test.ts` に下の 5. の項目が増え、
-**「1..63 の空き」が 7 → 6、「111..255 の空き」が 52 → 51 になる**。
+**干し草の俵（立方体 1 つ）。小麦 9 個を 3x3 → 俵 1 個。俵 1 個 → 小麦 9 個（形なし）。**
+鉄ブロック(135)と鉄インゴットの組（`crafting.ts` 386 / 389 行）の写し。
+完了 = `npm run typecheck` / `npm test` が緑で、`test/blocks.test.ts` と `test/crafting.test.ts` に下の 5. が増え、
+**「111..255 の空き」が 51 → 50**（「1..63 の空き」は 6 のまま）。
 
 ## 2. 触るファイルと、触らないファイル
 
-- 触る: `src/blocks.ts`（定数 2 つ・`slabPair()` を 1 回呼ぶ。**`slabPair` 本体は 1 文字も変えない**）、
-  `src/crafting.ts`（`slabRecipe("レンガ", BRICK, BRICK_SLAB)` を 1 行・import 1 つ）、
-  `test/blocks.test.ts`（と空き数を数えている既存の件の**数え直し**）、`tools/shot.ts`（場面 `slabs` にレンガを 1 組足す。任意）、
-  `ROADMAP.md`（予約表）、`TUNING.md`（要らなければ書かない）、`rules/*.md`（踏んだ穴があれば）。
-- **触らない**: `main.ts` / `hands.ts` / `items.ts`（低帯で `variantOf` が `AIR` なのでブロック → アイテムの for が作る）/
-  `worldgen.ts` / `smelting.ts` / `storage.ts` / `session.ts`（**`SaveData` 不変**）/ `mesher.ts` / `.claude/**`。
+- 触る: `src/blocks.ts`（定数 `HAY_BALE = 205` と `def()` 1 つ。鉄ブロックの隣）、`src/crafting.ts`（レシピ 2 本・import 1 つ）、
+  `test/blocks.test.ts` / `test/crafting.test.ts`（既存の空き数の件は**数え直す**）、`ROADMAP.md`（予約表）、`TUNING.md`（色の根拠）、`rules/*.md`（踏んだ穴があれば）。
+- **触らない**: `main.ts` / `hands.ts` / `items.ts`（`block` から作られる）/ `worldgen.ts`（生成には出さない）/ `smelting.ts` / `storage.ts` / `session.ts`（`SaveData` 不変）/ `mesher.ts` / `.claude/**`。
 
 ## 3. 使う ID
 
-- **`BRICK_SLAB` = 57**（低帯の予備 57..63 の先頭）。
-- **`BRICK_SLAB_TOP` = 204**（共有帯の次の空き。`items.ts` 側にも 204 が無いことを `test/blocks.test.ts` の突き合わせで確かめる）。
-- **57 の予約表の行を「実装済み」に書き換え、204 も 1 行足す**（`ROADMAP.md`）。**既存の ID を 1 つも振り直さない。**
+- **`HAY_BALE` = 205**（共有帯の次の空き。`items.ts` 側に 205 が無いことは `test/blocks.test.ts` の突き合わせが見る）。
+- `ROADMAP.md` の予約表の「205..255」行を **205 = 干し草の俵（実装済み）+ 206..255 予備 50 個**に分ける。**既存 ID は 1 つも振り直さない。**
 
 ## 4. 判断の置き場所
 
-新しく確かめられないものは足さない（`unverifiable-pair` は要らない）。`blocks.ts` の `slabPair()` と `crafting.ts` の
-`slabRecipe()` に**データ 1 行ずつ**を足すだけ。**色・硬さ・道具は元のレンガ（12）の写し**（`{ hardness: 2, tool: "pickaxe", minTier: TIER_WOOD }`、
-色は `BRICK` の `def()` を読んで `top / side / bottom` を合わせる。ずらすと壁と屋根で色が食い違う）。
-**名前は「レンガハーフ」**（`BRICK_ITEM`(170) は「レンガ」なので一覧で区別できる。`itemName(BRICK_SLAB)` を出力して判定）。
+新しく確かめられないものは足さない（`unverifiable-pair` 不要）。`add-block` スキルの手順どおり、`blocks.ts` に `def` 1 つ・`crafting.ts` に 2 本。
+**硬さ 0.5・道具なし**（本家の値。`tool: null` 相当の書き方は既存の羊毛 / 土の `def()` を読んで合わせる）。
+**色は黄土（小麦 `0xd8c26a` の写しを基準）。一覧の色は総当たりで測ること**（AUTODEV-QUEUE の ⚠。判定の 20 を割ったらずらし、
+ずらした値を `TUNING.md` に 1 行）。**名前は「干し草の俵」。**
 
 ## 5. 書くテスト（値を出してから判定）
 
-- `test/blocks.test.ts`: 55 / 56 の既存の件（667〜690 行付近）の**隣に同じ形**で、`BRICK_SLAB === 57`・`<= LOW_BAND_MAX`・
-  `variantOf === AIR`・名前・`BRICK_SLAB_TOP === 204`・`variantOf === BRICK_SLAB`・`boxes` が下付き / 上付きの箱・
-  硬さ / 道具 / `minTier` と**色が元の `BRICK` と同じ**、を出力してから判定。
-- 空き数を数えている既存の件（「1..63 の空きは 7」「111..255 の空きは 52」）は**数え直して 6 / 51 にする**（判定をゆるめず、理由を 1 行書き換える）。
-- `test/crafting.test.ts`（なければ `blocks.test.ts`）: レンガ 3 個の横一列 → `BRICK_SLAB` 6 個。**石レンガハーフ等の既存の 6 組のレシピが動かない**。
-- 上付きの置き分け（`SLAB_TOP_BY_BOTTOM[BRICK_SLAB] === BRICK_SLAB_TOP`）を 1 件。
+- `blocks.test.ts`: `HAY_BALE === 205`・名前・`variantOf === AIR`・`hardness`・`itemName`・色を出力してから判定。ブロック ID とアイテム ID の突き合わせ（205 を 1 つのものだけが取る）。
+- `crafting.test.ts`: 小麦 9 個の 3x3 → 俵 1 個 / 俵 1 個 → 小麦 9 個 / **往復で小麦が増減しない** / 既存のパンのレシピが動かない。
+- 空き数の件（「111..255 の空きは 51」）を **50 に数え直す**（判定をゆるめず理由 1 行を書き換え）。
 
 ## 6. このタスク固有の禁じ手
 
-1. **`slabPair()` / `slabRecipe()` / `SLAB_TOP_BY_BOTTOM` の中身を変えない**（呼ぶだけ）。
-2. **レンガ階段・レンガの壁は足さない**（別の周。ID を食う）。**`BRICK` のドロップ・色・硬さを変えない。**
-3. **低帯は 57 だけ・共有帯は 204 だけ。** 予約表に無い番号を使わない。
-4. 既存の空き数の判定を**ゆるめて**緑にしない（数え直すだけ）。
-5. 踏んだ落とし穴は `rules/blocks-shapes.md` などへ `Edit` で据える（`grep -l '"src/blocks.ts"' rules/*.md` の 3 本を読んでから。`.claude/**` へは書かない）。
+1. 俵を落下させない・生成しない・燃料にしない・動物の餌にしない（別タスク）。
+2. 低帯（58..63）を使わない。`WHEAT` / `BREAD` の定義とパンのレシピを変えない。
+3. 既存の空き数の判定をゆるめて緑にしない。
 
 ## 7. 終了条件
 
-`npm run typecheck` と `npm test` と `npm run build` が緑 / コミット 1 つ / 見た目に出る（ハーフの形は既存と同じだがレンガ色）ので
-**`npm run shot -- slabs` を撮って `Read` で見る** / `HANDOFF.md` に「ブラウザで見てほしいところ」2〜3 行。
+`npm run typecheck` / `npm test` / `npm run build` が緑 / コミット 1 つ / 見た目に出る（新しい立方体）ので `npm run shot` の場面で撮って `Read` で見る
+（場面に足すなら `tools/shot.ts`）/ `HANDOFF.md` に「ブラウザで見てほしいところ」2〜3 行 / `TUNING.md` に手触りの数値があれば 1 行。
