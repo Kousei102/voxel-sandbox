@@ -1,62 +1,62 @@
-# 仕様: 彫刻された石レンガ・ひび割れた石レンガ（キューの 63・**ID 2 個**）
+# 仕様: 骨粉で苗木が木になる（キューの 65・**ID 0 個**）
 
-状態: 済
+状態: 未着手
 差し戻し: 0 回
 
-## 0. 数え直した結果（165 の B）
+## 0. 数え直した結果（168 の B）
 
-- `src/` に「彫刻」「ひび割れた石レンガ」「chiseled」「cracked」は **0 件**（grep 済み。`crack.ts` は採掘の割れ表示で別物）。
-- 石レンガ `STONE_BRICK`(53) / ハーフ `STONE_BRICK_SLAB`(56) / 上付き(167) は有る。石 4 個 → 石レンガ 4 個（`crafting.ts` 190 行）。
-- `SMELTING`（`smelting.ts` 77 行）に石レンガの行は無い。精錬の入口は `smeltResultOf()`。
-- 空き: 低帯 6（58..63。**階段用の予備なので使わない**）/ 共有帯 50（**次の空きは 206**）。**取るのは 206 と 207**。
-- 24b-2 は人の確認待ちなので飛ばす（キューの ⚠ のとおり）。
+- `crops.ts` の `fertilize()`（324 行）は **`WHEAT_CROP` だけ**。苗木（`SAPLING` 164 / `SPRUCE_SAPLING` 165 / `BIRCH_SAPLING` 198）は
+  `growTree()`（602 行）が `SAPLING_GROW_SECONDS`(180) 経つまで待つだけで、骨粉は効かない。
+- `use.ts` 165 行は `aim.id === WHEAT_CROP` のときだけ `fertilize` を返す。`hands.ts` 239 行 `fertilizeAt()` は `crops.fertilize()` の真偽だけを見て、
+  **true のときだけ骨粉を 1 個減らす**（変えない）。
+- 形は `treeshape.ts` の `grownTreeHeight()` / `treeCells()` が持つ。`saplingKind()`（crops.ts 119 行・非公開）が苗木 → `TreeKind`。
+- 手本のテスト: `test/crops.test.ts` 1284 行「骨粉で実る」、`test/use.test.ts` 452 行。
 
 ## 1. 何を足すか・完了の判定
 
-**立方体 2 つ。** ① **彫刻された石レンガ** = 石レンガのハーフ 2 枚を縦に（2 マス縦・形あり）→ 1 個。
-② **ひび割れた石レンガ** = 石レンガ(53) を精錬 → 1 個。
-完了 = `npm run typecheck` / `npm test` が緑で、`test/blocks.test.ts` / `test/crafting.test.ts` / `test/smelting.test.ts` に
-下の 5. が増え、**「111..255 の空き」が 50 → 48**（「1..63 の空き」は 6 のまま）。
+骨粉を苗木に使うと、**待たずにその場で木に育つ**（オーク・トウヒ・シラカバ）。育てられなかった（上が塞がっている・列が未読み込み）ときは
+**骨粉を減らさない**。`npm test` に「骨粉で苗木が育つ」節（下の 5.）が増えて緑、項目数が増える。
 
-## 2. 触るファイルと、触らないファイル
+## 2. 触るファイル / 触らないファイル
 
-- 触る: `src/blocks.ts`（定数 `CHISELED_STONE_BRICK = 206` / `CRACKED_STONE_BRICK = 207` と `def()` 2 つ。石レンガ・干し草の俵の隣）、
-  `src/crafting.ts`（レシピ 1 本・import）、`src/smelting.ts`（`SMELTING` に 1 行・import）、
-  `src/items.ts`（`MAX_ITEM_ID` を 207 へ。163 の C で必須だった）、`test/*.test.ts`（空き数の件は**数え直す**）、
-  `ROADMAP.md`（予約表）、`TUNING.md`（色の根拠）、`rules/*.md`（踏んだ穴）。
-- **触らない**: `main.ts` / `hands.ts` / `worldgen.ts`（要塞に混ぜない。別タスク）/ `storage.ts` / `session.ts`（`SaveData` 不変）/
-  `mesher.ts` / `FUEL` / `.claude/**`。
+- 触る: `src/crops.ts`（`fertilize()` に苗木の枝・`growTree()` を再利用）、`src/use.ts`（骨粉の分岐の条件を苗木にも広げる）、
+  `test/crops.test.ts`、`test/use.test.ts`、`rules/use.md`（骨粉の節があれば「苗木にも効く」へ直す。無ければ触らない）、`rules/items-survival.md`・
+  `ROADMAP.md` 203 行の「苗木は見送り」を直す。
+- 触らない: **`src/hands.ts`・`src/main.ts`**（`fertilizeAt()` は無改造で足りる）、`treeshape.ts`、`worldgen.ts`、`blocks.ts` の既存定義、`items.ts`、
+  `SaveData`（`version` は 1 のまま・新しいキーも足さない）。
 
 ## 3. 使う ID
 
-- **206 = 彫刻された石レンガ / 207 = ひび割れた石レンガ**（共有帯の次の空き 2 つ。`ROADMAP.md` の「206..255」行を
-  206 / 207 実装済み + 208..255 予備 48 個に分ける）。**既存 ID は 1 つも振り直さない。**
-- `items.ts` 側に 206 / 207 が無いことは `test/blocks.test.ts` の突き合わせが見る。
+**0 個。** 予約表の変更は 203 行の説明の直しだけ。
 
-## 4. 判断の置き場所
+## 4. 判断をどのファイルに置くか
 
-新しく確かめられないものは足さない（`unverifiable-pair` 不要）。`add-block` スキルの手順どおり。
-**硬さ 1.5・つるはし（木以上）**＝本家の値。石レンガ(53) の `def()` を読んで `hardness` / `tool` / `minTier` を合わせる
-（既存の 53 は硬さ 2 なので、**写すのは 53 の値でよい**。迷ったら 53 と同じ）。
-**色は石レンガ（top 0x7d8288 / side 0x757a80）の近傍で、一覧の色を総当たりで測ること**
-（AUTODEV-QUEUE の ⚠。灰は埋まっている。判定の 20 を割ったらずらし、ずらした値を `TUNING.md` に 1 行）。
-**名前は「彫刻された石レンガ」「ひび割れた石レンガ」。** 見た目の差は色だけでよい（テクスチャ・新シェーダは使わない）。
+- 「育つかどうか」は **`crops.ts` だけ**（`growTree()` の門 1〜3 がそのまま掛かる。**形を写して持たないこと**）。
+- `use.ts` は「骨粉を持って、小麦の苗か苗木を狙った」とだけ言う。**育つ可否は決めない。** 苗木かどうかの判定は `saplingKind()` を
+  書き写さず、`blocks.ts` に既にある苗木の述語（3074 行付近。無ければ `crops.ts` から `isSapling(id)` を 1 つ export）を引く。
+  **`use.ts` が `crops.ts` を import しない形が望ましい**（`blocks.ts` 側に述語を置くなら 1 行）。
+- 新しい「確かめられないもの」は無い。`unverifiable-pair` は不要。
 
-## 5. 書くテスト（値を出してから判定）
+## 5. 書くテスト（値を出力してから判定）
 
-- `blocks.test.ts`: 2 つの ID・名前・`variantOf === AIR`・硬さ・色を出力してから判定。ブロック ID とアイテム ID の突き合わせ。
-- `crafting.test.ts`: ハーフ 2 枚（縦）→ 彫刻 1 個 / 横並び・ハーフ 1 枚では作れない / 既存の石レンガ・ハーフのレシピが動かない。
-- `smelting.test.ts`: 石レンガ → ひび割れ 1 個 / 石レンガは燃料でない（`FUEL` に無い）/ 既存の精錬が動かない。
-- 空き数の件（「111..255 の空きは 50」）を **48 に数え直す**（判定をゆるめず理由 1 行を書き換え）。
+`test/crops.test.ts`（`growTree` のテストと同じ偽ワールドを使う）:
+1. オーク・トウヒ・シラカバの苗木に `fertilize()` → true、根元が幹（`WOOD` 系）に変わり、`treeCells()` の最下段が一致。値（高さ・書いた数）を `console.log`。
+2. 育てた後、苗木の印（`count`）が消える。
+3. 上が塞がっている → false・何も書かない・`count` は 1 のまま。**骨粉が減らないことの根拠はこの false。**
+4. 4 隅の列の 1 つでも未読み込み → false・`world.writes === 0`。
+5. 苗木を植えた直後（age 0）でも、180 秒待った後と**同じ木**になる（`grownTreeHeight` が x,z だけで決まる約束）。
+6. 既存の小麦の項目（1284 行以降）は 1 つも変えない。
+`test/use.test.ts`: 骨粉 + 3 種の苗木 → `fertilize`（狙ったマスがそのまま渡る）/ 骨粉 + 葉・土・原木 → `fertilize` でない / 器が先（骨粉 + 作業台 → `craft`）は維持。
 
 ## 6. このタスク固有の禁じ手
 
-1. 要塞（`stronghold.ts`）の材料に混ぜない・落下・生成・燃料にしない。
-2. 低帯（58..63）を使わない。石レンガ・ハーフのレシピと `SMELTING` の既存行を変えない。
-3. 既存の空き数の判定をゆるめて緑にしない。
+- **`fertilize()` の小麦の分岐を書き換えない**（順序・戻り値・印の消し方は据え置き）。
+- **木の形・高さ・葉の範囲を `crops.ts` に書かない**（`treeshape.ts` の関数を引くだけ）。
+- **半分だけの木を残さない**（`growTree()` の門 1 を飛ばさない。**失敗時は秒数を持ち越してよいが、骨粉は消費させない**＝戻り値 false）。
+- 確率（本家は約 45%）は入れない。**確定で育つ**（`TUNING.md` に 1 行）。
+- `main.ts` / `hands.ts` に 1 行も足さない。`test/**` の既存の判定をゆるめない。
 
 ## 7. 終了条件
 
-`npm run typecheck` / `npm test` / `npm run build` が緑 / コミット 1 つ / 新しい立方体なので `npm run shot` の場面に並べて撮り、
-`Read` で見て石レンガと見分けが付くか確かめる（場面は `tools/shot.ts`）/ `HANDOFF.md` に「ブラウザで見てほしいところ」2〜3 行 /
-`TUNING.md` に色の 1 行。
+`npm run typecheck` と `npm test` が緑 / コミット 1 つ / `TUNING.md` に「骨粉は苗木を必ず育てる（本家は約 45%）」を 1 行 /
+`ROADMAP.md` 203 行を直し、`rules/` へ落とし穴を据える（無ければ「決まりごと 0 件」）。
