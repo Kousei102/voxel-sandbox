@@ -7,6 +7,8 @@ import {
   CHEST,
   COAL_BLOCK,
   COBBLE,
+  CRACKED_STONE_BRICK,
+  STONE_BRICK,
   FENCE,
   FURNACE,
   FURNACE_LIT,
@@ -141,6 +143,12 @@ export function run(): void {
 
   check("鉄鉱石 → 鉄インゴット", SMELTING.get(IRON_ORE)?.out === IRON_INGOT);
   check("砂 → ガラス", SMELTING.get(SAND)?.out === GLASS);
+  check(
+    "石レンガ → ひび割れた石レンガ 1 個・燃料ではない",
+    SMELTING.get(STONE_BRICK)?.out === CRACKED_STONE_BRICK && SMELTING.get(STONE_BRICK)?.count === 1 &&
+      !FUEL.has(STONE_BRICK) && !FUEL.has(CRACKED_STONE_BRICK) && !SMELTING.has(CRACKED_STONE_BRICK),
+    `${itemName(SMELTING.get(STONE_BRICK)?.out ?? NO_ITEM)} / 燃料 ${FUEL.has(STONE_BRICK)}`,
+  );
   check("丸石 → 石", SMELTING.get(COBBLE)?.out === STONE);
   check("生豚肉 → 焼き豚", SMELTING.get(RAW_PORK)?.out === COOKED_PORK);
   check("生鶏肉 → 焼き鳥", SMELTING.get(RAW_CHICKEN)?.out === COOKED_CHICKEN);
@@ -231,8 +239,8 @@ export function run(): void {
     `レンガ ${isSmeltable(BRICK_ITEM)} / 粘土玉 ${isSmeltable(CLAY_BALL)}`,
   );
   // **表そのものを数える。** 「粘土玉が焼ける」だけだと、別の行が消えても緑になる。
-  // **数え直すのは可・ゆるめるのは禁じ手**（`>= 10` にしない）。ネザーラックで 1 行増えて 12 行。
-  check("焼けるものの表は 12 行（57 のネザーラックで 1 行増えた）", SMELTING.size === 12, `${SMELTING.size} 行`);
+  // **数え直すのは可・ゆるめるのは禁じ手**（`>= 10` にしない）。ネザーラックで 12 行・石レンガ(AUTODEV 63)で 13 行。
+  check("焼けるものの表は 13 行（石レンガ → ひび割れた石レンガで 1 行増えた）", SMELTING.size === 13, `${SMELTING.size} 行`);
 
   // **`FUEL` に紛れ込んでいないこと**（革を燃料にすると、牛が薪になる）。
   // 表そのものを数える —— 「革が燃料でない」だけだと、別のものが紛れても緑になる。

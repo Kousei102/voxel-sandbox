@@ -13,6 +13,8 @@ import {
   CHEST,
   COAL_BLOCK,
   COBBLE,
+  CRACKED_STONE_BRICK,
+  STONE_BRICK,
   CRAFTING_TABLE,
   FENCE,
   GLASS,
@@ -102,6 +104,8 @@ export const SMELTING: ReadonlyMap<number, SmeltResult> = new Map([
   // 無かったネザーレンガのブロック（`blocks.ts` の 48）への入口**（4 個の 2x2 は `crafting.ts`）。
   // **`FUEL` には足していない** —— ネザーラックが燃え続けるのはブロックの性質で、燃料ではない。
   [NETHERRACK, { out: NETHER_BRICK_ITEM, count: 1 }],
+  // 石レンガ → ひび割れた石レンガ（本家と同じ。AUTODEV 63）。**`FUEL` には足していない。**
+  [STONE_BRICK, { out: CRACKED_STONE_BRICK, count: 1 }],
 ]);
 
 /**

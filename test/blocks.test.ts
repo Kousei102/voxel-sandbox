@@ -99,6 +99,8 @@ import {
   WOOD,
   baseBlock,
   blockDef,
+  CHISELED_STONE_BRICK,
+  CRACKED_STONE_BRICK,
   HAY_BALE,
   blockName,
   blockTool,
@@ -317,8 +319,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタ・ネザーレンガのフェンス・石炭ブロック・グロウストーンダスト・クモの目・金の道具 5 本・シラカバの木 3 つ・ネザーレンガ・花 2 種・枯れ木・骨粉・干し草の俵の 83 個（205 まで。**俵が入ったので数え直した** —— 名指しの一覧はそのままで、末尾に 1 個足しただけ）",
-    sharedItems.length === 83 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタ・ネザーレンガのフェンス・石炭ブロック・グロウストーンダスト・クモの目・金の道具 5 本・シラカバの木 3 つ・ネザーレンガ・花 2 種・枯れ木・骨粉・干し草の俵・彫刻された石レンガ・ひび割れた石レンガの 85 個（207 まで。**石レンガ 2 種が入ったので数え直した** —— 名指しの一覧はそのままで、末尾に 2 個足しただけ）",
+    sharedItems.length === 85 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -444,15 +446,17 @@ export function run(): void {
       // **204 は上付きハーフ（アイテムなし）、205 は `items.ts` に書かずに増えたブロック**
       // （干し草の俵）。上限を持つのがブロック側へ戻った。
       sharedItems[82] === HAY_BALE &&
-      MAX_ITEM_ID === HAY_BALE,
+      // **206・207 も `items.ts` に書かずに増えたブロック**（石レンガの 2 種）。
+      sharedItems[83] === CHISELED_STONE_BRICK && sharedItems[84] === CRACKED_STONE_BRICK &&
+      MAX_ITEM_ID === CRACKED_STONE_BRICK,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 50（干し草の俵 205 で 1 個減った。番号を 1 つ取ったので数え直した）",
-    sharedFree === 50,
+    "111..255 の空きは 48（石レンガの 2 種 206・207 で 2 個減った。番号を 2 つ取ったので数え直した）",
+    sharedFree === 48,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1483,6 +1487,7 @@ export function run(): void {
   endPortalFrames();
   storedBlocks();
   hayBale();
+  stoneBrickVariants();
   mushrooms();
   bowlAndStew();
   sugarCane(world, ground);
@@ -5265,4 +5270,24 @@ function hayBale(): void {
   check("名前は「干し草の俵」・アイテムも同じ名前", d.name === "干し草の俵" && itemName(HAY_BALE) === "干し草の俵", `${d.name} / ${itemName(HAY_BALE)}`);
   check("variantOf は AIR（アイテムが自動で作られ、掘ると自分が落ちる）", d.variantOf === AIR && placedBlock(HAY_BALE) === HAY_BALE, `${d.variantOf} / ${placedBlock(HAY_BALE)}`);
   check("硬さ 0.5・道具なし・立方体", d.hardness === 0.5 && d.tool === null && d.model === "cube", `${d.hardness} / ${d.tool} / ${d.model}`);
+}
+
+function stoneBrickVariants(): void {
+  describe("彫刻された石レンガ・ひび割れた石レンガ（206・207・立方体）");
+
+  const base = blockDef(STONE_BRICK);
+  for (const [id, name] of [
+    [CHISELED_STONE_BRICK, "彫刻された石レンガ"],
+    [CRACKED_STONE_BRICK, "ひび割れた石レンガ"],
+  ] as const) {
+    const d = blockDef(id);
+    console.log(
+      `      ${id} / 名前 ${d.name} / 硬さ ${d.hardness} / 道具 ${d.tool} / variantOf ${d.variantOf} / ` +
+        `色 ${d.top.toString(16)} / アイテム名 ${itemName(id)} / 置くと ${placedBlock(id)}`,
+    );
+    check(`${name}: 名前・アイテム名が同じ`, d.name === name && itemName(id) === name, `${d.name} / ${itemName(id)}`);
+    check(`${name}: variantOf は AIR・置くと自分・立方体`, d.variantOf === AIR && placedBlock(id) === id && d.model === "cube", `${d.variantOf} / ${placedBlock(id)} / ${d.model}`);
+    check(`${name}: 硬さ・道具・段階は石レンガ(53) と同じ`, d.hardness === base.hardness && d.tool === base.tool && d.minTier === base.minTier, `${d.hardness} / ${d.tool} / ${d.minTier}`);
+  }
+  check("ID は 206 / 207（共有帯の次の空き 2 つ）", CHISELED_STONE_BRICK === 206 && CRACKED_STONE_BRICK === 207, `${CHISELED_STONE_BRICK} / ${CRACKED_STONE_BRICK}`);
 }

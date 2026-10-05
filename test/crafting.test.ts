@@ -8,6 +8,7 @@ import {
   CLAY,
   COAL_BLOCK,
   GLOWSTONE,
+  CHISELED_STONE_BRICK,
   COBBLE,
   CRAFTING_TABLE,
   DIAMOND_BLOCK,
@@ -887,6 +888,23 @@ export function run(): void {
   const eight = findRecipe(grid(3, ["III", "III", "II."], P), 3);
   check("鉄 8 個ではブロックにならない", eight === null, eight?.name ?? "無し");
 
+  describe("彫刻された石レンガ（石レンガのハーフ 2 枚を縦に）");
+
+  const CHK = { B: STONE_BRICK_SLAB, W: WHEAT };
+  const chiseled = findRecipe(grid(2, ["B.", "B."], CHK), 2);
+  const chiseled3 = findRecipe(grid(3, [".B.", ".B.", "..."], CHK), 3);
+  const chiSide = findRecipe(grid(2, ["BB", ".."], CHK), 2);
+  const chiOne = findRecipe(grid(2, ["B.", ".."], CHK), 2);
+  const slabStill = findRecipe(grid(3, ["BBB"], CHK), 3);
+  console.log(
+    `      縦 2 枚 → ${chiseled?.name ?? "無し"} x${chiseled?.count ?? 0} / 3x3 の中でも → ${chiseled3?.name ?? "無し"}` +
+      ` / 横 2 枚 → ${chiSide?.name ?? "無し"} / 1 枚 → ${chiOne?.name ?? "無し"} / 横 3 枚 → ${slabStill?.name ?? "無し"}`,
+  );
+  check("ハーフ 2 枚を縦に → 彫刻された石レンガ 1 個", chiseled?.out === CHISELED_STONE_BRICK && chiseled.count === 1, chiseled?.name ?? "無し");
+  check("3x3 の中央の縦 2 枚でも作れる", chiseled3?.out === CHISELED_STONE_BRICK, chiseled3?.name ?? "無し");
+  check("横並び・1 枚では作れない", chiSide?.out !== CHISELED_STONE_BRICK && chiOne?.out !== CHISELED_STONE_BRICK, `${chiSide?.name ?? "無し"} / ${chiOne?.name ?? "無し"}`);
+  check("既存のハーフ 3 枚のレシピ（階段等）が動く / 石レンガ 4 個は変わらない", (slabStill?.out ?? 0) !== CHISELED_STONE_BRICK && findRecipe(grid(2, ["SS", "SS"], { S: STONE }), 2)?.out === STONE_BRICK, slabStill?.name ?? "無し");
+
   describe("干し草の俵（小麦 9 個の 3x3 ⇄ 俵 1 個）");
 
   const HK = { W: WHEAT, Z: HAY_BALE };
@@ -1126,8 +1144,8 @@ export function run(): void {
   // **本数も 1 件として見張る** —— レシピを足したのに表から漏れていたら、
   // 上の `findRecipe` だけでは「揃わないのが正しい」と読めてしまう。
   check(
-    "レシピは 100 本（干し草の俵 2 本で増えた。数え直した）",
-    RECIPES.length === 100,
+    "レシピは 101 本（彫刻された石レンガ 1 本で増えた。数え直した）",
+    RECIPES.length === 101,
     `${RECIPES.length} 本`,
   );
 

@@ -769,6 +769,13 @@ export const BRICK_SLAB_TOP = 204;
  * **`items.ts` の `MAX_ITEM_ID` はこの番号まで伸ばしてある。**
  */
 export const HAY_BALE = 205;
+/**
+ * 彫刻された石レンガ（本家 Beta 1.8）。石レンガのハーフ 2 枚を縦に積んで作る立方体。
+ * `variantOf` を書かない → アイテムは自動・掘ると自分が落ちる。
+ */
+export const CHISELED_STONE_BRICK = 206;
+/** ひび割れた石レンガ（本家 Beta 1.8）。石レンガ(53) を精錬して得る立方体。 */
+export const CRACKED_STONE_BRICK = 207;
 
 /**
  * 階段の向き違い。材質ごとに 7 個ずつ連番で取る（大元は 1..63 側）。
@@ -2006,6 +2013,18 @@ export const BLOCKS: readonly BlockDef[] = [
     STONE_BRICK,
     "石レンガ",
     { top: 0x7d8288, side: 0x757a80, bottom: 0x6d7278 },
+    { hardness: 2, tool: "pickaxe", minTier: TIER_WOOD },
+  ),
+  def(
+    CHISELED_STONE_BRICK,
+    "彫刻された石レンガ",
+    { top: 0x7c809c, side: 0x747894, bottom: 0x6c708c },
+    { hardness: 2, tool: "pickaxe", minTier: TIER_WOOD },
+  ),
+  def(
+    CRACKED_STONE_BRICK,
+    "ひび割れた石レンガ",
+    { top: 0x749488, side: 0x6c8c80, bottom: 0x648478 },
     { hardness: 2, tool: "pickaxe", minTier: TIER_WOOD },
   ),
   // エンドポータルの枠 8 通り（向き 4 x アイの有無 2）。**壊せない。**
