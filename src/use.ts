@@ -27,6 +27,7 @@ import {
   baseBlock,
   isBed,
   isEndPortalFrame,
+  isSapling,
   type PlaceAim,
 } from "./blocks";
 import {
@@ -161,8 +162,8 @@ export function decideUse(aim: PlaceAim | null, facts: UseFacts): UseAction {
   if (aim && isSeed(held)) return { kind: "plant", at: aim.block };
 
   // 骨粉。**種の直後・バケツより前**（器より後ろ。前に出すと、器の上で骨粉を持っている間
-  // 器が開かない）。**効くのは小麦の苗を狙ったときだけ**（それ以外は下の `place` に落ちて何も置かない）。
-  if (aim && held === BONE_MEAL && aim.id === WHEAT_CROP) return { kind: "fertilize", at: aim.block };
+  // 器が開かない）。**効くのは小麦の苗か苗木を狙ったときだけ**（育つかどうかは `crops.ts`）（それ以外は下の `place` に落ちて何も置かない）。
+  if (aim && held === BONE_MEAL && (aim.id === WHEAT_CROP || isSapling(aim.id))) return { kind: "fertilize", at: aim.block };
 
   // バケツ。**汲めるか流せるかは `items.ts` の `bucketUse()`**、どのマスに効くかは
   // `placing.ts` の `tryBucket()`。ここは「バケツを使う」とだけ言う。

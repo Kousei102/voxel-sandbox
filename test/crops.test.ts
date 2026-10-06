@@ -1316,6 +1316,64 @@ function grassAndDirt(): void {
     check("印が無ければセーブは前と同じ（undefined）", crops.serialize() === undefined);
   }
 
+  describe("骨粉で苗木が育つ（fertilize）");
+  const trunkHeight = (field: Field, x: number, y: number, z: number, wood: number): number => {
+    let n = 0;
+    while (field.getVoxel(x, y + n, z) === wood) n++;
+    return n;
+  };
+  const sapled = (field: Field, crops: Crops, id: number, x = 0, y = 40, z = 0): void => {
+    field.set(x, y - 1, z, DIRT);
+    field.set(x, y, z, id);
+    crops.notePlaced({ x, y, z }, id, field);
+  };
+  {
+    const kinds: [string, number, number, "oak" | "spruce" | "birch"][] = [
+      ["オーク", SAPLING, WOOD, "oak"],
+      ["トウヒ", SPRUCE_SAPLING, SPRUCE_WOOD, "spruce"],
+      ["シラカバ", BIRCH_SAPLING, BIRCH_WOOD, "birch"],
+    ];
+    for (const [name, sap, wood, kind] of kinds) {
+      const field = new Field();
+      const crops = new Crops();
+      sapled(field, crops, sap);
+      const ok = crops.fertilize(0, 40, 0, field); // 植えた直後（age 0）
+      const trunk = trunkHeight(field, 0, 40, 0, wood);
+      const height = grownTreeHeight(kind, 0, 0);
+      console.log(`      ${name}: ok ${ok} / 幹 ${trunk} 本（高さ ${height}）/ 書き込み ${field.writes} 回 / 印 ${crops.count} 本`);
+      check(`${name}の苗木が骨粉でその場で木になる`, ok && trunk === height && field.writes > 0);
+      check(`${name}: 育ったら印が消える`, crops.count === 0);
+
+      // 待って育てた木と同じ形（age 0 でも `grownTreeHeight` は x,z だけで決まる）。
+      const waited = new Field();
+      const wc = new Crops();
+      sapled(waited, wc, sap);
+      wc.update(SAPLING_GROW_SECONDS, waited);
+      check(`${name}: 待った木と同じ高さ`, trunkHeight(waited, 0, 40, 0, wood) === trunk);
+    }
+  }
+  {
+    const field = new Field();
+    const crops = new Crops();
+    sapled(field, crops, SAPLING);
+    field.set(0, 42, 0, STONE); // 幹の通り道を塞ぐ
+    field.writes = 0;
+    const ok = crops.fertilize(0, 40, 0, field);
+    console.log(`      塞がれた苗木: ok ${ok} / 書き込み ${field.writes} 回 / 印 ${crops.count} 本`);
+    check("上が塞がっていたら false・何も書かない・印は残る", ok === false && field.writes === 0 && crops.count === 1);
+    check("塞がれた苗木は苗木のまま", field.getVoxel(0, 40, 0) === SAPLING);
+  }
+  {
+    const field = new Field();
+    const crops = new Crops();
+    sapled(field, crops, SAPLING);
+    field.unloaded.add("-1,-1"); // 根元の列ではなく、木の掛かる隅の列
+    field.writes = 0;
+    const ok = crops.fertilize(0, 40, 0, field);
+    console.log(`      隅の列が未読み込み: ok ${ok} / 書き込み ${field.writes} 回`);
+    check("4 隅の列が 1 つでも未読み込みなら false・書き込み 0", ok === false && field.writes === 0 && crops.count === 1);
+  }
+
   describe("ケーキをかじる（24b-1・bite）");
   {
     const field = new Field();

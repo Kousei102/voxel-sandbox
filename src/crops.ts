@@ -317,13 +317,20 @@ export class Crops {
   }
 
   /**
-   * 骨粉（35）: **小麦の苗をその場で実らせる**。効くのは `WHEAT_CROP` だけ（苗木・サトウキビは見送り）。
+   * 骨粉（35）: **小麦の苗をその場で実らせ、苗木をその場で木にする**（サトウキビは見送り）。
+   * 苗木は `growTree()` の門 1〜3 がそのまま掛かる（上が塞がる・列が未読み込みなら false＝骨粉は減らない）。確率なしの確定。
    * 門は `growWheat()` の 2〜4 と同じ —— 列が読み込み済み・まだ苗・**`setVoxel` が成功したときだけ印を消す**。
    * **耕地の下は問わない**（育たない苗にかけて実らせるのは本家でも可）。成功したら true。
    */
   fertilize(x: number, y: number, z: number, world: CropWorld): boolean {
     if (!world.hasColumn(columnOf(x), columnOf(z))) return false;
-    if (world.getVoxel(x, y, z) !== WHEAT_CROP) return false;
+    const here = world.getVoxel(x, y, z);
+    const kind = saplingKind(here);
+    if (kind !== null) {
+      const key = cropKey(x, y, z);
+      return this.growTree(key, this.map.get(key) ?? 0, 0, x, y, z, kind, world, true);
+    }
+    if (here !== WHEAT_CROP) return false;
     if (!world.setVoxel(x, y, z, WHEAT_CROP_RIPE)) return false;
     this.map.delete(cropKey(x, y, z));
     return true;
@@ -608,9 +615,10 @@ export class Crops {
     z: number,
     kind: TreeKind,
     world: CropWorld,
+    force = false,
   ): boolean {
     const grown = age + dt;
-    if (grown < SAPLING_GROW_SECONDS) {
+    if (!force && grown < SAPLING_GROW_SECONDS) {
       this.map.set(key, grown);
       return false;
     }

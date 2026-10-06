@@ -9,7 +9,12 @@ import {
   FARMLAND,
   FURNACE,
   FURNACE_LIT,
+  BIRCH_SAPLING,
   GRASS,
+  LEAVES,
+  SAPLING,
+  SPRUCE_SAPLING,
+  WOOD,
   STONE,
   TORCH,
   WHEAT_CROP,
@@ -466,6 +471,11 @@ export function run(): void {
     ];
     console.log(`      ${other.map((o) => o.join("→")).join(" / ")}`);
     check("実った小麦・土・空・骨では fertilize でない", other.every((o) => o[1] !== "fertilize"), JSON.stringify(other));
+    const saplings = [SAPLING, SPRUCE_SAPLING, BIRCH_SAPLING].map((id) => decideUse(aimAt(id), facts(BONE_MEAL)).kind);
+    const nonTree = [LEAVES, DIRT, WOOD].map((id) => decideUse(aimAt(id), facts(BONE_MEAL)).kind);
+    console.log(`      骨粉 + 苗木 3 種 → ${saplings.join(",")} / 葉・土・原木 → ${nonTree.join(",")}`);
+    check("骨粉 + 苗木 3 種 → fertilize", saplings.every((k) => k === "fertilize"), saplings.join(","));
+    check("骨粉 + 葉・土・原木 → fertilize でない", nonTree.every((k) => k !== "fertilize"), nonTree.join(","));
     check("器が先: 骨粉 + 作業台 → craft", decideUse(aimAt(CRAFTING_TABLE), facts(BONE_MEAL)).kind === "craft");
   }
 }

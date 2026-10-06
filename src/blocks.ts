@@ -3078,6 +3078,11 @@ export function needsSoil(id: number): boolean {
   return NEEDS_SOIL[id] === 1;
 }
 
+/** 木になる苗木か（オーク・トウヒ・シラカバ）。花・キノコは含まない（`needsSoil()` とは別）。 */
+export function isSapling(id: number): boolean {
+  return id === SAPLING || id === SPRUCE_SAPLING || id === BIRCH_SAPLING;
+}
+
 /** 苗木が立てる「土」か（土・草・耕地）。**表 1 本**（`needsSoil()` の相手）。 */
 export function isSoil(id: number): boolean {
   return SOIL[id] === 1;
