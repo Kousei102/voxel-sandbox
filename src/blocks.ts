@@ -776,6 +776,8 @@ export const HAY_BALE = 205;
 export const CHISELED_STONE_BRICK = 206;
 /** ひび割れた石レンガ（本家 Beta 1.8）。石レンガ(53) を精錬して得る立方体。 */
 export const CRACKED_STONE_BRICK = 207;
+/** 滑らかな砂岩（本家 Beta 1.8）。砂岩(24) を精錬して得る立方体。 */
+export const SMOOTH_SANDSTONE = 208;
 
 /**
  * 階段の向き違い。材質ごとに 7 個ずつ連番で取る（大元は 1..63 側）。
@@ -2026,6 +2028,13 @@ export const BLOCKS: readonly BlockDef[] = [
     "ひび割れた石レンガ",
     { top: 0x749488, side: 0x6c8c80, bottom: 0x648478 },
     { hardness: 2, tool: "pickaxe", minTier: TIER_WOOD },
+  ),
+  // 砂岩と同じ硬さ（0.8）。精錬でだけ手に入る。
+  def(
+    SMOOTH_SANDSTONE,
+    "滑らかな砂岩",
+    { top: 0xfaf2c3, side: 0xf2eaba, bottom: 0xe6dcac },
+    { hardness: 0.8, tool: "pickaxe", minTier: TIER_WOOD },
   ),
   // エンドポータルの枠 8 通り（向き 4 x アイの有無 2）。**壊せない。**
   ...endPortalFrameSet(),

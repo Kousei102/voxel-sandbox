@@ -57,6 +57,7 @@ import {
   DEAD_BUSH,
   CHISELED_STONE_BRICK,
   CRACKED_STONE_BRICK,
+  SMOOTH_SANDSTONE,
   HAY_BALE,
   RED_MUSHROOM,
   SAND,
@@ -1321,14 +1322,14 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
   bricks(setup) {
     const { scene, world } = makeWorld(OVERWORLD, 3);
     const y = world.surfaceY(0, 0) + 1;
-    const row = [STONE, STONE_BRICK, CHISELED_STONE_BRICK, CRACKED_STONE_BRICK];
-    row.forEach((b, i) => world.setVoxel(-3 + i * 2, y, 0, b));
+    const row = [STONE, STONE_BRICK, CHISELED_STONE_BRICK, CRACKED_STONE_BRICK, SANDSTONE, SMOOTH_SANDSTONE];
+    row.forEach((b, i) => world.setVoxel(-9 + i * 2, y, 0, b));
     world.primeAround(0.5, 0.5, 3);
     return {
       scene,
-      camera: look(setup, new Vector3(0, y + 2.2, 5.5), new Vector3(0, y + 0.6, 0)),
+      camera: look(setup, new Vector3(-4, y + 2.6, 7.5), new Vector3(-4, y + 0.6, 0)),
       dayNight: skyOf(OVERWORLD, setup.time),
-      note: `彫刻 ${world.getVoxel(1, y, 0) === CHISELED_STONE_BRICK} / ひび割れ ${world.getVoxel(3, y, 0) === CRACKED_STONE_BRICK}`,
+      note: `彫刻 ${world.getVoxel(-5, y, 0) === CHISELED_STONE_BRICK} / ひび割れ ${world.getVoxel(-3, y, 0) === CRACKED_STONE_BRICK}`,
     };
   },
 

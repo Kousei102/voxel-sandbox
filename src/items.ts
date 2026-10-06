@@ -10,7 +10,7 @@ import {
   COBWEB,
   COBBLE,
   DEAD_BUSH,
-  CRACKED_STONE_BRICK,
+  SMOOTH_SANDSTONE,
   DIAMOND_ORE,
   DIRT,
   END_CRYSTAL,
@@ -711,7 +711,7 @@ export const BONE_MEAL = 203;
  * **上限をこちら側へ移したら、それまで指していたブロックの import を消すこと** ——
  * 残すと「使われていない」で `npm run typecheck` が落ちます（型で止まる安全な罠）。
  */
-export const MAX_ITEM_ID = CRACKED_STONE_BRICK;
+export const MAX_ITEM_ID = SMOOTH_SANDSTONE;
 
 export const MAX_STACK = 64;
 
