@@ -9,6 +9,7 @@ import {
   COAL_BLOCK,
   GLOWSTONE,
   CHISELED_STONE_BRICK,
+  CHISELED_SANDSTONE,
   COBBLE,
   CRAFTING_TABLE,
   DIAMOND_BLOCK,
@@ -35,6 +36,7 @@ import {
   STONE,
   STONE_BRICK,
   STONE_BRICK_SLAB,
+  SANDSTONE_SLAB,
   BRICK_SLAB,
   STONE_SLAB,
   STONE_STAIRS,
@@ -905,6 +907,23 @@ export function run(): void {
   check("横並び・1 枚では作れない", chiSide?.out !== CHISELED_STONE_BRICK && chiOne?.out !== CHISELED_STONE_BRICK, `${chiSide?.name ?? "無し"} / ${chiOne?.name ?? "無し"}`);
   check("既存のハーフ 3 枚のレシピ（階段等）が動く / 石レンガ 4 個は変わらない", (slabStill?.out ?? 0) !== CHISELED_STONE_BRICK && findRecipe(grid(2, ["SS", "SS"], { S: STONE }), 2)?.out === STONE_BRICK, slabStill?.name ?? "無し");
 
+  describe("彫刻された砂岩（砂岩のハーフ 2 枚を縦に）");
+
+  const CSK = { S: SANDSTONE_SLAB, B: STONE_BRICK_SLAB };
+  const csV = findRecipe(grid(2, ["S.", "S."], CSK), 2);
+  const csV3 = findRecipe(grid(3, [".S.", ".S.", "..."], CSK), 3);
+  const csSide = findRecipe(grid(2, ["SS", ".."], CSK), 2);
+  const csOne = findRecipe(grid(2, ["S.", ".."], CSK), 2);
+  const csBrick = findRecipe(grid(2, ["B.", "B."], CSK), 2);
+  console.log(
+    `      縦 2 枚 → ${csV?.name ?? "無し"} x${csV?.count ?? 0} / 3x3 の中でも → ${csV3?.name ?? "無し"}` +
+      ` / 横 2 枚 → ${csSide?.name ?? "無し"} / 1 枚 → ${csOne?.name ?? "無し"} / 石レンガ縦 2 枚 → ${csBrick?.name ?? "無し"}`,
+  );
+  check("ハーフ 2 枚を縦に → 彫刻された砂岩 1 個", csV?.out === CHISELED_SANDSTONE && csV.count === 1, csV?.name ?? "無し");
+  check("3x3 の中央の縦 2 枚でも作れる", csV3?.out === CHISELED_SANDSTONE, csV3?.name ?? "無し");
+  check("横並び・1 枚では作れない", csSide?.out !== CHISELED_SANDSTONE && csOne?.out !== CHISELED_SANDSTONE, `${csSide?.name ?? "無し"} / ${csOne?.name ?? "無し"}`);
+  check("石レンガのハーフ 2 枚は彫刻された石レンガのまま", csBrick?.out === CHISELED_STONE_BRICK, csBrick?.name ?? "無し");
+
   describe("干し草の俵（小麦 9 個の 3x3 ⇄ 俵 1 個）");
 
   const HK = { W: WHEAT, Z: HAY_BALE };
@@ -1144,8 +1163,8 @@ export function run(): void {
   // **本数も 1 件として見張る** —— レシピを足したのに表から漏れていたら、
   // 上の `findRecipe` だけでは「揃わないのが正しい」と読めてしまう。
   check(
-    "レシピは 101 本（彫刻された石レンガ 1 本で増えた。数え直した）",
-    RECIPES.length === 101,
+    "レシピは 102 本（彫刻された砂岩 1 本で増えた。数え直した）",
+    RECIPES.length === 102,
     `${RECIPES.length} 本`,
   );
 

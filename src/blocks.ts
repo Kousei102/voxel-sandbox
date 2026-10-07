@@ -778,6 +778,8 @@ export const CHISELED_STONE_BRICK = 206;
 export const CRACKED_STONE_BRICK = 207;
 /** 滑らかな砂岩（本家 Beta 1.8）。砂岩(24) を精錬して得る立方体。 */
 export const SMOOTH_SANDSTONE = 208;
+/** 彫刻された砂岩（本家 Beta 1.8）。砂岩のハーフ 2 枚を縦に積んで作る立方体。 */
+export const CHISELED_SANDSTONE = 209;
 
 /**
  * 階段の向き違い。材質ごとに 7 個ずつ連番で取る（大元は 1..63 側）。
@@ -2034,6 +2036,12 @@ export const BLOCKS: readonly BlockDef[] = [
     SMOOTH_SANDSTONE,
     "滑らかな砂岩",
     { top: 0xfaf2c3, side: 0xf2eaba, bottom: 0xe6dcac },
+    { hardness: 0.8, tool: "pickaxe", minTier: TIER_WOOD },
+  ),
+  def(
+    CHISELED_SANDSTONE,
+    "彫刻された砂岩",
+    { top: 0xc8c07c, side: 0xbfb773, bottom: 0xb0a868 },
     { hardness: 0.8, tool: "pickaxe", minTier: TIER_WOOD },
   ),
   // エンドポータルの枠 8 通り（向き 4 x アイの有無 2）。**壊せない。**
