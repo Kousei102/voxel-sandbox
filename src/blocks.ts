@@ -780,6 +780,8 @@ export const CRACKED_STONE_BRICK = 207;
 export const SMOOTH_SANDSTONE = 208;
 /** 彫刻された砂岩（本家 Beta 1.8）。砂岩のハーフ 2 枚を縦に積んで作る立方体。 */
 export const CHISELED_SANDSTONE = 209;
+/** テラコッタ（本家 Beta 1.8）。粘土ブロック(168) を精錬して得る立方体。色は 1 色のみ。 */
+export const TERRACOTTA = 210;
 
 /**
  * 階段の向き違い。材質ごとに 7 個ずつ連番で取る（大元は 1..63 側）。
@@ -2043,6 +2045,13 @@ export const BLOCKS: readonly BlockDef[] = [
     "彫刻された砂岩",
     { top: 0xc8c07c, side: 0xbfb773, bottom: 0xb0a868 },
     { hardness: 0.8, tool: "pickaxe", minTier: TIER_WOOD },
+  ),
+  // 本家 Beta 1.8 の硬さ 1.25。精錬でだけ手に入る。
+  def(
+    TERRACOTTA,
+    "テラコッタ",
+    { top: 0x98604e, side: 0x90594a, bottom: 0x824f42 },
+    { hardness: 1.25, tool: "pickaxe", minTier: TIER_WOOD },
   ),
   // エンドポータルの枠 8 通り（向き 4 x アイの有無 2）。**壊せない。**
   ...endPortalFrameSet(),

@@ -103,6 +103,7 @@ import {
   CRACKED_STONE_BRICK,
   SMOOTH_SANDSTONE,
   CHISELED_SANDSTONE,
+  TERRACOTTA,
   HAY_BALE,
   blockName,
   blockTool,
@@ -321,8 +322,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタ・ネザーレンガのフェンス・石炭ブロック・グロウストーンダスト・クモの目・金の道具 5 本・シラカバの木 3 つ・ネザーレンガ・花 2 種・枯れ木・骨粉・干し草の俵・彫刻された石レンガ・ひび割れた石レンガ・滑らかな砂岩・彫刻された砂岩の 87 個（209 まで。**石レンガ 2 種が入ったので数え直した** —— 名指しの一覧はそのままで、末尾に 2 個足しただけ）",
-    sharedItems.length === 87 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタ・ネザーレンガのフェンス・石炭ブロック・グロウストーンダスト・クモの目・金の道具 5 本・シラカバの木 3 つ・ネザーレンガ・花 2 種・枯れ木・骨粉・干し草の俵・彫刻された石レンガ・ひび割れた石レンガ・滑らかな砂岩・彫刻された砂岩・テラコッタの 88 個（210 まで。**テラコッタが入ったので数え直した** —— 名指しの一覧はそのままで、末尾に 1 個足しただけ）",
+    sharedItems.length === 88 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -454,15 +455,17 @@ export function run(): void {
       sharedItems[85] === SMOOTH_SANDSTONE &&
       // **209 も `items.ts` に書かずに増えたブロック**（彫刻された砂岩。66）。
       sharedItems[86] === CHISELED_SANDSTONE &&
-      MAX_ITEM_ID === CHISELED_SANDSTONE,
+      // **210 も `items.ts` に書かずに増えたブロック**（テラコッタ。67）。
+      sharedItems[87] === TERRACOTTA &&
+      MAX_ITEM_ID === TERRACOTTA,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 46（彫刻された砂岩 209 で 1 個減った。番号を 1 つ取ったので数え直した）",
-    sharedFree === 46,
+    "111..255 の空きは 45（テラコッタ 210 で 1 個減った。番号を 1 つ取ったので数え直した）",
+    sharedFree === 45,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1496,6 +1499,7 @@ export function run(): void {
   stoneBrickVariants();
   smoothSandstone();
   chiseledSandstone();
+  terracotta();
   mushrooms();
   bowlAndStew();
   sugarCane(world, ground);
@@ -5320,10 +5324,37 @@ function chiseledSandstone(): void {
   check("名前・アイテム名が同じ", d.name === "彫刻された砂岩" && itemName(CHISELED_SANDSTONE) === "彫刻された砂岩", `${d.name} / ${itemName(CHISELED_SANDSTONE)}`);
   check("variantOf は AIR・置くと自分・立方体", d.variantOf === AIR && placedBlock(CHISELED_SANDSTONE) === CHISELED_SANDSTONE && d.model === "cube", `${d.variantOf} / ${placedBlock(CHISELED_SANDSTONE)} / ${d.model}`);
   check("硬さ・道具・段階は砂岩(24) と同じ", d.hardness === base.hardness && d.tool === base.tool && d.minTier === base.minTier, `${d.hardness} / ${d.tool} / ${d.minTier}`);
-  check("ID は 209・MAX_ITEM_ID も 209", CHISELED_SANDSTONE === 209 && MAX_ITEM_ID === 209, `${CHISELED_SANDSTONE} / ${MAX_ITEM_ID}`);
+  check("ID は 209・MAX_ITEM_ID は 209 以上", CHISELED_SANDSTONE === 209 && MAX_ITEM_ID >= 209, `${CHISELED_SANDSTONE} / ${MAX_ITEM_ID}`);
   let min = Infinity;
   let nearest = "";
   for (let id = 1; id < CHISELED_SANDSTONE; id++) {
+    const o = blockDef(id);
+    if (!o.name || o.name === "空気") continue;
+    const dist = Math.hypot(
+      ((o.top >> 16) & 255) - ((d.top >> 16) & 255),
+      ((o.top >> 8) & 255) - ((d.top >> 8) & 255),
+      (o.top & 255) - (d.top & 255),
+    );
+    if (dist < min) { min = dist; nearest = o.name; }
+  }
+  console.log(`      既存の上面色との最小距離 ${min.toFixed(1)}（${nearest}）`);
+  check("上面色は既存のどれからも 20 以上離れる", min >= 20, `${min.toFixed(1)} ${nearest}`);
+}
+
+function terracotta(): void {
+  describe("テラコッタ（210・立方体）");
+  const d = blockDef(TERRACOTTA);
+  console.log(
+    `      ${TERRACOTTA} / 名前 ${d.name} / 硬さ ${d.hardness} / 道具 ${d.tool} / variantOf ${d.variantOf} / ` +
+      `色 ${d.top.toString(16)} / アイテム名 ${itemName(TERRACOTTA)} / 置くと ${placedBlock(TERRACOTTA)}`,
+  );
+  check("名前・アイテム名が同じ", d.name === "テラコッタ" && itemName(TERRACOTTA) === "テラコッタ", `${d.name} / ${itemName(TERRACOTTA)}`);
+  check("variantOf は AIR・置くと自分・立方体", d.variantOf === AIR && placedBlock(TERRACOTTA) === TERRACOTTA && d.model === "cube", `${d.variantOf} / ${placedBlock(TERRACOTTA)} / ${d.model}`);
+  check("硬さ 1.25・つるはし・木の段階", d.hardness === 1.25 && d.tool === "pickaxe" && d.minTier === TIER_WOOD, `${d.hardness} / ${d.tool} / ${d.minTier}`);
+  check("ID は 210・MAX_ITEM_ID も 210", TERRACOTTA === 210 && MAX_ITEM_ID === 210, `${TERRACOTTA} / ${MAX_ITEM_ID}`);
+  let min = Infinity;
+  let nearest = "";
+  for (let id = 1; id < TERRACOTTA; id++) {
     const o = blockDef(id);
     if (!o.name || o.name === "空気") continue;
     const dist = Math.hypot(

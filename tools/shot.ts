@@ -59,6 +59,7 @@ import {
   CRACKED_STONE_BRICK,
   SMOOTH_SANDSTONE,
   CHISELED_SANDSTONE,
+  TERRACOTTA,
   HAY_BALE,
   RED_MUSHROOM,
   SAND,
@@ -1325,6 +1326,9 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
     const y = world.surfaceY(0, 0) + 1;
     const row = [STONE, STONE_BRICK, CHISELED_STONE_BRICK, CRACKED_STONE_BRICK, SANDSTONE, SMOOTH_SANDSTONE, CHISELED_SANDSTONE];
     row.forEach((b, i) => world.setVoxel(-9 + i * 2, y, 0, b));
+    // 粘土ブロック → テラコッタ（67）は手前の列に、砂岩・石と見分けが付くか見る。
+    world.setVoxel(-5, y, 3, CLAY);
+    world.setVoxel(-3, y, 3, TERRACOTTA);
     world.primeAround(0.5, 0.5, 3);
     return {
       scene,

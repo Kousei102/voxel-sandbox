@@ -10,6 +10,8 @@ import {
   CRACKED_STONE_BRICK,
   SANDSTONE,
   SMOOTH_SANDSTONE,
+  TERRACOTTA,
+  CLAY,
   STONE_BRICK,
   FENCE,
   FURNACE,
@@ -157,6 +159,13 @@ export function run(): void {
       !FUEL.has(SANDSTONE) && !FUEL.has(SMOOTH_SANDSTONE) && !SMELTING.has(SMOOTH_SANDSTONE),
     `${itemName(SMELTING.get(SANDSTONE)?.out ?? NO_ITEM)} / 燃料 ${FUEL.has(SANDSTONE)}`,
   );
+  check(
+    "粘土ブロック → テラコッタ 1 個・どちらも燃料ではない・テラコッタは焼けない",
+    SMELTING.get(CLAY)?.out === TERRACOTTA && SMELTING.get(CLAY)?.count === 1 &&
+      !FUEL.has(CLAY) && !FUEL.has(TERRACOTTA) && !SMELTING.has(TERRACOTTA),
+    `${itemName(SMELTING.get(CLAY)?.out ?? NO_ITEM)} / 燃料 ${FUEL.has(CLAY)}`,
+  );
+  check("粘土玉 → レンガの行はそのまま", SMELTING.get(CLAY_BALL)?.out === BRICK_ITEM && SMELTING.get(CLAY_BALL)?.count === 1);
   check("丸石 → 石", SMELTING.get(COBBLE)?.out === STONE);
   check("生豚肉 → 焼き豚", SMELTING.get(RAW_PORK)?.out === COOKED_PORK);
   check("生鶏肉 → 焼き鳥", SMELTING.get(RAW_CHICKEN)?.out === COOKED_CHICKEN);
@@ -247,8 +256,8 @@ export function run(): void {
     `レンガ ${isSmeltable(BRICK_ITEM)} / 粘土玉 ${isSmeltable(CLAY_BALL)}`,
   );
   // **表そのものを数える。** 「粘土玉が焼ける」だけだと、別の行が消えても緑になる。
-  // **数え直すのは可・ゆるめるのは禁じ手**（`>= 10` にしない）。ネザーラックで 12 行・石レンガ(AUTODEV 63)で 13 行・砂岩(AUTODEV 64)で 14 行。
-  check("焼けるものの表は 14 行（砂岩 → 滑らかな砂岩で 1 行増えた）", SMELTING.size === 14, `${SMELTING.size} 行`);
+  // **数え直すのは可・ゆるめるのは禁じ手**（`>= 10` にしない）。ネザーラックで 12 行・石レンガ(AUTODEV 63)で 13 行・砂岩(AUTODEV 64)で 14 行・テラコッタ(AUTODEV 67)で 15 行。
+  check("焼けるものの表は 15 行（粘土ブロック → テラコッタで 1 行増えた）", SMELTING.size === 15, `${SMELTING.size} 行`);
 
   // **`FUEL` に紛れ込んでいないこと**（革を燃料にすると、牛が薪になる）。
   // 表そのものを数える —— 「革が燃料でない」だけだと、別のものが紛れても緑になる。

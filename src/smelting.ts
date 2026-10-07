@@ -16,6 +16,8 @@ import {
   CRACKED_STONE_BRICK,
   SANDSTONE,
   SMOOTH_SANDSTONE,
+  TERRACOTTA,
+  CLAY,
   STONE_BRICK,
   CRAFTING_TABLE,
   FENCE,
@@ -109,6 +111,7 @@ export const SMELTING: ReadonlyMap<number, SmeltResult> = new Map([
   // 石レンガ → ひび割れた石レンガ（本家と同じ。AUTODEV 63）。**`FUEL` には足していない。**
   [STONE_BRICK, { out: CRACKED_STONE_BRICK, count: 1 }],
   [SANDSTONE, { out: SMOOTH_SANDSTONE, count: 1 }],
+  [CLAY, { out: TERRACOTTA, count: 1 }],
 ]);
 
 /**

@@ -1044,7 +1044,7 @@ export function run(): void {
   describe("骨粉（35・アイテム 203）");
 
   console.log(`      MAX_ITEM_ID ${MAX_ITEM_ID}（骨粉 ${BONE_MEAL}）`);
-  check("骨粉は 203・MAX_ITEM_ID は彫刻された砂岩 209（上限はブロック側）", BONE_MEAL === 203 && MAX_ITEM_ID === 209, `MAX_ITEM_ID ${MAX_ITEM_ID}`);
+  check("骨粉は 203・MAX_ITEM_ID はテラコッタ 210（上限はブロック側）", BONE_MEAL === 203 && MAX_ITEM_ID === 210, `MAX_ITEM_ID ${MAX_ITEM_ID}`);
   check("名前は「骨粉」", itemName(BONE_MEAL) === "骨粉", itemName(BONE_MEAL));
   check(
     "骨粉は置けず・道具でも食べ物でもない",
