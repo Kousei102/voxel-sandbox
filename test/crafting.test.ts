@@ -24,6 +24,7 @@ import {
   LADDER,
   NETHER_BRICK,
   NETHER_BRICK_FENCE,
+  STONE_WALL,
   NETHER_BRICK_SLAB,
   NETHERRACK,
   PLANK,
@@ -1095,6 +1096,19 @@ export function run(): void {
       fence?.out === FENCE && fence.count === 2,
     `${nbFence?.name ?? "無し"} x${nbFence?.count ?? 0} / 木は ${fence?.count ?? 0} 本`,
   );
+  // --- 石の壁（丸石 6 個 → 6 個。形は木・ネザーレンガのフェンスと同じ 3x2 で材料が別） ---
+  const wallRows = ["CCC", "CCC"];
+  const wall = findRecipe(grid(3, wallRows, { C: COBBLE }), 3);
+  const wallIn2 = findRecipe(grid(2, ["CC", "CC"], { C: COBBLE }), 2);
+  console.log(
+    `      ${wallRows.join(" / ")}（丸石） → ${wall?.name ?? "無し"} x${wall?.count ?? 0}（2x2: ${wallIn2?.name ?? "無し"}）`,
+  );
+  check(
+    "丸石 6 個 → 石の壁 6 個（フェンス 2 本・ネザーレンガのフェンス 6 本とは別のレシピ）",
+    wall?.out === STONE_WALL && wall.count === 6 && fence?.out === FENCE && nbFence?.out === NETHER_BRICK_FENCE,
+    `${wall?.name ?? "無し"} x${wall?.count ?? 0}`,
+  );
+  check("2x2 では石の壁は作れない（3 幅なので作業台が要る）", wallIn2?.out !== STONE_WALL, wallIn2?.name ?? "無し");
   check(
     "2x2 ではネザーレンガのフェンスも作れない（3 幅なので作業台が要る）",
     nbFenceIn2 === null,
@@ -1163,8 +1177,8 @@ export function run(): void {
   // **本数も 1 件として見張る** —— レシピを足したのに表から漏れていたら、
   // 上の `findRecipe` だけでは「揃わないのが正しい」と読めてしまう。
   check(
-    "レシピは 102 本（彫刻された砂岩 1 本で増えた。数え直した）",
-    RECIPES.length === 102,
+    "レシピは 103 本（石の壁 1 本で増えた。数え直した）",
+    RECIPES.length === 103,
     `${RECIPES.length} 本`,
   );
 

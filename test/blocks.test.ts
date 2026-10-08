@@ -49,7 +49,9 @@ import {
   BRICK_SLAB,
   BRICK_SLAB_TOP,
   NETHER_BRICK,
+  COBBLE,
   NETHER_BRICK_FENCE,
+  STONE_WALL,
   NETHER_BRICK_SLAB,
   NETHER_BRICK_SLAB_TOP,
   NO_SUPPORT,
@@ -322,8 +324,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタ・ネザーレンガのフェンス・石炭ブロック・グロウストーンダスト・クモの目・金の道具 5 本・シラカバの木 3 つ・ネザーレンガ・花 2 種・枯れ木・骨粉・干し草の俵・彫刻された石レンガ・ひび割れた石レンガ・滑らかな砂岩・彫刻された砂岩・テラコッタの 88 個（210 まで。**テラコッタが入ったので数え直した** —— 名指しの一覧はそのままで、末尾に 1 個足しただけ）",
-    sharedItems.length === 88 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタ・ネザーレンガのフェンス・石炭ブロック・グロウストーンダスト・クモの目・金の道具 5 本・シラカバの木 3 つ・ネザーレンガ・花 2 種・枯れ木・骨粉・干し草の俵・彫刻された石レンガ・ひび割れた石レンガ・滑らかな砂岩・彫刻された砂岩・テラコッタ・石の壁の 89 個（211 まで。**石の壁が入ったので数え直した** —— 名指しの一覧はそのままで、末尾に 1 個足しただけ）",
+    sharedItems.length === 89 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -457,15 +459,17 @@ export function run(): void {
       sharedItems[86] === CHISELED_SANDSTONE &&
       // **210 も `items.ts` に書かずに増えたブロック**（テラコッタ。67）。
       sharedItems[87] === TERRACOTTA &&
-      MAX_ITEM_ID === TERRACOTTA,
+      // **211 も `items.ts` に書かずに増えたブロック**（石の壁。68）。
+      sharedItems[88] === STONE_WALL &&
+      MAX_ITEM_ID === STONE_WALL,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 45（テラコッタ 210 で 1 個減った。番号を 1 つ取ったので数え直した）",
-    sharedFree === 45,
+    "111..255 の空きは 44（石の壁 211 で 1 個減った。番号を 1 つ取ったので数え直した）",
+    sharedFree === 44,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1522,6 +1526,7 @@ export function run(): void {
   soulSands();
   fences();
   netherBrickFences();
+  stoneWall();
   coalBlocks();
   saplings();
   birches();
@@ -1992,17 +1997,19 @@ function fences(): void {
     `      対照: ${others.map(([n, id]) => `${n} 当たり上端 ${Math.max(0, ...collisionBoxes(id).map((b) => b[4]))} tall=${isTallCollision(id)}`).join(" / ")}`,
   );
   check(
-    "見た目と当たり判定が違うのはフェンス 2 材質だけ（ほかは 3 つの用途が同じ形。材質が 2 つになったので数え直した）",
-    differs.length === 2 && def.collision !== def.boxes &&
+    "見た目と当たり判定が違うのはフェンス 3 材質だけ（ほかは 3 つの用途が同じ形。石の壁で数え直した）",
+    differs.length === 3 && def.collision !== def.boxes &&
       blockDef(NETHER_BRICK_FENCE).collision !== blockDef(NETHER_BRICK_FENCE).boxes &&
+      blockDef(STONE_WALL).collision !== blockDef(STONE_WALL).boxes &&
       others.every(([, id]) => blockDef(id).collision === blockDef(id).boxes),
     differs.join(" ") || "0 個",
   );
   // **手で旗を書かず `collision` の最大 y > 1 から立てること**（2 か所に書くと食い違う）。
   // **`isTallCollision()` が真のマスだけ**が `collides()` の 1 段下の層に残る。
   check(
-    "isTallCollision が真なのもフェンス 2 材質だけ（石・ハーフ・階段・サボテン・ケーキ・はしごは偽。材質が 2 つになったので数え直した）",
-    tall.length === 2 && isTallCollision(FENCE) && isTallCollision(NETHER_BRICK_FENCE) &&
+    "isTallCollision が真なのもフェンス 3 材質だけ（石・ハーフ・階段・サボテン・ケーキ・はしごは偽。石の壁で数え直した）",
+    tall.length === 3 && isTallCollision(FENCE) && isTallCollision(NETHER_BRICK_FENCE) &&
+      isTallCollision(STONE_WALL) &&
       others.every(([, id]) => !isTallCollision(id)),
     tall.join(" ") || "0 個",
   );
@@ -5351,7 +5358,7 @@ function terracotta(): void {
   check("名前・アイテム名が同じ", d.name === "テラコッタ" && itemName(TERRACOTTA) === "テラコッタ", `${d.name} / ${itemName(TERRACOTTA)}`);
   check("variantOf は AIR・置くと自分・立方体", d.variantOf === AIR && placedBlock(TERRACOTTA) === TERRACOTTA && d.model === "cube", `${d.variantOf} / ${placedBlock(TERRACOTTA)} / ${d.model}`);
   check("硬さ 1.25・つるはし・木の段階", d.hardness === 1.25 && d.tool === "pickaxe" && d.minTier === TIER_WOOD, `${d.hardness} / ${d.tool} / ${d.minTier}`);
-  check("ID は 210・MAX_ITEM_ID も 210", TERRACOTTA === 210 && MAX_ITEM_ID === 210, `${TERRACOTTA} / ${MAX_ITEM_ID}`);
+  check("ID は 210", TERRACOTTA === 210, `${TERRACOTTA}`);
   let min = Infinity;
   let nearest = "";
   for (let id = 1; id < TERRACOTTA; id++) {
@@ -5366,6 +5373,53 @@ function terracotta(): void {
   }
   console.log(`      既存の上面色との最小距離 ${min.toFixed(1)}（${nearest}）`);
   check("上面色は既存のどれからも 20 以上離れる", min >= 20, `${min.toFixed(1)} ${nearest}`);
+}
+
+function stoneWall(): void {
+  describe("石の壁（211・フェンスと同じ形）");
+  const d = blockDef(STONE_WALL);
+  const wood = blockDef(FENCE);
+  console.log(
+    `      ${STONE_WALL} / 名前 ${d.name} / model ${d.model} / isProp ${isProp(STONE_WALL)} / opaque ${d.opaque} / solid ${d.solid} / ` +
+      `硬さ ${d.hardness} / 道具 ${d.tool} / minTier ${d.minTier} / 色 ${d.top.toString(16)} / sound ${d.sound} / ` +
+      `アイテム名 ${itemName(STONE_WALL)} / 置くと ${placedBlock(STONE_WALL)}`,
+  );
+  check("名前・アイテム名が同じ", d.name === "石の壁" && itemName(STONE_WALL) === "石の壁", `${d.name} / ${itemName(STONE_WALL)}`);
+  check(
+    "model は fence・isProp・非 opaque・solid・variantOf は AIR・置くと自分",
+    d.model === "fence" && isProp(STONE_WALL) && !d.opaque && d.solid && d.variantOf === AIR && placedBlock(STONE_WALL) === STONE_WALL,
+    `${d.model} / ${d.variantOf} / ${placedBlock(STONE_WALL)}`,
+  );
+  check(
+    "boxes も collision も 157 と同じ配列を指す・フェンスの表に聞くだけで高い当たり判定と繋がりが真",
+    d.boxes === wood.boxes && d.collision === wood.collision && shapeBoxes(STONE_WALL) === shapeBoxes(FENCE) &&
+      isTallCollision(STONE_WALL) && fenceConnects(STONE_WALL),
+    `boxes 同じ ${d.boxes === wood.boxes} / collision 同じ ${d.collision === wood.collision}`,
+  );
+  console.log(
+    `      素手 ${canHarvest(STONE_WALL, NO_ITEM)} / 木のツルハシ ${canHarvest(STONE_WALL, WOOD_PICKAXE)} / ` +
+      `木のツルハシ ${breakTime(STONE_WALL, WOOD_PICKAXE).toFixed(3)}s`,
+  );
+  check(
+    "硬さ 2・ツルハシ・TIER_WOOD・素手では落ちない・音は石",
+    d.hardness === 2 && blockTool(STONE_WALL) === "pickaxe" && d.minTier === TIER_WOOD &&
+      !canHarvest(STONE_WALL, NO_ITEM) && canHarvest(STONE_WALL, WOOD_PICKAXE) && d.sound === "stone",
+    `${d.hardness} / ${blockTool(STONE_WALL)} / ${d.minTier} / ${d.sound}`,
+  );
+  const drop = dropOf(STONE_WALL);
+  check("壊すと自分が 1 個落ちる", drop.item === STONE_WALL && drop.count === 1 && baseBlock(STONE_WALL) === STONE_WALL, `${itemName(drop.item)} x${drop.count}`);
+  check("ID は 211・MAX_ITEM_ID も 211", STONE_WALL === 211 && MAX_ITEM_ID === 211, `${STONE_WALL} / ${MAX_ITEM_ID}`);
+  const dist = (a: number, b: number): number =>
+    Math.hypot(((a >> 16) & 255) - ((b >> 16) & 255), ((a >> 8) & 255) - ((b >> 8) & 255), (a & 255) - (b & 255));
+  let best = Infinity;
+  let who = "";
+  for (const other of allItemIds()) {
+    if (other === STONE_WALL) continue;
+    const gap = dist(itemColor(STONE_WALL), itemColor(other));
+    if (gap < best) { best = gap; who = itemName(other); }
+  }
+  console.log(`      色のいちばん近い相手: ${who} ${best.toFixed(1)}（丸石とは ${dist(itemColor(STONE_WALL), itemColor(COBBLE)).toFixed(1)}）`);
+  check("色は一覧のどれからも 20 以上離れる", best >= 20, `${best.toFixed(1)} ${who}`);
 }
 
 function stoneBrickVariants(): void {

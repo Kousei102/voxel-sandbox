@@ -25,6 +25,7 @@ import {
   LADDER,
   NETHER_BRICK,
   NETHER_BRICK_FENCE,
+  STONE_WALL,
   NETHER_BRICK_SLAB,
   PLANK,
   PLANK_SLAB,
@@ -346,6 +347,9 @@ export const RECIPES: readonly Recipe[] = [
     shape: ["NNN", "NNN"],
     key: { N: NETHER_BRICK },
   },
+
+  // 石の壁は丸石 6 個で 6 個（本家と同じ）。形はフェンスと同じ 3x2 だが材料が別。
+  { name: "石の壁", out: STONE_WALL, count: 6, shape: ["CCC", "CCC"], key: { C: COBBLE } },
 
   // はしごは棒 7 本で 3 個（Minecraft と同じ形・同じ個数）。3x3 なので作業台が要る。
   // 形はかまど・チェストの輪と似ているが**真ん中の列が縦に通っている**ので別物。

@@ -46,6 +46,7 @@ import {
   LEAVES,
   NETHER_BRICK,
   NETHER_BRICK_FENCE,
+  STONE_WALL,
   NETHER_BRICK_SLAB,
   NETHER_BRICK_SLAB_TOP,
   OBSIDIAN,
@@ -999,6 +1000,10 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
     // **⚠ `-5,1` に置かないこと** —— 石（-3,2）の真後ろで、**絵に 1 画素も出ません**
     // （この周に撮って `Read` で見て詰めた。撮り直しは 1 秒）。
     world.setVoxel(0, y, 3, NETHER_BRICK_FENCE);
+    // **石の壁（211）を 1 本だけ離して 1 本と、2 本並べて 1 組**（フェンスと同じ形の確認）。
+    world.setVoxel(1, y, 3, STONE_WALL);
+    world.setVoxel(3, y, 3, STONE_WALL);
+    world.setVoxel(4, y, 3, STONE_WALL);
     // **角**（直線の端から Z 方向へ 2 本）。曲がり角で腕が 2 方向だけ残るのが 26b で、
     // **いまは 4 方向とも出る**ので、そこが絵に出る。
     for (let dz = 1; dz <= 2; dz++) world.setVoxel(2, y, dz, FENCE);
@@ -1027,7 +1032,7 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
       // 1 画素も写らなかった（撮って `Read` で見て詰めた。撮り直しは安い）。
       camera: look(setup, new Vector3(3.4, y + 2.3, 6.0), new Vector3(-1.6, y + 0.6, 0.4)),
       dayNight: skyOf(OVERWORLD, setup.time),
-      note: `直線 -2..2,${y},0 / 角 2,${y},1..2 / 1 本だけ -5,${y},3 / 石の上 -5,${y + 1},-3 / 石の横 -2,${y},2（石 -3,${y},2）/ 比べる板ハーフ -3,${y},-3 / ネザーレンガのフェンス 直線の西 -4..-3,${y},0 と 1 本だけ 0,${y},3`,
+      note: `直線 -2..2,${y},0 / 角 2,${y},1..2 / 1 本だけ -5,${y},3 / 石の上 -5,${y + 1},-3 / 石の横 -2,${y},2（石 -3,${y},2）/ 比べる板ハーフ -3,${y},-3 / ネザーレンガのフェンス 直線の西 -4..-3,${y},0 と 1 本だけ 0,${y},3 / 石の壁 1,${y},3 と 3..4,${y},3`,
     };
   },
 

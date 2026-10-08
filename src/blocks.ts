@@ -784,6 +784,17 @@ export const CHISELED_SANDSTONE = 209;
 export const TERRACOTTA = 210;
 
 /**
+ * 石の壁（本家 Alpha の丸石の壁）。**形も当たり判定も繋がり方もフェンスと同じ**（表 1 本:
+ * `FENCE_BOXES` / `FENCE_COLLISION_BOX` / `fenceConnects()`）で、本家の太い柱の壁は見送り。
+ * **`id === STONE_WALL` の分岐を `mesher.ts` / `fenceConnects()` / `isTallCollision()` に書かないこと。**
+ * **レシピは丸石 6 個 → 6 個**（`crafting.ts`）。**自然生成しません**（`worldgen.ts` 0 行）。
+ * **色は丸石 `0x767b82` の灰が埋まっている**（素直な写しは隔たり 0.0）ので、青紫寄りの
+ * 暗い灰 `0x5c5a6e` へずらした（`TUNING.md`）。アイテム 211 は `items.ts` の for が自動で作る。
+ * **`MAX_ITEM_ID` だけは手で伸ばすこと。**
+ */
+export const STONE_WALL = 211;
+
+/**
  * 階段の向き違い。材質ごとに 7 個ずつ連番で取る（大元は 1..63 側）。
  * 個別に名前は付けない。引くのは `stairVariant()`（`placedVariant` から）。
  */
@@ -2351,6 +2362,19 @@ export const BLOCKS: readonly BlockDef[] = [
   // ソウルサンド(46) と 17.1 で判定（20）を割る。暗い赤紫へ寄せた `0x6e3746` なら
   // いちばん近いネザーラック(45) から 25.6（`TUNING.md`）。
   def(NETHER_BRICK_FENCE, "ネザーレンガのフェンス", { top: 0x6e3746 }, {
+    opaque: false,
+    solid: true,
+    hardness: 2,
+    tool: "pickaxe",
+    minTier: TIER_WOOD,
+    model: "fence",
+    boxes: FENCE_BOXES,
+    collision: FENCE_COLLISION_BOX,
+  }),
+
+  // 石の壁（上のコメント）。ネザーレンガのフェンス(187) の写し。`boxes` / `collision` は
+  // 157 と同じ配列を指すこと。`sound` は書かない（既定の `"stone"`）。
+  def(STONE_WALL, "石の壁", { top: 0x5c5a6e }, {
     opaque: false,
     solid: true,
     hardness: 2,
