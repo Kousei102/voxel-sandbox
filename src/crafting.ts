@@ -26,6 +26,9 @@ import {
   NETHER_BRICK,
   NETHER_BRICK_FENCE,
   STONE_WALL,
+  COARSE_DIRT,
+  DIRT,
+  GRAVEL,
   NETHER_BRICK_SLAB,
   PLANK,
   PLANK_SLAB,
@@ -349,6 +352,8 @@ export const RECIPES: readonly Recipe[] = [
   },
 
   // 石の壁は丸石 6 個で 6 個（本家と同じ）。形はフェンスと同じ 3x2 だが材料が別。
+  // 土 2 + 砂利 2 の斜め → 粗い土 4 個（Minecraft と同じ）。左右反転は `mirror()` が照合する。
+  { name: "粗い土", out: COARSE_DIRT, count: 4, shape: ["DG", "GD"], key: { D: DIRT, G: GRAVEL } },
   { name: "石の壁", out: STONE_WALL, count: 6, shape: ["CCC", "CCC"], key: { C: COBBLE } },
 
   // はしごは棒 7 本で 3 個（Minecraft と同じ形・同じ個数）。3x3 なので作業台が要る。

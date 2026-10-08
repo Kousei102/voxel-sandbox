@@ -52,6 +52,7 @@ import {
   COBBLE,
   NETHER_BRICK_FENCE,
   STONE_WALL,
+  COARSE_DIRT,
   NETHER_BRICK_SLAB,
   NETHER_BRICK_SLAB_TOP,
   NO_SUPPORT,
@@ -325,7 +326,7 @@ export function run(): void {
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
     "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタ・ネザーレンガのフェンス・石炭ブロック・グロウストーンダスト・クモの目・金の道具 5 本・シラカバの木 3 つ・ネザーレンガ・花 2 種・枯れ木・骨粉・干し草の俵・彫刻された石レンガ・ひび割れた石レンガ・滑らかな砂岩・彫刻された砂岩・テラコッタ・石の壁の 89 個（211 まで。**石の壁が入ったので数え直した** —— 名指しの一覧はそのままで、末尾に 1 個足しただけ）",
-    sharedItems.length === 89 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    sharedItems.length === 90 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -461,15 +462,17 @@ export function run(): void {
       sharedItems[87] === TERRACOTTA &&
       // **211 も `items.ts` に書かずに増えたブロック**（石の壁。68）。
       sharedItems[88] === STONE_WALL &&
-      MAX_ITEM_ID === STONE_WALL,
+      // **212 も `items.ts` に書かずに増えたブロック**（粗い土。69）。
+      sharedItems[89] === COARSE_DIRT &&
+      MAX_ITEM_ID === COARSE_DIRT,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 44（石の壁 211 で 1 個減った。番号を 1 つ取ったので数え直した）",
-    sharedFree === 44,
+    "111..255 の空きは 43（粗い土 212 で 1 個減った。番号を 1 つ取ったので数え直した）",
+    sharedFree === 43,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1527,6 +1530,7 @@ export function run(): void {
   fences();
   netherBrickFences();
   stoneWall();
+  coarseDirt();
   coalBlocks();
   saplings();
   birches();
@@ -5408,7 +5412,7 @@ function stoneWall(): void {
   );
   const drop = dropOf(STONE_WALL);
   check("壊すと自分が 1 個落ちる", drop.item === STONE_WALL && drop.count === 1 && baseBlock(STONE_WALL) === STONE_WALL, `${itemName(drop.item)} x${drop.count}`);
-  check("ID は 211・MAX_ITEM_ID も 211", STONE_WALL === 211 && MAX_ITEM_ID === 211, `${STONE_WALL} / ${MAX_ITEM_ID}`);
+  check("ID は 211・MAX_ITEM_ID は 211 以上", STONE_WALL === 211 && MAX_ITEM_ID >= 211, `${STONE_WALL} / ${MAX_ITEM_ID}`);
   const dist = (a: number, b: number): number =>
     Math.hypot(((a >> 16) & 255) - ((b >> 16) & 255), ((a >> 8) & 255) - ((b >> 8) & 255), (a & 255) - (b & 255));
   let best = Infinity;
@@ -5420,6 +5424,41 @@ function stoneWall(): void {
   }
   console.log(`      色のいちばん近い相手: ${who} ${best.toFixed(1)}（丸石とは ${dist(itemColor(STONE_WALL), itemColor(COBBLE)).toFixed(1)}）`);
   check("色は一覧のどれからも 20 以上離れる", best >= 20, `${best.toFixed(1)} ${who}`);
+}
+
+function coarseDirt(): void {
+  describe("粗い土（212・立方体）");
+  const d = blockDef(COARSE_DIRT);
+  console.log(
+    `      ${COARSE_DIRT} / 名前 ${d.name} / 硬さ ${d.hardness} / 道具 ${d.tool} / 音 ${d.sound} / variantOf ${d.variantOf} / ` +
+      `色 ${d.top.toString(16)} / アイテム名 ${itemName(COARSE_DIRT)} / 置くと ${placedBlock(COARSE_DIRT)} / ` +
+      `isSoil ${isSoil(COARSE_DIRT)} / isBank ${isBank(COARSE_DIRT)} / tilled ${blockName(tilled(COARSE_DIRT))}`,
+  );
+  check("名前・アイテム名が同じ", d.name === "粗い土" && itemName(COARSE_DIRT) === "粗い土", `${d.name} / ${itemName(COARSE_DIRT)}`);
+  check("variantOf は AIR・置くと自分・立方体", d.variantOf === AIR && placedBlock(COARSE_DIRT) === COARSE_DIRT && d.model === "cube", `${d.variantOf} / ${placedBlock(COARSE_DIRT)} / ${d.model}`);
+  check("硬さ 0.5・シャベル・土の音", d.hardness === 0.5 && d.tool === "shovel" && d.sound === "dirt", `${d.hardness} / ${d.tool} / ${d.sound}`);
+  check(
+    "耕せず（tilled が AIR）・苗木が立たず（isSoil 偽）・サトウキビも立たない（isBank 偽）",
+    tilled(COARSE_DIRT) === AIR && !isSoil(COARSE_DIRT) && !isBank(COARSE_DIRT) && isSoil(DIRT) && isBank(DIRT),
+    `${tilled(COARSE_DIRT)} / ${isSoil(COARSE_DIRT)} / ${isBank(COARSE_DIRT)}`,
+  );
+  const drop = dropOf(COARSE_DIRT);
+  check("壊すと自分が 1 個落ちる", drop.item === COARSE_DIRT && drop.count === 1 && baseBlock(COARSE_DIRT) === COARSE_DIRT, `${itemName(drop.item)} x${drop.count}`);
+  check("ID は 212・MAX_ITEM_ID は 212 以上", COARSE_DIRT === 212 && MAX_ITEM_ID >= 212, `${COARSE_DIRT} / ${MAX_ITEM_ID}`);
+  let min = Infinity;
+  let nearest = "";
+  for (let id = 1; id < COARSE_DIRT; id++) {
+    const o = blockDef(id);
+    if (!o.name || o.name === "空気") continue;
+    const dist = Math.hypot(
+      ((o.top >> 16) & 255) - ((d.top >> 16) & 255),
+      ((o.top >> 8) & 255) - ((d.top >> 8) & 255),
+      (o.top & 255) - (d.top & 255),
+    );
+    if (dist < min) { min = dist; nearest = o.name; }
+  }
+  console.log(`      既存の上面色との最小距離 ${min.toFixed(1)}（${nearest}）`);
+  check("上面色は既存のどれからも 20 以上離れる", min >= 20, `${min.toFixed(1)} ${nearest}`);
 }
 
 function stoneBrickVariants(): void {

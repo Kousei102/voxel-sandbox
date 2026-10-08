@@ -25,6 +25,9 @@ import {
   NETHER_BRICK,
   NETHER_BRICK_FENCE,
   STONE_WALL,
+  COARSE_DIRT,
+  DIRT,
+  GRAVEL,
   NETHER_BRICK_SLAB,
   NETHERRACK,
   PLANK,
@@ -1174,11 +1177,23 @@ export function run(): void {
     `${cake?.name ?? "無し"} x${cake?.count ?? 0}`,
   );
   check("2x2 ではケーキは作れない（3x3 なので作業台が要る）", cakeIn2 === null, cakeIn2?.name ?? "無し");
+  // --- 粗い土（212）: 土 2 + 砂利 2 の斜め → 4 個（2x2）---
+  const coarse = findRecipe(grid(2, ["DG", "GD"], { D: DIRT, G: GRAVEL }), 2);
+  const coarseMirror = findRecipe(grid(2, ["GD", "DG"], { D: DIRT, G: GRAVEL }), 2);
+  const coarseDirtOnly = findRecipe(grid(2, ["DD", "DD"], { D: DIRT }), 2);
+  const coarseGravelOnly = findRecipe(grid(2, ["GG", "GG"], { G: GRAVEL }), 2);
+  const coarseLine = findRecipe(grid(2, ["DD", "GG"], { D: DIRT, G: GRAVEL }), 2);
+  console.log(
+    `      粗い土: 斜め ${coarse?.name}x${coarse?.count} / 反転 ${coarseMirror?.name} / 土だけ ${coarseDirtOnly?.name ?? "無し"} / ` +
+      `砂利だけ ${coarseGravelOnly?.name ?? "無し"} / 並べ方違い ${coarseLine?.name ?? "無し"}`,
+  );
+  check("土 2 + 砂利 2 の斜め（反転も）→ 粗い土 4 個", coarse?.out === COARSE_DIRT && coarse.count === 4 && coarseMirror?.out === COARSE_DIRT, `${coarse?.name} x${coarse?.count}`);
+  check("土だけ・砂利だけ・横並びでは出ない", coarseDirtOnly === null && coarseGravelOnly === null && coarseLine === null, "");
   // **本数も 1 件として見張る** —— レシピを足したのに表から漏れていたら、
   // 上の `findRecipe` だけでは「揃わないのが正しい」と読めてしまう。
   check(
-    "レシピは 103 本（石の壁 1 本で増えた。数え直した）",
-    RECIPES.length === 103,
+    "レシピは 104 本（粗い土 1 本で増えた。数え直した）",
+    RECIPES.length === 104,
     `${RECIPES.length} 本`,
   );
 

@@ -793,6 +793,12 @@ export const TERRACOTTA = 210;
  * **`MAX_ITEM_ID` だけは手で伸ばすこと。**
  */
 export const STONE_WALL = 211;
+/**
+ * 粗い土（本家 Beta 1.8）。土 2 + 砂利 2 の斜めで 4 個（`crafting.ts`）。**耕せず、苗木もサトウキビも立たない**
+ * —— `soil` / `bank` を付けない（表に聞くだけで外れる）。`tilled()` に分岐を足さないこと。
+ * 草の広がり・鍬で土へ戻す動きは見送り。**自然生成しません。** 色は土の隣なので灰みへずらした（`TUNING.md`）。
+ */
+export const COARSE_DIRT = 212;
 
 /**
  * 階段の向き違い。材質ごとに 7 個ずつ連番で取る（大元は 1..63 側）。
@@ -2383,6 +2389,13 @@ export const BLOCKS: readonly BlockDef[] = [
     model: "fence",
     boxes: FENCE_BOXES,
     collision: FENCE_COLLISION_BOX,
+  }),
+
+  // 粗い土（上のコメント）。硬さは土(DIRT) の写し。`soil` / `bank` / `falls` は書かない。
+  def(COARSE_DIRT, "粗い土", { top: 0x7d6a55 }, {
+    hardness: 0.5,
+    tool: "shovel",
+    sound: "dirt",
   }),
 
   // 石炭ブロック（上のコメント）。**135..137 の 3 つとまったく同じ並び**で、
