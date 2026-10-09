@@ -25,7 +25,11 @@ import {
   BROWN_MUSHROOM,
   CAKE,
   CLAY,
+  ANDESITE,
   COAL_BLOCK,
+  COBBLE,
+  DIORITE,
+  GRANITE,
   COAL_ORE,
   COBBLE_SLAB,
   COBBLE_SLAB_TOP,
@@ -957,6 +961,38 @@ const SCENES: Record<string, (setup: Setup) => Shot> = {
       camera: look(setup, new Vector3(2.4, y + 3.4, 8.2), new Vector3(-0.6, y + 0.4, 2)),
       dayNight: skyOf(OVERWORLD, setup.time),
       note: `しまう立方体 4 つ 石炭/鉄/金/ダイヤ -2..1,${y},2 / 黒どうし 石炭鉱石・石炭ブロック・黒曜石 -2..0,${y},4 / 石の上 3,${y + 1},0 / 2 個積み -4,${y}..${y + 1},2`,
+    };
+  },
+
+  /**
+   * 花崗岩・閃緑岩・安山岩（214..216）。**石・丸石と 1 列に並べる**（灰色どうしが
+   * 見分けられるかは並べないと絵に出ない）。自然には地下にしか出ないので直に置く。
+   */
+  rocks(setup) {
+    const { scene, world } = makeWorld(OVERWORLD, 3);
+    const pad = 7;
+    let y = 0;
+    for (let dz = -pad; dz <= pad; dz++) {
+      for (let dx = -pad; dx <= pad; dx++) y = Math.max(y, world.surfaceY(dx, dz));
+    }
+    for (let dz = -pad; dz <= pad; dz++) {
+      for (let dx = -pad; dx <= pad; dx++) {
+        for (let h = y; h < y + 8; h++) world.setVoxel(dx, h, dz, AIR);
+        for (let h = y - 4; h < y; h++) world.setVoxel(dx, h, dz, DIRT);
+        world.setVoxel(dx, y - 1, dz, GRASS);
+      }
+    }
+    const row = [STONE, GRANITE, DIORITE, ANDESITE, COBBLE];
+    for (let i = 0; i < row.length; i++) {
+      world.setVoxel(-2 + i, y, 2, row[i]);
+      world.setVoxel(-2 + i, y + 1, 2, row[i]);
+    }
+    world.primeAround(0.5, 0.5, 3);
+    return {
+      scene,
+      camera: look(setup, new Vector3(1.4, y + 3.4, 8.2), new Vector3(0.4, y + 0.6, 2)),
+      dayNight: skyOf(OVERWORLD, setup.time),
+      note: `石/花崗岩/閃緑岩/安山岩/丸石 -2..2,${y}..${y + 1},2`,
     };
   },
 

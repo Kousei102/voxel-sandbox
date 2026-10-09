@@ -1,5 +1,6 @@
 import {
   AIR,
+  ANDESITE,
   BEDROCK,
   BROWN_MUSHROOM,
   CANE_HEIGHT_MAX,
@@ -7,7 +8,9 @@ import {
   DANDELION,
   DEAD_BUSH,
   DIAMOND_ORE,
+  DIORITE,
   GOLD_ORE,
+  GRANITE,
   GRAVEL,
   IRON_ORE,
   LAVA,
@@ -117,6 +120,10 @@ const VEINS: readonly VeinDef[] = [
   { id: IRON_ORE, maxY: 46, veinChance: 0.015, fill: 0.65, shift: 1, salt: 0x2b17 },
   { id: GOLD_ORE, maxY: 26, veinChance: 0.005, fill: 0.55, shift: 1, salt: 0x7c39 },
   { id: DIAMOND_ORE, maxY: 14, veinChance: 0.003, fill: 0.5, shift: 1, salt: 0x1d4b },
+  // 花崗岩・閃緑岩・安山岩（4x4x4 の塊）。**鉱石 4 行の後・砂利の前**: 鉱石を食わず、砂利には食われない。
+  { id: GRANITE, maxY: 62, veinChance: 0.02, fill: 0.9, shift: 2, salt: 0x4a13 },
+  { id: DIORITE, maxY: 62, veinChance: 0.02, fill: 0.9, shift: 2, salt: 0x5e27 },
+  { id: ANDESITE, maxY: 62, veinChance: 0.02, fill: 0.9, shift: 2, salt: 0x6b89 },
   // **砂利は一番下に置くこと。** 先に見つかったものが勝つので、上に置くと
   // 鉱石が砂利に食われる（掘っても鉱石が見つからない世界になる）。
   // 石炭と同じ高さまで出るので、**火打石を探して深く潜る必要はない。**

@@ -799,6 +799,14 @@ export const STONE_WALL = 211;
  * 草の広がり・鍬で土へ戻す動きは見送り。**自然生成しません。** 色は土の隣なので灰みへずらした（`TUNING.md`）。
  */
 export const COARSE_DIRT = 212;
+/**
+ * 花崗岩・閃緑岩・安山岩（本家 1.8）。**石と同じ性質の立方体 3 つ**で、壊すと自分が落ちる（丸石にならない）。
+ * 地下の岩脈として湧く（`worldgen.ts` の `VEINS`）。**レシピは無い。** 磨いた版は見送り。
+ * 色は石・丸石の灰が混んでいるので総当たりで測って選んだ（`TUNING.md`）。
+ */
+export const GRANITE = 214;
+export const DIORITE = 215;
+export const ANDESITE = 216;
 
 /**
  * 階段の向き違い。材質ごとに 7 個ずつ連番で取る（大元は 1..63 側）。
@@ -2397,6 +2405,11 @@ export const BLOCKS: readonly BlockDef[] = [
     tool: "shovel",
     sound: "dirt",
   }),
+
+  // 花崗岩・閃緑岩・安山岩（上のコメント）。硬さ・道具は石(STONE) の写し。`sound` は書かない（既定の石）。
+  def(GRANITE, "花崗岩", { top: 0x95766c }, { hardness: 1.5, tool: "pickaxe", minTier: TIER_WOOD }),
+  def(DIORITE, "閃緑岩", { top: 0xbdbdbd }, { hardness: 1.5, tool: "pickaxe", minTier: TIER_WOOD }),
+  def(ANDESITE, "安山岩", { top: 0x907894 }, { hardness: 1.5, tool: "pickaxe", minTier: TIER_WOOD }),
 
   // 石炭ブロック（上のコメント）。**135..137 の 3 つとまったく同じ並び**で、
   // `opaque` / `solid` / `model` / `sound` は 1 つも書かない（既定の不透明な立方体・石の音）。

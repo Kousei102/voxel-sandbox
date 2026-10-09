@@ -52,7 +52,10 @@ import {
   COBBLE,
   NETHER_BRICK_FENCE,
   STONE_WALL,
+  ANDESITE,
   COARSE_DIRT,
+  DIORITE,
+  GRANITE,
   NETHER_BRICK_SLAB,
   NETHER_BRICK_SLAB_TOP,
   NO_SUPPORT,
@@ -326,8 +329,8 @@ export function run(): void {
   // **135..137 は `items.ts` に 1 行も書かずに増えた 3 個です** —— 鉱物をしまう立方体を
   // `blocks.ts` に足すと、`variantOf === AIR` なので for が同じ番号のアイテムを作ります。
   check(
-    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタ・ネザーレンガのフェンス・石炭ブロック・グロウストーンダスト・クモの目・金の道具 5 本・シラカバの木 3 つ・ネザーレンガ・花 2 種・枯れ木・骨粉・干し草の俵・彫刻された石レンガ・ひび割れた石レンガ・滑らかな砂岩・彫刻された砂岩・テラコッタ・石の壁・粗い土・金の塊の 91 個（213 まで。**金の塊が入ったので数え直した** —— 末尾に 1 個足しただけ）",
-    sharedItems.length === 91 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
+    "共有帯のアイテムは剣 4 本・シアーズ・クワ 4 本・小麦の種・小麦・パン・鶏の肉 2 つ・羽根・卵・牛の肉 2 つ・革・糸・雪玉・鉱物の立方体 3 つ・ミルクバケツ・キノコ 2 種・ボウル・シチュー・サトウキビ・砂糖・はしご・リンゴ・紙・本・本棚・金のリンゴ・クモの巣・ケーキ・氷・フェンス・革の防具 4 部位・骨・木炭・苗木 2 種・粘土・粘土玉・レンガ・鉄の防具 4 部位・金・ダイヤの防具 8 部位・ツタ・ネザーレンガのフェンス・石炭ブロック・グロウストーンダスト・クモの目・金の道具 5 本・シラカバの木 3 つ・ネザーレンガ・花 2 種・枯れ木・骨粉・干し草の俵・彫刻された石レンガ・ひび割れた石レンガ・滑らかな砂岩・彫刻された砂岩・テラコッタ・石の壁・粗い土・金の塊・花崗岩・閃緑岩・安山岩の 94 個（216 まで。**3 つ入ったので数え直した** —— 末尾に 3 個足しただけ）",
+    sharedItems.length === 94 && sharedItems[4] === SHEARS && sharedItems[8] === DIAMOND_HOE &&
       sharedItems[9] === WHEAT_SEEDS && sharedItems[10] === WHEAT && sharedItems[11] === BREAD &&
       sharedItems[12] === RAW_CHICKEN && sharedItems[13] === COOKED_CHICKEN &&
       sharedItems[14] === FEATHER && sharedItems[15] === EGG &&
@@ -467,15 +470,17 @@ export function run(): void {
       sharedItems[89] === COARSE_DIRT &&
       // **213 は `items.ts` にだけ書いたアイテム**（金の塊）。上限もこちら側へ移った。
       sharedItems[90] === GOLD_NUGGET &&
-      MAX_ITEM_ID === GOLD_NUGGET,
+      // **214..216 は `items.ts` に書かずに増えたブロック**（花崗岩・閃緑岩・安山岩）。上限はブロック側の末尾へ。
+      sharedItems[91] === GRANITE && sharedItems[92] === DIORITE && sharedItems[93] === ANDESITE &&
+      MAX_ITEM_ID === ANDESITE,
     `${sharedItems.join(" ")} / MAX_ITEM_ID ${MAX_ITEM_ID}`,
   );
   // **空きも数で押さえること。** 上の一覧だけだと、番号を飛ばして取っても緑のまま
   // （一覧は「何番が入っているか」しか見ていない）。**尽きたら人を呼ぶ**という
   // 予算がこの数字なので（`AUTODEV.md` の 2）、減り方を 1 件として見張る。
   check(
-    "111..255 の空きは 42（金の塊 213 で 1 個減った。番号を 1 つ取ったので数え直した）",
-    sharedFree === 42,
+    "111..255 の空きは 39（花崗岩・閃緑岩・安山岩 214..216 で 3 個減った。番号を取ったので数え直した）",
+    sharedFree === 39,
     `${sharedFree} 個`,
   );
   // **肉は置けず・道具でもなく・食べられる。** 3 つを並べて見ること —— `block` を
@@ -1534,6 +1539,7 @@ export function run(): void {
   netherBrickFences();
   stoneWall();
   coarseDirt();
+  graniteFamily();
   coalBlocks();
   saplings();
   birches();
@@ -5462,6 +5468,50 @@ function coarseDirt(): void {
   }
   console.log(`      既存の上面色との最小距離 ${min.toFixed(1)}（${nearest}）`);
   check("上面色は既存のどれからも 20 以上離れる", min >= 20, `${min.toFixed(1)} ${nearest}`);
+}
+
+function graniteFamily(): void {
+  describe("花崗岩・閃緑岩・安山岩（214..216・立方体）");
+  const stone = blockDef(STONE);
+  const trio = [
+    [GRANITE, "花崗岩", 214],
+    [DIORITE, "閃緑岩", 215],
+    [ANDESITE, "安山岩", 216],
+  ] as const;
+  for (const [id, name, num] of trio) {
+    const d = blockDef(id);
+    const drop = dropOf(id);
+    console.log(
+      `      ${id} / 名前 ${d.name} / 硬さ ${d.hardness} / 道具 ${d.tool} / minTier ${d.minTier} / variantOf ${d.variantOf} / ` +
+        `色 ${d.top.toString(16)} / アイテム名 ${itemName(id)} / 置くと ${placedBlock(id)} / 壊すと ${itemName(drop.item)} x${drop.count}`,
+    );
+    check(`${name}: ID ${num}・名前とアイテム名が同じ`, id === num && d.name === name && itemName(id) === name, `${id} / ${d.name} / ${itemName(id)}`);
+    check(
+      `${name}: 立方体・variantOf なし・置くと自分・壊すと自分 1 個`,
+      d.variantOf === AIR && d.model === "cube" && placedBlock(id) === id && drop.item === id && drop.count === 1 && baseBlock(id) === id,
+      `${d.variantOf} / ${d.model} / ${placedBlock(id)} / x${drop.count}`,
+    );
+    check(
+      `${name}: 石と硬さ・道具・minTier・音が同じ`,
+      d.hardness === stone.hardness && d.tool === stone.tool && d.minTier === stone.minTier && d.sound === stone.sound,
+      `${d.hardness} / ${d.tool} / ${d.minTier} / ${d.sound}`,
+    );
+    let min = Infinity;
+    let nearest = "";
+    for (let o = 1; o <= ANDESITE; o++) {
+      if (o === id) continue;
+      const od = blockDef(o);
+      if (!od.name || od.name === "空気") continue;
+      const dist = Math.hypot(
+        ((od.top >> 16) & 255) - ((d.top >> 16) & 255),
+        ((od.top >> 8) & 255) - ((d.top >> 8) & 255),
+        (od.top & 255) - (d.top & 255),
+      );
+      if (dist < min) { min = dist; nearest = od.name; }
+    }
+    console.log(`      既存・3 つ同士を含む最小距離 ${min.toFixed(1)}（${nearest}）`);
+    check(`${name}: 上面色は他のどれからも 20 以上離れる`, min >= 20, `${min.toFixed(1)} ${nearest}`);
+  }
 }
 
 function stoneBrickVariants(): void {

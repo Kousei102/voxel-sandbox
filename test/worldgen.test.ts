@@ -10,6 +10,9 @@ import {
   COAL_ORE,
   DIAMOND_ORE,
   GOLD_ORE,
+  ANDESITE,
+  DIORITE,
+  GRANITE,
   GRAVEL,
   GRASS,
   ICE,
@@ -114,7 +117,11 @@ export function run(): void {
 
   // --- 鉱石 ---
   // 6x6x8 チャンク（= 石 mix.get(STONE) 個）に対する割合を出しておく。
-  const stoneish = (mix.get(STONE) ?? 0) + ORE_IDS.reduce((sum, id) => sum + (mix.get(id) ?? 0), 0);
+  const rockIds = [GRANITE, DIORITE, ANDESITE] as const;
+  const stoneish =
+    (mix.get(STONE) ?? 0) +
+    ORE_IDS.reduce((sum, id) => sum + (mix.get(id) ?? 0), 0) +
+    rockIds.reduce((sum, id) => sum + (mix.get(id) ?? 0), 0);
   for (const [name, id] of ORE_TABLE) {
     const count = mix.get(id) ?? 0;
     check(
@@ -190,6 +197,30 @@ export function run(): void {
     perCell > 20,
     `4x4x4 の枡あたり平均 ${perCell.toFixed(1)} マス（枡 ${inCells.length} 個）`,
   );
+
+  // --- 花崗岩・閃緑岩・安山岩（石と同じ性質の岩脈）---
+  // 鉱石の後・砂利の前の 3 行。3 種の合計が石に対して 5〜10% 以内が目安（`TUNING.md`）。下限は veinChance 0.01 の実測 2.8% から 0.02 へ上げて決めた。
+  let rockTotal = 0;
+  for (const [name, id] of [["花崗岩", GRANITE], ["閃緑岩", DIORITE], ["安山岩", ANDESITE]] as const) {
+    const count = mix.get(id) ?? 0;
+    rockTotal += count;
+    check(`${name}が生成される`, count > 0, `${count.toLocaleString()} 個 / 石系の ${((count / stoneish) * 100).toFixed(2)}%`);
+  }
+  console.log(`      3 種の合計 ${rockTotal.toLocaleString()} 個 / 石系の ${((rockTotal / stoneish) * 100).toFixed(2)}%`);
+  check("3 種の合計は石系の 5〜10%（石の世界が別物にならない）", rockTotal / stoneish >= 0.05 && rockTotal / stoneish <= 0.1, `${((rockTotal / stoneish) * 100).toFixed(2)}%`);
+  let rockAbove = 0;
+  let rockTop = -1;
+  for (let cy = 0; cy < 8; cy++) {
+    gen.generateChunk(0, cy, 0, data);
+    for (let i = 0; i < data.length; i++) {
+      const id = data[i];
+      if (id !== GRANITE && id !== DIORITE && id !== ANDESITE) continue;
+      const y = cy * 16 + Math.floor(i / 256);
+      if (y > rockTop) rockTop = y;
+      if (y > 62) rockAbove++;
+    }
+  }
+  check("3 種の岩が高さ 62 より上に出ない", rockAbove === 0, `一番上 y=${rockTop} / 上限 62`);
 
   // --- 溶岩 ---
   // 掘り抜いた空間のうち LAVA_LEVEL 以下を埋めるので、**海面の水とまったく同じ形**。

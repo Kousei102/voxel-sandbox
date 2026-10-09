@@ -1,5 +1,6 @@
 import {
   AIR,
+  ANDESITE,
   BIRCH_LEAVES,
   BIRCH_SAPLING,
   BLOCKS,
@@ -709,11 +710,12 @@ export const GOLD_NUGGET = 213;
  * 「使った番号」と食い違い、**次に取る空き番号を数え違えます**（はしご 145..148 が
  * 同じ形でした）。
  * **共有帯ではブロックとアイテムが 1 本の番号列**なので、上限を持つのがどちら側かは
- * 決まりません（`items.ts` に 1 行も書いていないブロックが上限だったのは 12 度目）。
+ * 決まりません（`items.ts` に 1 行も書いていないブロックが上限だったのは 12 度目。
+ * 花崗岩・閃緑岩・安山岩〔214..216〕で 13 度目）。
  * **上限をこちら側へ移したら、それまで指していたブロックの import を消すこと** ——
  * 残すと「使われていない」で `npm run typecheck` が落ちます（型で止まる安全な罠）。
  */
-export const MAX_ITEM_ID = GOLD_NUGGET;
+export const MAX_ITEM_ID = ANDESITE;
 
 export const MAX_STACK = 64;
 

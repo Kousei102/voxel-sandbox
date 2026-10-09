@@ -1070,7 +1070,7 @@ export function run(): void {
   describe("金の塊（70・アイテム 213）");
 
   console.log(`      MAX_ITEM_ID ${MAX_ITEM_ID}（金の塊 ${GOLD_NUGGET}）`);
-  check("金の塊は 213・MAX_ITEM_ID は 213（上限はアイテム側）", GOLD_NUGGET === 213 && MAX_ITEM_ID === 213, `MAX_ITEM_ID ${MAX_ITEM_ID}`);
+  check("金の塊は 213・MAX_ITEM_ID は 213 以上（上限はその後ブロック側の 216 へ伸びた）", GOLD_NUGGET === 213 && MAX_ITEM_ID >= 213, `MAX_ITEM_ID ${MAX_ITEM_ID}`);
   check("名前は「金の塊」", itemName(GOLD_NUGGET) === "金の塊", itemName(GOLD_NUGGET));
   check(
     "金の塊は置けず・道具でも食べ物でもない",
