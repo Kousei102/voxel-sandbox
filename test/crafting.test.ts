@@ -90,6 +90,7 @@ import {
   GOLD_HELMET,
   GOLD_HOE,
   GOLD_INGOT,
+  GOLD_NUGGET,
   GOLD_LEGGINGS,
   GOLD_PICKAXE,
   GOLD_SHOVEL,
@@ -1192,10 +1193,24 @@ export function run(): void {
   // **本数も 1 件として見張る** —— レシピを足したのに表から漏れていたら、
   // 上の `findRecipe` だけでは「揃わないのが正しい」と読めてしまう。
   check(
-    "レシピは 104 本（粗い土 1 本で増えた。数え直した）",
-    RECIPES.length === 104,
+    "レシピは 106 本（金の塊 2 本で増えた。数え直した）",
+    RECIPES.length === 106,
     `${RECIPES.length} 本`,
   );
+
+  // --- 金の塊（70）: 金インゴット 1 ↔ 金の塊 9 ---
+  {
+    const one = findRecipe(grid(2, ["G."], { G: GOLD_INGOT }), 2);
+    const nine = findRecipe(grid(3, ["NNN", "NNN", "NNN"], { N: GOLD_NUGGET }), 3);
+    const eight = findRecipe(grid(3, ["NNN", "NNN", "NN."], { N: GOLD_NUGGET }), 3);
+    const block = findRecipe(grid(2, ["B."], { B: GOLD_BLOCK }), 2);
+    console.log(`      金の塊: 1→${one?.name}x${one?.count} / 9→${nine?.name}x${nine?.count} / 8→${eight?.name ?? "無し"} / 金ブロック→${block?.name}x${block?.count}`);
+    check("金インゴット 1 → 金の塊 9", one?.out === GOLD_NUGGET && one.count === 9, `${one?.name} x${one?.count}`);
+    check("金の塊 9 → 金インゴット 1", nine?.out === GOLD_INGOT && nine.count === 1, `${nine?.name} x${nine?.count}`);
+    check("金の塊 8 個では出ない", eight === null, `${eight?.name ?? "無し"}`);
+    check("往復で個数が保たれる（1 ↔ 9）", (one?.count ?? 0) * (nine?.count ?? 0) === 9, "");
+    check("金ブロック → 金インゴット 9 と干渉しない", block?.out === GOLD_INGOT && block.count === 9, `${block?.name} x${block?.count}`);
+  }
 
   // --- シラカバの原木 → 板 4 枚（50）。2x2 で作れる（作業台が要らない）---
   const birchPlank = findRecipe(grid(2, ["B."], { B: BIRCH_WOOD }), 2);

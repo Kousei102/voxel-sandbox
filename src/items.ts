@@ -10,7 +10,6 @@ import {
   COBWEB,
   COBBLE,
   DEAD_BUSH,
-  COARSE_DIRT,
   DIAMOND_ORE,
   DIRT,
   END_CRYSTAL,
@@ -682,6 +681,9 @@ export const GOLD_HOE = 195;
  */
 export const BONE_MEAL = 203;
 
+/** 金の塊（金インゴット 1 個 ↔ 9 個。置けず・食べられず・道具でもない）。 */
+export const GOLD_NUGGET = 213;
+
 /**
  * 一覧を作るときに数え上げる上限（`allItemIds()`）。**アイテムの番号だけでなく、
  * ブロックが自動で作るアイテム（上の for）の番号も含みます。**
@@ -711,7 +713,7 @@ export const BONE_MEAL = 203;
  * **上限をこちら側へ移したら、それまで指していたブロックの import を消すこと** ——
  * 残すと「使われていない」で `npm run typecheck` が落ちます（型で止まる安全な罠）。
  */
-export const MAX_ITEM_ID = COARSE_DIRT;
+export const MAX_ITEM_ID = GOLD_NUGGET;
 
 export const MAX_STACK = 64;
 
@@ -993,6 +995,7 @@ item({ id: LEATHER_BOOTS, name: "革の靴", block: AIR, stack: 1, color: 0x6441
 // 行が無い。革・糸・羽根とまったく同じ扱い）。**色は測って選んだ値**（上の `BONE` の説明。
 // 素直な 0xd8cfae は砂と 20.9 しか離れず、判定 20 のすぐ上だった）。
 item({ id: BONE, name: "骨", block: AIR, stack: MAX_STACK, color: 0xcdc8b0, tool: null });
+item({ id: GOLD_NUGGET, name: "金の塊", block: AIR, stack: MAX_STACK, color: 0xd8c400, tool: null });
 item({ id: BONE_MEAL, name: "骨粉", block: AIR, stack: MAX_STACK, color: 0xc8f0d0, tool: null });
 
 // 木炭。**`block: AIR` / `tool: null`**（置けず・道具でもなく・`FOODS` にも行が無い）。

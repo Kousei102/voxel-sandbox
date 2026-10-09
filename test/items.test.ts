@@ -42,6 +42,7 @@ import {
   APPLE,
   BONE,
   BONE_MEAL,
+  GOLD_NUGGET,
   BRICK_ITEM,
   BUCKET,
   CHARCOAL,
@@ -1044,7 +1045,7 @@ export function run(): void {
   describe("骨粉（35・アイテム 203）");
 
   console.log(`      MAX_ITEM_ID ${MAX_ITEM_ID}（骨粉 ${BONE_MEAL}）`);
-  check("骨粉は 203・MAX_ITEM_ID は粗い土 212（上限はブロック側）", BONE_MEAL === 203 && MAX_ITEM_ID === 212, `MAX_ITEM_ID ${MAX_ITEM_ID}`);
+  check("骨粉は 203・MAX_ITEM_ID は 212 以上", BONE_MEAL === 203 && MAX_ITEM_ID >= 212, `MAX_ITEM_ID ${MAX_ITEM_ID}`);
   check("名前は「骨粉」", itemName(BONE_MEAL) === "骨粉", itemName(BONE_MEAL));
   check(
     "骨粉は置けず・道具でも食べ物でもない",
@@ -1064,5 +1065,30 @@ export function run(): void {
     }
     console.log(`      骨粉 0x${itemColor(BONE_MEAL).toString(16)} 一覧 ${ids.includes(BONE_MEAL)} / いちばん近い相手: ${who} ${best.toFixed(1)}`);
     check("骨粉は一覧に出て、既存のどのアイテムとも見分けられる（RGB で 20 以上）", ids.includes(BONE_MEAL) && best >= 20, `${who} ${best.toFixed(1)}`);
+  }
+
+  describe("金の塊（70・アイテム 213）");
+
+  console.log(`      MAX_ITEM_ID ${MAX_ITEM_ID}（金の塊 ${GOLD_NUGGET}）`);
+  check("金の塊は 213・MAX_ITEM_ID は 213（上限はアイテム側）", GOLD_NUGGET === 213 && MAX_ITEM_ID === 213, `MAX_ITEM_ID ${MAX_ITEM_ID}`);
+  check("名前は「金の塊」", itemName(GOLD_NUGGET) === "金の塊", itemName(GOLD_NUGGET));
+  check(
+    "金の塊は置けず・道具でも食べ物でもない",
+    placedBlock(GOLD_NUGGET) === 0 && toolOf(GOLD_NUGGET) === null && foodOf(GOLD_NUGGET) === null,
+    `block ${placedBlock(GOLD_NUGGET)} / tool ${toolOf(GOLD_NUGGET)} / food ${foodOf(GOLD_NUGGET)}`,
+  );
+  {
+    let best = Infinity;
+    let who = "";
+    for (const other of ids) {
+      if (other === GOLD_NUGGET) continue;
+      const gap = dist(itemColor(GOLD_NUGGET), itemColor(other));
+      if (gap < best) {
+        best = gap;
+        who = `${itemName(other)} 0x${itemColor(other).toString(16)}`;
+      }
+    }
+    console.log(`      金の塊 0x${itemColor(GOLD_NUGGET).toString(16)} 一覧 ${ids.includes(GOLD_NUGGET)} / いちばん近い相手: ${who} ${best.toFixed(1)}`);
+    check("金の塊は一覧に出て、既存のどのアイテムとも見分けられる（RGB で 20 以上）", ids.includes(GOLD_NUGGET) && best >= 20, `${who} ${best.toFixed(1)}`);
   }
 }

@@ -92,6 +92,7 @@ import {
   GOLD_HELMET,
   GOLD_HOE,
   GOLD_INGOT,
+  GOLD_NUGGET,
   GOLD_LEGGINGS,
   GOLD_PICKAXE,
   GOLD_SHOVEL,
@@ -404,6 +405,8 @@ export const RECIPES: readonly Recipe[] = [
   { name: "小麦", out: WHEAT, count: 9, ingredients: [HAY_BALE] },
   { name: "鉄インゴット", out: IRON_INGOT, count: 9, ingredients: [IRON_BLOCK] },
   { name: "金インゴット", out: GOLD_INGOT, count: 9, ingredients: [GOLD_BLOCK] },
+  { name: "金の塊", out: GOLD_NUGGET, count: 9, ingredients: [GOLD_INGOT] },
+  { name: "金インゴット", out: GOLD_INGOT, count: 1, ingredients: Array<number>(9).fill(GOLD_NUGGET) },
   { name: "ダイヤモンド", out: DIAMOND, count: 9, ingredients: [DIAMOND_BLOCK] },
   // 石炭も同じ 9 ↔ 9（本家 1.6.1）。**違うのは `smelting.ts` の `FUEL` に 1 行ある
   // ことだけ**で、石炭ブロック 1 個は 80 個ぶん = 石炭 10 個ぶん燃えます ——
